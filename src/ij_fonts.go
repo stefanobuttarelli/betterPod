@@ -92,11 +92,11 @@ func faceSize(f font.Face) float64 {
 // lineBox returns the line-box height and baseline offset (CSS px) for text
 // at the given size, from Inter's ascent and descent metrics.
 func lineBox(size float64) (float64, float64) {
-	a := math.Round(size*0.96875 + size*0.96875)
+	a := math.Round(size*0.96875*DPR) / DPR
 
 	h := math.Round(size*0.96875) + math.Round(size*0.2412109375)
 
-	return h, a*0.5 + baselineTweak[size]*0.5
+	return h, a + baselineTweak[size]/DPR
 }
 
 // baselineTweak nudges the baseline for sizes that would otherwise look off.
