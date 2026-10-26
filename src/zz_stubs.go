@@ -5,43 +5,42 @@ package main
 import (
 	"golang.org/x/image/font"
 	"image"
-	"os/exec"
 	"sync"
 	"time"
 )
 
-const MEDIA_PREV Key = 1073745934
-const TTableau TargetType = 3
-const MEDIA_PLAY Key = 1073745931
-const MEDIA_PLAYPAUSE Key = 1073745930
-const PhBrowsing SolPhase = 0
-const MEDIA_NEXT Key = 1073745933
+const MEDIA_STOP Key = 1073745935
+const TFoundation TargetType = 2
+const WHEEL_CCW Key = 1073745922
 const PrevNone PreviewKind = 0
-const PhMenu SolPhase = 2
-const MEDIA_PAUSE Key = 1073745932
-const Hearts = 0
-const PrevMusic PreviewKind = 1
-const PhHolding SolPhase = 1
-const Clubs = 2
-const TTableauEmpty TargetType = 4
-const PhWon SolPhase = 3
-const Spades = 3
 const WHEEL_CW Key = 1073745921
-const TWaste TargetType = 1
+const PhBrowsing SolPhase = 0
 const KindCoverFlow ViewKind = 2
+const KindFull ViewKind = 1
+const TTableauEmpty TargetType = 4
+const Hearts = 0
+const MEDIA_NEXT Key = 1073745933
+const PhHolding SolPhase = 1
+const Spades = 3
+const MEDIA_PLAYPAUSE Key = 1073745930
+const MEDIA_PREV Key = 1073745934
+const PhMenu SolPhase = 2
+const MEDIA_PLAY Key = 1073745931
+const TStock TargetType = 0
+const PrevGames PreviewKind = 2
+const PrevNowPlaying PreviewKind = 4
 const PrevSettings PreviewKind = 3
+const TTableau TargetType = 3
+const TWaste TargetType = 1
+const MEDIA_PAUSE Key = 1073745932
+const LOCK Key = 1073741925
+const PrevMusic PreviewKind = 1
+const KindSplit ViewKind = 0
+const Clubs = 2
+const PhWon SolPhase = 3
+const Diamonds = 1
 const HP_UNPLUG Key = 1073745936
 const PhLost SolPhase = 4
-const PrevGames PreviewKind = 2
-const MEDIA_STOP Key = 1073745935
-const KindFull ViewKind = 1
-const LOCK Key = 1073741925
-const TFoundation TargetType = 2
-const KindSplit ViewKind = 0
-const WHEEL_CCW Key = 1073745922
-const PrevNowPlaying PreviewKind = 4
-const TStock TargetType = 0
-const Diamonds = 1
 func skipFor(velocity float64) int { panic("stub") }
 func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
 func (_ *IpodUI) assetSafe(name string) *image.RGBA { panic("stub") }
@@ -127,9 +126,6 @@ var batChecked time.Time
 var selGrad []GradStop
 var subGray Col
 var trackLoading int32
-var sysVol *sysVolume
-var btState int32
-var btLost int32
 type TargetType int
 type SolPhase int
 type ViewKind int
@@ -202,18 +198,6 @@ type scaledKey struct {
 type glyphBounds struct {
 	minY float64
 	maxY float64
-}
-type sysVolume struct {
-	mu sync.Mutex
-	ok bool
-	bin string
-	want int
-	cur int
-	lastSet time.Time
-	wake chan struct {}
-	changed int32
-	active int32
-	events chan struct {}
 }
 type holdState struct {
 	on bool
@@ -694,35 +678,3 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) { panic("stub") }
 func (ui *IpodUI) renderEmpty(dst *image.RGBA, msg string) { panic("stub") }
 //go:noinline
 func folderArtwork(album *Album) ([]uint8, string) { panic("stub") }
-//go:noinline
-func audioPrepareFor(path string) { panic("stub") }
-//go:noinline
-func probeSampleRate(path string) int { panic("stub") }
-//go:noinline
-func probeMP4Codec(path string) (int, string, string) { panic("stub") }
-//go:noinline
-func probeWAV(path string) int { panic("stub") }
-//go:noinline
-func probeAIFF(path string) int { panic("stub") }
-//go:noinline
-func probeMP3(path string) int { panic("stub") }
-//go:noinline
-func findBin(name string) string { panic("stub") }
-//go:noinline
-func pactlEnv() []string { panic("stub") }
-//go:noinline
-func pactlCmd(args []string) *exec.Cmd { panic("stub") }
-//go:noinline
-func readSinkVolume() int { panic("stub") }
-//go:noinline
-func defaultSink() (string, bool) { panic("stub") }
-//go:noinline
-func (s *sysVolume) set(pct int) { panic("stub") }
-//go:noinline
-func (s *sysVolume) writer() { panic("stub") }
-//go:noinline
-func (s *sysVolume) watch() { panic("stub") }
-//go:noinline
-func (s *sysVolume) refresher() { panic("stub") }
-//go:noinline
-func startBluetoothWatch() { panic("stub") }
