@@ -68,18 +68,18 @@ func face(w FontWeight, cssSize float64) font.Face {
 		fontCache[w] = f
 	}
 	fc, _ := opentype.NewFace(f, &opentype.FaceOptions{Size: cssSize * DPR, DPI: 72})
+	// remember the CSS size each face was built at (keyed by the face
+	// value itself, so drawText callers can recover it)
+	//
 	faceCache[k] = fc
 	faceSizes[fc] = cssSize
 	return fc
 }
 
-// the CSS size each built face was made at (keyed by the face value
-// itself, so drawText callers can recover it)
 var faceSizes = map[font.Face]float64{}
 
-// sizedFace is face by another name, kept for call sites that
-// compute sizes before asking for a face. It applies no scaling
-// of its own; the caller has already converted to a CSS size.
+// sizedFace is face by another name, kept for call sites that compute
+// sizes before asking for a face (no scaling of its own).
 func sizedFace(w FontWeight, cssSize float64) font.Face { return face(w, cssSize) }
 
 // faceSize returns the CSS size a face was built at.
@@ -92,11 +92,11 @@ func faceSize(f font.Face) float64 {
 // lineBox returns the line-box height and baseline offset (CSS px) for text
 // at the given size, from Inter's ascent and descent metrics.
 func lineBox(size float64) (float64, float64) {
-	a := math.Round(size*0.96875 + size*0.96875)
+	a := math.Round(size*0.96875+size*0.96875) * 0.5
 
 	h := math.Round(size*0.96875) + math.Round(size*0.2412109375)
 
-	return h, a*0.5 + baselineTweak[size]*0.5
+	return h, a + baselineTweak[size]*0.5
 }
 
 // baselineTweak nudges the baseline for sizes that would otherwise look off.
