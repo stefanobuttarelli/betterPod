@@ -9,38 +9,35 @@ import (
 	"time"
 )
 
-const MEDIA_STOP Key = 1073745935
-const TFoundation TargetType = 2
 const WHEEL_CCW Key = 1073745922
-const PrevNone PreviewKind = 0
-const WHEEL_CW Key = 1073745921
-const PhBrowsing SolPhase = 0
-const KindCoverFlow ViewKind = 2
-const KindFull ViewKind = 1
+const MEDIA_PLAYPAUSE Key = 1073745930
+const PhLost SolPhase = 4
+const MEDIA_NEXT Key = 1073745933
+const PrevMusic PreviewKind = 1
+const MEDIA_PAUSE Key = 1073745932
+const PrevNowPlaying PreviewKind = 4
+const Clubs = 2
+const LOCK Key = 1073741925
+const MEDIA_PLAY Key = 1073745931
+const MEDIA_STOP Key = 1073745935
+const Diamonds = 1
 const TTableauEmpty TargetType = 4
 const Hearts = 0
-const MEDIA_NEXT Key = 1073745933
-const PhHolding SolPhase = 1
-const Spades = 3
-const MEDIA_PLAYPAUSE Key = 1073745930
-const MEDIA_PREV Key = 1073745934
+const PhBrowsing SolPhase = 0
+const PrevNone PreviewKind = 0
 const PhMenu SolPhase = 2
-const MEDIA_PLAY Key = 1073745931
-const TStock TargetType = 0
-const PrevGames PreviewKind = 2
-const PrevNowPlaying PreviewKind = 4
-const PrevSettings PreviewKind = 3
-const TTableau TargetType = 3
-const TWaste TargetType = 1
-const MEDIA_PAUSE Key = 1073745932
-const LOCK Key = 1073741925
-const PrevMusic PreviewKind = 1
-const KindSplit ViewKind = 0
-const Clubs = 2
-const PhWon SolPhase = 3
-const Diamonds = 1
 const HP_UNPLUG Key = 1073745936
-const PhLost SolPhase = 4
+const WHEEL_CW Key = 1073745921
+const PhHolding SolPhase = 1
+const PhWon SolPhase = 3
+const TStock TargetType = 0
+const PrevSettings PreviewKind = 3
+const TFoundation TargetType = 2
+const PrevGames PreviewKind = 2
+const TTableau TargetType = 3
+const MEDIA_PREV Key = 1073745934
+const Spades = 3
+const TWaste TargetType = 1
 func skipFor(velocity float64) int { panic("stub") }
 func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
 func (_ *IpodUI) assetSafe(name string) *image.RGBA { panic("stub") }
@@ -71,7 +68,6 @@ func (_ *solAnims) hidden() []Target { panic("stub") }
 func targetsEqual(a Target, b Target) bool { panic("stub") }
 func (_ *Solitaire) isHidden(hidden []Target, t Target) bool { panic("stub") }
 func (_ *Keyboard) scrollBy(dir int, velocity float64) { panic("stub") }
-func (_ *Item) isSong() bool { panic("stub") }
 func (_ *IpodUI) onTrackChanged() { panic("stub") }
 func (_ *IpodUI) holdAnimating(now time.Time) bool { panic("stub") }
 func (_ *IpodUI) listMarquee() bool { panic("stub") }
@@ -123,19 +119,13 @@ var batMu sync.Mutex
 var batPct int
 var batChg bool
 var batChecked time.Time
-var selGrad []GradStop
-var subGray Col
 var trackLoading int32
 type TargetType int
 type SolPhase int
-type ViewKind int
 type PreviewKind int
 type kbKey struct{key string; label string; icon string}
 type AboutView struct{list *View; buf *image.RGBA}
-type View struct{ID string; Title string; Kind ViewKind; Items []Item; Build func() []Item; Empty string; DisableLongPress bool; Index int; Scroll float64; Custom CustomView; enter *Anim; hide *Anim; exiting bool; firstIn bool; cache *image.RGBA; marqueeOn bool; marqIdx int; marqSince time.Time; cacheW int; dirty bool; lastRender time.Time}
-type Item struct{Label string; Sublabel string; Album *Album; Icon string; Preview PreviewKind; OnSelect func(); Tracks []*Track; TrackIdx int; ShowNowPlaying bool; LongPress []SheetOption; Value string; Checked bool; NoArrow bool}
 type SheetOption struct{Label string; Selected bool; OnSelect func()}
-type CustomView interface{Animating(now time.Time) bool; OnCenter(ui *IpodUI); OnScroll(ui *IpodUI, dir int, velocity float64); Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)}
 type IpodUI struct{app *MiyooPod; fb *image.RGBA; split []*View; full []*View; gone []*View; sheets []*Sheet; cover *CoverFlow; keyboard *Keyboard; headerTitle string; prevFB []byte; noMarquee bool; frameNo int; leftX *Anim; fullX *Anim; previewHide *Anim; preview PreviewKind; previewTimer *time.Timer; pendingPrev PreviewKind; musicPrev *Anim; kb *KenBurns; assets map[string]*image.RGBA; assetsMu sync.Mutex; artc *artCache; shadow []float64; velocity float64; lastTick time.Time; lastDir int; repeatKey Key; repeatStart time.Time; repeatLast time.Time; pressStart map[Key]time.Time; longFired map[Key]bool; volume float64; shuffleMode string; dirty bool; events chan func()}
 type Sheet struct{opts []SheetOption; index int; anim *Anim; exiting bool; cache *image.RGBA; cacheIx int}
 type CoverFlow struct{albums []*Album; active int; selected *Album; playing bool; covers map[int]*cfCover; back *View; backAnim *Anim; backAlbum *Album; infoFade *Anim; npFade *Anim; paused bool; tilt *Anim; backShown *Album; backSince time.Time; np *NowPlayingView; fadeIn *Anim; exiting bool; layer *image.RGBA; npBuf *image.RGBA}
@@ -666,15 +656,5 @@ func (ui *IpodUI) onlyKenBurns(now time.Time) bool { panic("stub") }
 func (ui *IpodUI) present() bool { panic("stub") }
 //go:noinline
 func (ui *IpodUI) Run() { panic("stub") }
-//go:noinline
-func rowHeight(it *Item) float64 { panic("stub") }
-//go:noinline
-func (v *View) rowTops() ([]float64, float64) { panic("stub") }
-//go:noinline
-func (v *View) ensureVisible(viewportH float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) renderList(v *View, dst *image.RGBA) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) renderEmpty(dst *image.RGBA, msg string) { panic("stub") }
 //go:noinline
 func folderArtwork(album *Album) ([]uint8, string) { panic("stub") }
