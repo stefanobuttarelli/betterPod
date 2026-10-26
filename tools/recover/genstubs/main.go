@@ -316,8 +316,27 @@ func main() {
 			}
 		}
 	}
+	// functions the v0.20 compiler never inlined get //go:noinline, so a
+	// panicking stub doesn't get inlined and turn the caller's code dead
+	inlined := map[string]bool{}
+	if data, err := os.ReadFile("/home/claude/recover/dwarf.txt"); err == nil {
+		for _, l := range strings.Split(string(data), "\n") {
+			l = strings.TrimSpace(l)
+			if strings.HasPrefix(l, "inline main.") {
+				n := strings.Fields(l)[1]
+				inlined[strings.TrimPrefix(n, "main.")] = true
+			}
+		}
+	}
 	for _, x := range fns {
 		var b strings.Builder
+		key := x.name
+		if x.recvType != "" {
+			key = "(" + x.recvType + ")." + x.name
+		}
+		if !inlined[key] {
+			b.WriteString("//go:noinline\n")
+		}
 		b.WriteString("func ")
 		if x.recvType != "" {
 			rn := x.recv
