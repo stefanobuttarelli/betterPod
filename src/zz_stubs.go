@@ -11,43 +11,43 @@ import (
 	"time"
 )
 
-const MEDIA_PREV Key = 1073745934
-const TStock TargetType = 0
-const TFoundation TargetType = 2
+const Diamonds = 1
+const KindCoverFlow ViewKind = 2
+const MEDIA_PAUSE Key = 1073745932
+const KindFull ViewKind = 1
+const W500 FontWeight = 500
+const MEDIA_NEXT Key = 1073745933
+const MEDIA_STOP Key = 1073745935
 const W700 FontWeight = 700
 const PhWon SolPhase = 3
-const W600 FontWeight = 600
+const PrevSettings PreviewKind = 3
+const TFoundation TargetType = 2
+const TTableau TargetType = 3
+const MEDIA_PREV Key = 1073745934
+const TStock TargetType = 0
+const MEDIA_PLAYPAUSE Key = 1073745930
+const PhHolding SolPhase = 1
+const MEDIA_PLAY Key = 1073745931
 const PrevMusic PreviewKind = 1
-const PrevNone PreviewKind = 0
-const TWaste TargetType = 1
-const W400 FontWeight = 400
+const KindSplit ViewKind = 0
 const WHEEL_CCW Key = 1073745922
-const WHEEL_CW Key = 1073745921
+const Hearts = 0
+const LOCK Key = 1073741925
 const PhLost SolPhase = 4
 const PrevNowPlaying PreviewKind = 4
-const W500 FontWeight = 500
-const MEDIA_PAUSE Key = 1073745932
-const PhBrowsing SolPhase = 0
-const Spades = 3
-const MEDIA_PLAY Key = 1073745931
-const PrevSettings PreviewKind = 3
-const HP_UNPLUG Key = 1073745936
-const Hearts = 0
+const W600 FontWeight = 600
 const TTableauEmpty TargetType = 4
-const Diamonds = 1
-const LOCK Key = 1073741925
-const MEDIA_PLAYPAUSE Key = 1073745930
-const PhMenu SolPhase = 2
-const PrevGames PreviewKind = 2
-const TTableau TargetType = 3
-const KindSplit ViewKind = 0
-const MEDIA_STOP Key = 1073745935
-const MEDIA_NEXT Key = 1073745933
 const W900 FontWeight = 900
+const PhMenu SolPhase = 2
 const Clubs = 2
-const KindFull ViewKind = 1
-const KindCoverFlow ViewKind = 2
-const PhHolding SolPhase = 1
+const Spades = 3
+const TWaste TargetType = 1
+const W400 FontWeight = 400
+const PhBrowsing SolPhase = 0
+const WHEEL_CW Key = 1073745921
+const PrevGames PreviewKind = 2
+const HP_UNPLUG Key = 1073745936
+const PrevNone PreviewKind = 0
 func skipFor(velocity float64) int { panic("stub") }
 func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
 func (_ *IpodUI) assetSafe(name string) *image.RGBA { panic("stub") }
@@ -103,7 +103,6 @@ var keyLog bool
 var volOSD struct { a *Anim; until time.Time }
 var padlockBadgeGrad []GradStop
 var useIpodUI bool
-var numWorkers int
 var npPanStart time.Time
 var npPanShown time.Time
 var greyPreviewBg *image.RGBA
@@ -385,7 +384,6 @@ func (ui *IpodUI) drawScrubber(dst *image.RGBA, x float64, y float64, cur float6
 func (np *NowPlayingView) activateVolume(ui *IpodUI) { panic("stub") }
 func (np *NowPlayingView) flashVolume(ui *IpodUI) { panic("stub") }
 func (ui *IpodUI) nowPlayingOnScreen() bool { panic("stub") }
-func parallelRows(y0 int, y1 int, fn func(int, int)) { panic("stub") }
 func (ui *IpodUI) loadPrefs() { panic("stub") }
 func (ui *IpodUI) savePrefs() { panic("stub") }
 func (kb *KenBurns) reset(ui *IpodUI, now time.Time) { panic("stub") }
@@ -469,7 +467,6 @@ func (g *Solitaire) drawHighlight(dst *image.RGBA, x float64, y float64, w float
 func (g *Solitaire) drawCursor(dst *image.RGBA, p Pos) { panic("stub") }
 func (g *Solitaire) drawMenu(dst *image.RGBA, labels []string, sel int, title string, subtitle string) { panic("stub") }
 func dashedRoundRect(dst *image.RGBA, x float64, y float64, w float64, h float64, r float64, c Col) { panic("stub") }
-func (ui *IpodUI) rescanLibrary() { panic("stub") }
 func newIpodUI(app *MiyooPod) *IpodUI { panic("stub") }
 func (ui *IpodUI) asset(name string) *image.RGBA { panic("stub") }
 func toRGBA(img image.Image) *image.RGBA { panic("stub") }

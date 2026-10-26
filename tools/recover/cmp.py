@@ -32,7 +32,18 @@ for name, k, d in bad:
     if k == 'missing': print('MISSING', name); continue
     i, a, b = d
     line = a[0].split(' ')[0] if a else (b[0].split(' ')[0] if b else '?')
-    print('DIFF %s at #%d %s' % (name, i, line))
+    off = ''
+    try:
+        ra = [int(x.split(' ')[0].split(':')[1]) for x in ins if x.startswith(f + ':')]
+        rb = [int(x.split(' ')[0].split(':')[1]) for x in g if x.startswith(f + ':')]
+        if ra and rb and len(ra) == len(rb):
+            d = set(b - a for a, b in zip(ra, rb))
+            off = ' line-shift=%s' % sorted(d)
+            if len(d) == 1 and [x.split(' ', 1)[1] for x in ins] == [x.split(' ', 1)[1] for x in g]:
+                off += ' (code identical)'
+    except Exception:
+        pass
+    print('DIFF %s at #%d %s%s' % (name, i, line, off))
     if verbose:
         for x in a: print('   ref:', x)
         for x in b: print('   new:', x)
