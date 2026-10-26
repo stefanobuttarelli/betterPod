@@ -11,43 +11,43 @@ import (
 	"time"
 )
 
-const W500 FontWeight = 500
-const W700 FontWeight = 700
-const MEDIA_PAUSE Key = 1073745932
-const PrevSettings PreviewKind = 3
-const PhWon SolPhase = 3
-const HP_UNPLUG Key = 1073745936
-const MEDIA_NEXT Key = 1073745933
-const WHEEL_CCW Key = 1073745922
-const W900 FontWeight = 900
-const WHEEL_CW Key = 1073745921
-const KindFull ViewKind = 1
-const KindSplit ViewKind = 0
-const MEDIA_PLAY Key = 1073745931
 const MEDIA_PREV Key = 1073745934
+const TStock TargetType = 0
+const TFoundation TargetType = 2
+const W700 FontWeight = 700
+const PhWon SolPhase = 3
+const W600 FontWeight = 600
+const PrevMusic PreviewKind = 1
+const PrevNone PreviewKind = 0
+const TWaste TargetType = 1
+const W400 FontWeight = 400
+const WHEEL_CCW Key = 1073745922
+const WHEEL_CW Key = 1073745921
 const PhLost SolPhase = 4
-const LOCK Key = 1073741925
-const MEDIA_PLAYPAUSE Key = 1073745930
+const PrevNowPlaying PreviewKind = 4
+const W500 FontWeight = 500
+const MEDIA_PAUSE Key = 1073745932
+const PhBrowsing SolPhase = 0
+const Spades = 3
+const MEDIA_PLAY Key = 1073745931
+const PrevSettings PreviewKind = 3
+const HP_UNPLUG Key = 1073745936
+const Hearts = 0
 const TTableauEmpty TargetType = 4
 const Diamonds = 1
-const TStock TargetType = 0
+const LOCK Key = 1073741925
+const MEDIA_PLAYPAUSE Key = 1073745930
+const PhMenu SolPhase = 2
+const PrevGames PreviewKind = 2
+const TTableau TargetType = 3
+const KindSplit ViewKind = 0
+const MEDIA_STOP Key = 1073745935
+const MEDIA_NEXT Key = 1073745933
+const W900 FontWeight = 900
 const Clubs = 2
-const Spades = 3
+const KindFull ViewKind = 1
 const KindCoverFlow ViewKind = 2
 const PhHolding SolPhase = 1
-const MEDIA_STOP Key = 1073745935
-const PrevMusic PreviewKind = 1
-const TWaste TargetType = 1
-const Hearts = 0
-const TTableau TargetType = 3
-const PhBrowsing SolPhase = 0
-const PhMenu SolPhase = 2
-const TFoundation TargetType = 2
-const W400 FontWeight = 400
-const W600 FontWeight = 600
-const PrevNowPlaying PreviewKind = 4
-const PrevGames PreviewKind = 2
-const PrevNone PreviewKind = 0
 func skipFor(velocity float64) int { panic("stub") }
 func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
 func (_ *IpodUI) assetSafe(name string) *image.RGBA { panic("stub") }
@@ -55,10 +55,7 @@ func (_ *IpodUI) post(f func()) { panic("stub") }
 func (_ *IpodUI) onArtLoaded() { panic("stub") }
 func (_ *BrickGame) resetPlayerPos() { panic("stub") }
 func (_ *IpodUI) topScreen() *View { panic("stub") }
-func (_ *Anim) Running() bool { panic("stub") }
 func (_ *IpodUI) library() *Library { panic("stub") }
-func (_ *Anim) Target() float64 { panic("stub") }
-func (_ *Anim) Set(v float64) { panic("stub") }
 func (_ *NowPlayingView) Animating(now time.Time) bool { panic("stub") }
 func (_ *IpodUI) gamesView() *View { panic("stub") }
 func (_ *IpodUI) mediaOptions(tracks []*Track) []SheetOption { panic("stub") }
@@ -88,13 +85,6 @@ func (_ *IpodUI) listMarquee() bool { panic("stub") }
 func (_ *IpodUI) nowPlayingViews() []*NowPlayingView { panic("stub") }
 func (_ *IpodUI) thumb(a *Album, size float64) *image.RGBA { panic("stub") }
 func (_ *IpodUI) isPlayingTrack(t *Track) bool { panic("stub") }
-var easeCSS Easing
-var easeInOut Easing
-var animNow func() time.Time
-var durSlide time.Duration
-var durPanel time.Duration
-var durPreview time.Duration
-var delayMenuHide time.Duration
 var defaultArtMu sync.Mutex
 var defaultArtSizes map[int]*image.RGBA
 var brickColors []brickColor
@@ -177,9 +167,6 @@ type View struct{ID string; Title string; Kind ViewKind; Items []Item; Build fun
 type Item struct{Label string; Sublabel string; Album *Album; Icon string; Preview PreviewKind; OnSelect func(); Tracks []*Track; TrackIdx int; ShowNowPlaying bool; LongPress []SheetOption; Value string; Checked bool; NoArrow bool}
 type SheetOption struct{Label string; Selected bool; OnSelect func()}
 type CustomView interface{Animating(now time.Time) bool; OnCenter(ui *IpodUI); OnScroll(ui *IpodUI, dir int, velocity float64); Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)}
-type Anim struct{tw Tween; active bool; val float64}
-type Tween struct{From float64; To float64; Start time.Time; Dur time.Duration; Ease Easing}
-type Easing func(float64) float64
 type IpodUI struct{app *MiyooPod; fb *image.RGBA; split []*View; full []*View; gone []*View; sheets []*Sheet; cover *CoverFlow; keyboard *Keyboard; headerTitle string; prevFB []byte; noMarquee bool; frameNo int; leftX *Anim; fullX *Anim; previewHide *Anim; preview PreviewKind; previewTimer *time.Timer; pendingPrev PreviewKind; musicPrev *Anim; kb *KenBurns; assets map[string]*image.RGBA; assetsMu sync.Mutex; artc *artCache; shadow []float64; velocity float64; lastTick time.Time; lastDir int; repeatKey Key; repeatStart time.Time; repeatLast time.Time; pressStart map[Key]time.Time; longFired map[Key]bool; volume float64; shuffleMode string; dirty bool; events chan func()}
 type Sheet struct{opts []SheetOption; index int; anim *Anim; exiting bool; cache *image.RGBA; cacheIx int}
 type CoverFlow struct{albums []*Album; active int; selected *Album; playing bool; covers map[int]*cfCover; back *View; backAnim *Anim; backAlbum *Album; infoFade *Anim; npFade *Anim; paused bool; tilt *Anim; backShown *Album; backSince time.Time; np *NowPlayingView; fadeIn *Anim; exiting bool; layer *image.RGBA; npBuf *image.RGBA}
@@ -287,9 +274,6 @@ func (a *AboutView) Animating(now time.Time) bool { panic("stub") }
 func (a *AboutView) OnCenter(ui *IpodUI) { panic("stub") }
 func (a *AboutView) OnScroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
 func (a *AboutView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) { panic("stub") }
-func (t *Tween) Value(now time.Time) (float64, bool) { panic("stub") }
-func (a *Anim) To(v float64, dur time.Duration, ease Easing, delay time.Duration) { panic("stub") }
-func (a *Anim) Get(now time.Time) float64 { panic("stub") }
 func decodeAlbumSource(a *Album) image.Image { panic("stub") }
 func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA { panic("stub") }
 func (ui *IpodUI) artOrDefault(a *Album, devSize int) *image.RGBA { panic("stub") }
