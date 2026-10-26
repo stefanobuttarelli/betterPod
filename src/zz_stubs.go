@@ -4,50 +4,44 @@ package main
 
 import (
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/sfnt"
 	"image"
 	"os/exec"
 	"sync"
 	"time"
 )
 
-const Diamonds = 1
-const KindCoverFlow ViewKind = 2
-const MEDIA_PAUSE Key = 1073745932
-const KindFull ViewKind = 1
-const W500 FontWeight = 500
-const MEDIA_NEXT Key = 1073745933
-const MEDIA_STOP Key = 1073745935
-const W700 FontWeight = 700
-const PhWon SolPhase = 3
-const PrevSettings PreviewKind = 3
-const TFoundation TargetType = 2
-const TTableau TargetType = 3
-const MEDIA_PREV Key = 1073745934
 const TStock TargetType = 0
-const MEDIA_PLAYPAUSE Key = 1073745930
-const PhHolding SolPhase = 1
-const MEDIA_PLAY Key = 1073745931
 const PrevMusic PreviewKind = 1
-const KindSplit ViewKind = 0
-const WHEEL_CCW Key = 1073745922
-const Hearts = 0
-const LOCK Key = 1073741925
-const PhLost SolPhase = 4
-const PrevNowPlaying PreviewKind = 4
-const W600 FontWeight = 600
+const KindFull ViewKind = 1
+const TFoundation TargetType = 2
 const TTableauEmpty TargetType = 4
-const W900 FontWeight = 900
-const PhMenu SolPhase = 2
-const Clubs = 2
-const Spades = 3
 const TWaste TargetType = 1
-const W400 FontWeight = 400
-const PhBrowsing SolPhase = 0
-const WHEEL_CW Key = 1073745921
+const PhHolding SolPhase = 1
+const TTableau TargetType = 3
+const Clubs = 2
+const PhLost SolPhase = 4
+const PhWon SolPhase = 3
 const PrevGames PreviewKind = 2
-const HP_UNPLUG Key = 1073745936
+const MEDIA_PLAYPAUSE Key = 1073745930
+const PhBrowsing SolPhase = 0
 const PrevNone PreviewKind = 0
+const Diamonds = 1
+const LOCK Key = 1073741925
+const PrevNowPlaying PreviewKind = 4
+const MEDIA_PREV Key = 1073745934
+const MEDIA_PLAY Key = 1073745931
+const Hearts = 0
+const MEDIA_NEXT Key = 1073745933
+const PhMenu SolPhase = 2
+const MEDIA_STOP Key = 1073745935
+const Spades = 3
+const KindCoverFlow ViewKind = 2
+const HP_UNPLUG Key = 1073745936
+const MEDIA_PAUSE Key = 1073745932
+const WHEEL_CCW Key = 1073745922
+const WHEEL_CW Key = 1073745921
+const PrevSettings PreviewKind = 3
+const KindSplit ViewKind = 0
 func skipFor(velocity float64) int { panic("stub") }
 func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
 func (_ *IpodUI) assetSafe(name string) *image.RGBA { panic("stub") }
@@ -91,13 +85,6 @@ var brickColors []brickColor
 var easeFramer Easing
 var backsideBuf *image.RGBA
 var marqueeActive bool
-var fontFiles map[FontWeight]string
-var fontMu sync.Mutex
-var fontCache map[FontWeight]*sfnt.Font
-var faceCache map[faceKey]font.Face
-var fontDir string
-var faceSizes map[font.Face]float64
-var baselineTweak map[float64]float64
 var hold holdState
 var keyLog bool
 var volOSD struct { a *Anim; until time.Time }
@@ -155,7 +142,6 @@ var brightWant int
 var brightCur int
 var brightWake chan struct {}
 var brightLogged int
-type FontWeight int
 type TargetType int
 type SolPhase int
 type ViewKind int
@@ -197,10 +183,6 @@ type texMap struct {
 	reflFrom float64
 	reflMax float64
 	reflStart float64
-}
-type faceKey struct {
-	w FontWeight
-	size float64
 }
 type ipodPrefs struct {
 	Volume float64
@@ -326,8 +308,6 @@ func backsideHeight(final mat4, bu0 float64, bv0 float64, bw float64) float64 { 
 func drawMarquee(dst *image.RGBA, f font.Face, s string, x float64, baseline float64, maxW float64, c Col, since time.Time, now time.Time) { panic("stub") }
 func (ui *IpodUI) backsideTexture(w float64, h float64, now time.Time) *image.RGBA { panic("stub") }
 func npCoverPose(t float64) cfXform { panic("stub") }
-func face(w FontWeight, cssSize float64) font.Face { panic("stub") }
-func faceSize(f font.Face) float64 { panic("stub") }
 func holdDimPercent() int { panic("stub") }
 func (ui *IpodUI) setHold(on bool) { panic("stub") }
 func (ui *IpodUI) showHoldBadge() { panic("stub") }

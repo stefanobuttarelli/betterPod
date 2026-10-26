@@ -34,7 +34,7 @@ for l in open(R + 'dwarf.txt'):
     if l.startswith('FUNC '): cur = l.split()[1]; continue
     if cur and l.strip(): dw[cur].append(l.rstrip())
 
-DROP = re.compile(r'(morestack|gcWriteBarrier|runtime\.writeBarrier|arm64HasATOMICS|NOOP|^\?)')
+DROP = re.compile(r'(morestack|gcWriteBarrier|runtime\.writeBarrier|arm64HasATOMICS|NOOP|^\?$|^MOVD 16\(R28\), R16|^CMP R16, R(SP|17)|^SUB \$\d+, RSP, R(17|20|29)|^MOVD\.W R30|^MOVD R29, -8\(RSP\)|^MOVD -8\(RSP\), R29|^MOVD\.P \d+\(RSP\), R30|^STP \(R29, R30\)|^LDP -8\(RSP\), \(R29, R30\)|^MOVD R20, RSP|^ADD \$\d+, RSP, RSP$|^MOVD R30, R3$|JMP main\..*\(SB\)$|BLS \d+\(PC\)$)')
 funcs = []; cur = None
 for l in open(R + 'obj.dis'):
     if l.startswith('TEXT '):
@@ -72,7 +72,8 @@ for name, f, ins in funcs:
     elif f != target: continue
     if fre and not fre.search(name): continue
     print('\n==== %s' % name)
-    for d in dw.get(name, []): print('  ' + d.strip())
+    for d in dw.get(name, []):
+        if '?' not in d: print('  ' + d.strip())
     lastkey = None; buf = []
     def flush():
         if lastkey and buf:

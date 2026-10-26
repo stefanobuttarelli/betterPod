@@ -1,0 +1,105 @@
+package main
+
+// ij_fonts.go — Inter font faces at CSS weights and sizes, cached, plus the
+// line metrics ipod.js uses to place text.
+
+import (
+	"fmt"
+	"math"
+	"os"
+	"sync"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/sfnt"
+)
+
+// FontWeight is a CSS font-weight.
+type FontWeight int
+
+const (
+	W400 FontWeight = 400
+	W500 FontWeight = 500
+	W600 FontWeight = 600
+	W700 FontWeight = 700
+	W900 FontWeight = 900
+)
+
+// Inter weight → file name.
+var fontFiles = map[FontWeight]string{
+	W400: "Inter-Regular.otf",
+	W500: "Inter-Medium.otf",
+	W600: "Inter-SemiBold.otf",
+	W700: "Inter-Bold.otf",
+	W900: "Inter-Black.otf",
+}
+
+type faceKey struct {
+	w    FontWeight
+	size float64
+}
+
+var fontMu sync.Mutex
+
+// parsed fonts by weight, and built faces by (weight, size)
+var fontCache = map[FontWeight]*sfnt.Font{}
+var faceCache = map[faceKey]font.Face{}
+
+var fontDir = "./assets/fonts/"
+// face returns the Inter face for weight w at CSS size cssSize (device px are
+// cssSize*DPR). Parsed fonts and built faces are both cached.
+func face(w FontWeight, cssSize float64) font.Face {
+	fontMu.Lock()
+	defer fontMu.Unlock()
+	k := faceKey{w, cssSize}
+	if fc, ok := faceCache[k]; ok {
+		return fc
+	}
+	f, ok := fontCache[w]
+	if !ok {
+		data, err := os.ReadFile(fontDir + fontFiles[w])
+		if err != nil {
+			panic(fmt.Sprintf("font %s: %v", fontFiles[w], err))
+		}
+		f, err = opentype.Parse(data)
+		if err != nil {
+			panic(fmt.Sprintf("font %s: %v", fontFiles[w], err))
+		}
+		fontCache[w] = f
+	}
+	fc, _ := opentype.NewFace(f, &opentype.FaceOptions{Size: cssSize * DPR, DPI: 72})
+	faceCache[k] = fc
+	faceSizes[fc] = cssSize
+	return fc
+}
+
+// the CSS size each built face was made at (keyed by the face value
+// itself, so drawText callers can recover it)
+var faceSizes = map[font.Face]float64{}
+
+// sizedFace is face by another name, kept for call sites that
+// compute sizes before asking for a face. It applies no scaling
+// of its own; the caller has already converted to a CSS size.
+func sizedFace(w FontWeight, cssSize float64) font.Face { return face(w, cssSize) }
+
+// faceSize returns the CSS size a face was built at.
+func faceSize(f font.Face) float64 {
+	fontMu.Lock()
+	defer fontMu.Unlock()
+	return faceSizes[f]
+}
+
+// lineBox returns the line-box height and baseline offset (CSS px) for text
+// at the given size, from Inter's ascent and descent metrics.
+func lineBox(size float64) (float64, float64) {
+	a := math.Round(size*0.96875 + size*0.96875)
+
+	h := math.Round(size*0.96875) + math.Round(size*0.2412109375)
+
+	return h, a*0.5 + baselineTweak[size]*0.5
+}
+
+// baselineTweak nudges the baseline for sizes that would otherwise look off.
+var baselineTweak = map[float64]float64{
+	14: -1,
+}
