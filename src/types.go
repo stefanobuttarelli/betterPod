@@ -1,0 +1,764 @@
+package main
+
+import (
+	"image"
+	"sync"
+	"time"
+
+	"github.com/fogleman/gg"
+	"golang.org/x/image/font"
+)
+
+// App metadata
+const (
+	APP_VERSION = "0.0.8"
+	APP_AUTHOR  = "Danilo Fragoso"
+	SUPPORT_URL = "https://github.com/danfragoso/miyoopod"
+)
+
+// Display constants - identical to GaugeBoy
+const SCREEN_WIDTH = 640
+const SCREEN_HEIGHT = 480
+
+// Music source
+const MUSIC_ROOT = "/mnt/SDCARD/Media/Music/"
+const LIBRARY_JSON_PATH = "/mnt/SDCARD/Media/Music/.miyoopod_library.json"
+const ARTWORK_DIR = "/mnt/SDCARD/Media/Music/.miyoopod_artwork/"
+
+// UI layout constants (at 640x480 native resolution)
+const (
+	HEADER_HEIGHT     = 40
+	STATUS_BAR_HEIGHT = 36
+	MENU_ITEM_HEIGHT  = 44
+	MENU_TOP_Y        = 44
+	MENU_LEFT_PAD     = 16
+	MENU_RIGHT_PAD    = 16
+	ARROW_RIGHT_X     = 610
+	VISIBLE_ITEMS     = 9 // (480 - 40 header - 36 status bar) / 44 = 9
+	SCROLL_BAR_WIDTH  = 6
+	PROGRESS_BAR_Y    = 400
+	PROGRESS_BAR_H    = 8
+)
+
+// Base font sizes at native resolution (medium / 1.0 scale).
+// Actual sizes are these multiplied by the current font scale — see fontScaleFactor.
+const (
+	FONT_SIZE_HEADER = 22.0
+	FONT_SIZE_MENU   = 24.0
+	FONT_SIZE_TITLE  = 26.0
+	FONT_SIZE_ARTIST = 22.0
+	FONT_SIZE_ALBUM  = 20.0
+	FONT_SIZE_TIME   = 18.0
+	FONT_SIZE_SMALL  = 16.0
+)
+
+// Font size presets. The scale is kept within a range that still fits the
+// fixed row height (MENU_ITEM_HEIGHT), so layout metrics don't need to change.
+const (
+	FontSizeSmall  = 0
+	FontSizeMedium = 1
+	FontSizeLarge  = 2
+)
+
+// fontScaleFactor maps a font size preset to a multiplier applied to the base
+// font sizes above.
+func fontScaleFactor(preset int) float64 {
+	switch preset {
+	case FontSizeSmall:
+		return 0.85
+	case FontSizeLarge:
+		return 1.15
+	default:
+		return 1.0
+	}
+}
+
+// fontSizeName returns a human-readable label for a font size preset.
+func fontSizeName(preset int) string {
+	switch preset {
+	case FontSizeSmall:
+		return "Small"
+	case FontSizeLarge:
+		return "Large"
+	default:
+		return "Medium"
+	}
+}
+
+// Theme defines a color scheme
+type Theme struct {
+	Name      string
+	BG        string
+	HeaderBG  string
+	HeaderTxt string
+	ItemTxt   string
+	SelBG     string
+	SelTxt    string
+	Arrow     string
+	Accent    string
+	Dim       string
+	Progress  string
+	ProgBG    string
+}
+
+// Available themes
+var (
+	ThemeClassic = Theme{
+		Name:      "Classic iPod",
+		BG:        "#B8B8B8",
+		HeaderBG:  "#A0A0A0",
+		HeaderTxt: "#000000",
+		ItemTxt:   "#000000",
+		SelBG:     "#4A90E2",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#666666",
+		Accent:    "#4A90E2",
+		Dim:       "#808080",
+		Progress:  "#4A90E2",
+		ProgBG:    "#909090",
+	}
+
+	ThemeDarkBlue = Theme{
+		Name:      "Dark Blue",
+		BG:        "#1A1A2E",
+		HeaderBG:  "#16213E",
+		HeaderTxt: "#E0E0E0",
+		ItemTxt:   "#FFFFFF",
+		SelBG:     "#0F3460",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#888888",
+		Accent:    "#5390D9",
+		Dim:       "#666666",
+		Progress:  "#5390D9",
+		ProgBG:    "#333333",
+	}
+
+	ThemeDark = Theme{
+		Name:      "Dark",
+		BG:        "#1C1C1C",
+		HeaderBG:  "#0A0A0A",
+		HeaderTxt: "#FFFFFF",
+		ItemTxt:   "#FFFFFF",
+		SelBG:     "#333333",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#666666",
+		Accent:    "#FFFFFF",
+		Dim:       "#777777",
+		Progress:  "#FFFFFF",
+		ProgBG:    "#444444",
+	}
+
+	ThemeGreen = Theme{
+		Name:      "Matrix Green",
+		BG:        "#0D0D0D",
+		HeaderBG:  "#001100",
+		HeaderTxt: "#00FF41",
+		ItemTxt:   "#00FF41",
+		SelBG:     "#003300",
+		SelTxt:    "#00FF41",
+		Arrow:     "#006600",
+		Accent:    "#00FF41",
+		Dim:       "#004400",
+		Progress:  "#00FF41",
+		ProgBG:    "#002200",
+	}
+
+	ThemeRetro = Theme{
+		Name:      "Retro Amber",
+		BG:        "#1A0F00",
+		HeaderBG:  "#0F0800",
+		HeaderTxt: "#FFAA00",
+		ItemTxt:   "#FFAA00",
+		SelBG:     "#332200",
+		SelTxt:    "#FFAA00",
+		Arrow:     "#885500",
+		Accent:    "#FFAA00",
+		Dim:       "#664400",
+		Progress:  "#FFAA00",
+		ProgBG:    "#442200",
+	}
+
+	ThemePurple = Theme{
+		Name:      "Purple Haze",
+		BG:        "#1A0A2E",
+		HeaderBG:  "#0F0520",
+		HeaderTxt: "#E0C0FF",
+		ItemTxt:   "#E0C0FF",
+		SelBG:     "#4A2070",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#8844AA",
+		Accent:    "#AA66FF",
+		Dim:       "#6633AA",
+		Progress:  "#AA66FF",
+		ProgBG:    "#331155",
+	}
+
+	ThemeLight = Theme{
+		Name:      "Light",
+		BG:        "#FFFFFF",
+		HeaderBG:  "#F0F0F0",
+		HeaderTxt: "#000000",
+		ItemTxt:   "#000000",
+		SelBG:     "#007AFF",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#999999",
+		Accent:    "#007AFF",
+		Dim:       "#888888",
+		Progress:  "#007AFF",
+		ProgBG:    "#DDDDDD",
+	}
+
+	ThemeNord = Theme{
+		Name:      "Nord",
+		BG:        "#2E3440",
+		HeaderBG:  "#3B4252",
+		HeaderTxt: "#ECEFF4",
+		ItemTxt:   "#ECEFF4",
+		SelBG:     "#5E81AC",
+		SelTxt:    "#ECEFF4",
+		Arrow:     "#4C566A",
+		Accent:    "#88C0D0",
+		Dim:       "#4C566A",
+		Progress:  "#88C0D0",
+		ProgBG:    "#434C5E",
+	}
+
+	ThemeSolarized = Theme{
+		Name:      "Solarized Dark",
+		BG:        "#002B36",
+		HeaderBG:  "#073642",
+		HeaderTxt: "#93A1A1",
+		ItemTxt:   "#839496",
+		SelBG:     "#586E75",
+		SelTxt:    "#FDF6E3",
+		Arrow:     "#657B83",
+		Accent:    "#2AA198",
+		Dim:       "#586E75",
+		Progress:  "#268BD2",
+		ProgBG:    "#073642",
+	}
+
+	ThemeCyberPunk = Theme{
+		Name:      "Cyberpunk",
+		BG:        "#0A0E27",
+		HeaderBG:  "#1A1F3A",
+		HeaderTxt: "#00FFFF",
+		ItemTxt:   "#FF00FF",
+		SelBG:     "#FF1493",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#00CED1",
+		Accent:    "#00FFFF",
+		Dim:       "#4B0082",
+		Progress:  "#FF00FF",
+		ProgBG:    "#2A2F4A",
+	}
+
+	ThemeCoffee = Theme{
+		Name:      "Coffee",
+		BG:        "#2C1810",
+		HeaderBG:  "#1A0F08",
+		HeaderTxt: "#E8D4B8",
+		ItemTxt:   "#D4A574",
+		SelBG:     "#6F4E37",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#8B6F47",
+		Accent:    "#C1986B",
+		Dim:       "#5C4033",
+		Progress:  "#D2B48C",
+		ProgBG:    "#4A3528",
+	}
+
+	ThemeOcean = Theme{
+		Name:      "Ocean",
+		BG:        "#001F3F",
+		HeaderBG:  "#001529",
+		HeaderTxt: "#7FDBFF",
+		ItemTxt:   "#B8E6F5",
+		SelBG:     "#0074D9",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#39CCCC",
+		Accent:    "#00D4FF",
+		Dim:       "#336B87",
+		Progress:  "#00D4FF",
+		ProgBG:    "#003D5C",
+	}
+
+	ThemeForest = Theme{
+		Name:      "Forest",
+		BG:        "#0F2027",
+		HeaderBG:  "#1A3A2E",
+		HeaderTxt: "#C5E1A5",
+		ItemTxt:   "#A5D6A7",
+		SelBG:     "#2E7D32",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#558B2F",
+		Accent:    "#76FF03",
+		Dim:       "#4A6B3F",
+		Progress:  "#8BC34A",
+		ProgBG:    "#1B5E20",
+	}
+
+	ThemeSunset = Theme{
+		Name:      "Sunset",
+		BG:        "#1A0A0A",
+		HeaderBG:  "#2A1A1A",
+		HeaderTxt: "#FFD700",
+		ItemTxt:   "#FFA500",
+		SelBG:     "#DC143C",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#FF6347",
+		Accent:    "#FF4500",
+		Dim:       "#8B4513",
+		Progress:  "#FF8C00",
+		ProgBG:    "#4A2A2A",
+	}
+
+	ThemeNeon = Theme{
+		Name:      "Neon",
+		BG:        "#000000",
+		HeaderBG:  "#0A0A0A",
+		HeaderTxt: "#FF10F0",
+		ItemTxt:   "#00FF00",
+		SelBG:     "#330033",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#FF00FF",
+		Accent:    "#00FFFF",
+		Dim:       "#444444",
+		Progress:  "#FF10F0",
+		ProgBG:    "#1A1A1A",
+	}
+
+	ThemeMidnight = Theme{
+		Name:      "Midnight",
+		BG:        "#0C0C1E",
+		HeaderBG:  "#1A1A3E",
+		HeaderTxt: "#C8C8FF",
+		ItemTxt:   "#B0B0E8",
+		SelBG:     "#3A3A6E",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#5A5A8E",
+		Accent:    "#6E6EFF",
+		Dim:       "#4A4A7E",
+		Progress:  "#8080FF",
+		ProgBG:    "#2A2A5E",
+	}
+
+	ThemeGruvbox = Theme{
+		Name:      "Gruvbox",
+		BG:        "#282828",
+		HeaderBG:  "#1D2021",
+		HeaderTxt: "#EBDBB2",
+		ItemTxt:   "#EBDBB2",
+		SelBG:     "#504945",
+		SelTxt:    "#FBF1C7",
+		Arrow:     "#665C54",
+		Accent:    "#FABD2F",
+		Dim:       "#7C6F64",
+		Progress:  "#83A598",
+		ProgBG:    "#3C3836",
+	}
+
+	ThemeCandy = Theme{
+		Name:      "Candy",
+		BG:        "#FFE5F4",
+		HeaderBG:  "#FFB3E6",
+		HeaderTxt: "#8B008B",
+		ItemTxt:   "#C71585",
+		SelBG:     "#FF69B4",
+		SelTxt:    "#FFFFFF",
+		Arrow:     "#DA70D6",
+		Accent:    "#FF1493",
+		Dim:       "#BA55D3",
+		Progress:  "#FF69B4",
+		ProgBG:    "#FFC0E5",
+	}
+)
+
+// AllThemes returns all available themes in order
+func AllThemes() []Theme {
+	return []Theme{
+		ThemeClassic,
+		ThemeDarkBlue,
+		ThemeDark,
+		ThemeGreen,
+		ThemeRetro,
+		ThemePurple,
+		ThemeLight,
+		ThemeNord,
+		ThemeSolarized,
+		ThemeCyberPunk,
+		ThemeCoffee,
+		ThemeOcean,
+		ThemeForest,
+		ThemeSunset,
+		ThemeNeon,
+		ThemeMidnight,
+		ThemeGruvbox,
+		ThemeCandy,
+	}
+}
+
+// Coverflow constants (at 640x480 native resolution)
+const (
+	COVER_CENTER_SIZE = 200
+	COVER_SIDE_SIZE   = 140
+	COVER_FAR_SIZE    = 100
+	COVER_CENTER_Y    = 60
+	COVER_CENTER_X    = 30
+	COVER_SIDE_OFFSET = 170
+	COVER_SIDE_Y      = 100
+	COVER_FAR_OFFSET  = 290
+	COVER_FAR_Y       = 110
+	REFLECT_HEIGHT    = 60
+	VISIBLE_COVERS    = 5
+)
+
+// --- Playback state ---
+
+type PlayState int
+
+const (
+	StateStopped PlayState = iota
+	StatePlaying
+	StatePaused
+)
+
+type RepeatMode int
+
+const (
+	RepeatOff RepeatMode = iota
+	RepeatAll
+	RepeatOne
+)
+
+func (r RepeatMode) String() string {
+	switch r {
+	case RepeatOff:
+		return "off"
+	case RepeatAll:
+		return "all"
+	case RepeatOne:
+		return "one"
+	default:
+		return "unknown"
+	}
+}
+
+// --- Music Library types ---
+
+type Track struct {
+	Path        string  `json:"path"`
+	Title       string  `json:"title"`
+	Artist      string  `json:"artist"`
+	Album       string  `json:"album"`
+	AlbumArtist string  `json:"album_artist"`
+	TrackNum    int     `json:"track_num"`
+	TrackTotal  int     `json:"track_total"`
+	DiscNum     int     `json:"disc_num"`
+	Year        int     `json:"year"`
+	Genre       string  `json:"genre"`
+	Duration    float64 `json:"duration"`
+	HasArt      bool    `json:"has_art"`
+	Bitrate     int     `json:"bitrate,omitempty"`
+	SampleRate  int     `json:"sample_rate,omitempty"`
+	Lyrics      string  `json:"lyrics,omitempty"`
+}
+
+type Album struct {
+	Name    string      `json:"name"`
+	Artist  string      `json:"artist"`
+	Tracks  []*Track    `json:"-"` // Reconstructed from library tracks
+	ArtData []byte      `json:"-"` // Don't store in JSON, only used temporarily during extraction
+	ArtExt  string      `json:"-"`
+	ArtPath string      `json:"artPath,omitempty"` // Path to saved artwork file (from MusicBrainz)
+	ArtImg  image.Image `json:"-"`                 // Decoded at runtime
+}
+
+type Artist struct {
+	Name   string   `json:"name"`
+	Albums []*Album `json:"-"` // Reconstructed from library albums
+}
+
+type Playlist struct {
+	Name   string   `json:"name"`
+	Path   string   `json:"path"`
+	Tracks []*Track `json:"-"` // Reconstructed from playlist file
+}
+
+type Library struct {
+	Tracks    []*Track    `json:"tracks"`
+	Albums    []*Album    `json:"albums"`
+	Artists   []*Artist   `json:"artists"`
+	Playlists []*Playlist `json:"playlists"`
+
+	TracksByPath  map[string]*Track  `json:"-"` // Reconstructed on load
+	AlbumsByKey   map[string]*Album  `json:"-"` // Reconstructed on load
+	ArtistsByName map[string]*Artist `json:"-"` // Reconstructed on load
+}
+
+// --- Playback queue ---
+
+type PlaybackQueue struct {
+	Tracks       []*Track
+	CurrentIndex int
+	Shuffle      bool
+	Repeat       RepeatMode
+	ShuffleOrder []int
+}
+
+// --- Menu system ---
+
+type ScreenType int
+
+const (
+	ScreenMenu ScreenType = iota
+	ScreenNowPlaying
+	ScreenQueue
+	ScreenAlbumArt
+	ScreenLibraryScan
+	ScreenLyrics
+)
+
+func (s ScreenType) String() string {
+	switch s {
+	case ScreenMenu:
+		return "menu"
+	case ScreenNowPlaying:
+		return "now_playing"
+	case ScreenQueue:
+		return "queue"
+	case ScreenAlbumArt:
+		return "album_art"
+	case ScreenLibraryScan:
+		return "library_scan"
+	case ScreenLyrics:
+		return "lyrics"
+	default:
+		return "unknown"
+	}
+}
+
+type MenuItem struct {
+	Label      string
+	HasSubmenu bool
+	Action     func()
+	Submenu    *MenuScreen
+	Track      *Track
+	Album      *Album  // For album preview display
+	Artist     *Artist // For artist track queuing
+}
+
+type MenuScreen struct {
+	Title     string
+	Items     []*MenuItem
+	SelIndex  int
+	ScrollOff int
+	Parent    *MenuScreen
+	Builder   func() []*MenuItem
+	Built     bool
+}
+
+// --- Now Playing state ---
+
+type NowPlaying struct {
+	Track    *Track
+	State    PlayState
+	Position float64
+	Duration float64
+	Volume   float64
+}
+
+// --- Coverflow state ---
+
+type CoverflowState struct {
+	Albums       []*Album
+	CenterIndex  int
+	CoverCache   map[string]image.Image
+	CoverCacheMu sync.Mutex
+}
+
+// --- Main application ---
+
+type MiyooPod struct {
+	Running       bool
+	ShouldRefresh bool
+	RefreshChan   chan struct{} // Signal channel for screen refresh
+
+	// Display
+	DC *gg.Context
+	FB *image.RGBA
+
+	// Fonts (pre-loaded, cached)
+	FontHeader font.Face
+	FontMenu   font.Face
+	FontTitle  font.Face
+	FontArtist font.Face
+	FontAlbum  font.Face
+	FontTime   font.Face
+	FontSmall  font.Face
+
+	// Theme
+	CurrentTheme Theme
+
+	// Font size preset (FontSizeSmall/Medium/Large)
+	FontSize int
+
+	// Music data
+	Library *Library
+	Queue   *PlaybackQueue
+	Playing *NowPlaying
+
+	// Navigation
+	CurrentScreen ScreenType
+	MenuStack     []*MenuScreen
+	RootMenu      *MenuScreen
+
+	// Coverflow
+	Coverflow *CoverflowState
+
+	// Default album art
+	DefaultArt image.Image
+
+	// Now Playing screen cache (pre-rendered background)
+	NowPlayingBG *image.RGBA
+	NPCacheDirty bool
+
+	// Menu screen cache (pre-rendered frame for smooth navigation)
+	MenuBG    *image.RGBA
+	MenuBGKey string // "title:scroll" — changes trigger full redraw
+	MenuBGSel int    // previous selection index (to erase old highlight)
+
+	// Performance optimization: text measurement cache
+	// Key: text+font.Face pointer, Value: width in pixels
+	TextMeasureCache map[string]float64
+
+	// Glyph atlas: per-glyph sprite cache and composed label sprite cache
+	GlyphCache map[GlyphKey]*Glyph
+	LabelCache map[LabelKey]*LabelSprite
+
+	// Pre-rendered digit sprites for fast time display (bypass gg)
+	Digits *DigitSprites
+
+	// Key repeat state
+	LastKeyTime    time.Time
+	LastRepeatTime time.Time
+	LastKey        Key
+	RepeatDelay    time.Duration
+	RepeatRate     time.Duration
+
+	// Error popup state
+	ErrorMessage string
+	ErrorTime    time.Time
+
+	// Screen lock state
+	Locked                 bool
+	BrightnessBeforeLock   int
+	BrightnessNeedsRestore bool // Defer brightness restore until after overlay is drawn
+
+	// Power/Display management
+	LastActivityTime     time.Time   // Last user interaction time
+	PowerButtonPressTime time.Time   // When power button was pressed (for long-hold detection)
+	PowerButtonPressed   bool        // Whether power button is currently held
+	MenuKeyPressed       bool        // Whether MENU key is currently held (for brightness control)
+	SelectKeyPressed     bool        // Whether SELECT is currently held (for combo shortcuts)
+	AutoLockMinutes      int         // Minutes of inactivity before auto-lock (0 = disabled)
+
+	// CPU power management
+	KeepPerformanceOnLock bool        // If true, keep performance governor while locked (don't drop to powersave)
+	OriginalCPUGovernor   string      // Saved CPU governor to restore on exit
+	PowerHoldTimer        *time.Timer // 1s timer — show exit warning
+	PowerExitTimer        *time.Timer // 2s timer — graceful exit
+	PowerExitWarning      bool        // Exit warning overlay is visible
+
+	// Deferred operations (set by goroutines, handled by main loop)
+	TrackEndPending bool // Poller detected track ended, main loop calls handleTrackEnd
+
+	// Volume/Brightness state
+	SystemVolume     int // MI_AO hardware volume (0-100), persisted across launches
+	SystemBrightness int // PWM brightness (0-100), persisted across launches
+
+	// Volume/Brightness overlay
+	OverlayType    string      // "volume" or "brightness"
+	OverlayValue   int         // Current value (0-100) for display
+	OverlayTimer   *time.Timer // Timer to hide overlay
+	OverlayVisible bool        // Whether overlay is currently shown
+
+	// Queue view state
+	QueueScrollOffset int // Scroll position for queue view
+
+	// Album art fetch state (background goroutine updates these, main thread reads for rendering)
+	albumArtStatusFunc func(string)
+	AlbumArtFetching   bool          // Whether a fetch is currently running
+	AlbumArtCurrent    int           // Current album index being fetched
+	AlbumArtTotal      int           // Total albums to fetch
+	AlbumArtAlbumName  string        // Name of album currently being fetched
+	AlbumArtArtist     string        // Artist of album currently being fetched
+	AlbumArtStatus     string        // Status text from MusicBrainz
+	AlbumArtFetched    int           // Success count
+	AlbumArtFailed     int           // Failure count
+	AlbumArtDone       bool          // Fetch complete, showing results
+	AlbumArtElapsed    string        // Elapsed time for results display
+	RedrawChan         chan struct{} // Background goroutines signal main thread to redraw
+
+	// Library scan state (background goroutine)
+	LibScanRunning     bool   // Whether a scan is currently running
+	LibScanDone        bool   // Scan complete, showing results
+	LibScanCount       int    // Number of tracks found so far
+	LibScanFolder      string // Current folder being scanned
+	LibScanStatus      string // Status text
+	LibScanElapsed     string // Elapsed time for results display
+	LibScanPhase       string // Current phase: "scanning", "sorting", "decoding", "saving"
+	QueueSelectedIndex int    // Selected track in queue view
+
+	// Lyrics screen state
+	LyricsScrollOffset  int                 // Line offset for scrolling lyrics
+	LyricsManualScroll  bool                // True when user has manually scrolled (disables auto-follow)
+	LyricsCachedTrack   string              // Track path whose wrapped lines are cached
+	LyricsCachedLRC     []lrcLine           // Parsed timed lines (nil for plain text)
+	LyricsCachedDisplay []lyricsDisplayLine // Word-wrapped display rows for LRC
+	LyricsPlainLines    []string            // Word-wrapped rows for plain text
+	LyricsLastActiveLRC int                 // Last active LRC index (for change detection in poller)
+
+	// Settings
+	InstallationID   string // Unique ID for this installation
+	LocalLogsEnabled bool   // Whether to write logs to file
+	SentryEnabled    bool   // Whether to send events to Sentry
+
+	// Update state
+	UpdateAvailable     bool          // Whether an update is available
+	UpdateInfo          *VersionInfo  // Remote version info when update is available
+	UpdateNotifications bool          // Whether to show auto update popup on launch
+	VersionCheckDone    chan struct{} // Closed when async version check completes
+	ShowingUpdatePrompt bool          // True when update prompt overlay is visible
+
+	// Seek state (fast forward / rewind on Now Playing)
+	SeekHeld      bool      // Whether L/R is currently held down
+	SeekActive    bool      // Whether seeking has activated (past hold threshold)
+	SeekDirection int       // -1 for rewind, +1 for fast forward
+	SeekStartTime time.Time // When the key was first pressed
+	LastSeekTick  time.Time // When the last seek tick was performed
+
+	// Header marquee state (now playing text scrolling)
+	MarqueeOffset     float64     // Current pixel offset for scrolling
+	MarqueeText       string      // Last rendered marquee text (reset offset on change)
+	MarqueeTime       time.Time   // Last marquee tick time
+	MarqueePauseUntil time.Time   // Don't scroll until this time (pause at start/loop)
+	MarqueeBuf        *image.RGBA // Pre-rendered full marquee strip (text+spacer+text)
+	MarqueeBufW       int         // Full strip width in pixels
+	MarqueeDstX       int         // Destination X for marquee blit
+	MarqueeDstW       int         // Visible window width for marquee blit
+	MarqueeColor      [3]uint8    // Tint color (r, g, b)
+
+	// Search state
+	SearchActive    bool        // Whether search panel is visible
+	SearchQuery     string      // Current search input string
+	SearchGridRow   int         // Selected row in the A-Z grid (0-based)
+	SearchGridCol   int         // Selected column in the A-Z grid (0-based)
+	SearchAllItems  []*MenuItem // Unfiltered menu items (saved when search starts)
+	SearchMenuTitle string      // Original menu title
+
+	// Device info (detected at startup)
+	DeviceModel   string // e.g., "miyoo-mini-plus", "miyoo-mini-v4", "miyoo-mini-flip"
+	DisplayWidth  int    // Detected display width
+	DisplayHeight int    // Detected display height
+}

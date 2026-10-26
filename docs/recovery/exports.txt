@@ -1,0 +1,1254 @@
+const A Key = 32
+const APP_AUTHOR untyped string = "Danilo Fragoso"
+const APP_VERSION untyped string = "0.0.8"
+const ARROW_RIGHT_X untyped int = 610
+var ARTWORK_DIR string
+type AboutView struct{list *View; buf *image.RGBA}
+	list *View
+	buf *image.RGBA
+	method func (*AboutView).Animating(now time.Time) bool
+	method func (*AboutView).OnCenter(ui *IpodUI)
+	method func (*AboutView).OnScroll(ui *IpodUI, dir int, velocity float64)
+	method func (*AboutView).Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
+type Album struct{Name string "json:\"name\""; Artist string "json:\"artist\""; Key string "json:\"key\""; Tracks []*Track "json:\"-\""; ArtData []byte "json:\"-\""; ArtExt string "json:\"-\""; ArtPath string "json:\"artPath,omitempty\""; ArtImg image.Image "json:\"-\""}
+	Name string `json:"name"`
+	Artist string `json:"artist"`
+	Key string `json:"key"`
+	Tracks []*Track `json:"-"`
+	ArtData []byte `json:"-"`
+	ArtExt string `json:"-"`
+	ArtPath string `json:"artPath,omitempty"`
+	ArtImg image.Image `json:"-"`
+func AllThemes() []Theme
+type Anim struct{tw Tween; active bool; val float64}
+	tw Tween
+	active bool
+	val float64
+	method func (*Anim).Set(v float64)
+	method func (*Anim).To(v float64, dur time.Duration, ease Easing, delay time.Duration)
+	method func (*Anim).Get(now time.Time) float64
+	method func (*Anim).Target() float64
+	method func (*Anim).Running() bool
+type Artist struct{Name string "json:\"name\""; Albums []*Album "json:\"-\""}
+	Name string `json:"name"`
+	Albums []*Album `json:"-"`
+type AudioStateSnapshot struct{Position float64; Duration float64; IsPlaying bool; IsPaused bool; Finished bool}
+	Position float64
+	Duration float64
+	IsPlaying bool
+	IsPaused bool
+	Finished bool
+const B Key = 1073742048
+type BrickGame struct{w float64; h float64; s float64; phase string; level int; menuIndex int; px float64; py float64; pw float64; ph float64; pvel float64; pspeed float64; score int; lives int; bx float64; by float64; br float64; bspeed float64; dx float64; dy float64; bricks []brk; lastStep time.Time; acc time.Duration; onQuit func(); bg *image.RGBA}
+	w float64
+	h float64
+	s float64
+	phase string
+	level int
+	menuIndex int
+	px float64
+	py float64
+	pw float64
+	ph float64
+	pvel float64
+	pspeed float64
+	score int
+	lives int
+	bx float64
+	by float64
+	br float64
+	bspeed float64
+	dx float64
+	dy float64
+	bricks []brk
+	lastStep time.Time
+	acc time.Duration
+	onQuit func()
+	bg *image.RGBA
+	method func (*BrickGame).resetPlayerPos()
+	method func (*BrickGame).resetBall()
+	method func (*BrickGame).setupBricks()
+	method func (*BrickGame).step()
+	method func (*BrickGame).bounceOff(b brk)
+	method func (*BrickGame).die()
+	method func (*BrickGame).advanceLevel()
+	method func (*BrickGame).reset()
+	method func (*BrickGame).Animating(now time.Time) bool
+	method func (*BrickGame).OnScroll(ui *IpodUI, dir int, velocity float64)
+	method func (*BrickGame).OnCenter(ui *IpodUI)
+	method func (*BrickGame).Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
+	method func (*BrickGame).drawBall(dst *image.RGBA)
+	method func (*BrickGame).drawHUD(dst *image.RGBA)
+	method func (*BrickGame).drawGameOver(dst *image.RGBA)
+const COVERART_ARCHIVE_URL untyped string = "https://coverartarchive.org/release/%s/front"
+const COVER_CENTER_SIZE untyped int = 200
+const COVER_CENTER_X untyped int = 30
+const COVER_CENTER_Y untyped int = 60
+const COVER_FAR_OFFSET untyped int = 290
+const COVER_FAR_SIZE untyped int = 100
+const COVER_FAR_Y untyped int = 110
+const COVER_SIDE_OFFSET untyped int = 170
+const COVER_SIDE_SIZE untyped int = 140
+const COVER_SIDE_Y untyped int = 100
+func C_GetKeyPress() int
+func CaptureError(message string, extra map[string]interface{})
+func CaptureInfo(message string, extra map[string]interface{})
+func CaptureWarning(message string, extra map[string]interface{})
+const Clubs untyped int = 2
+type Col struct{R float64; G float64; B float64; A float64}
+	R float64
+	G float64
+	B float64
+	A float64
+type CoverFlow struct{albums []*Album; active int; selected *Album; playing bool; covers map[int]*cfCover; back *View; backAnim *Anim; backAlbum *Album; infoFade *Anim; npFade *Anim; paused bool; tilt *Anim; backShown *Album; backSince time.Time; np *NowPlayingView; fadeIn *Anim; exiting bool; layer *image.RGBA; npBuf *image.RGBA}
+	albums []*Album
+	active int
+	selected *Album
+	playing bool
+	covers map[int]*cfCover
+	back *View
+	backAnim *Anim
+	backAlbum *Album
+	infoFade *Anim
+	npFade *Anim
+	paused bool
+	tilt *Anim
+	backShown *Album
+	backSince time.Time
+	np *NowPlayingView
+	fadeIn *Anim
+	exiting bool
+	layer *image.RGBA
+	npBuf *image.RGBA
+	method func (*CoverFlow).targetFor(i int) (cfXform, time.Duration)
+	method func (*CoverFlow).sync(now time.Time)
+	method func (*CoverFlow).scroll(ui *IpodUI, dir int, velocity float64)
+	method func (*CoverFlow).center(ui *IpodUI)
+	method func (*CoverFlow).menu(ui *IpodUI)
+	method func (*CoverFlow).animating(now time.Time) bool
+type CoverflowState struct{Albums []*Album; CenterIndex int; CoverCache map[string]image.Image; CoverCacheMu sync.Mutex}
+	Albums []*Album
+	CenterIndex int
+	CoverCache map[string]image.Image
+	CoverCacheMu sync.Mutex
+type CustomView interface{Animating(now time.Time) bool; OnCenter(ui *IpodUI); OnScroll(ui *IpodUI, dir int, velocity float64); Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)}
+const DOWN Key = 1073741905
+const DPR untyped float = 2
+func DetectDevice(width _Ctype_int, height _Ctype_int)
+const Diamonds untyped int = 1
+type DigitSprites struct{Glyphs map[byte]*image.RGBA; GlyphW map[byte]int; Height int; Loaded bool}
+	Glyphs map[byte]*image.RGBA
+	GlyphW map[byte]int
+	Height int
+	Loaded bool
+const EV_KEY untyped int = 1
+type Easing func(float64) float64
+const FONT_SIZE_ALBUM untyped float = 20
+const FONT_SIZE_ARTIST untyped float = 22
+const FONT_SIZE_HEADER untyped float = 22
+const FONT_SIZE_MENU untyped float = 24
+const FONT_SIZE_SMALL untyped float = 16
+const FONT_SIZE_TIME untyped float = 18
+const FONT_SIZE_TITLE untyped float = 26
+const FontSizeLarge untyped int = 2
+const FontSizeMedium untyped int = 1
+const FontSizeSmall untyped int = 0
+type FontWeight int
+type Glyph struct{Img *image.RGBA; Advance int; BearingX int; Top int}
+	Img *image.RGBA
+	Advance int
+	BearingX int
+	Top int
+type GlyphKey struct{Face uint8; R rune}
+	Face uint8
+	R rune
+func GoLogMsg(cMsg *_Ctype_char)
+type GradStop struct{Pos float64; C Col}
+	Pos float64
+	C Col
+const HEADER_HEIGHT untyped int = 40
+const HP_UNPLUG Key = 1073745936
+const Hearts untyped int = 0
+type IpodUI struct{app *MiyooPod; fb *image.RGBA; split []*View; full []*View; gone []*View; sheets []*Sheet; cover *CoverFlow; keyboard *Keyboard; headerTitle string; prevFB []byte; noMarquee bool; frameNo int; leftX *Anim; fullX *Anim; previewHide *Anim; preview PreviewKind; previewTimer *time.Timer; pendingPrev PreviewKind; musicPrev *Anim; kb *KenBurns; assets map[string]*image.RGBA; assetsMu sync.Mutex; artc *artCache; shadow []float64; velocity float64; lastTick time.Time; lastDir int; repeatKey Key; repeatStart time.Time; repeatLast time.Time; pressStart map[Key]time.Time; longFired map[Key]bool; volume float64; shuffleMode string; dirty bool; events chan func()}
+	app *MiyooPod
+	fb *image.RGBA
+	split []*View
+	full []*View
+	gone []*View
+	sheets []*Sheet
+	cover *CoverFlow
+	keyboard *Keyboard
+	headerTitle string
+	prevFB []byte
+	noMarquee bool
+	frameNo int
+	leftX *Anim
+	fullX *Anim
+	previewHide *Anim
+	preview PreviewKind
+	previewTimer *time.Timer
+	pendingPrev PreviewKind
+	musicPrev *Anim
+	kb *KenBurns
+	assets map[string]*image.RGBA
+	assetsMu sync.Mutex
+	artc *artCache
+	shadow []float64
+	velocity float64
+	lastTick time.Time
+	lastDir int
+	repeatKey Key
+	repeatStart time.Time
+	repeatLast time.Time
+	pressStart map[Key]time.Time
+	longFired map[Key]bool
+	volume float64
+	shuffleMode string
+	dirty bool
+	events chan func()
+	method func (*IpodUI).aboutView() *View
+	method func (*IpodUI).art(a *Album, devSize int) *image.RGBA
+	method func (*IpodUI).artOrDefault(a *Album, devSize int) *image.RGBA
+	method func (*IpodUI).defaultArt() image.Image
+	method func (*IpodUI).defaultArtSized(dev int) *image.RGBA
+	method func (*IpodUI).onArtLoaded()
+	method func (*IpodUI).trackAlbum(t *Track) *Album
+	method func (*IpodUI).artCached(a *Album, devSize int) *image.RGBA
+	method func (*IpodUI).openBrick()
+	method func (*IpodUI).openCoverFlow()
+	method func (*IpodUI).closeCoverFlow()
+	method func (*IpodUI).backsideList(al *Album) *View
+	method func (*IpodUI).renderCoverFlow(dst *image.RGBA, now time.Time)
+	method func (*IpodUI).drawBackside(layer *image.RGBA, m mat4, final mat4, now time.Time)
+	method func (*IpodUI).backsideTexture(w float64, h float64, now time.Time) *image.RGBA
+	method func (*IpodUI).setHold(on bool)
+	method func (*IpodUI).showHoldBadge()
+	method func (*IpodUI).holdFilter(ev int) bool
+	method func (*IpodUI).holdRepeat(now time.Time)
+	method func (*IpodUI).holdBrightness(up bool)
+	method func (*IpodUI).tickOverlays(now time.Time) bool
+	method func (*IpodUI).holdAnimating(now time.Time) bool
+	method func (*IpodUI).showVolumeOSD()
+	method func (*IpodUI).drawVolumeOSD(dst *image.RGBA, now time.Time)
+	method func (*IpodUI).drawHoldBadge(dst *image.RGBA, now time.Time)
+	method func (*IpodUI).mediaKey(ev int) bool
+	method func (*IpodUI).pauseIfPlaying(why string)
+	method func (*IpodUI).goNowPlaying()
+	method func (*IpodUI).libraryInfoView() *View
+	method func (*IpodUI).rescanWithProgress(v *View)
+	method func (*IpodUI).refreshView(v *View)
+	method func (*IpodUI).homeView() *View
+	method func (*IpodUI).musicView() *View
+	method func (*IpodUI).library() *Library
+	method func (*IpodUI).artistsView() *View
+	method func (*IpodUI).artistView(ar *Artist) *View
+	method func (*IpodUI).albumsView(albums []*Album) *View
+	method func (*IpodUI).albumView(al *Album) *View
+	method func (*IpodUI).playlistsView() *View
+	method func (*IpodUI).playlistView(pl *Playlist) *View
+	method func (*IpodUI).songsView(tracks []*Track) *View
+	method func (*IpodUI).mediaOptions(tracks []*Track) []SheetOption
+	method func (*IpodUI).enqueue(tracks []*Track, next bool)
+	method func (*IpodUI).gamesView() *View
+	method func (*IpodUI).settingsView() *View
+	method func (*IpodUI).repeatMode() RepeatMode
+	method func (*IpodUI).shuffleView() *View
+	method func (*IpodUI).repeatView() *View
+	method func (*IpodUI).setShuffle(mode string)
+	method func (*IpodUI).applyShuffle()
+	method func (*IpodUI).setRepeat(r RepeatMode)
+	method func (*IpodUI).refreshBuilt()
+	method func (*IpodUI).showNowPlaying()
+	method func (*IpodUI).applyVolume()
+	method func (*IpodUI).drawNPInfo(dst *image.RGBA, t *Track, npMetaH float64)
+	method func (*IpodUI).drawNPStatus(dst *image.RGBA)
+	method func (*IpodUI).drawProgressBar(dst *image.RGBA, x float64, y float64, w float64, percent float64, scrubber bool)
+	method func (*IpodUI).drawTimeLabel(dst *image.RGBA, s string, x float64, w float64, y float64, right bool)
+	method func (*IpodUI).drawTrackProgress(dst *image.RGBA, x float64, y float64, p *NowPlaying)
+	method func (*IpodUI).drawVolumeBar(dst *image.RGBA, x float64, y float64)
+	method func (*IpodUI).drawScrubber(dst *image.RGBA, x float64, y float64, cur float64, dur float64, has bool)
+	method func (*IpodUI).nowPlayingViews() []*NowPlayingView
+	method func (*IpodUI).nowPlayingOnScreen() bool
+	method func (*IpodUI).loadPrefs()
+	method func (*IpodUI).savePrefs()
+	method func (*IpodUI).drawNowPlayingPan(dst *image.RGBA, art *image.RGBA, now time.Time)
+	method func (*IpodUI).musicPreviewVisible() bool
+	method func (*IpodUI).renderPreview(dst *image.RGBA, now time.Time)
+	method func (*IpodUI).drawIconPreview(dst *image.RGBA, icon string, iconCSS float64, lines []previewLine)
+	method func (*IpodUI).showKeyboard(onKey func(string))
+	method func (*IpodUI).hideKeyboard()
+	method func (*IpodUI).drawKeyboard(dst *image.RGBA, now time.Time)
+	method func (*IpodUI).searchView() *View
+	method func (*IpodUI).searchKey(v *View, st *searchState, k string)
+	method func (*IpodUI).artistsListView(artists []*Artist, showImages bool) *View
+	method func (*IpodUI).playlistsListView(pls []*Playlist) *View
+	method func (*IpodUI).showSheet(opts []SheetOption)
+	method func (*IpodUI).hideSheet()
+	method func (*IpodUI).drawSheets(dst *image.RGBA, now time.Time)
+	method func (*IpodUI).openSolitaire()
+	method func (*IpodUI).rescanLibrary()
+	method func (*IpodUI).updateTheme() bool
+	method func (*IpodUI).setThemeMode(mode string)
+	method func (*IpodUI).themeView() *View
+	method func (*IpodUI).themed(name string) *image.RGBA
+	method func (*IpodUI).post(f func())
+	method func (*IpodUI).assetSafe(name string) *image.RGBA
+	method func (*IpodUI).asset(name string) *image.RGBA
+	method func (*IpodUI).thumb(a *Album, size float64) *image.RGBA
+	method func (*IpodUI).isPlayingTrack(t *Track) bool
+	method func (*IpodUI).topScreen() *View
+	method func (*IpodUI).showView(v *View, headerTitle string)
+	method func (*IpodUI).hideView()
+	method func (*IpodUI).resetViews()
+	method func (*IpodUI).updatePanels()
+	method func (*IpodUI).schedulePreview(p PreviewKind)
+	method func (*IpodUI).setPreview(p PreviewKind)
+	method func (*IpodUI).wheelTick(dir int)
+	method func (*IpodUI).scroll(dir int, velocity float64)
+	method func (*IpodUI).centerClick()
+	method func (*IpodUI).menuClick()
+	method func (*IpodUI).centerLongPress()
+	method func (*IpodUI).playSong(tracks []*Track, idx int, showNP bool)
+	method func (*IpodUI).onTrackChanged()
+	method func (*IpodUI).HandleKey(ev int)
+	method func (*IpodUI).checkRepeat(now time.Time)
+	method func (*IpodUI).checkLongPress(now time.Time)
+	method func (*IpodUI).animating(now time.Time) bool
+	method func (*IpodUI).listMarquee() bool
+	method func (*IpodUI).viewBuffer(v *View, wDev int, hDev int, now time.Time) *image.RGBA
+	method func (*IpodUI).drawStack(stack []*View, kind ViewKind, panelX int, panelW int, now time.Time)
+	method func (*IpodUI).renderFrame(now time.Time)
+	method func (*IpodUI).drawHeader(dst *image.RGBA, x int, w int, now time.Time)
+	method func (*IpodUI).drawBattery(dst *image.RGBA, x float64, y float64)
+	method func (*IpodUI).onlyKenBurns(now time.Time) bool
+	method func (*IpodUI).present() bool
+	method func (*IpodUI).Run()
+	method func (*IpodUI).renderList(v *View, dst *image.RGBA)
+	method func (*IpodUI).renderEmpty(dst *image.RGBA, msg string)
+type Item struct{Label string; Sublabel string; Album *Album; Icon string; Preview PreviewKind; OnSelect func(); Tracks []*Track; TrackIdx int; ShowNowPlaying bool; LongPress []SheetOption; Value string; Checked bool; NoArrow bool}
+	Label string
+	Sublabel string
+	Album *Album
+	Icon string
+	Preview PreviewKind
+	OnSelect func()
+	Tracks []*Track
+	TrackIdx int
+	ShowNowPlaying bool
+	LongPress []SheetOption
+	Value string
+	Checked bool
+	NoArrow bool
+	method func (*Item).isSong() bool
+const KEY_ESC untyped int = 1
+const KEY_POWER untyped int = 116
+const KEY_VOLUMEDOWN untyped int = 114
+const KEY_VOLUMEUP untyped int = 115
+type KenBurns struct{stack []*Album; animStart map[*Album]time.Time; mounted time.Time; transStart time.Time; lastCycle time.Time; initialized bool}
+	stack []*Album
+	animStart map[*Album]time.Time
+	mounted time.Time
+	transStart time.Time
+	lastCycle time.Time
+	initialized bool
+	method func (*KenBurns).reset(ui *IpodUI, now time.Time)
+	method func (*KenBurns).update(now time.Time)
+	method func (*KenBurns).animating(ui *IpodUI) bool
+	method func (*KenBurns).render(ui *IpodUI, dst *image.RGBA, now time.Time)
+type Key int
+type Keyboard struct{index int; scroll float64; anim *Anim; exiting bool; onKey func(key string)}
+	index int
+	scroll float64
+	anim *Anim
+	exiting bool
+	onKey func(key string)
+	method func (*Keyboard).scrollBy(dir int, velocity float64)
+	method func (*Keyboard).center(ui *IpodUI)
+const KindCoverFlow ViewKind = 2
+const KindFull ViewKind = 1
+const KindSplit ViewKind = 0
+const L Key = 101
+const L2 Key = 9
+const LEFT Key = 1073741904
+var LIBRARY_JSON_PATH string
+const LOCK Key = 1073741925
+const LOG_PATH untyped string = "./miyoopod.log"
+type LabelKey struct{Text string; Face uint8}
+	Text string
+	Face uint8
+type LabelSprite struct{Img *image.RGBA; W int; H int; PadX int; PadY int; BoxH int}
+	Img *image.RGBA
+	W int
+	H int
+	PadX int
+	PadY int
+	BoxH int
+type Library struct{Tracks []*Track "json:\"tracks\""; Albums []*Album "json:\"albums\""; Artists []*Artist "json:\"artists\""; Playlists []*Playlist "json:\"playlists\""; TracksByPath map[string]*Track "json:\"-\""; AlbumsByKey map[string]*Album "json:\"-\""; ArtistsByName map[string]*Artist "json:\"-\""}
+	Tracks []*Track `json:"tracks"`
+	Albums []*Album `json:"albums"`
+	Artists []*Artist `json:"artists"`
+	Playlists []*Playlist `json:"playlists"`
+	TracksByPath map[string]*Track `json:"-"`
+	AlbumsByKey map[string]*Album `json:"-"`
+	ArtistsByName map[string]*Artist `json:"-"`
+const MAX_RAW_VALUE untyped int = 30
+const MEDIA_NEXT Key = 1073745933
+const MEDIA_PAUSE Key = 1073745932
+const MEDIA_PLAY Key = 1073745931
+const MEDIA_PLAYPAUSE Key = 1073745930
+const MEDIA_PREV Key = 1073745934
+const MEDIA_STOP Key = 1073745935
+const MENU Key = 27
+const MENU_ITEM_HEIGHT untyped int = 44
+const MENU_LEFT_PAD untyped int = 16
+const MENU_RIGHT_PAD untyped int = 16
+const MENU_TOP_Y untyped int = 44
+const MIN_RAW_VALUE untyped int = -60
+const MI_AO_GETVOLUME untyped int = 3221776652
+const MI_AO_PATH untyped string = "/dev/mi_ao"
+const MI_AO_SETMUTE untyped int = 1074293005
+const MI_AO_SETVOLUME untyped int = 1074293003
+const MUSICBRAINZ_API_URL untyped string = "https://musicbrainz.org/ws/2/"
+const MUSICBRAINZ_RATE_LIMIT_MS untyped int = 1000
+const MUSICBRAINZ_USER_AGENT untyped string = "MiyooPod/1.0.0 (https://github.com/danfragoso/miyoopod)"
+var MUSIC_ROOT string
+type MenuItem struct{Label string; HasSubmenu bool; Action func(); Submenu *MenuScreen; Track *Track; Album *Album; Artist *Artist}
+	Label string
+	HasSubmenu bool
+	Action func()
+	Submenu *MenuScreen
+	Track *Track
+	Album *Album
+	Artist *Artist
+type MenuScreen struct{Title string; Items []*MenuItem; SelIndex int; ScrollOff int; Parent *MenuScreen; Builder func() []*MenuItem; Built bool}
+	Title string
+	Items []*MenuItem
+	SelIndex int
+	ScrollOff int
+	Parent *MenuScreen
+	Builder func() []*MenuItem
+	Built bool
+	method func (*MenuScreen).adjustScroll()
+type MiyooPod struct{Running bool; ShouldRefresh bool; RefreshChan chan struct{}; DC *gg.Context; FB *image.RGBA; FontHeader font.Face; FontMenu font.Face; FontTitle font.Face; FontArtist font.Face; FontAlbum font.Face; FontTime font.Face; FontSmall font.Face; CurrentTheme Theme; FontSize int; Library *Library; Queue *PlaybackQueue; Playing *NowPlaying; CurrentScreen ScreenType; MenuStack []*MenuScreen; RootMenu *MenuScreen; Coverflow *CoverflowState; DefaultArt image.Image; NowPlayingBG *image.RGBA; NPCacheDirty bool; MenuBG *image.RGBA; MenuBGKey string; MenuBGSel int; TextMeasureCache map[string]float64; GlyphCache map[GlyphKey]*Glyph; LabelCache map[LabelKey]*LabelSprite; Digits *DigitSprites; LastKeyTime time.Time; LastRepeatTime time.Time; LastKey Key; RepeatDelay time.Duration; RepeatRate time.Duration; ErrorMessage string; ErrorTime time.Time; Locked bool; BrightnessBeforeLock int; BrightnessNeedsRestore bool; LastActivityTime time.Time; PowerButtonPressTime time.Time; PowerButtonPressed bool; MenuKeyPressed bool; SelectKeyPressed bool; AutoLockMinutes int; KeepPerformanceOnLock bool; OriginalCPUGovernor string; PowerHoldTimer *time.Timer; PowerExitTimer *time.Timer; PowerExitWarning bool; TrackEndPending bool; SystemVolume int; SystemBrightness int; OverlayType string; OverlayValue int; OverlayTimer *time.Timer; OverlayVisible bool; QueueScrollOffset int; albumArtStatusFunc func(string); AlbumArtFetching bool; AlbumArtCurrent int; AlbumArtTotal int; AlbumArtAlbumName string; AlbumArtArtist string; AlbumArtStatus string; AlbumArtFetched int; AlbumArtFailed int; AlbumArtDone bool; AlbumArtElapsed string; RedrawChan chan struct{}; LibScanRunning bool; LibScanDone bool; LibScanCount int; LibScanFolder string; LibScanStatus string; LibScanElapsed string; LibScanPhase string; QueueSelectedIndex int; LyricsScrollOffset int; LyricsManualScroll bool; LyricsCachedTrack string; LyricsCachedLRC []lrcLine; LyricsCachedDisplay []lyricsDisplayLine; LyricsPlainLines []string; LyricsLastActiveLRC int; InstallationID string; LocalLogsEnabled bool; SentryEnabled bool; UpdateAvailable bool; UpdateInfo *VersionInfo; UpdateNotifications bool; VersionCheckDone chan struct{}; ShowingUpdatePrompt bool; SeekHeld bool; SeekActive bool; SeekDirection int; SeekStartTime time.Time; LastSeekTick time.Time; MarqueeOffset float64; MarqueeText string; MarqueeTime time.Time; MarqueePauseUntil time.Time; MarqueeBuf *image.RGBA; MarqueeBufW int; MarqueeDstX int; MarqueeDstW int; MarqueeColor [3]uint8; SearchActive bool; SearchQuery string; SearchGridRow int; SearchGridCol int; SearchAllItems []*MenuItem; SearchMenuTitle string; DeviceModel string; DisplayWidth int; DisplayHeight int}
+	Running bool
+	ShouldRefresh bool
+	RefreshChan chan struct{}
+	DC *gg.Context
+	FB *image.RGBA
+	FontHeader font.Face
+	FontMenu font.Face
+	FontTitle font.Face
+	FontArtist font.Face
+	FontAlbum font.Face
+	FontTime font.Face
+	FontSmall font.Face
+	CurrentTheme Theme
+	FontSize int
+	Library *Library
+	Queue *PlaybackQueue
+	Playing *NowPlaying
+	CurrentScreen ScreenType
+	MenuStack []*MenuScreen
+	RootMenu *MenuScreen
+	Coverflow *CoverflowState
+	DefaultArt image.Image
+	NowPlayingBG *image.RGBA
+	NPCacheDirty bool
+	MenuBG *image.RGBA
+	MenuBGKey string
+	MenuBGSel int
+	TextMeasureCache map[string]float64
+	GlyphCache map[GlyphKey]*Glyph
+	LabelCache map[LabelKey]*LabelSprite
+	Digits *DigitSprites
+	LastKeyTime time.Time
+	LastRepeatTime time.Time
+	LastKey Key
+	RepeatDelay time.Duration
+	RepeatRate time.Duration
+	ErrorMessage string
+	ErrorTime time.Time
+	Locked bool
+	BrightnessBeforeLock int
+	BrightnessNeedsRestore bool
+	LastActivityTime time.Time
+	PowerButtonPressTime time.Time
+	PowerButtonPressed bool
+	MenuKeyPressed bool
+	SelectKeyPressed bool
+	AutoLockMinutes int
+	KeepPerformanceOnLock bool
+	OriginalCPUGovernor string
+	PowerHoldTimer *time.Timer
+	PowerExitTimer *time.Timer
+	PowerExitWarning bool
+	TrackEndPending bool
+	SystemVolume int
+	SystemBrightness int
+	OverlayType string
+	OverlayValue int
+	OverlayTimer *time.Timer
+	OverlayVisible bool
+	QueueScrollOffset int
+	albumArtStatusFunc func(string)
+	AlbumArtFetching bool
+	AlbumArtCurrent int
+	AlbumArtTotal int
+	AlbumArtAlbumName string
+	AlbumArtArtist string
+	AlbumArtStatus string
+	AlbumArtFetched int
+	AlbumArtFailed int
+	AlbumArtDone bool
+	AlbumArtElapsed string
+	RedrawChan chan struct{}
+	LibScanRunning bool
+	LibScanDone bool
+	LibScanCount int
+	LibScanFolder string
+	LibScanStatus string
+	LibScanElapsed string
+	LibScanPhase string
+	QueueSelectedIndex int
+	LyricsScrollOffset int
+	LyricsManualScroll bool
+	LyricsCachedTrack string
+	LyricsCachedLRC []lrcLine
+	LyricsCachedDisplay []lyricsDisplayLine
+	LyricsPlainLines []string
+	LyricsLastActiveLRC int
+	InstallationID string
+	LocalLogsEnabled bool
+	SentryEnabled bool
+	UpdateAvailable bool
+	UpdateInfo *VersionInfo
+	UpdateNotifications bool
+	VersionCheckDone chan struct{}
+	ShowingUpdatePrompt bool
+	SeekHeld bool
+	SeekActive bool
+	SeekDirection int
+	SeekStartTime time.Time
+	LastSeekTick time.Time
+	MarqueeOffset float64
+	MarqueeText string
+	MarqueeTime time.Time
+	MarqueePauseUntil time.Time
+	MarqueeBuf *image.RGBA
+	MarqueeBufW int
+	MarqueeDstX int
+	MarqueeDstW int
+	MarqueeColor [3]uint8
+	SearchActive bool
+	SearchQuery string
+	SearchGridRow int
+	SearchGridCol int
+	SearchAllItems []*MenuItem
+	SearchMenuTitle string
+	DeviceModel string
+	DisplayWidth int
+	DisplayHeight int
+	method func (*MiyooPod).showAboutScreen()
+	method func (*MiyooPod).waitForAboutExit()
+	method func (*MiyooPod).scanAlbumArt()
+	method func (*MiyooPod).runAlbumArtFetch()
+	method func (*MiyooPod).drawAlbumArtScreen()
+	method func (*MiyooPod).drawAlbumArtResults()
+	method func (*MiyooPod).drawAlbumArtStatusBar()
+	method func (*MiyooPod).handleAlbumArtKey(key Key)
+	method func (*MiyooPod).DrawCoverflow()
+	method func (*MiyooPod).getCachedCover(album *Album, size int) image.Image
+	method func (*MiyooPod).initDigitSprites(face font.Face)
+	method func (*MiyooPod).fastFillRect(x int, y int, w int, h int, r uint8, g uint8, b uint8, a uint8)
+	method func (*MiyooPod).fastBlitTinted(sprite *image.RGBA, dx int, dy int, tr uint8, tg uint8, tb uint8)
+	method func (*MiyooPod).fastDrawTimeString(text string, x int, y int, r uint8, g uint8, b uint8) int
+	method func (*MiyooPod).fastDrawTimeStringRight(text string, x int, y int, r uint8, g uint8, b uint8)
+	method func (*MiyooPod).fastDrawProgressBar(x int, y int, width int, position float64, duration float64)
+	method func (*MiyooPod).fastBlitImage(src image.Image, dx int, dy int)
+	method func (*MiyooPod).blitMarqueeWindow(dstX int, dstY int, windowW int, strip *image.RGBA, offset int, tr uint8, tg uint8, tb uint8)
+	method func (*MiyooPod).applyFontSize()
+	method func (*MiyooPod).cycleFontSize()
+	method func (*MiyooPod).faceID(face font.Face) uint8
+	method func (*MiyooPod).getGlyph(face font.Face, fid uint8, r rune) *Glyph
+	method func (*MiyooPod).measureTextFast(s string, fid uint8, face font.Face) int
+	method func (*MiyooPod).getLabelSprite(text string, fid uint8, face font.Face) *LabelSprite
+	method func (*MiyooPod).drawLabelCached(text string, x int, centerY int, fid uint8, face font.Face, col color.RGBA)
+	method func (*MiyooPod).startPowerButtonMonitor()
+	method func (*MiyooPod).handlePowerButtonPress()
+	method func (*MiyooPod).handlePowerButtonRelease()
+	method func (*MiyooPod).stopPowerTimers()
+	method func (*MiyooPod).handleVolumeUp()
+	method func (*MiyooPod).handleVolumeDown()
+	method func (*MiyooPod).startLibraryScan(onComplete func())
+	method func (*MiyooPod).runLibraryScan(onComplete func())
+	method func (*MiyooPod).scanTrack(path string)
+	method func (*MiyooPod).fetchMissingAlbumArt()
+	method func (*MiyooPod).decodeArtwork(artData []byte, artExt string) image.Image
+	method func (*MiyooPod).decodeAlbumArt()
+	method func (*MiyooPod).rgbaCachePath(album *Album) string
+	method func (*MiyooPod).loadRGBACache(path string, size int) image.Image
+	method func (*MiyooPod).saveRGBACache(path string, img *image.RGBA)
+	method func (*MiyooPod).deferredArtExtraction()
+	method func (*MiyooPod).drawLibraryScanScreen()
+	method func (*MiyooPod).drawLibraryScanResults()
+	method func (*MiyooPod).drawLibraryScanStatusBar()
+	method func (*MiyooPod).handleLibraryScanKey(key Key)
+	method func (*MiyooPod).saveLibraryJSON() error
+	method func (*MiyooPod).loadLibraryJSON() error
+	method func (*MiyooPod).fillTrackTechInfo(track *Track, duration float64)
+	method func (*MiyooPod).drawLogo(x float64, y float64, scale float64, colorScreen bool)
+	method func (*MiyooPod).generateIconPNG() error
+	method func (*MiyooPod).drawLogoSplash()
+	method func (*MiyooPod).buildLyricsCache()
+	method func (*MiyooPod).drawLyricsScreen()
+	method func (*MiyooPod).drawLRCLines()
+	method func (*MiyooPod).drawPlainLines()
+	method func (*MiyooPod).drawLyricsScrollbar(totalLines int, maxOff int)
+	method func (*MiyooPod).handleLyricsKey(key Key)
+	method func (*MiyooPod).measureString(s string, face font.Face) float64
+	method func (*MiyooPod).buildRootMenu() *MenuScreen
+	method func (*MiyooPod).buildPlaylistMenuItems(root *MenuScreen) []*MenuItem
+	method func (*MiyooPod).buildArtistMenuItems(root *MenuScreen) []*MenuItem
+	method func (*MiyooPod).buildAlbumMenuItems(root *MenuScreen) []*MenuItem
+	method func (*MiyooPod).buildSongMenuItems() []*MenuItem
+	method func (*MiyooPod).buildThemeMenuItems(root *MenuScreen) []*MenuItem
+	method func (*MiyooPod).buildSettingsMenuItems(root *MenuScreen) []*MenuItem
+	method func (*MiyooPod).buildTrackMenuItems(tracks []*Track) []*MenuItem
+	method func (*MiyooPod).buildTrackMenuItemsWithNumbers(tracks []*Track, showTrackNum bool) []*MenuItem
+	method func (*MiyooPod).handleMenuKey(key Key)
+	method func (*MiyooPod).drawMenuScreen()
+	method func (*MiyooPod).drawStandardMenuCached(current *MenuScreen)
+	method func (*MiyooPod).drawMenuWithSearchPanel(current *MenuScreen)
+	method func (*MiyooPod).drawStandardMenu(current *MenuScreen)
+	method func (*MiyooPod).drawAlbumListWithPreview(current *MenuScreen)
+	method func (*MiyooPod).drawAlbumPreview(album *Album, x int, y int, width int)
+	method func (*MiyooPod).refreshRootMenu()
+	method func (*MiyooPod).rescanLibrary()
+	method func (*MiyooPod).startPlaybackPoller()
+	method func (*MiyooPod).mpvLoadFile(path string) error
+	method func (*MiyooPod).mpvTogglePause()
+	method func (*MiyooPod).mpvStop()
+	method func (*MiyooPod).mpvSeek(seconds float64)
+	method func (*MiyooPod).fetchAlbumArtFromMusicBrainz(album *Album) bool
+	method func (*MiyooPod).saveAlbumArtwork(album *Album) error
+	method func (*MiyooPod).loadAlbumArtwork(album *Album) error
+	method func (*MiyooPod).savePlaybackState()
+	method func (*MiyooPod).restorePlaybackState()
+	method func (*MiyooPod).playTrackFromList(tracks []*Track, startIdx int)
+	method func (*MiyooPod).shuffleAllAndPlay()
+	method func (*MiyooPod).playCurrentQueueTrack()
+	method func (*MiyooPod).getCurrentTrack() *Track
+	method func (*MiyooPod).togglePlayPause()
+	method func (*MiyooPod).nextTrack()
+	method func (*MiyooPod).prevTrack()
+	method func (*MiyooPod).handleTrackEnd()
+	method func (*MiyooPod).toggleShuffle()
+	method func (*MiyooPod).cycleRepeat()
+	method func (*MiyooPod).buildShuffleOrder(startIdx int)
+	method func (*MiyooPod).updateCoverflowForCurrentTrack()
+	method func (*MiyooPod).drawNowPlayingScreen()
+	method func (*MiyooPod).updateProgressBarOnly()
+	method func (*MiyooPod).renderNowPlayingFull()
+	method func (*MiyooPod).drawFormatTag(track *Track, x float64, y float64)
+	method func (*MiyooPod).parsePlaylist(pl *Playlist)
+	method func (*MiyooPod).initSentry()
+	method func (*MiyooPod).startInactivityMonitor()
+	method func (*MiyooPod).exitAppGracefully()
+	method func (*MiyooPod).showPowerExitWarning()
+	method func (*MiyooPod).hidePowerExitWarning()
+	method func (*MiyooPod).resetInactivityTimer()
+	method func (*MiyooPod).dimScreen()
+	method func (*MiyooPod).initCPUGovernor()
+	method func (*MiyooPod).setCPUGovernorLocked()
+	method func (*MiyooPod).setCPUGovernorUnlocked()
+	method func (*MiyooPod).restoreCPUGovernor()
+	method func (*MiyooPod).cpuOnLockLabel() string
+	method func (*MiyooPod).toggleKeepPerformanceOnLock()
+	method func (*MiyooPod).isTrackInQueue(track *Track) bool
+	method func (*MiyooPod).drawQueueScreen()
+	method func (*MiyooPod).handleQueueKey(key Key)
+	method func (*MiyooPod).clearQueueExceptCurrent()
+	method func (*MiyooPod).clearQueue()
+	method func (*MiyooPod).removeFromQueueAtPlaybackPosition(playbackPos int)
+	method func (*MiyooPod).removeFromQueue(idx int)
+	method func (*MiyooPod).addToQueue(track *Track)
+	method func (*MiyooPod).addTracksToQueue(tracks []*Track)
+	method func (*MiyooPod).isSearchableMenu() bool
+	method func (*MiyooPod).toggleSearch()
+	method func (*MiyooPod).closeSearchPanel()
+	method func (*MiyooPod).cancelSearch()
+	method func (*MiyooPod).filterMenuItems()
+	method func (*MiyooPod).handleSearchKey(key Key) bool
+	method func (*MiyooPod).drawSearchPanel(panelX int, panelY int, panelW int)
+	method func (*MiyooPod).seekAmount() float64
+	method func (*MiyooPod).seekKeyPressed(direction int)
+	method func (*MiyooPod).seekKeyReleased() int
+	method func (*MiyooPod).pollSeek()
+	method func (*MiyooPod).performSeekTick()
+	method func (*MiyooPod).loadSettings() error
+	method func (*MiyooPod).saveSettings() error
+	method func (*MiyooPod).setTheme(theme Theme)
+	method func (*MiyooPod).toggleLocalLogs()
+	method func (*MiyooPod).cycleAutoLock()
+	method func (*MiyooPod).toggleSentry()
+	method func (*MiyooPod).drawHeader(title string)
+	method func (*MiyooPod).advanceMarquee()
+	method func (*MiyooPod).pollMarquee()
+	method func (*MiyooPod).drawMenuItem(y int, label string, selected bool, hasSubmenu bool, isPlaying bool, isInQueue bool)
+	method func (*MiyooPod).drawScrollBar(totalItems int, scrollOff int, visibleItems int)
+	method func (*MiyooPod).drawProgressBar(x int, y int, width int, position float64, duration float64)
+	method func (*MiyooPod).drawPlayIcon(x int, y int, size int)
+	method func (*MiyooPod).drawPauseIcon(x int, y int, size int)
+	method func (*MiyooPod).drawNextIcon(x int, y int, size int)
+	method func (*MiyooPod).drawPrevIcon(x int, y int, size int)
+	method func (*MiyooPod).drawShuffleIcon(x int, y int, size int)
+	method func (*MiyooPod).drawRepeatIcon(x int, y int, size int)
+	method func (*MiyooPod).drawRepeatOneIcon(x int, y int, size int)
+	method func (*MiyooPod).measureTextCached(text string, face font.Face) float64
+	method func (*MiyooPod).fontID(face font.Face) string
+	method func (*MiyooPod).truncateText(text string, maxWidth float64, face font.Face) string
+	method func (*MiyooPod).drawCenteredText(text string, y float64, face font.Face, color string)
+	method func (*MiyooPod).drawStatusIndicators(y int)
+	method func (*MiyooPod).drawStatusBar()
+	method func (*MiyooPod).drawButtonLegend(x int, centerY float64, button string, label string)
+	method func (*MiyooPod).drawBatteryIcon(x int, y int, percent int)
+	method func (*MiyooPod).showError(message string)
+	method func (*MiyooPod).drawErrorPopup()
+	method func (*MiyooPod).toggleLock()
+	method func (*MiyooPod).drawLockOverlay()
+	method func (*MiyooPod).drawPowerExitWarning()
+	method func (*MiyooPod).drawVolumeOrBrightnessOverlay()
+	method func (*MiyooPod).drawBrightnessIcon(x float64, y float64, size float64)
+	method func (*MiyooPod).drawVolumeIcon(x float64, y float64, size float64)
+	method func (*MiyooPod).showUpdatePrompt()
+	method func (*MiyooPod).drawUpdatePromptOverlay()
+	method func (*MiyooPod).handleUpdatePromptKey(key Key) bool
+	method func (*MiyooPod).launchUpdater()
+	method func (*MiyooPod).manualCheckForUpdates()
+	method func (*MiyooPod).handleUpdateStatus()
+	method func (*MiyooPod).clearAppData()
+	method func (*MiyooPod).performClearAppData()
+	method func (*MiyooPod).toggleUpdateNotifications()
+	method func (*MiyooPod).checkVersion() string
+	method func (*MiyooPod).adjustVolume(delta int)
+	method func (*MiyooPod).adjustBrightness(delta int)
+	method func (*MiyooPod).showOverlay(overlayType string, value int)
+	method func (*MiyooPod).Init()
+	method func (*MiyooPod).loadFonts()
+	method func (*MiyooPod).RunUI()
+	method func (*MiyooPod).triggerRefresh()
+	method func (*MiyooPod).requestRedraw()
+	method func (*MiyooPod).setScreen(screen ScreenType)
+	method func (*MiyooPod).setScreenWithContext(screen ScreenType, properties map[string]interface{})
+	method func (*MiyooPod).handleKeyRelease(key Key)
+	method func (*MiyooPod).handleKey(key Key)
+	method func (*MiyooPod).handleNowPlayingKey(key Key)
+	method func (*MiyooPod).drawCurrentScreen()
+type MusicBrainzRelease struct{ID string "json:\"id\""}
+	ID string `json:"id"`
+type MusicBrainzReleaseSearch struct{Releases []MusicBrainzRelease "json:\"releases\""}
+	Releases []MusicBrainzRelease `json:"releases"`
+const NONE Key = -1
+type NowPlaying struct{Track *Track; State PlayState; Position float64; Duration float64; Volume float64}
+	Track *Track
+	State PlayState
+	Position float64
+	Duration float64
+	Volume float64
+type NowPlayingView struct{scrubbing bool; volActive bool; volTimer *time.Timer; volEnabled bool; scrubTime float64; scrubActive bool; seekTimer *time.Timer; mainX *Anim; volX *Anim; scrubX *Anim; H float64; hideArt bool; warpTrack *Track; warpArt *image.RGBA; warpReady bool; tilt *Anim; tiltInit bool; warpTilt float64; warpSrc *image.RGBA; warpSrcT *Track; lastFrame int}
+	scrubbing bool
+	volActive bool
+	volTimer *time.Timer
+	volEnabled bool
+	scrubTime float64
+	scrubActive bool
+	seekTimer *time.Timer
+	mainX *Anim
+	volX *Anim
+	scrubX *Anim
+	H float64
+	hideArt bool
+	warpTrack *Track
+	warpArt *image.RGBA
+	warpReady bool
+	tilt *Anim
+	tiltInit bool
+	warpTilt float64
+	warpSrc *image.RGBA
+	warpSrcT *Track
+	lastFrame int
+	method func (*NowPlayingView).Animating(now time.Time) bool
+	method func (*NowPlayingView).updateControls()
+	method func (*NowPlayingView).OnCenter(ui *IpodUI)
+	method func (*NowPlayingView).OnScroll(ui *IpodUI, dir int, velocity float64)
+	method func (*NowPlayingView).buildWarp(ui *IpodUI, t *Track, tilt float64) bool
+	method func (*NowPlayingView).Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
+	method func (*NowPlayingView).activateVolume(ui *IpodUI)
+	method func (*NowPlayingView).flashVolume(ui *IpodUI)
+type OTLPKeyValue struct{Key string "json:\"key\""; Value map[string]interface{} "json:\"value\""}
+	Key string `json:"key"`
+	Value map[string]interface{} `json:"value"`
+type OTLPLogRecord struct{SeverityNumber int "json:\"severityNumber\""; SeverityText string "json:\"severityText\""; Body map[string]string "json:\"body\""; Attributes []OTLPKeyValue "json:\"attributes,omitempty\""}
+	SeverityNumber int `json:"severityNumber"`
+	SeverityText string `json:"severityText"`
+	Body map[string]string `json:"body"`
+	Attributes []OTLPKeyValue `json:"attributes,omitempty"`
+type OTLPLogsPayload struct{ResourceLogs []OTLPResourceLogs "json:\"resourceLogs\""}
+	ResourceLogs []OTLPResourceLogs `json:"resourceLogs"`
+type OTLPResourceLogs struct{Resource map[string][]OTLPKeyValue "json:\"resource\""; ScopeLogs []OTLPScopeLogs "json:\"scopeLogs\""}
+	Resource map[string][]OTLPKeyValue `json:"resource"`
+	ScopeLogs []OTLPScopeLogs `json:"scopeLogs"`
+type OTLPScopeLogs struct{Scope map[string]string "json:\"scope\""; LogRecords []OTLPLogRecord "json:\"logRecords\""}
+	Scope map[string]string `json:"scope"`
+	LogRecords []OTLPLogRecord `json:"logRecords"`
+var PLAYBACK_STATE_PATH string
+const POSTHOG_TOKEN untyped string = ""
+const POWER Key = 0
+const PROGRESS_BAR_H untyped int = 8
+const PROGRESS_BAR_Y untyped int = 400
+const PROGRESS_REGION_Y0 untyped int = 378
+const PROGRESS_REGION_Y1 untyped int = 412
+const PhBrowsing SolPhase = 0
+const PhHolding SolPhase = 1
+const PhLost SolPhase = 4
+const PhMenu SolPhase = 2
+const PhWon SolPhase = 3
+type PlayState int
+type PlaybackQueue struct{Tracks []*Track; CurrentIndex int; Shuffle bool; Repeat RepeatMode; ShuffleOrder []int}
+	Tracks []*Track
+	CurrentIndex int
+	Shuffle bool
+	Repeat RepeatMode
+	ShuffleOrder []int
+type PlaybackState struct{TrackPaths []string "json:\"track_paths\""; CurrentIndex int "json:\"current_index\""; Position float64 "json:\"position\""; Shuffle bool "json:\"shuffle\""; ShuffleOrder []int "json:\"shuffle_order,omitempty\""; Repeat RepeatMode "json:\"repeat\""; Volume float64 "json:\"volume\""}
+	TrackPaths []string `json:"track_paths"`
+	CurrentIndex int `json:"current_index"`
+	Position float64 `json:"position"`
+	Shuffle bool `json:"shuffle"`
+	ShuffleOrder []int `json:"shuffle_order,omitempty"`
+	Repeat RepeatMode `json:"repeat"`
+	Volume float64 `json:"volume"`
+type Playlist struct{Name string "json:\"name\""; Path string "json:\"path\""; Tracks []*Track "json:\"-\""}
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Tracks []*Track `json:"-"`
+type Pos struct{X float64; Y float64}
+	X float64
+	Y float64
+type PostHogClient struct{Token string; Enabled bool}
+	Token string
+	Enabled bool
+const PrevGames PreviewKind = 2
+const PrevMusic PreviewKind = 1
+const PrevNone PreviewKind = 0
+const PrevNowPlaying PreviewKind = 4
+const PrevSettings PreviewKind = 3
+type PreviewKind int
+const R Key = 116
+const R2 Key = 8
+const REFLECT_HEIGHT untyped int = 60
+const RIGHT Key = 1073741903
+const RepeatAll RepeatMode = 1
+type RepeatMode int
+	method func (RepeatMode).String() string
+const RepeatOff RepeatMode = 0
+const RepeatOne RepeatMode = 2
+const SCREEN_HEIGHT untyped int = 480
+const SCREEN_WIDTH untyped int = 640
+const SCROLL_BAR_WIDTH untyped int = 6
+type SCard struct{Suit int "json:\"suit\""; Rank int "json:\"rank\""; FaceUp bool "json:\"faceUp\""}
+	Suit int `json:"suit"`
+	Rank int `json:"rank"`
+	FaceUp bool `json:"faceUp"`
+	method func (SCard).red() bool
+const SELECT Key = 1073742052
+var SETTINGS_PATH string
+const START Key = 13
+const STATUS_BAR_HEIGHT untyped int = 36
+const SUPPORT_URL untyped string = "https://github.com/danfragoso/miyoopod"
+type ScanStats struct{Root string "json:\"root\""; When time.Time "json:\"when\""; Took float64 "json:\"took\""; Files int "json:\"files\""; Folders int "json:\"folders\""; Audio int "json:\"audio\""; AudioBytes int64 "json:\"audioBytes\""; ByFormat map[string]int "json:\"byFormat\""; Skipped map[string]int "json:\"skipped\""; Tracks int "json:\"tracks\""; Albums int "json:\"albums\""; Artists int "json:\"artists\""; Playlists int "json:\"playlists\""; TagErrors int "json:\"tagErrors\""}
+	Root string `json:"root"`
+	When time.Time `json:"when"`
+	Took float64 `json:"took"`
+	Files int `json:"files"`
+	Folders int `json:"folders"`
+	Audio int `json:"audio"`
+	AudioBytes int64 `json:"audioBytes"`
+	ByFormat map[string]int `json:"byFormat"`
+	Skipped map[string]int `json:"skipped"`
+	Tracks int `json:"tracks"`
+	Albums int `json:"albums"`
+	Artists int `json:"artists"`
+	Playlists int `json:"playlists"`
+	TagErrors int `json:"tagErrors"`
+const ScreenAlbumArt ScreenType = 3
+const ScreenLibraryScan ScreenType = 4
+const ScreenLyrics ScreenType = 5
+const ScreenMenu ScreenType = 0
+const ScreenNowPlaying ScreenType = 1
+const ScreenQueue ScreenType = 2
+type ScreenType int
+	method func (ScreenType).String() string
+type Selection struct{phase SolPhase; cursor int; targets []Target; held []SCard; heldFrom *Target; prevBrowse int}
+	phase SolPhase
+	cursor int
+	targets []Target
+	held []SCard
+	heldFrom *Target
+	prevBrowse int
+	method func (*Selection).current() *Target
+	method func (*Selection).scroll(dir int)
+	method func (*Selection).build(s SolState)
+	method func (*Selection).enterHolding(held []SCard, from Target, valid []Target) bool
+	method func (*Selection).exitHolding(s SolState)
+	method func (*Selection).resetToStock(s SolState)
+	method func (*Selection).rebuildAndClamp(s SolState)
+type Settings struct{InstallationID string "json:\"installation_id,omitempty\""; Theme string "json:\"theme,omitempty\""; LocalLogsEnabled bool "json:\"local_logs_enabled,omitempty\""; SentryEnabled bool "json:\"sentry_enabled,omitempty\""; AutoLockMinutes *int "json:\"auto_lock_minutes,omitempty\""; UpdateNotifications *bool "json:\"update_notifications,omitempty\""; Volume *int "json:\"volume,omitempty\""; Brightness *int "json:\"brightness,omitempty\""; FontSize *int "json:\"font_size,omitempty\""; KeepPerformanceOnLock *bool "json:\"keep_performance_on_lock,omitempty\""}
+	InstallationID string `json:"installation_id,omitempty"`
+	Theme string `json:"theme,omitempty"`
+	LocalLogsEnabled bool `json:"local_logs_enabled,omitempty"`
+	SentryEnabled bool `json:"sentry_enabled,omitempty"`
+	AutoLockMinutes *int `json:"auto_lock_minutes,omitempty"`
+	UpdateNotifications *bool `json:"update_notifications,omitempty"`
+	Volume *int `json:"volume,omitempty"`
+	Brightness *int `json:"brightness,omitempty"`
+	FontSize *int `json:"font_size,omitempty"`
+	KeepPerformanceOnLock *bool `json:"keep_performance_on_lock,omitempty"`
+type Sheet struct{opts []SheetOption; index int; anim *Anim; exiting bool; cache *image.RGBA; cacheIx int}
+	opts []SheetOption
+	index int
+	anim *Anim
+	exiting bool
+	cache *image.RGBA
+	cacheIx int
+	method func (*Sheet).scroll(ui *IpodUI, dir int, velocity float64)
+	method func (*Sheet).selectCurrent(ui *IpodUI)
+	method func (*Sheet).heightCSS() float64
+	method func (*Sheet).render(ui *IpodUI) *image.RGBA
+type SheetOption struct{Label string; Selected bool; OnSelect func()}
+	Label string
+	Selected bool
+	OnSelect func()
+type SolPhase int
+type SolState struct{Stock []SCard "json:\"stock\""; Waste []SCard "json:\"waste\""; Foundations [4][]SCard "json:\"foundations\""; Tableau [7][]SCard "json:\"tableau\""; StockPasses int "json:\"stockPasses\""}
+	Stock []SCard `json:"stock"`
+	Waste []SCard `json:"waste"`
+	Foundations [4][]SCard `json:"foundations"`
+	Tableau [7][]SCard `json:"tableau"`
+	StockPasses int `json:"stockPasses"`
+	method func (SolState).clone() SolState
+type Solitaire struct{ui *IpodUI; w float64; h float64; s float64; l solLayout; state SolState; sel Selection; anims solAnims; undo []SolState; menuIx int; winIx int; lostIx int; wins int; cursorAnim *struct{from Pos; to Pos; start time.Time; dur time.Duration}; sprites map[int]*image.RGBA; bg *image.RGBA; onQuit func()}
+	ui *IpodUI
+	w float64
+	h float64
+	s float64
+	l solLayout
+	state SolState
+	sel Selection
+	anims solAnims
+	undo []SolState
+	menuIx int
+	winIx int
+	lostIx int
+	wins int
+	cursorAnim *struct{from Pos; to Pos; start time.Time; dur time.Duration}
+	sprites map[int]*image.RGBA
+	bg *image.RGBA
+	onQuit func()
+	method func (*Solitaire).computeLayout()
+	method func (*Solitaire).overlaps(col []SCard) []float64
+	method func (*Solitaire).cardY(col []SCard, idx int) float64
+	method func (*Solitaire).targetPos(s SolState, t Target) Pos
+	method func (*Solitaire).cursorCenter(s SolState, sel *Selection, t Target) Pos
+	method func (*Solitaire).animateCursor(from Pos, to Pos, d time.Duration)
+	method func (*Solitaire).Animating(now time.Time) bool
+	method func (*Solitaire).OnScroll(ui *IpodUI, dir int, velocity float64)
+	method func (*Solitaire).OnCenter(ui *IpodUI)
+	method func (*Solitaire).stockDraw()
+	method func (*Solitaire).placeCards()
+	method func (*Solitaire).scheduleAutoMoves(skipWaste bool, skip []int)
+	method func (*Solitaire).performAutoMoves(skipWaste bool, skip []int)
+	method func (*Solitaire).OnLongPress(ui *IpodUI)
+	method func (*Solitaire).OnMenu(ui *IpodUI)
+	method func (*Solitaire).redeal()
+	method func (*Solitaire).animateDeal()
+	method func (*Solitaire).findRevealed(old SolState, cur SolState) *flipAnim
+	method func (*Solitaire).pushUndo()
+	method func (*Solitaire).checkLoss()
+	method func (*Solitaire).save()
+	method func (*Solitaire).load() bool
+	method func (*Solitaire).clearSave()
+	method func (*Solitaire).loadWins() int
+	method func (*Solitaire).saveWins()
+	method func (*Solitaire).Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
+	method func (*Solitaire).cursorAnimPos(now time.Time) (Pos, bool)
+	method func (*Solitaire).highlightFor(t Target) string
+	method func (*Solitaire).drawStock(dst *image.RGBA)
+	method func (*Solitaire).isHidden(hidden []Target, t Target) bool
+	method func (*Solitaire).drawWaste(dst *image.RGBA, hidden []Target)
+	method func (*Solitaire).drawFoundations(dst *image.RGBA, hidden []Target)
+	method func (*Solitaire).drawTableau(dst *image.RGBA, hidden []Target)
+	method func (*Solitaire).drawFlips(dst *image.RGBA, now time.Time)
+	method func (*Solitaire).drawAnims(dst *image.RGBA, now time.Time)
+	method func (*Solitaire).blitCard(dst *image.RGBA, key int, x float64, y float64)
+	method func (*Solitaire).drawSuit(dst *image.RGBA, suit int, cx float64, cy float64, size float64, alpha float64)
+	method func (*Solitaire).sprite(key int) *image.RGBA
+	method func (*Solitaire).drawEmpty(dst *image.RGBA, x float64, y float64, suit int)
+	method func (*Solitaire).drawHighlight(dst *image.RGBA, x float64, y float64, w float64, h float64, kind string)
+	method func (*Solitaire).drawCursor(dst *image.RGBA, p Pos)
+	method func (*Solitaire).drawMenu(dst *image.RGBA, labels []string, sel int, title string, subtitle string)
+const Spades untyped int = 3
+const StatePaused PlayState = 2
+const StatePlaying PlayState = 1
+const StateStopped PlayState = 0
+const TFoundation TargetType = 2
+const TStock TargetType = 0
+const TTableau TargetType = 3
+const TTableauEmpty TargetType = 4
+const TWaste TargetType = 1
+type Target struct{T TargetType; Index int; Column int; CardIndex int}
+	T TargetType
+	Index int
+	Column int
+	CardIndex int
+type TargetType int
+type Theme struct{Name string; BG string; HeaderBG string; HeaderTxt string; ItemTxt string; SelBG string; SelTxt string; Arrow string; Accent string; Dim string; Progress string; ProgBG string}
+	Name string
+	BG string
+	HeaderBG string
+	HeaderTxt string
+	ItemTxt string
+	SelBG string
+	SelTxt string
+	Arrow string
+	Accent string
+	Dim string
+	Progress string
+	ProgBG string
+var ThemeCandy Theme
+var ThemeClassic Theme
+var ThemeCoffee Theme
+var ThemeCyberPunk Theme
+var ThemeDark Theme
+var ThemeDarkBlue Theme
+var ThemeForest Theme
+var ThemeGreen Theme
+var ThemeGruvbox Theme
+var ThemeLight Theme
+var ThemeMidnight Theme
+var ThemeNeon Theme
+var ThemeNord Theme
+var ThemeOcean Theme
+var ThemePurple Theme
+var ThemeRetro Theme
+var ThemeSolarized Theme
+var ThemeSunset Theme
+type Track struct{Path string "json:\"path\""; Title string "json:\"title\""; Artist string "json:\"artist\""; Album string "json:\"album\""; AlbumArtist string "json:\"album_artist\""; TrackNum int "json:\"track_num\""; TrackTotal int "json:\"track_total\""; DiscNum int "json:\"disc_num\""; Year int "json:\"year\""; Genre string "json:\"genre\""; Duration float64 "json:\"duration\""; HasArt bool "json:\"has_art\""; Bitrate int "json:\"bitrate,omitempty\""; SampleRate int "json:\"sample_rate,omitempty\""; Lyrics string "json:\"lyrics,omitempty\""}
+	Path string `json:"path"`
+	Title string `json:"title"`
+	Artist string `json:"artist"`
+	Album string `json:"album"`
+	AlbumArtist string `json:"album_artist"`
+	TrackNum int `json:"track_num"`
+	TrackTotal int `json:"track_total"`
+	DiscNum int `json:"disc_num"`
+	Year int `json:"year"`
+	Genre string `json:"genre"`
+	Duration float64 `json:"duration"`
+	HasArt bool `json:"has_art"`
+	Bitrate int `json:"bitrate,omitempty"`
+	SampleRate int `json:"sample_rate,omitempty"`
+	Lyrics string `json:"lyrics,omitempty"`
+func TrackAction(action string, properties map[string]interface{})
+func TrackAppLifecycle(event string, properties map[string]interface{})
+func TrackPageView(screenName string, properties map[string]interface{})
+func TrackSongPlayed(track *Track)
+type Tween struct{From float64; To float64; Start time.Time; Dur time.Duration; Ease Easing}
+	From float64
+	To float64
+	Start time.Time
+	Dur time.Duration
+	Ease Easing
+	method func (*Tween).Value(now time.Time) (float64, bool)
+type UITheme struct{dark bool; bg Col; text Col; sub Col; npSub Col; empty Col; header []GradStop; headerBorder Col; headerText Col; preview []GradStop; artBorder Col; cardBorder Col; sheetOpt []GradStop; sheetBorder Col; sheetText Col; sheetShadow Col; padlock []GradStop; padShackle Col}
+	dark bool
+	bg Col
+	text Col
+	sub Col
+	npSub Col
+	empty Col
+	header []GradStop
+	headerBorder Col
+	headerText Col
+	preview []GradStop
+	artBorder Col
+	cardBorder Col
+	sheetOpt []GradStop
+	sheetBorder Col
+	sheetText Col
+	sheetShadow Col
+	padlock []GradStop
+	padShackle Col
+const UP Key = 1073741906
+var UPDATE_INFO_PATH string
+var UPDATE_STATUS_PATH string
+type UpdateRequest struct{Version string "json:\"version\""; URL string "json:\"url\""; Checksum string "json:\"checksum\""; Size int64 "json:\"size\""}
+	Version string `json:"version"`
+	URL string `json:"url"`
+	Checksum string `json:"checksum"`
+	Size int64 `json:"size"`
+type UpdateStatus struct{Success bool "json:\"success\""; Version string "json:\"version\""; Error string "json:\"error,omitempty\""}
+	Success bool `json:"success"`
+	Version string `json:"version"`
+	Error string `json:"error,omitempty"`
+const VERSION_CHECK_URL untyped string = "https://github.com/danfragoso/miyoopod/raw/refs/heads/main/version.json"
+const VISIBLE_COVERS untyped int = 5
+const VISIBLE_ITEMS untyped int = 9
+type VersionInfo struct{Version string "json:\"version\""; Checksum string "json:\"checksum\""; URL string "json:\"url\""; Size int64 "json:\"size\""; Changelog string "json:\"changelog\""}
+	Version string `json:"version"`
+	Checksum string `json:"checksum"`
+	URL string `json:"url"`
+	Size int64 `json:"size"`
+	Changelog string `json:"changelog"`
+type View struct{ID string; Title string; Kind ViewKind; Items []Item; Build func() []Item; Empty string; DisableLongPress bool; Index int; Scroll float64; Custom CustomView; enter *Anim; hide *Anim; exiting bool; firstIn bool; cache *image.RGBA; marqueeOn bool; marqIdx int; marqSince time.Time; cacheW int; dirty bool; lastRender time.Time}
+	ID string
+	Title string
+	Kind ViewKind
+	Items []Item
+	Build func() []Item
+	Empty string
+	DisableLongPress bool
+	Index int
+	Scroll float64
+	Custom CustomView
+	enter *Anim
+	hide *Anim
+	exiting bool
+	firstIn bool
+	cache *image.RGBA
+	marqueeOn bool
+	marqIdx int
+	marqSince time.Time
+	cacheW int
+	dirty bool
+	lastRender time.Time
+	method func (*View).titleOverride() (string, bool)
+	method func (*View).hasImages() bool
+	method func (*View).rowTops() ([]float64, float64)
+	method func (*View).ensureVisible(viewportH float64)
+type ViewKind int
+const W400 FontWeight = 400
+const W500 FontWeight = 500
+const W600 FontWeight = 600
+const W700 FontWeight = 700
+const W900 FontWeight = 900
+const WHEEL_CCW Key = 1073745922
+const WHEEL_CW Key = 1073745921
+const X Key = 1073742049
+const Y Key = 1073742050
+func _Cfunc_audio_stop() (r1 _Ctype_void)
+func _Cfunc_pollEvents() (r1 _Ctype_int)
+func _Cfunc_refreshScreenPtr(p0 *_Ctype_uchar) (r1 _Ctype_int)
+type _Ctype_char uint8
+type _Ctype_int int32
+type _Ctype_uchar uint8
+type _Ctype_void [0]byte
+type artCache struct{mu sync.Mutex; imgs map[artKey]*image.RGBA; pending map[artKey]bool; order []artKey; limit int; sem chan struct{}}
+	mu sync.Mutex
+	imgs map[artKey]*image.RGBA
+	pending map[artKey]bool
+	order []artKey
+	limit int
+	sem chan struct{}
+type artKey struct{a *Album; dev int}
+	a *Album
+	dev int
+func audioStop()
+type brk struct{x float64; y float64; w float64; h float64; c int}
+	x float64
+	y float64
+	w float64
+	h float64
+	c int
+func captureEvent(level string, message string, extra map[string]interface{})
+type cardAnim struct{cards []SCard; from Pos; to Pos; start time.Time; dur time.Duration; overlap float64; faceDown bool; hideTarget *Target}
+	cards []SCard
+	from Pos
+	to Pos
+	start time.Time
+	dur time.Duration
+	overlap float64
+	faceDown bool
+	hideTarget *Target
+type cfCover struct{from cfXform; to cfXform; start time.Time; dur time.Duration; opacity *Anim; artAlpha *Anim; inited bool}
+	from cfXform
+	to cfXform
+	start time.Time
+	dur time.Duration
+	opacity *Anim
+	artAlpha *Anim
+	inited bool
+	method func (*cfCover).value(now time.Time) cfXform
+	method func (*cfCover).running(now time.Time) bool
+	method func (*cfCover).set(to cfXform, dur time.Duration, now time.Time)
+type cfXform struct{X float64; Y float64; Z float64; S1 float64; Z2 float64; A float64; TY float64; S2 float64}
+	X float64
+	Y float64
+	Z float64
+	S1 float64
+	Z2 float64
+	A float64
+	TY float64
+	S2 float64
+type flipAnim struct{card SCard; pos Pos; start time.Time; dur time.Duration; hideTarget Target}
+	card SCard
+	pos Pos
+	start time.Time
+	dur time.Duration
+	hideTarget Target
+func hasAvailableMoves(s SolState) bool
+type kbKey struct{key string; label string; icon string}
+	key string
+	label string
+	icon string
+var keyboardKeys []kbKey
+type lrcLine struct{ts float64; text string}
+	ts float64
+	text string
+type lyricsDisplayLine struct{text string; lrcIndex int}
+	text string
+	lrcIndex int
+type mat4 [16]float64
+var posthogClient *PostHogClient
+type previewLine struct{text string; size float64; weight FontWeight}
+	text string
+	size float64
+	weight FontWeight
+func px(css float64) int
+func restoreBrightness()
+type searchState struct{term string}
+	term string
+func skipFor(velocity float64) int
+type solAnims struct{queue []cardAnim; flips []flipAnim; onComplete func()}
+	queue []cardAnim
+	flips []flipAnim
+	onComplete func()
+	method func (*solAnims).animating() bool
+	method func (*solAnims).hidden() []Target
+	method func (*solAnims).tick(now time.Time)
+	method func (*solAnims).clear()
+type solLayout struct{cw float64; ch float64; topY float64; tabY float64; colSp float64; colX float64; stockX float64; wasteX float64; fX float64; fSp float64; baseOv float64; downOv float64; maxTabH float64}
+	cw float64
+	ch float64
+	topY float64
+	tabY float64
+	colSp float64
+	colX float64
+	stockX float64
+	wasteX float64
+	fX float64
+	fSp float64
+	baseOv float64
+	downOv float64
+	maxTabH float64
+func targetsEqual(a Target, b Target) bool

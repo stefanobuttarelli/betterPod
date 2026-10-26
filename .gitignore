@@ -1,0 +1,7 @@
+/build/
+/dist/
+/deps/src/
+/deps/out/
+*.o
+port/knullipod/MiyooPod
+miyoo/App/KnulliPod/KnulliPod

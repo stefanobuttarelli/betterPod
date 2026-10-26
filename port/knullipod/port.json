@@ -1,0 +1,31 @@
+{
+  "version": 4,
+  "name": "knullipod.zip",
+  "items": [
+    "KnulliPod.sh",
+    "knullipod"
+  ],
+  "items_opt": [
+    "knullipod/conf",
+    "knullipod/music"
+  ],
+  "attr": {
+    "title": "KnulliPod",
+    "porter": [
+      "KnulliPod"
+    ],
+    "desc": "Lettore musicale in stile iPod: split screen, Cover Flow, Now Playing 3D, ricerca, giochi. Musica in locale, anche lossless e hi-res. Interfaccia basata su iPod.js di Tanner Villarete.",
+    "inst": "Metti la musica (MP3, FLAC, OGG) in /userdata/music.",
+    "genres": [
+      "other"
+    ],
+    "image": {},
+    "rtr": true,
+    "exp": false,
+    "runtime": null,
+    "reqs": [],
+    "arch": [
+      "aarch64"
+    ]
+  }
+}
