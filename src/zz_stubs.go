@@ -9,42 +9,38 @@ import (
 	"time"
 )
 
-const WHEEL_CCW Key = 1073745922
-const MEDIA_PLAYPAUSE Key = 1073745930
-const PhLost SolPhase = 4
-const MEDIA_NEXT Key = 1073745933
-const PrevMusic PreviewKind = 1
-const MEDIA_PAUSE Key = 1073745932
-const PrevNowPlaying PreviewKind = 4
-const Clubs = 2
-const LOCK Key = 1073741925
-const MEDIA_PLAY Key = 1073745931
-const MEDIA_STOP Key = 1073745935
-const Diamonds = 1
-const TTableauEmpty TargetType = 4
-const Hearts = 0
-const PhBrowsing SolPhase = 0
-const PrevNone PreviewKind = 0
-const PhMenu SolPhase = 2
 const HP_UNPLUG Key = 1073745936
-const WHEEL_CW Key = 1073745921
-const PhHolding SolPhase = 1
-const PhWon SolPhase = 3
-const TStock TargetType = 0
-const PrevSettings PreviewKind = 3
+const Spades = 3
 const TFoundation TargetType = 2
 const PrevGames PreviewKind = 2
-const TTableau TargetType = 3
+const Diamonds = 1
+const PhBrowsing SolPhase = 0
+const MEDIA_STOP Key = 1073745935
+const PhWon SolPhase = 3
+const Clubs = 2
+const PrevMusic PreviewKind = 1
+const TTableauEmpty TargetType = 4
 const MEDIA_PREV Key = 1073745934
-const Spades = 3
+const PhLost SolPhase = 4
+const LOCK Key = 1073741925
+const MEDIA_PLAYPAUSE Key = 1073745930
+const TStock TargetType = 0
+const PrevNowPlaying PreviewKind = 4
+const TTableau TargetType = 3
+const MEDIA_NEXT Key = 1073745933
+const PhMenu SolPhase = 2
+const WHEEL_CW Key = 1073745921
+const PrevSettings PreviewKind = 3
+const MEDIA_PLAY Key = 1073745931
+const WHEEL_CCW Key = 1073745922
+const PhHolding SolPhase = 1
+const Hearts = 0
+const PrevNone PreviewKind = 0
 const TWaste TargetType = 1
-func skipFor(velocity float64) int { panic("stub") }
+const MEDIA_PAUSE Key = 1073745932
 func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
-func (_ *IpodUI) assetSafe(name string) *image.RGBA { panic("stub") }
-func (_ *IpodUI) post(f func()) { panic("stub") }
 func (_ *IpodUI) onArtLoaded() { panic("stub") }
 func (_ *BrickGame) resetPlayerPos() { panic("stub") }
-func (_ *IpodUI) topScreen() *View { panic("stub") }
 func (_ *IpodUI) library() *Library { panic("stub") }
 func (_ *NowPlayingView) Animating(now time.Time) bool { panic("stub") }
 func (_ *IpodUI) gamesView() *View { panic("stub") }
@@ -68,12 +64,8 @@ func (_ *solAnims) hidden() []Target { panic("stub") }
 func targetsEqual(a Target, b Target) bool { panic("stub") }
 func (_ *Solitaire) isHidden(hidden []Target, t Target) bool { panic("stub") }
 func (_ *Keyboard) scrollBy(dir int, velocity float64) { panic("stub") }
-func (_ *IpodUI) onTrackChanged() { panic("stub") }
 func (_ *IpodUI) holdAnimating(now time.Time) bool { panic("stub") }
-func (_ *IpodUI) listMarquee() bool { panic("stub") }
 func (_ *IpodUI) nowPlayingViews() []*NowPlayingView { panic("stub") }
-func (_ *IpodUI) thumb(a *Album, size float64) *image.RGBA { panic("stub") }
-func (_ *IpodUI) isPlayingTrack(t *Track) bool { panic("stub") }
 var defaultArtMu sync.Mutex
 var defaultArtSizes map[int]*image.RGBA
 var brickColors []brickColor
@@ -107,18 +99,6 @@ var scaledAssetCache map[scaledKey]*image.RGBA
 var suitAssets []string
 var emptyOutline *image.RGBA
 var ipodUI *IpodUI
-var perfLog bool
-var perfFrames int
-var perfTotal time.Duration
-var perfMax time.Duration
-var perfStart time.Time
-var previewBuf *image.RGBA
-var coverLayer *image.RGBA
-var headerBg *image.RGBA
-var batMu sync.Mutex
-var batPct int
-var batChg bool
-var batChecked time.Time
 var trackLoading int32
 type TargetType int
 type SolPhase int
@@ -126,7 +106,6 @@ type PreviewKind int
 type kbKey struct{key string; label string; icon string}
 type AboutView struct{list *View; buf *image.RGBA}
 type SheetOption struct{Label string; Selected bool; OnSelect func()}
-type IpodUI struct{app *MiyooPod; fb *image.RGBA; split []*View; full []*View; gone []*View; sheets []*Sheet; cover *CoverFlow; keyboard *Keyboard; headerTitle string; prevFB []byte; noMarquee bool; frameNo int; leftX *Anim; fullX *Anim; previewHide *Anim; preview PreviewKind; previewTimer *time.Timer; pendingPrev PreviewKind; musicPrev *Anim; kb *KenBurns; assets map[string]*image.RGBA; assetsMu sync.Mutex; artc *artCache; shadow []float64; velocity float64; lastTick time.Time; lastDir int; repeatKey Key; repeatStart time.Time; repeatLast time.Time; pressStart map[Key]time.Time; longFired map[Key]bool; volume float64; shuffleMode string; dirty bool; events chan func()}
 type Sheet struct{opts []SheetOption; index int; anim *Anim; exiting bool; cache *image.RGBA; cacheIx int}
 type CoverFlow struct{albums []*Album; active int; selected *Album; playing bool; covers map[int]*cfCover; back *View; backAnim *Anim; backAlbum *Album; infoFade *Anim; npFade *Anim; paused bool; tilt *Anim; backShown *Album; backSince time.Time; np *NowPlayingView; fadeIn *Anim; exiting bool; layer *image.RGBA; npBuf *image.RGBA}
 type cfCover struct{from cfXform; to cfXform; start time.Time; dur time.Duration; opacity *Anim; artAlpha *Anim; inited bool}
@@ -594,67 +573,5 @@ func (g *Solitaire) drawCursor(dst *image.RGBA, p Pos) { panic("stub") }
 func (g *Solitaire) drawMenu(dst *image.RGBA, labels []string, sel int, title string, subtitle string) { panic("stub") }
 //go:noinline
 func dashedRoundRect(dst *image.RGBA, x float64, y float64, w float64, h float64, r float64, c Col) { panic("stub") }
-//go:noinline
-func newIpodUI(app *MiyooPod) *IpodUI { panic("stub") }
-//go:noinline
-func (ui *IpodUI) asset(name string) *image.RGBA { panic("stub") }
-//go:noinline
-func toRGBA(img image.Image) *image.RGBA { panic("stub") }
-//go:noinline
-func (ui *IpodUI) showView(v *View, headerTitle string) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) hideView() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) resetViews() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) updatePanels() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) schedulePreview(p PreviewKind) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) setPreview(p PreviewKind) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) wheelTick(dir int) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) scroll(dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) centerClick() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) menuClick() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) centerLongPress() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) HandleKey(ev int) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) checkRepeat(now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) checkLongPress(now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) animating(now time.Time) bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) viewBuffer(v *View, wDev int, hDev int, now time.Time) *image.RGBA { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawStack(stack []*View, kind ViewKind, panelX int, panelW int, now time.Time) { panic("stub") }
-//go:noinline
-func fillRectClipped(dst *image.RGBA, x int, y int, w int, h int, c Col, clip image.Rectangle) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) renderFrame(now time.Time) { panic("stub") }
-//go:noinline
-func newCanvasCached(buf **image.RGBA, w int, h int) *image.RGBA { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawHeader(dst *image.RGBA, x int, w int, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawBattery(dst *image.RGBA, x float64, y float64) { panic("stub") }
-//go:noinline
-func batteryInfo() (int, bool, bool) { panic("stub") }
-//go:noinline
-func batteryCharging() bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) onlyKenBurns(now time.Time) bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) present() bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) Run() { panic("stub") }
 //go:noinline
 func folderArtwork(album *Album) ([]uint8, string) { panic("stub") }
