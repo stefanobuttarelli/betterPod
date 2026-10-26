@@ -5,41 +5,38 @@ package main
 import (
 	"golang.org/x/image/font"
 	"image"
-	"sync"
 	"time"
 )
 
-const HP_UNPLUG Key = 1073745936
-const Spades = 3
-const TFoundation TargetType = 2
-const PrevGames PreviewKind = 2
-const Diamonds = 1
-const PhBrowsing SolPhase = 0
-const MEDIA_STOP Key = 1073745935
-const PhWon SolPhase = 3
 const Clubs = 2
-const PrevMusic PreviewKind = 1
+const PhHolding SolPhase = 1
+const PhWon SolPhase = 3
 const TTableauEmpty TargetType = 4
-const MEDIA_PREV Key = 1073745934
-const PhLost SolPhase = 4
+const Hearts = 0
+const PhBrowsing SolPhase = 0
+const MEDIA_NEXT Key = 1073745933
+const PrevGames PreviewKind = 2
+const PrevMusic PreviewKind = 1
+const TFoundation TargetType = 2
+const PrevSettings PreviewKind = 3
 const LOCK Key = 1073741925
+const WHEEL_CW Key = 1073745921
+const MEDIA_PREV Key = 1073745934
+const PhMenu SolPhase = 2
+const PrevNone PreviewKind = 0
+const TTableau TargetType = 3
+const PrevNowPlaying PreviewKind = 4
+const TWaste TargetType = 1
+const MEDIA_STOP Key = 1073745935
+const MEDIA_PLAY Key = 1073745931
+const Spades = 3
+const Diamonds = 1
+const WHEEL_CCW Key = 1073745922
+const PhLost SolPhase = 4
+const HP_UNPLUG Key = 1073745936
+const MEDIA_PAUSE Key = 1073745932
 const MEDIA_PLAYPAUSE Key = 1073745930
 const TStock TargetType = 0
-const PrevNowPlaying PreviewKind = 4
-const TTableau TargetType = 3
-const MEDIA_NEXT Key = 1073745933
-const PhMenu SolPhase = 2
-const WHEEL_CW Key = 1073745921
-const PrevSettings PreviewKind = 3
-const MEDIA_PLAY Key = 1073745931
-const WHEEL_CCW Key = 1073745922
-const PhHolding SolPhase = 1
-const Hearts = 0
-const PrevNone PreviewKind = 0
-const TWaste TargetType = 1
-const MEDIA_PAUSE Key = 1073745932
-func (_ *IpodUI) defaultArt() image.Image { panic("stub") }
-func (_ *IpodUI) onArtLoaded() { panic("stub") }
 func (_ *BrickGame) resetPlayerPos() { panic("stub") }
 func (_ *IpodUI) library() *Library { panic("stub") }
 func (_ *NowPlayingView) Animating(now time.Time) bool { panic("stub") }
@@ -66,8 +63,6 @@ func (_ *Solitaire) isHidden(hidden []Target, t Target) bool { panic("stub") }
 func (_ *Keyboard) scrollBy(dir int, velocity float64) { panic("stub") }
 func (_ *IpodUI) holdAnimating(now time.Time) bool { panic("stub") }
 func (_ *IpodUI) nowPlayingViews() []*NowPlayingView { panic("stub") }
-var defaultArtMu sync.Mutex
-var defaultArtSizes map[int]*image.RGBA
 var brickColors []brickColor
 var easeFramer Easing
 var backsideBuf *image.RGBA
@@ -113,8 +108,6 @@ type cfXform struct{X float64; Y float64; Z float64; S1 float64; Z2 float64; A f
 type NowPlayingView struct{scrubbing bool; volActive bool; volTimer *time.Timer; volEnabled bool; scrubTime float64; scrubActive bool; seekTimer *time.Timer; mainX *Anim; volX *Anim; scrubX *Anim; H float64; hideArt bool; warpTrack *Track; warpArt *image.RGBA; warpReady bool; tilt *Anim; tiltInit bool; warpTilt float64; warpSrc *image.RGBA; warpSrcT *Track; lastFrame int}
 type Keyboard struct{index int; scroll float64; anim *Anim; exiting bool; onKey func(key string)}
 type KenBurns struct{stack []*Album; animStart map[*Album]time.Time; mounted time.Time; transStart time.Time; lastCycle time.Time; initialized bool}
-type artCache struct{mu sync.Mutex; imgs map[artKey]*image.RGBA; pending map[artKey]bool; order []artKey; limit int; sem chan struct{}}
-type artKey struct{a *Album; dev int}
 type BrickGame struct{w float64; h float64; s float64; phase string; level int; menuIndex int; px float64; py float64; pw float64; ph float64; pvel float64; pspeed float64; score int; lives int; bx float64; by float64; br float64; bspeed float64; dx float64; dy float64; bricks []brk; lastStep time.Time; acc time.Duration; onQuit func(); bg *image.RGBA}
 type brk struct{x float64; y float64; w float64; h float64; c int}
 type brickColor struct {
@@ -193,24 +186,6 @@ func (a *AboutView) OnCenter(ui *IpodUI) { panic("stub") }
 func (a *AboutView) OnScroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
 //go:noinline
 func (a *AboutView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func decodeAlbumSource(a *Album) image.Image { panic("stub") }
-//go:noinline
-func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA { panic("stub") }
-//go:noinline
-func (ui *IpodUI) artOrDefault(a *Album, devSize int) *image.RGBA { panic("stub") }
-//go:noinline
-func (ui *IpodUI) defaultArtSized(dev int) *image.RGBA { panic("stub") }
-//go:noinline
-func (ui *IpodUI) trackAlbum(t *Track) *Album { panic("stub") }
-//go:noinline
-func (ui *IpodUI) artCached(a *Album, devSize int) *image.RGBA { panic("stub") }
-//go:noinline
-func artDiskPath(a *Album, dev int) string { panic("stub") }
-//go:noinline
-func readArtDisk(a *Album, dev int) *image.RGBA { panic("stub") }
-//go:noinline
-func writeArtDisk(a *Album, dev int, img *image.RGBA) { panic("stub") }
 //go:noinline
 func (ui *IpodUI) openBrick() { panic("stub") }
 //go:noinline

@@ -5,7 +5,6 @@ package main
 
 import "unsafe"
 
-func newArtCache() *artCache                             { return &artCache{} }
 func newKenBurns() *KenBurns                             { return &KenBurns{} }
 func refreshFramebuffer(p unsafe.Pointer)                {}
 func refreshFramebufferRows(p unsafe.Pointer, y0, y1 int) {}

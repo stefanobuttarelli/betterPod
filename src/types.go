@@ -20,10 +20,12 @@ const (
 const SCREEN_WIDTH = 640
 const SCREEN_HEIGHT = 480
 
-// Music source
-const MUSIC_ROOT = "/mnt/SDCARD/Media/Music/"
-const LIBRARY_JSON_PATH = "/mnt/SDCARD/Media/Music/.miyoopod_library.json"
-const ARTWORK_DIR = "/mnt/SDCARD/Media/Music/.miyoopod_artwork/"
+// Music source. On Knulli the music folder is /userdata/music and the
+// library cache, settings and artwork live in the port's conf folder
+// (MIYOOPOD_MUSIC_DIR / MIYOOPOD_DATA_DIR, see knulli.go).
+var MUSIC_ROOT = musicRoot()
+var LIBRARY_JSON_PATH = dataPath(".miyoopod_library.json")
+var ARTWORK_DIR = dataPath(".miyoopod_artwork/")
 
 // UI layout constants (at 640x480 native resolution)
 const (
@@ -40,8 +42,7 @@ const (
 	PROGRESS_BAR_H    = 8
 )
 
-// Base font sizes at native resolution (medium / 1.0 scale).
-// Actual sizes are these multiplied by the current font scale — see fontScaleFactor.
+// Base font sizes at native resolution (medium / 1.0 scale), times fontScaleFactor.
 const (
 	FONT_SIZE_HEADER = 22.0
 	FONT_SIZE_MENU   = 24.0
@@ -467,8 +468,9 @@ type Track struct {
 type Album struct {
 	Name    string      `json:"name"`
 	Artist  string      `json:"artist"`
-	Tracks  []*Track    `json:"-"` // Reconstructed from library tracks
-	ArtData []byte      `json:"-"` // Don't store in JSON, only used temporarily during extraction
+	Key     string      `json:"key"` // grouping key: folder + album name (see albumKeyFor)
+	Tracks  []*Track    `json:"-"`   // Reconstructed from library tracks
+	ArtData []byte      `json:"-"`   // Don't store in JSON, only used temporarily during extraction
 	ArtExt  string      `json:"-"`
 	ArtPath string      `json:"artPath,omitempty"` // Path to saved artwork file (from MusicBrainz)
 	ArtImg  image.Image `json:"-"`                 // Decoded at runtime
@@ -656,12 +658,12 @@ type MiyooPod struct {
 	BrightnessNeedsRestore bool // Defer brightness restore until after overlay is drawn
 
 	// Power/Display management
-	LastActivityTime     time.Time   // Last user interaction time
-	PowerButtonPressTime time.Time   // When power button was pressed (for long-hold detection)
-	PowerButtonPressed   bool        // Whether power button is currently held
-	MenuKeyPressed       bool        // Whether MENU key is currently held (for brightness control)
-	SelectKeyPressed     bool        // Whether SELECT is currently held (for combo shortcuts)
-	AutoLockMinutes      int         // Minutes of inactivity before auto-lock (0 = disabled)
+	LastActivityTime     time.Time // Last user interaction time
+	PowerButtonPressTime time.Time // When power button was pressed (for long-hold detection)
+	PowerButtonPressed   bool      // Whether power button is currently held
+	MenuKeyPressed       bool      // Whether MENU key is currently held (for brightness control)
+	SelectKeyPressed     bool      // Whether SELECT is currently held (for combo shortcuts)
+	AutoLockMinutes      int       // Minutes of inactivity before auto-lock (0 = disabled)
 
 	// CPU power management
 	KeepPerformanceOnLock bool        // If true, keep performance governor while locked (don't drop to powersave)
