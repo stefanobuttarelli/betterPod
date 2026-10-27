@@ -6,7 +6,8 @@ package main
 // Layout, as in ipod.js: a 320x240 CSS screen drawn at DPR 2 into the
 // 640x480 framebuffer. The menu stack lives in the left half with a preview
 // on the right ("split" views); full-screen views (Now Playing, Cover Flow,
-// games) slide over everything.
+// games) slide over everything. Everything is drawn on the main thread;
+// animations are time based (ij_anim.go).
 
 import (
 	"bytes"
@@ -16,7 +17,6 @@ import (
 	"math"
 	"os"
 	"runtime/pprof"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -248,20 +248,20 @@ func (ui *IpodUI) hideView() {
 		return
 	}
 	var v *View
-	if len(ui.full) > 0 {
-		v = ui.full[len(ui.full)-1]
-		ui.full = ui.full[:len(ui.full)-1]
-		if len(ui.full) > 0 {
-			ui.full[len(ui.full)-1].hide.To(0, durSlide, easeCSS, 0)
-			ui.full[len(ui.full)-1].dirty = true
+	if n, m := len(ui.full), len(ui.split); n > 0 {
+		v = ui.full[n-1]
+		ui.full = ui.full[:n-1]
+		if n-1 > 0 {
+			ui.full[n-2].hide.To(0, durSlide, easeCSS, 0)
+			ui.full[n-2].dirty = true
 		}
 	} else {
 		// back in the menu stack: the previous menu slides back in
-		v = ui.split[len(ui.split)-1]
-		ui.split = ui.split[:len(ui.split)-1]
-		ui.split[len(ui.split)-1].hide.To(0, durSlide, easeCSS, 0)
-		ui.split[len(ui.split)-1].dirty = true
-		if b := ui.split[len(ui.split)-1]; b.Build != nil {
+		v = ui.split[m-1]
+		ui.split = ui.split[:m-1]
+		ui.split[m-2].hide.To(0, durSlide, easeCSS, 0)
+		ui.split[m-2].dirty = true
+		if b := ui.split[m-2]; b.Build != nil {
 			b.Items = b.Build()
 		}
 	}
@@ -557,7 +557,7 @@ func (ui *IpodUI) HandleKey(ev int) {
 			}
 			kb.index = int(math.Max(0, math.Min(float64(len(keyboardKeys)-1), float64(kb.index+step))))
 			ui.dirty = true
-			return
+			break
 		}
 		if k == R {
 			go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
@@ -807,8 +807,8 @@ func newCanvasCached(buf **image.RGBA, w, h int) *image.RGBA {
 // scaleProfile scales a shadow profile (fading shadow while the panel slides).
 func scaleProfile(p []float64, s float64) []float64 {
 	out := make([]float64, len(p))
-	for i := range p {
-		out[i] = p[i] * s
+	for i, v := range p {
+		out[i] = v * s
 	}
 	return out
 }
@@ -911,7 +911,7 @@ func (ui *IpodUI) drawBattery(dst *image.RGBA, x, y float64) {
 	if pct < 0 {
 		pct = 100
 	}
-	if pct < 15 {
+	if pct <= 15 {
 		pct = 15
 	}
 	fill := ui.asset("battery_fill_ok")
@@ -954,7 +954,7 @@ func batteryCharging() bool {
 	for _, p := range []string{"/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
 		if b, err := os.ReadFile(p); err == nil {
 			s := string(b)
-			return strings.HasPrefix(s, "Charging")
+			return len(s) >= 8 && s[:8] == "Charging"
 		}
 	}
 	return false
@@ -1157,13 +1157,12 @@ func (ui *IpodUI) Run() {
 		if !anim {
 			frame = 25 * time.Millisecond
 		} else if ui.onlyKenBurns(now) {
-			// slow pan: fewer frames save battery
+			frame = 50 * time.Millisecond // slow pan: fewer frames save battery
 			if !ui.kb.transStart.IsZero() || ui.listMarquee() || marqueeActive {
 				frame = 33 * time.Millisecond
-			} else {
-				frame = 50 * time.Millisecond
 			}
 		}
+
 		if presentBlocked && frame == 16*time.Millisecond {
 			continue // vsync already paced this frame
 		}

@@ -568,8 +568,8 @@ func (ui *IpodUI) nowPlayingViews() []*NowPlayingView {
 	}
 	return out
 }
-
 // nowPlayingOnScreen: Now Playing is the visible screen.
+//go:noinline
 func (ui *IpodUI) nowPlayingOnScreen() bool {
 	if cf := ui.cover; cf != nil && !cf.exiting && cf.np != nil && cf.npFade.Target() > 0 {
 		return true
