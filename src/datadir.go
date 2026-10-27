@@ -1,0 +1,244 @@
+package main
+
+// datadir.go — where the database lives (library cache, artwork, settings,
+// scan statistics, game saves). The default is MIYOOPOD_DATA_DIR (the port's
+// conf folder); Settings → Database can move it to another folder, e.g. the
+// SD card with the music. The choice is kept in a small pointer file in the
+// default folder, which is always there.
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+)
+
+const dataDirPointer = "datadir.txt"
+
+// the files and folders that make up the database (nothing else is ever
+// copied or deleted: the data folder may be shared with other things)
+var dataItems = []string{
+	".miyoopod_library.json",
+	".miyoopod_settings.json",
+	".miyoopod_playback.json",
+	"scan_stats.json",
+	"ipodjs_settings.json",
+	"ipodSolitaireSaveState.json",
+	"ipodSolitaireWins.txt",
+	".miyoopod_artwork",
+	".ipod_art",
+}
+
+var (
+	dataDirMu       sync.Mutex
+	dataDirOverride = readDataDirPointer()
+)
+
+// defaultDataDir is the launcher's data folder (upstream: the music root).
+func defaultDataDir() string {
+	dir := os.Getenv("MIYOOPOD_DATA_DIR")
+	if dir == "" {
+		dir = musicRoot()
+	}
+	return filepath.Clean(dir)
+}
+
+func readDataDirPointer() string {
+	b, err := os.ReadFile(filepath.Join(defaultDataDir(), dataDirPointer))
+	if err != nil {
+		return ""
+	}
+	d := filepath.Clean(strings.TrimSpace(string(b)))
+	if d == "" || d == "." || !filepath.IsAbs(d) {
+		return ""
+	}
+	// the chosen folder must still be there (an SD card may be missing):
+	// otherwise fall back to the default one for this run
+	if st, err := os.Stat(d); err != nil || !st.IsDir() {
+		dataDirMissing = d
+		return ""
+	}
+	return d
+}
+
+// dataDirMissing is the chosen folder when it could not be found at start.
+var dataDirMissing string
+
+// dataDir is the folder that holds the database now.
+func dataDir() string {
+	dataDirMu.Lock()
+	defer dataDirMu.Unlock()
+	if dataDirOverride != "" {
+		return dataDirOverride
+	}
+	return defaultDataDir()
+}
+
+// refreshDataPaths recomputes the paths kept in package variables.
+func refreshDataPaths() {
+	LIBRARY_JSON_PATH = dataPath(".miyoopod_library.json")
+	ARTWORK_DIR = dataPath(".miyoopod_artwork/")
+	SETTINGS_PATH = dataPath(".miyoopod_settings.json")
+	PLAYBACK_STATE_PATH = dataPath(".miyoopod_playback.json")
+	UPDATE_INFO_PATH = dataPath(".miyoopod_update.json")
+	UPDATE_STATUS_PATH = dataPath(".miyoopod_update_status")
+}
+
+// setDataDir makes dir the database folder and remembers the choice.
+func setDataDir(dir string) error {
+	dir = filepath.Clean(dir)
+	def := defaultDataDir()
+	ptr := filepath.Join(def, dataDirPointer)
+	if dir == def {
+		if err := os.Remove(ptr); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		dir = ""
+	} else {
+		if err := os.MkdirAll(def, 0755); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(ptr, []byte(dir+"\n")); err != nil {
+			return err
+		}
+	}
+	dataDirMu.Lock()
+	dataDirOverride = dir
+	dataDirMu.Unlock()
+	dataDirMissing = ""
+	refreshDataPaths()
+	return nil
+}
+
+// checkWritable makes sure dir exists and files can be written in it.
+func checkWritable(dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".knullipod-test-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	f.Close()
+	return os.Remove(name)
+}
+
+// hasDatabase reports whether dir already holds a KnulliPod library.
+func hasDatabase(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, ".miyoopod_library.json"))
+	return err == nil && st.Size() > 0
+}
+
+// copyDatabase copies the database items from src to dst; progress is
+// called with the number of files copied so far.
+func copyDatabase(src, dst string, progress func(int)) error {
+	n := 0
+	for _, name := range dataItems {
+		from := filepath.Join(src, name)
+		st, err := os.Stat(from)
+		if err != nil {
+			continue
+		}
+		to := filepath.Join(dst, name)
+		if st.IsDir() {
+			err = filepath.Walk(from, func(p string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				rel, _ := filepath.Rel(from, p)
+				target := filepath.Join(to, rel)
+				if info.IsDir() {
+					return os.MkdirAll(target, 0755)
+				}
+				if err := copyFile(p, target); err != nil {
+					return err
+				}
+				n++
+				if progress != nil && n%25 == 0 {
+					progress(n)
+				}
+				return nil
+			})
+		} else {
+			err = copyFile(from, to)
+			n++
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %v", name, err)
+		}
+	}
+	if progress != nil {
+		progress(n)
+	}
+	return nil
+}
+
+// removeDatabase deletes the database items from dir (after a move).
+func removeDatabase(dir string) {
+	for _, name := range dataItems {
+		_ = os.RemoveAll(filepath.Join(dir, name))
+	}
+}
+
+func copyFile(from, to string) error {
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp := to + ".tmp"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, to)
+}
+
+func writeFileAtomic(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// rebaseArtPaths points the albums' artwork files at the current artwork
+// folder (the library stores absolute paths).
+func rebaseArtPaths(lib *Library) {
+	if lib == nil {
+		return
+	}
+	for _, al := range lib.Albums {
+		if al.ArtPath != "" {
+			al.ArtPath = ARTWORK_DIR + filepath.Base(al.ArtPath)
+		}
+	}
+}
+
+// artPathFor finds an album's artwork file, also when the library was
+// written in another data folder.
+func artPathFor(p string) string {
+	if p == "" {
+		return p
+	}
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	alt := ARTWORK_DIR + filepath.Base(p)
+	if _, err := os.Stat(alt); err == nil {
+		return alt
+	}
+	return p
+}

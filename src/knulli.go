@@ -43,14 +43,11 @@ func musicRoot() string {
 	return strings.TrimRight(dir, "/") + "/"
 }
 
-// dataPath returns where library cache, settings and artwork are stored.
-// The launch script points MIYOOPOD_DATA_DIR at the port's conf folder, so the
-// music folder stays clean; without it, upstream behaviour (inside music root).
+// dataPath returns where library cache, settings and artwork are stored:
+// the database folder (datadir.go), by default the port's conf folder
+// (MIYOOPOD_DATA_DIR); without it, upstream behaviour (inside music root).
 func dataPath(name string) string {
-	dir := os.Getenv("MIYOOPOD_DATA_DIR")
-	if dir == "" {
-		dir = musicRoot()
-	}
+	dir := dataDir()
 	_ = os.MkdirAll(dir, 0755)
 	return filepath.Join(dir, name) + map[bool]string{true: "/", false: ""}[strings.HasSuffix(name, "/")]
 }

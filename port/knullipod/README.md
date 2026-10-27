@@ -73,7 +73,17 @@ In **Brick** sinistra/destra muovono la racchetta e A lancia la palla.
 
 ## Note
 
-- La libreria, le impostazioni (volume, shuffle, ripetizione), le copertine e la partita di Solitaire stanno in `knullipod/conf`.
+- La libreria, le impostazioni (volume, shuffle, ripetizione), le copertine e la partita di Solitaire stanno in `knullipod/conf`, a meno che non scegli un'altra cartella da Settings → Database.
+- Settings → Database: sceglie la cartella del database (libreria, copertine, impostazioni, statistiche, salvataggi). Le scelte rapide sono:
+  - la cartella del port (predefinita);
+  - la cartella della musica (`/userdata/music/.knullipod`, nascosta, così la scansione la ignora);
+  - una cartella `knullipod` su ogni scheda o disco montato in `/media`.
+
+  Con "Choose a folder…" scegli una cartella qualsiasi, e lì puoi anche crearne una nuova chiamata `knullipod`.
+  - Se nella cartella scelta non c'è un database, quello attuale viene spostato lì ("Move database here").
+  - Se c'è già (per esempio una scheda usata su un'altra console), puoi usarlo così com'è ("Use database there") o sostituirlo con quello attuale ("Replace with current").
+
+  La scelta resta salvata in `knullipod/conf/datadir.txt`. Se all'avvio la cartella non c'è (scheda tolta), KnulliPod usa la cartella del port e lo segnala nella stessa schermata.
 - Il registro dell'app è in `knullipod/miyoopod.log`.
 - Settings → Theme: chiaro (come ipod.js), scuro, oppure automatico (scuro dalle 20:00 alle 7:00).
 - In Settings, Shuffle e Repeat aprono un sottomenu con le opzioni, e quella attiva ha la spunta.

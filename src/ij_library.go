@@ -242,8 +242,8 @@ func (ui *IpodUI) gamesView() *View {
 	return v
 }
 
-// settingsView: About, Shuffle, Repeat, Theme and Library, with the
-// current values.
+// settingsView: About, Shuffle, Repeat, Theme, Library and Database, with
+// the current values.
 func (ui *IpodUI) settingsView() *View {
 	v := &View{ID: "settings", Title: "Settings", Kind: KindSplit}
 	v.Build = func() []Item {
@@ -253,6 +253,7 @@ func (ui *IpodUI) settingsView() *View {
 			{Label: "Repeat", Preview: PrevSettings, Value: repeatLabel(ui.repeatMode()), OnSelect: func() { ui.showView(ui.repeatView(), "") }},
 			{Label: "Theme", Preview: PrevSettings, Value: themeLabel(themeMode), OnSelect: func() { ui.showView(ui.themeView(), "") }},
 			{Label: "Library", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.libraryInfoView(), "") }},
+			{Label: "Database", Preview: PrevSettings, Value: dbLabel(dataDir()), OnSelect: func() { ui.showView(ui.databaseView(), "") }},
 		}
 	}
 	v.Items = v.Build()

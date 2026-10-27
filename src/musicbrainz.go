@@ -373,6 +373,7 @@ func (app *MiyooPod) loadAlbumArtwork(album *Album) error {
 	if album == nil || album.ArtPath == "" {
 		return fmt.Errorf("no artwork path set")
 	}
+	album.ArtPath = artPathFor(album.ArtPath)
 
 	// Check if file exists
 	if _, err := os.Stat(album.ArtPath); os.IsNotExist(err) {

@@ -769,6 +769,11 @@ func (app *MiyooPod) loadLibraryJSON() error {
 
 	app.Library = lib
 
+	// artwork paths are absolute: follow the database if it was moved
+	for _, al := range lib.Albums {
+		al.ArtPath = artPathFor(al.ArtPath)
+	}
+
 	// Rebuild lookup maps
 	for _, track := range lib.Tracks {
 		lib.TracksByPath[track.Path] = track
