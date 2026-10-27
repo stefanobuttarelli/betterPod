@@ -1,7 +1,7 @@
 {
-  "version": "0.25.1",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.25.1-knulli.zip",
-  "sha256": "135105040a8797e0d32fcef13ed8859694438c63ddd9ee83236419d220db9176",
-  "size": 14231427,
-  "notes": "Button labels centred on Software Update"
+  "version": "0.25.2",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.25.2-knulli.zip",
+  "sha256": "8caec9eabb1db8bc7a482ff8fe89a7ab0e64e631b8d89d88f7490fc0232af42e",
+  "size": 14232043,
+  "notes": "Music preview covers in random order\nUpdate check always up to date"
 }

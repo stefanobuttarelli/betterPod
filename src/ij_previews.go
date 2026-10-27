@@ -6,6 +6,7 @@ package main
 
 import (
 	"image"
+	"math/rand"
 	"time"
 )
 
@@ -33,6 +34,8 @@ func (kb *KenBurns) reset(ui *IpodUI, now time.Time) {
 		if len(kb.stack) == 0 {
 			kb.stack = append(kb.stack, ui.app.Library.Albums...)
 		}
+		// a new random order every time the preview starts
+		rand.Shuffle(len(kb.stack), func(i, j int) { kb.stack[i], kb.stack[j] = kb.stack[j], kb.stack[i] })
 	}
 	kb.animStart = map[*Album]time.Time{}
 	kb.mounted = now

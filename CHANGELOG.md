@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.25.2 (2026-10-27)
+
+### Changed
+- **Music preview:** the covers beside the menu now cycle in a random order, reshuffled each time the preview starts, instead of alphabetically.
+
+### Fixed
+- **Software Update:** the check now always gets the latest version information, instead of a copy GitHub may keep for up to 5 minutes after a release.
+
 ## v0.25.1 (2026-10-27)
 
 ### Fixed

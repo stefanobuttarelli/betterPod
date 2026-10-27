@@ -48,7 +48,7 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.25.1"
+	KNULLIPOD_VERSION  = "0.25.2"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 )
@@ -420,6 +420,13 @@ func fetchManifest() (*updateManifest, error) {
 	if u := os.Getenv("MIYOOPOD_UPDATE_URL"); u != "" {
 		url = u
 	}
+	// a unique query makes GitHub's CDN (5-minute cache) return the
+	// current manifest
+	sep := "?"
+	if strings.Contains(url, "?") {
+		sep = "&"
+	}
+	url += fmt.Sprintf("%st=%d", sep, time.Now().UnixNano())
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := updateClient(15 * time.Second).Do(req)
