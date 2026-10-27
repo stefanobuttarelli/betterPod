@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/jpeg"
@@ -60,18 +61,33 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	filepath.Walk(MUSIC_ROOT, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			logMsg(fmt.Sprintf("[SCAN] cannot read %s: %v", path, err))
+			scanNote(func(s *ScanStats) { s.scanFolder(path, "Couldn't open: "+shortErr(err)) })
 			return nil
 		}
 		if !app.Running {
 			return nil
 		}
 		if info.IsDir() {
-			if isSystemPath(info.Name()) || (path != MUSIC_ROOT && strings.HasPrefix(info.Name(), ".")) {
+			if isSystemPath(info.Name()) {
+				scanNote(func(s *ScanStats) { s.scanFolder(path, "Skipped: system folder") })
+				return filepath.SkipDir
+			}
+			if path != MUSIC_ROOT && strings.HasPrefix(info.Name(), ".") {
+				scanNote(func(s *ScanStats) { s.scanFolder(path, "Skipped: hidden folder (name starts with a dot)") })
 				return filepath.SkipDir
 			}
 			app.LibScanFolder = path
-			scanNote(func(s *ScanStats) { s.Folders++ })
+			scanNote(func(s *ScanStats) { s.Folders++; s.scanFolder(path, "") })
 			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			// a link: to a folder it is not followed (noted for Scanned
+			// Folders); to a file it is read like the file
+			if st, err := os.Stat(path); err == nil && st.IsDir() {
+				target, _ := filepath.EvalSymlinks(path)
+				scanNote(func(s *ScanStats) { s.scanFolder(path, "Link to a folder, not followed ("+target+")") })
+				return nil
+			}
 		}
 
 		if isSystemPath(filepath.Base(path)) || strings.HasPrefix(filepath.Base(path), "._") {
@@ -80,6 +96,21 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 
 		ext := strings.ToLower(filepath.Ext(path))
 		scanNote(func(s *ScanStats) { s.Files++ })
+		dir := filepath.Dir(path)
+		switch ext {
+		case ".mp3", ".flac", ".ogg", ".wav", ".m4a", ".mp4", ".aif", ".aiff":
+			scanNote(func(s *ScanStats) {
+				if f := s.scanFolder(dir, ""); f != nil {
+					f.Audio++
+				}
+			})
+		default:
+			scanNote(func(s *ScanStats) {
+				if f := s.scanFolder(dir, ""); f != nil {
+					f.Other++
+				}
+			})
+		}
 		if name, ok := unsupportedAudio[ext]; ok {
 			scanNote(func(s *ScanStats) { s.Skipped[name]++ })
 			logMsg("[SCAN] unsupported format: " + path)
@@ -951,6 +982,15 @@ func readSampleRate(path string) int {
 		}
 	}
 	return 0
+}
+
+// shortErr: the reason of a file error, without the path.
+func shortErr(err error) string {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // isSystemPath returns true for filesystem metadata paths that should be skipped

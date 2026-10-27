@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.31.2 (2026-10-28)
+
+### Added
+- **Scanned Folders** (Settings → Library): every folder of the last scan.
+  - **Each row:** the folder's path and how many songs it holds directly, or else "N other files", "Only subfolders" or "Empty".
+  - **Skipped folders, with the reason:** hidden (name starting with a dot), system folders, links to folders (not followed, with where they point) and folders that couldn't be opened.
+  - **Purpose:** for finding out why some music doesn't show up. Run **Rescan now** first, so the list is filled.
+
 ## v0.31.1 (2026-10-28)
 
 ### Fixed

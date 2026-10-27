@@ -90,6 +90,43 @@ type ScanStats struct {
 	Artists    int            `json:"artists"`
 	Playlists  int            `json:"playlists"`
 	TagErrors  int            `json:"tagErrors"`
+	// every folder the scan walked into or skipped, with what it holds
+	FolderList []ScanFolder `json:"folderList,omitempty"`
+
+	folderIdx map[string]int // path → index in FolderList (during the scan)
+}
+
+// ScanFolder is one folder of the last scan (Settings → Library → Scanned
+// Folders): its path under the music folder, the songs and other files
+// directly in it, or why it was skipped.
+type ScanFolder struct {
+	Path  string `json:"path"`
+	Audio int    `json:"audio,omitempty"`
+	Other int    `json:"other,omitempty"`
+	Note  string `json:"note,omitempty"`
+}
+
+// maxScanFolders caps the list (a huge library still gets its counts).
+const maxScanFolders = 5000
+
+// scanFolder returns the record of dir, adding it (with note) if new.
+func (s *ScanStats) scanFolder(dir, note string) *ScanFolder {
+	if s.folderIdx == nil {
+		s.folderIdx = map[string]int{}
+	}
+	if i, ok := s.folderIdx[dir]; ok {
+		f := &s.FolderList[i]
+		if note != "" {
+			f.Note = note
+		}
+		return f
+	}
+	if len(s.FolderList) >= maxScanFolders {
+		return nil
+	}
+	s.FolderList = append(s.FolderList, ScanFolder{Path: dir, Note: note})
+	s.folderIdx[dir] = len(s.FolderList) - 1
+	return &s.FolderList[len(s.FolderList)-1]
 }
 
 var (
@@ -251,6 +288,17 @@ func (ui *IpodUI) libraryInfoView() *View {
 				sub = fmt.Sprintf("%d %s without a cover", n, pluralize(n, "album", "albums"))
 			}
 			items = append(items, Item{Label: "Find Missing Covers", Sublabel: sub, OnSelect: func() { ui.showView(ui.coverView(), "") }})
+			if st := scanStats; st != nil && len(st.FolderList) > 0 {
+				withMusic := 0
+				for _, f := range st.FolderList {
+					if f.Audio > 0 {
+						withMusic++
+					}
+				}
+				items = append(items, Item{Label: "Scanned Folders",
+					Sublabel: fmt.Sprintf("%d %s · %d with music", len(st.FolderList), pluralize(len(st.FolderList), "folder", "folders"), withMusic),
+					OnSelect: func() { ui.showView(ui.scannedFoldersView(), "") }})
+			}
 		}
 		items = append(items, Item{Label: "Music folder", Sublabel: MUSIC_ROOT, NoArrow: true})
 		lib := ui.library()
@@ -332,4 +380,52 @@ func (ui *IpodUI) refreshView(v *View) {
 	v.Index = idx
 	v.dirty = true
 	ui.dirty = true
+}
+
+// scannedFoldersView lists the folders of the last scan: songs and other
+// files in each, and the folders skipped (hidden, system, links, unreadable)
+// with the reason. For finding out why music doesn't show up.
+func (ui *IpodUI) scannedFoldersView() *View {
+	v := &View{ID: "scannedFolders", Title: "Scanned Folders", Kind: KindFull, Empty: "No scan yet"}
+	scanStatsMu.Lock()
+	st := scanStats
+	var list []ScanFolder
+	root := MUSIC_ROOT
+	if st != nil {
+		list = append(list, st.FolderList...)
+		if st.Root != "" {
+			root = st.Root
+		}
+	}
+	scanStatsMu.Unlock()
+	sort.SliceStable(list, func(i, j int) bool { return strings.ToLower(list[i].Path) < strings.ToLower(list[j].Path) })
+	hasSub := map[string]bool{}
+	for _, f := range list {
+		hasSub[filepath.Dir(f.Path)] = true
+	}
+	for _, f := range list {
+		label := strings.TrimPrefix(strings.TrimPrefix(f.Path, strings.TrimRight(root, "/")), "/")
+		if label == "" {
+			label = "(music folder)"
+		}
+		it := Item{Label: label, NoArrow: true}
+		if f.Audio > 0 {
+			it.Value = fmt.Sprintf("%d %s", f.Audio, pluralize(f.Audio, "song", "songs"))
+		}
+		switch {
+		case f.Note != "":
+			it.Sublabel = f.Note
+		case f.Other > 0:
+			it.Sublabel = fmt.Sprintf("%d other %s", f.Other, pluralize(f.Other, "file", "files"))
+		case f.Audio == 0 && hasSub[f.Path]:
+			it.Sublabel = "Only subfolders"
+		case f.Audio == 0:
+			it.Sublabel = "Empty"
+		}
+		v.Items = append(v.Items, it)
+	}
+	if st != nil && len(st.FolderList) >= maxScanFolders {
+		v.Items = append(v.Items, Item{Label: fmt.Sprintf("(only the first %d folders are listed)", maxScanFolders), NoArrow: true})
+	}
+	return v
 }
