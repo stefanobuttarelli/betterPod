@@ -10,8 +10,8 @@ import (
 	"github.com/fogleman/gg"
 )
 
-const UPDATE_INFO_PATH = "/mnt/SDCARD/Media/Music/.miyoopod_update.json"
-const UPDATE_STATUS_PATH = "/mnt/SDCARD/Media/Music/.miyoopod_update_status"
+var UPDATE_INFO_PATH = dataPath(".miyoopod_update.json")
+var UPDATE_STATUS_PATH = dataPath(".miyoopod_update_status")
 
 type UpdateRequest struct {
 	Version  string `json:"version"`

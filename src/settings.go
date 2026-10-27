@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const SETTINGS_PATH = "/mnt/SDCARD/Media/Music/.miyoopod_settings.json"
+var SETTINGS_PATH = dataPath(".miyoopod_settings.json")
 
 type Settings struct {
 	InstallationID        string `json:"installation_id,omitempty"`
@@ -95,15 +95,15 @@ func (app *MiyooPod) loadSettings() error {
 		}
 	}
 
-	// Restore volume (default 50 if not set)
-	if settings.Volume != nil {
+	// Restore volume (default 50 if not set; on Knulli the system owns it)
+	if settings.Volume != nil && !isKnulli {
 		app.SystemVolume = *settings.Volume
 		setMiAOVolume(app.SystemVolume)
 		logMsg(fmt.Sprintf("INFO: Restored volume: %d%%", app.SystemVolume))
 	}
 
 	// Restore brightness (default to current if not set)
-	if settings.Brightness != nil {
+	if settings.Brightness != nil && !isKnulli {
 		app.SystemBrightness = *settings.Brightness
 		setBrightness(app.SystemBrightness)
 		logMsg(fmt.Sprintf("INFO: Restored brightness: %d%%", app.SystemBrightness))
