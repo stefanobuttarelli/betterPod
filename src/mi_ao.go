@@ -31,6 +31,10 @@ func miAOIoctl(fd int, cmd uintptr, channel int32, value int32) (int32, error) {
 
 // setMiAOVolume sets system volume using MI_AO ioctl (matches Onion/keymon curve)
 func setMiAOVolume(percent int) {
+	if isKnulli {
+		// no /dev/mi_ao: the volume is the system's (see knulli.go)
+		return
+	}
 	if percent < 0 {
 		percent = 0
 	}

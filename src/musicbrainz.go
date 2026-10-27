@@ -349,6 +349,9 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 
 	// Generate filename using hash of artist+album
 	hash := generateAlbumCacheKey(album.Artist, album.Name)
+	if album.ArtExt == "" {
+		album.ArtExt = sniffImageExt(album.ArtData)
+	}
 	filename := fmt.Sprintf("%s.%s", hash, album.ArtExt)
 	filepath := ARTWORK_DIR + filename
 
@@ -391,4 +394,14 @@ func (app *MiyooPod) loadAlbumArtwork(album *Album) error {
 
 	album.ArtData = artData
 	return nil
+}
+
+func sniffImageExt(b []byte) string {
+	// the image type from its first bytes (tags don't always say it)
+	if len(b) > 12 && string(b[0:4]) == "RIFF" && string(b[8:12]) == "WEBP" {
+		return "webp"
+	} else if len(b) > 4 && b[0] == 0x89 && string(b[1:4]) == "PNG" {
+		return "png"
+	}
+	return "jpg"
 }
