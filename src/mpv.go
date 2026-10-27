@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,8 +22,15 @@ func (app *MiyooPod) startPlaybackPoller() {
 				app.Playing.Position = state.Position
 			}
 			if state.Duration > 0 {
-				if app.Playing.Track != nil && app.Playing.Track.Duration == 0 {
+				// The decoder's duration is exact; the scan only estimated it
+				// (or left it at 0 on first play).
+				if app.Playing.Track != nil && math.Abs(app.Playing.Track.Duration-state.Duration) > 0.5 {
 					app.Playing.Track.Duration = state.Duration
+				}
+				if app.Playing.Duration > 0 && math.Abs(app.Playing.Duration-state.Duration) > 0.5 {
+					app.Playing.Duration = state.Duration
+					app.NPCacheDirty = true
+					app.requestRedraw()
 				}
 				// Also update the live playing duration used by the progress bar.
 				// On first play track.Duration is unknown (0) until the backend
@@ -38,16 +47,19 @@ func (app *MiyooPod) startPlaybackPoller() {
 				}
 			}
 
-			if state.IsPaused && app.Playing.State != StatePaused {
-				app.Playing.State = StatePaused
-				app.NPCacheDirty = true
-				app.requestRedraw()
-			} else if state.IsPlaying && app.Playing.State != StatePlaying {
-				app.Playing.State = StatePlaying
-				app.NPCacheDirty = true
-				app.requestRedraw()
+			if atomic.LoadInt32(&trackLoading) == 0 {
+				// While a track is loading the mixer briefly reports
+				// stopped/paused: don't flip the UI state then.
+				if state.IsPaused && app.Playing.State != StatePaused {
+					app.Playing.State = StatePaused
+					app.NPCacheDirty = true
+					app.requestRedraw()
+				} else if state.IsPlaying && app.Playing.State != StatePlaying {
+					app.Playing.State = StatePlaying
+					app.NPCacheDirty = true
+					app.requestRedraw()
+				}
 			}
-
 			if state.Finished {
 				// Defer to main loop — avoids racing on Queue/Playing state
 				app.TrackEndPending = true
@@ -85,8 +97,16 @@ func (app *MiyooPod) startPlaybackPoller() {
 	}
 }
 
+// trackLoading is 1 while mpvLoadFile runs (read by the playback poller).
+var trackLoading int32
+
 func (app *MiyooPod) mpvLoadFile(path string) error {
-	const maxRAMSize = 20 * 1024 * 1024 // 20MB
+	atomic.StoreInt32(&trackLoading, 1)
+	defer atomic.StoreInt32(&trackLoading, 0)
+	const maxRAMSize = 48 * 1024 * 1024 // 48MB (hi-res FLAC fits; the H700 has 1GB)
+
+	// Reopen the audio device at the track's sample rate (no resampling).
+	audioPrepareFor(path)
 
 	// Ensure hardware volume is set before playback starts.
 	// loadSettings may have set it too early (during Init) when MI_AO isn't ready yet.
@@ -122,7 +142,29 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 }
 
 func (app *MiyooPod) mpvTogglePause() {
+	// After a sample-rate switch (or a restored session) the mixer may have
+	// no track loaded: "play" then reloads the current track and seeks back
+	// to the saved position.
+	if !audioIsPlaying() && !audioIsPaused() && app.Playing != nil && app.Playing.Track != nil {
+		pos := app.Playing.Position
+		logMsg(fmt.Sprintf("Play: track not loaded in the mixer, reloading %s at %.1fs", app.Playing.Track.Path, pos))
+		if err := app.mpvLoadFile(app.Playing.Track.Path); err != nil {
+			logMsg(fmt.Sprintf("Play: reload failed: %v", err))
+			return
+		}
+		if pos > 1 {
+			audioSeek(pos)
+		}
+		app.Playing.State = StatePlaying
+		return
+	}
 	audioTogglePause()
+	// keep the UI state in sync with the mixer
+	if audioIsPaused() {
+		app.Playing.State = StatePaused
+	} else if audioIsPlaying() {
+		app.Playing.State = StatePlaying
+	}
 }
 
 func (app *MiyooPod) mpvStop() {
