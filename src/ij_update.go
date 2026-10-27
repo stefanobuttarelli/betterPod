@@ -52,7 +52,7 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.25.4"
+	KNULLIPOD_VERSION  = "0.26"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 	// GitHub's API serves the current files at once; raw.githubusercontent
@@ -212,6 +212,9 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 		status = "Checking for updates…"
 	case updUpToDate:
 		sub = "KnulliPod is up to date"
+		if !upd.checked.IsZero() {
+			sub += " · checked " + checkedWhen(upd.checked, now)
+		}
 	case updAvailable:
 		status = fmt.Sprintf("Version %s is available · %.1f MB", m.Version, float64(m.Size)/1e6)
 	case updDownloading:
@@ -281,6 +284,14 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	}
 }
 
+// checkedWhen: "at 14:32" today, else "on 27 Oct".
+func checkedWhen(t, now time.Time) string {
+	if t.YearDay() == now.YearDay() && t.Year() == now.Year() {
+		return "at " + t.Format("15:04")
+	}
+	return "on " + t.Format("2 Jan")
+}
+
 // noteLines splits the release notes into at most n lines for the list.
 func noteLines(s string, n int) []string {
 	var out []string
@@ -300,6 +311,102 @@ func (ui *IpodUI) setUpdate(f func()) {
 	})
 }
 
+// ---- automatic check, once a day ----
+//
+// A quiet check runs 30 s after start-up and then whenever a day has passed
+// since the last successful one (retried every hour while there is no
+// connection). It only changes what the screens show: a new version adds
+// "Update Available" to the main menu and fills Software Update; nothing is
+// downloaded without asking. The time of the last check (and a version
+// found then) is kept in the database folder, so a version found yesterday
+// is looked for again right after start-up.
+
+type updCheckFile struct {
+	Checked   int64  `json:"checked"`
+	Available string `json:"available,omitempty"`
+}
+
+func updCheckPath() string { return dataPath(".update_check.json") }
+
+func readUpdCheck() updCheckFile {
+	var f updCheckFile
+	if b, err := os.ReadFile(updCheckPath()); err == nil {
+		json.Unmarshal(b, &f)
+	}
+	return f
+}
+
+func writeUpdCheck(f updCheckFile) {
+	if b, err := json.Marshal(f); err == nil {
+		writeFileAtomic(updCheckPath(), b)
+	}
+}
+
+var autoUpd struct {
+	next    time.Time // when the next check is due (zero: not planned yet)
+	running bool
+}
+
+// autoCheckTick is called by the UI loop; it is cheap until a check is due.
+func (ui *IpodUI) autoCheckTick(now time.Time) {
+	if autoUpd.running || os.Getenv("MIYOOPOD_AUTO_UPDATE_CHECK") == "0" {
+		return
+	}
+	if autoUpd.next.IsZero() {
+		// first plan: 30 s after start-up if a day has passed since the
+		// last check or a version was found then, else a day after it
+		f := readUpdCheck()
+		last := time.Unix(f.Checked, 0)
+		autoUpd.next = now.Add(30 * time.Second)
+		if f.Checked > 0 && now.Sub(last) < 24*time.Hour && !(f.Available != "" && isNewerVersion(KNULLIPOD_VERSION, f.Available)) {
+			autoUpd.next = last.Add(24 * time.Hour)
+		}
+		if f.Checked > 0 {
+			upd.checked = last
+		}
+	}
+	if now.Before(autoUpd.next) {
+		return
+	}
+	switch upd.state {
+	case updChecking, updDownloading, updInstalling, updDone:
+		autoUpd.next = now.Add(time.Hour)
+		return
+	}
+	autoUpd.running = true
+	go func() {
+		m, err := fetchManifest()
+		ui.setUpdate(func() {
+			autoUpd.running = false
+			if err != nil {
+				// no Wi-Fi yet: try again in an hour
+				autoUpd.next = time.Now().Add(time.Hour)
+				logMsg("Automatic update check failed: " + err.Error())
+				return
+			}
+			autoUpd.next = time.Now().Add(24 * time.Hour)
+			rec := updCheckFile{Checked: time.Now().Unix()}
+			upd.checked = time.Now()
+			if isNewerVersion(KNULLIPOD_VERSION, m.Version) {
+				rec.Available = m.Version
+				if upd.state != updDownloading && upd.state != updInstalling {
+					upd.state, upd.manifest = updAvailable, m
+				}
+				logMsg("Automatic update check: v" + m.Version + " available")
+			} else if upd.state == updIdle || upd.state == updFailed || upd.state == updAvailable {
+				upd.state = updUpToDate
+			}
+			writeUpdCheck(rec)
+		})
+	}()
+}
+
+// updateAvailable: a newer version was found (the main menu shows it).
+func updateAvailable() bool {
+	return upd.manifest != nil && isNewerVersion(KNULLIPOD_VERSION, upd.manifest.Version) &&
+		upd.state != updUpToDate && upd.state != updIdle
+}
+
 func (ui *IpodUI) checkForUpdate() {
 	if upd.state == updChecking || upd.state == updDownloading || upd.state == updInstalling {
 		return
@@ -317,8 +424,13 @@ func (ui *IpodUI) checkForUpdate() {
 			case isNewerVersion(KNULLIPOD_VERSION, m.Version):
 				upd.state, upd.manifest = updAvailable, m
 				logMsg("Update available: v" + m.Version)
+				writeUpdCheck(updCheckFile{Checked: time.Now().Unix(), Available: m.Version})
 			default:
 				upd.state = updUpToDate
+				writeUpdCheck(updCheckFile{Checked: time.Now().Unix()})
+			}
+			if err == nil {
+				autoUpd.next = time.Now().Add(24 * time.Hour)
 			}
 		})
 	}()

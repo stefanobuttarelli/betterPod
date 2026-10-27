@@ -20,6 +20,10 @@ func (ui *IpodUI) homeView() *View {
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying})
 		}
+		// a new version found (by hand or by the daily check)
+		if updateAvailable() {
+			items = append(items, Item{Label: "Update Available", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.updateView(), "") }})
+		}
 		return items
 	}
 	v.Items = v.Build()

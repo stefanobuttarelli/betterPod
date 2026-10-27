@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.26 (2026-10-27)
+
+### Added
+- **Automatic update check, once a day.** A quiet check runs 30 s after start-up when a day has passed since the last one; with no connection it tries again an hour later. Nothing is downloaded without asking. When a new version is found:
+  - the main menu shows **Update Available** under Now Playing, a shortcut to Software Update;
+  - Software Update shows what's new and the Download and Install button.
+- Software Update shows when the last check ran ("KnulliPod is up to date · checked at 14:32").
+- `MIYOOPOD_AUTO_UPDATE_CHECK=0` turns the automatic check off.
+
 ## v0.25.4 (2026-10-27)
 
 ### Fixed

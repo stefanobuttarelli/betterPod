@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25.4-knulli.zip"><b>Download v0.25.4</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.26-knulli.zip"><b>Download v0.26</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -48,7 +48,7 @@
   - a Bluetooth icon shows in the status bar.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
-- **Updates over Wi-Fi.** Settings → Software Update checks this repository and installs the new version in place.
+- **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
 <p align="center">
@@ -73,7 +73,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.25.4-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25.4-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.26-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.26-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -146,6 +146,8 @@ Settings → Software Update opens a full-screen page with a download bar. **Che
 2. replaces the app's files one by one, keeping the previous binary as `knullipod/MiyooPod.prev`;
 3. restarts KnulliPod.
 
+KnulliPod also checks by itself once a day (30 s after start-up, when a day has passed since the last check). When a new version is out, the main menu shows **Update Available**, a shortcut to this page. Nothing is downloaded without asking.
+
 The database (`knullipod/conf`, or the folder chosen in Settings → Database) is never touched. You can also update by hand at any time: copy the new zip over the old installation.
 
 ## Options
@@ -163,6 +165,7 @@ Advanced switches are environment variables. Uncomment them in `KnulliPod.sh`:
 | `MIYOOPOD_MEDIA_KEYS=0` | Ignore headphone buttons |
 | `MIYOOPOD_BT_ICON=0` | No Bluetooth icon and no pause on disconnect |
 | `MIYOOPOD_VOLUME_KEYS=0` | Don't read the volume keys (the overlay then follows the system volume only) |
+| `MIYOOPOD_AUTO_UPDATE_CHECK=0` | No automatic daily check for new versions |
 | `MIYOOPOD_PERF=1` | Log frame timings every second (for reporting stutter) |
 | `MIYOOPOD_VSYNC=0` | Disable vertical sync |
 | `MIYOOPOD_CLASSIC_UI=1` | Use the original MiyooPod interface |

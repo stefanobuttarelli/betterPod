@@ -56,6 +56,8 @@ export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 # export MIYOOPOD_BT_ICON=0
 # Don't read the volume keys for the volume overlay:
 # export MIYOOPOD_VOLUME_KEYS=0
+# No automatic daily check for new versions:
+# export MIYOOPOD_AUTO_UPDATE_CHECK=0
 # Log drawing times (to report stutter):
 # export MIYOOPOD_PERF=1
 # Disable vertical sync:

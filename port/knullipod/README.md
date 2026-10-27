@@ -89,6 +89,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 - `MIYOOPOD_MEDIA_KEYS=0`: ignore headphone buttons.
 - `MIYOOPOD_BT_ICON=0`: no Bluetooth icon and no pause on disconnect.
 - `MIYOOPOD_VOLUME_KEYS=0`: don't read the volume keys (the volume overlay then follows the system volume only).
+- `MIYOOPOD_AUTO_UPDATE_CHECK=0`: no automatic daily check for new versions.
 - `MIYOOPOD_PERF=1`: log the drawing times every second (useful if something stutters).
 - `MIYOOPOD_VSYNC=0`: disable vertical sync.
 - `MIYOOPOD_CLASSIC_UI=1`: go back to the original MiyooPod interface.
@@ -107,7 +108,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
   - If there already is one (for example a card used on another console), you can use it as it is ("Use database there") or replace it with the current one ("Replace with current").
 
   The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up (card removed), KnulliPod uses the port folder and says so on the same screen.
-- **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts KnulliPod. Your library, settings and saves are not touched, and the previous binary is kept as `knullipod/MiyooPod.prev`.
+- **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts KnulliPod. Your library, settings and saves are not touched, and the previous binary is kept as `knullipod/MiyooPod.prev`. KnulliPod also checks once a day by itself: when a new version is out, the main menu shows "Update Available".
 - **Log:** the app log is `knullipod/miyoopod.log`.
 - **Settings → Theme:** light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00).
 - **Shuffle and Repeat:** in Settings they open a submenu, with a tick on the active option.

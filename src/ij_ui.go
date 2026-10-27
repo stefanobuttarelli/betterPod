@@ -1139,6 +1139,7 @@ func (ui *IpodUI) Run() {
 				ui.showVolumeOSD()
 			}
 		}
+		ui.autoCheckTick(now)
 		ui.tickOverlays(now)
 		ui.checkLongPress(now)
 		ui.checkRepeat(now)

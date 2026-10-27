@@ -1,8 +1,8 @@
 {
-  "version": "0.25.4",
-  "path": "release/knullipod-v0.25.4-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.25.4-knulli.zip",
-  "sha256": "bab42d10619d5d9dea4b4528d8ecc59b03eac89c4a9f0e9cb9be38157011ac6d",
-  "size": 14234821,
-  "notes": "Volume overlay outside Now Playing is back"
+  "version": "0.26",
+  "path": "release/knullipod-v0.26-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.26-knulli.zip",
+  "sha256": "e62cb93ad0d0c594c69096d03828187619f57008a32f4596539d76d846191d45",
+  "size": 14238167,
+  "notes": "Checks for updates once a day\nUpdate Available in the main menu"
 }
