@@ -466,11 +466,17 @@ func (ui *IpodUI) drawNPInfo(dst *image.RGBA, np *NowPlayingView, t *Track, npMe
 	}
 	y := (npMetaH - h) / 2
 	b := dst.Bounds()
+	// title, artist and album scroll on one cycle: they start together and
+	// the shorter ones wait for the longest before starting again
+	cyc := 0.0
+	for _, l := range lines {
+		cyc = math.Max(cyc, marqueeCycle(l.f, l.s, maxW))
+	}
 	for _, l := range lines {
 		c := Col{l.c.R, l.c.G, l.c.B, l.c.A * alpha}
 		x := x0 + dx
 		if live && textWidth(l.f, l.s)/DPR > maxW {
-			drawMarquee(dst, l.f, l.s, x, y+l.asc, maxW, c, np.since, now)
+			drawMarqueeSync(dst, l.f, l.s, x, y+l.asc, maxW, c, np.since, now, cyc)
 			np.marqOn = true
 		} else {
 			s := ellipsize(l.f, l.s, maxW*DPR)

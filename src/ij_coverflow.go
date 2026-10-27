@@ -775,10 +775,35 @@ func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
 
 // drawMarquee draws s clipped to maxW, scrolling it (pause 1.5 s, then
 // 32 px/s) when it does not fit.
-// The text scrolls left until its end is visible, waits, then jumps back;
-// since is when the text appeared (the cycle restarts from there).
+// The text scrolls left until its start comes round again (a second copy
+// follows 40 px behind), waits, and starts over; since is when the text
+// appeared (the cycle restarts from there).
 // The clip is done per glyph: nothing is drawn outside x..x+maxW.
 func drawMarquee(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float64, c Col, since, now time.Time) {
+	drawMarqueeSync(dst, f, s, x, baseline, maxW, c, since, now, 0)
+}
+
+const (
+	marqueePause = 1.5  // s at the start of each cycle
+	marqueeSpeed = 32.0 // CSS px/s
+	marqueeGap   = 40.0 // CSS px between the two copies
+)
+
+// marqueeCycle is the length of one scroll of s in maxW (pause + travel),
+// 0 when it fits.
+func marqueeCycle(f font.Face, s string, maxW float64) float64 {
+	tw := textWidth(f, s) / DPR
+	if tw <= maxW {
+		return 0
+	}
+	return (tw+marqueeGap)/marqueeSpeed + marqueePause
+}
+
+// drawMarqueeSync is drawMarquee on a shared cycle: lines that scroll
+// together (title, artist, album) all start at once and, once a shorter one
+// has come round, it waits at its start until the longest has finished, so
+// they never drift apart. cycle 0 uses the line's own.
+func drawMarqueeSync(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float64, c Col, since, now time.Time, cycle float64) {
 	tw := textWidth(f, s) / DPR
 	b := dst.Bounds()
 	r := image.Rect(px(x), b.Min.Y, px(x+maxW), b.Max.Y).Intersect(b)
@@ -792,12 +817,17 @@ func drawMarquee(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float
 	}
 	marqueeActive = true
 	// two copies 40 px apart scroll left together
-	loop := tw + 40
-	cycle := loop/32 + 1.5
+	loop := tw + marqueeGap
+	own := loop/marqueeSpeed + marqueePause
+	if cycle < own {
+		cycle = own
+	}
 	t := math.Mod(now.Sub(since).Seconds(), cycle)
 	off := 0.0
-	if t > 1.5 {
-		off = (t - 1.5) * 32
+	if t > marqueePause {
+		// done early: wait with the start showing (the second copy has
+		// taken the first one's place)
+		off = math.Min((t-marqueePause)*marqueeSpeed, loop)
 	}
 	drawText(clip, f, s, (x-off)*DPR, baseline*DPR, c)
 	drawText(clip, f, s, (x-off+loop)*DPR, baseline*DPR, c)
@@ -820,9 +850,11 @@ func (ui *IpodUI) backsideTexture(w, h float64, now time.Time) *image.RGBA {
 		cf.backShown, cf.backSince = cf.backAlbum, now
 	}
 	y := 5.0
-	drawMarquee(img, tf, cf.backAlbum.Name, 9, y+tasc, inner-16, colWhite, cf.backSince, now)
+	// album and artist scroll on one cycle
+	cyc := math.Max(marqueeCycle(tf, cf.backAlbum.Name, inner-16), marqueeCycle(sf, cf.backAlbum.Artist, inner-16))
+	drawMarqueeSync(img, tf, cf.backAlbum.Name, 9, y+tasc, inner-16, colWhite, cf.backSince, now, cyc)
 	y += tlh
-	drawMarquee(img, sf, cf.backAlbum.Artist, 9, y+sasc, inner-16, colWhite, cf.backSince, now)
+	drawMarqueeSync(img, sf, cf.backAlbum.Artist, 9, y+sasc, inner-16, colWhite, cf.backSince, now, cyc)
 	//
 	lt := infoH + 1
 	listH := h - 1 - lt

@@ -17,6 +17,7 @@ package main
 
 import (
 	"image"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -261,6 +262,14 @@ func (ui *IpodUI) drawMiniContent(dst *image.RGBA, t *Track, x, top, w, dx, a fl
 	}
 	y := top + (miniPlayerH-total)/2 + 0.5
 	scroll := live && pz < 0.5
+	// the lines that scroll share one cycle (they start together and wait
+	// for the longest)
+	cyc := 0.0
+	for _, l := range lines {
+		if l.s != "" {
+			cyc = math.Max(cyc, marqueeCycle(face(l.w, l.size), l.s, tw))
+		}
+	}
 	for _, l := range lines {
 		lh, asc := lineBox(l.size)
 		if l.s != "" {
@@ -270,8 +279,8 @@ func (ui *IpodUI) drawMiniContent(dst *image.RGBA, t *Track, x, top, w, dx, a fl
 			if scroll && textWidth(f, l.s)/DPR > tw {
 				// a 1 px dark shadow keeps the white text crisp on the
 				// fabric
-				drawMarquee(dst, f, l.s, tx, y+asc+0.5, tw, sc, mini.since, now)
-				drawMarquee(dst, f, l.s, tx, y+asc, tw, c, mini.since, now)
+				drawMarqueeSync(dst, f, l.s, tx, y+asc+0.5, tw, sc, mini.since, now, cyc)
+				drawMarqueeSync(dst, f, l.s, tx, y+asc, tw, c, mini.since, now, cyc)
 				mini.marqOn = true
 			} else {
 				s := ellipsize(f, l.s, tw*DPR)

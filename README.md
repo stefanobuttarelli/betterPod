@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30-knulli.zip"><b>Download v0.30</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.1-knulli.zip"><b>Download v0.30.1</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -75,7 +75,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.30-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.30.1-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.1-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.

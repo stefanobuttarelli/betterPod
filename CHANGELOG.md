@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.30.1 (2026-10-27)
+
+### Changed
+- **Scrolling lines move together.** When the title, artist and album all scroll (in Now Playing, in the Now Playing block, and on Cover Flow's track list card), they start together. The shorter ones wait at their start until the longest has finished, and then all start again at once, instead of drifting at different rhythms.
+
 ## v0.30 (2026-10-27)
 
 ### Added
