@@ -8,51 +8,30 @@ import (
 	"time"
 )
 
-const PrevGames PreviewKind = 2
-const MEDIA_PREV Key = 1073745934
-const PhMenu SolPhase = 2
-const PrevSettings PreviewKind = 3
-const PrevNone PreviewKind = 0
-const MEDIA_NEXT Key = 1073745933
-const TFoundation TargetType = 2
-const TTableau TargetType = 3
-const PrevMusic PreviewKind = 1
-const Spades = 3
-const MEDIA_STOP Key = 1073745935
-const Diamonds = 1
-const MEDIA_PAUSE Key = 1073745932
-const PhHolding SolPhase = 1
-const HP_UNPLUG Key = 1073745936
-const Hearts = 0
 const MEDIA_PLAYPAUSE Key = 1073745930
 const WHEEL_CW Key = 1073745921
-const PhBrowsing SolPhase = 0
+const Diamonds = 1
+const MEDIA_PLAY Key = 1073745931
+const MEDIA_NEXT Key = 1073745933
+const MEDIA_PREV Key = 1073745934
+const Spades = 3
+const WHEEL_CCW Key = 1073745922
+const PrevGames PreviewKind = 2
+const PrevNone PreviewKind = 0
+const PrevMusic PreviewKind = 1
+const LOCK Key = 1073741925
+const MEDIA_PAUSE Key = 1073745932
+const HP_UNPLUG Key = 1073745936
 const Clubs = 2
 const PrevNowPlaying PreviewKind = 4
-const WHEEL_CCW Key = 1073745922
-const PhLost SolPhase = 4
-const TWaste TargetType = 1
-const LOCK Key = 1073741925
-const TStock TargetType = 0
-const MEDIA_PLAY Key = 1073745931
-const PhWon SolPhase = 3
-const TTableauEmpty TargetType = 4
-func (_ SolState) clone() SolState { panic("stub") }
-func (_ SCard) red() bool { panic("stub") }
-func (_ *solAnims) animating() bool { panic("stub") }
-func (_ *Selection) scroll(dir int) { panic("stub") }
-func (_ *Selection) current() *Target { panic("stub") }
-func (_ *Selection) enterHolding(held []SCard, from Target, valid []Target) bool { panic("stub") }
+const MEDIA_STOP Key = 1073745935
+const Hearts = 0
+const PrevSettings PreviewKind = 3
 func (_ *Solitaire) animateCursor(from Pos, to Pos, d time.Duration) { panic("stub") }
 func (_ *Solitaire) checkLoss() { panic("stub") }
-func (_ *solAnims) clear() { panic("stub") }
-func (_ *Selection) resetToStock(s SolState) { panic("stub") }
-func (_ *solAnims) hidden() []Target { panic("stub") }
-func targetsEqual(a Target, b Target) bool { panic("stub") }
 func (_ *Solitaire) isHidden(hidden []Target, t Target) bool { panic("stub") }
 var backsideBuf *image.RGBA
 var marqueeActive bool
-var solSeed int64
 var rankNames []string
 var solMenuItems []string
 var solWinItems []string
@@ -62,27 +41,8 @@ var suitAssets []string
 var emptyOutline *image.RGBA
 var ipodUI *IpodUI
 var trackLoading int32
-type TargetType int
-type SolPhase int
 type PreviewKind int
-type SCard struct{Suit int "json:\"suit\""; Rank int "json:\"rank\""; FaceUp bool "json:\"faceUp\""}
-type SolState struct{Stock []SCard "json:\"stock\""; Waste []SCard "json:\"waste\""; Foundations [4][]SCard "json:\"foundations\""; Tableau [7][]SCard "json:\"tableau\""; StockPasses int "json:\"stockPasses\""}
-type Target struct{T TargetType; Index int; Column int; CardIndex int}
-type autoMove struct {
-	card SCard
-	from Target
-	fi int
-}
-type stateDiff struct {
-	cards []SCard
-	from Target
-	to Target
-}
-type Selection struct{phase SolPhase; cursor int; targets []Target; held []SCard; heldFrom *Target; prevBrowse int}
-type cardAnim struct{cards []SCard; from Pos; to Pos; start time.Time; dur time.Duration; overlap float64; faceDown bool; hideTarget *Target}
 type Pos struct{X float64; Y float64}
-type flipAnim struct{card SCard; pos Pos; start time.Time; dur time.Duration; hideTarget Target}
-type solAnims struct{queue []cardAnim; flips []flipAnim; onComplete func()}
 type Solitaire struct{ui *IpodUI; w float64; h float64; s float64; l solLayout; state SolState; sel Selection; anims solAnims; undo []SolState; menuIx int; winIx int; lostIx int; wins int; cursorAnim *struct{from Pos; to Pos; start time.Time; dur time.Duration}; sprites map[int]*image.RGBA; bg *image.RGBA; onQuit func()}
 type solLayout struct{cw float64; ch float64; topY float64; tabY float64; colSp float64; colX float64; stockX float64; wasteX float64; fX float64; fSp float64; baseOv float64; downOv float64; maxTabH float64}
 type scaledKey struct {
@@ -94,34 +54,6 @@ type glyphBounds struct {
 	minY float64
 	maxY float64
 }
-//go:noinline
-func solDeal() SolState { panic("stub") }
-//go:noinline
-func drawFromStock(s SolState) SolState { panic("stub") }
-//go:noinline
-func canPickUp(s SolState, t Target) bool { panic("stub") }
-//go:noinline
-func moveCards(s SolState, from Target, to Target) (SolState, bool) { panic("stub") }
-//go:noinline
-func validDropTargets(s SolState, held []SCard, from Target) []Target { panic("stub") }
-//go:noinline
-func hasAvailableMoves(s SolState) bool { panic("stub") }
-//go:noinline
-func isSafeToAutoMove(c SCard, s SolState) bool { panic("stub") }
-//go:noinline
-func findAutoMove(s SolState, skipWaste bool, skipCols []int) *autoMove { panic("stub") }
-//go:noinline
-func findStateDiff(old SolState, cur SolState) *stateDiff { panic("stub") }
-//go:noinline
-func findCardSource(old SolState, cur SolState, c SCard) (Target, bool) { panic("stub") }
-//go:noinline
-func (sel *Selection) build(s SolState) { panic("stub") }
-//go:noinline
-func (sel *Selection) exitHolding(s SolState) { panic("stub") }
-//go:noinline
-func (sel *Selection) rebuildAndClamp(s SolState) { panic("stub") }
-//go:noinline
-func (a *solAnims) tick(now time.Time) { panic("stub") }
 //go:noinline
 func (ui *IpodUI) openSolitaire() { panic("stub") }
 //go:noinline

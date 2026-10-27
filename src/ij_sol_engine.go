@@ -53,8 +53,8 @@ func (c SCard) red() bool { return c.Suit == 0 || c.Suit == 1 }
 // Empty piles become empty, non-nil slices (they are saved as [] rather
 // than null), so that a saved game round-trips exactly through JSON and
 // the comparison with the previous state (findStateDiff) never sees a
-// difference that is only nil against empty.
-//
+// difference that is only nil against empty. The stock-pass counter is
+// copied as is.
 func (s SolState) clone() SolState {
 	n := SolState{StockPasses: s.StockPasses}
 	n.Stock = append([]SCard{}, s.Stock...)
