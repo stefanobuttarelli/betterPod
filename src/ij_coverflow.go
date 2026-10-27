@@ -6,11 +6,11 @@ package main
 import (
 	"image"
 	"math"
-	// "sort"
 	"time"
+
+	"golang.org/x/image/font"
 )
 
-// cfXform is a cover pose: translation, scales, rotation (A, degrees).
 type cfXform struct {
 	X, Y, Z, S1, Z2, A, TY, S2 float64
 }
@@ -180,8 +180,8 @@ func (cf *CoverFlow) sync(now time.Time) {
 		} else {
 			c.opacity.To(1, 350*time.Millisecond, easeCSS, 0)
 		}
-		if cf.selected != nil && cf.albums[i] == cf.selected &&
-			!cf.playing {
+		flipped := cf.selected != nil && cf.albums[i] == cf.selected && !cf.playing
+		if flipped {
 			c.artAlpha.To(0, 500*time.Millisecond, easeCSS, 0)
 		} else {
 			c.artAlpha.To(1, 500*time.Millisecond, easeCSS, 0)
@@ -479,4 +479,288 @@ func drawTex(dst *image.RGBA, m mat4, t texMap, opacity float64) {
 			}
 		}
 	})
+}
+
+func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
+	// covers lean back (tilt 0) while paused
+	cf := ui.cover
+	if p := ui.app.Playing; p != nil {
+		cf.paused = p.State != StatePlaying
+	}
+	tiltT := 1.0
+	if cf.paused {
+		tiltT = 0
+	}
+	if cf.tilt.Target() != tiltT {
+		if cf.playing {
+			cf.tilt.To(tiltT, 700*time.Millisecond, easeInOut, 0)
+		} else {
+			cf.tilt.Set(tiltT)
+		}
+	}
+	cf.sync(now)
+	W, H := px(320), px(220)
+	layer := newCanvasCached(&cf.layer, W, H)
+	fillRect(layer, 0, 0, W, H, th.bg)
+	// album title and artist under the flow, fading out while the cover
+	// is flipped
+	if fo := cf.infoFade.Get(now) * (1 - cf.backAnim.Get(now)); fo > 0.002 && len(cf.albums) > 0 && cf.active < len(cf.albums) {
+		al := cf.albums[cf.active]
+		f := face(W700, 16)
+		lh, asc := lineBox(16)
+		y := 204 - lh*2
+		for _, s := range []string{al.Name, al.Artist} {
+			s = ellipsize(f, s, 576)
+			tw := textWidth(f, s)
+			drawText(layer, f, s, (float64(W)-tw)/2, (y+asc)*DPR, Col{th.text.R, th.text.G, th.text.B, fo})
+			y += lh
+		}
+	}
+	// back to front: covers further from the active one first, then by index
+	type item struct {
+		i, z int
+	}
+	//
+	var order []item
+	for i := range cf.covers {
+		z := 1 - absInt(i-cf.active)
+		order = append(order, item{i, z})
+	}
+	for a := 1; a < len(order); a++ {
+		for b := a; b > 0 && (order[b].z < order[b-1].z || order[b].z == order[b-1].z && order[b].i < order[b-1].i); b-- {
+			order[b], order[b-1] = order[b-1], order[b]
+		}
+	}
+	size := px(128)
+	// at most 3 missing covers are decoded per frame, nearest to the
+	// active one first
+	need := map[int]bool{}
+	for i := cf.active - 15; i <= cf.active+15 && len(need) < 3; i++ {
+		c, ok := cf.covers[i]
+		if !ok || c.opacity.Get(now) <= 0.001 || i < 0 || i >= len(cf.albums) {
+			continue
+		}
+		if ui.artCached(cf.albums[i], size) == nil {
+			need[i] = true
+		}
+	}
+	for _, it := range order {
+		c := cf.covers[it.i]
+		op := c.opacity.Get(now)
+		if op <= 0.001 {
+			continue
+		}
+		x := c.value(now)
+		if cf.playing && it.i == cf.active && cf.selected != nil && cf.albums[it.i] == cf.selected &&
+			cf.npFade.Target() == 1 && !cf.npFade.Running() &&
+			(cf.tilt.Running() || !(c.dur > 0 && now.Sub(c.start) < c.dur)) {
+			x = npCoverPose(cf.tilt.Get(now))
+		}
+		m := coverMatrix(x)
+		art := ui.artCached(cf.albums[it.i], size)
+		if art == nil && need[it.i] {
+			art = ui.art(cf.albums[it.i], size)
+		}
+		if art == nil {
+			art = ui.defaultArtSized(size)
+		}
+		aa := c.artAlpha.Get(now)
+		selected := cf.selected != nil && cf.albums[it.i] == cf.selected && it.i == cf.active
+		sc := float64(art.Bounds().Dx()) / 128
+		tm := texMap{img: art, su: sc, sv: sc, u1: 128, v1: 128}
+		if selected {
+			// the reflection of the selected cover fades with Now
+			// Playing
+			//
+			if np := cf.npFade.Get(now); np > 0.001 {
+				tm.v1 = 166.4
+				tm.reflFrom, tm.reflMax, tm.reflStart = 128, 0.2*np, 0.7
+				drawTex(layer, m, tm, aa*op)
+				goto back
+			}
+		}
+		tm.v1 = 166.4
+		tm.reflFrom, tm.reflMax, tm.reflStart = 128, 0.2, 0.7
+		drawTex(layer, m, tm, aa*op)
+	back:
+		if it.i == cf.active && cf.albums[it.i] == cf.backAlbum {
+			ui.drawBackside(layer, coverMatrix(c.to), m, now)
+		}
+	}
+	// Now Playing (track info and controls) over the flow
+	//
+	//
+	if fo := cf.npFade.Get(now); fo > 0 && cf.np != nil {
+		nb := newCanvasCached(&cf.npBuf, W, H)
+		clearRGBA(nb)
+		cf.np.Render(ui, nil, nb, now)
+		blit(layer, nb, 0, 0, fo)
+	}
+	blitOpaque(dst, layer, 0, px(20))
+}
+
+func absInt(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// drawBackside draws the back of the flipped cover (album info, tracks).
+func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) {
+	cf := ui.cover
+	s := cf.backAnim.Get(now)
+	if s <= 0.001 || cf.back == nil {
+		return
+	}
+	scale := 0.7 + 0.3*s
+	// the card, in the cover's plane coordinates (it is wider than the
+	bu0, bv0 := -64.0, -35.84
+	bw := 256.0
+	// cover and centred on it); its height comes from where its bottom
+	// edge lands on the screen once the flip has finished
+	//
+	bh := backsideHeight(final, bu0, bv0, bw)
+	tex := ui.backsideTexture(bw, bh, now)
+	cxu, cyv := bu0+bw/2, bv0+bh/2
+	// mirrored horizontally (we see it from behind), scaled about its
+	// centre while it flips
+	k := float64(tex.Bounds().Dx()) / bw
+	tm := texMap{
+		img: tex,
+		su:  -k / scale, ou: (cxu/scale + cxu - bu0) * k,
+		sv: k / scale, ov: (-cyv/scale + cyv - bv0) * k,
+		//
+		//
+		//
+		u0: cxu - bw/2*scale, u1: cxu + bw/2*scale,
+		v0: cyv - bh/2*scale, v1: cyv + bh/2*scale}
+	drawTex(layer, m, tm, s)
+}
+
+// backsideInfoH: height of the album / artist block on the back.
+//
+//
+//
+func backsideInfoH() float64 {
+	tlh, _ := lineBox(16)
+	slh, _ := lineBox(14)
+	return tlh + 4 + slh + 4 + 1
+}
+
+// backsideHeight finds by bisection the card height whose bottom edge
+// lands at y = 216 (screen CSS px), at least the info block plus a row.
+//
+//
+func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
+	H := planeH(final)
+	bottom := func(v float64) float64 {
+		m := -1e9
+		for _, u := range [2]float64{bu0, bu0 + bw} {
+			w := H[6]*u + H[7]*v + H[8]
+			if w <= 0 {
+				return 1e9
+			}
+			m = math.Max(m, (H[3]*u+H[4]*v+H[5])/w)
+		}
+		return m
+	}
+	target := 216.0
+	lo, hi := bv0+60, bv0+600
+	for i := 0; i < 40; i++ {
+		mid := (lo + hi) / 2
+		if bottom(mid) > target {
+			hi = mid
+		} else {
+			lo = mid
+		}
+	}
+	h := lo - bv0
+	// never smaller than the album info, the separator and one row
+	//
+	if min := backsideInfoH() + 1 + 25 + 1; h < min {
+		h = min
+	}
+	return h
+}
+
+// drawMarquee draws s clipped to maxW, scrolling it (pause 1.5 s, then
+// 32 px/s) when it does not fit.
+//
+//
+//
+func drawMarquee(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float64, c Col, since, now time.Time) {
+	tw := textWidth(f, s) / DPR
+	r := image.Rect(px(x), 0, px(x+maxW), dst.Bounds().Dy()).Intersect(dst.Bounds())
+	clip, ok := dst.SubImage(r).(*image.RGBA)
+	if !ok {
+		return
+	}
+	if tw <= maxW {
+		drawText(clip, f, s, x*DPR, baseline*DPR, c)
+		return
+	}
+	marqueeActive = true
+	// two copies 40 px apart scroll left together
+	loop := tw + 40
+	cycle := loop/32 + 1.5
+	t := math.Mod(now.Sub(since).Seconds(), cycle)
+	off := 0.0
+	if t > 1.5 {
+		off = (t - 1.5) * 32
+	}
+	drawText(clip, f, s, (x-off)*DPR, baseline*DPR, c)
+	drawText(clip, f, s, (x-off+loop)*DPR, baseline*DPR, c)
+}
+
+func (ui *IpodUI) backsideTexture(w, h float64, now time.Time) *image.RGBA {
+	cf := ui.cover
+	img := newCanvasCached(&backsideBuf, px(w), px(h))
+	fillRect(img, 0, 0, px(w), px(h), th.bg)
+	// album info on a blue gradient, then the track list
+	tf := face(W700, 16)
+	sf := face(W700, 14)
+	tlh, tasc := lineBox(16)
+	_, sasc := lineBox(14)
+	inner := w - 2
+	infoH := backsideInfoH()
+	fillVGradient(img, px(1), px(1), px(inner), px(infoH-1), []GradStop{{0, hex("#6585ad")}, {1, hex("#789ab3")}})
+	fillRect(img, px(1), px(infoH), px(inner), px(1), hex("#6d87a3"))
+	if cf.backShown != cf.backAlbum {
+		cf.backShown, cf.backSince = cf.backAlbum, now
+	}
+	y := 5.0
+	drawMarquee(img, tf, cf.backAlbum.Name, 9, y+tasc, inner-16, colWhite, cf.backSince, now)
+	y += tlh
+	drawMarquee(img, sf, cf.backAlbum.Artist, 9, y+sasc, inner-16, colWhite, cf.backSince, now)
+	//
+	lt := infoH + 1
+	listH := h - 1 - lt
+	if listH > 0 {
+		lst := image.NewRGBA(image.Rect(0, 0, px(inner), px(listH)))
+		ui.renderList(cf.back, lst)
+		blit(img, lst, px(1), px(lt), 1)
+	}
+	// 1px border
+	fillRect(img, 0, 0, px(w), px(1), th.cardBorder)
+	fillRect(img, 0, px(h)-px(1), px(w), px(1), th.cardBorder)
+	fillRect(img, 0, 0, px(1), px(h), th.cardBorder)
+	fillRect(img, px(w)-px(1), 0, px(1), px(h), th.cardBorder)
+	return img
+}
+
+// npCoverPose: the active cover in Cover Flow's Now Playing, at the left
+// next to the track info, turned by 35°×t like the Now Playing screen.
+//
+func npCoverPose(t float64) cfXform {
+	th0 := 35 * math.Pi / 180
+	th := th0 * t
+	p := 160.0 / 9
+	// keep the cover's left edge where it is at the resting angle
+	//
+	return cfXform{
+		X: p + 64*math.Cos(th0) - 64*math.Cos(th),
+		Y: 8,
+		Z: -64*math.Sin(th0) + 64*math.Sin(th),
+		S1: 1, A: 35 * t, S2: 1}
 }
