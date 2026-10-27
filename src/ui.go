@@ -752,6 +752,7 @@ func getBatteryLevel() int {
 		"/sys/class/power_supply/battery/capacity",
 		"/sys/class/power_supply/BAT0/capacity",
 		"/sys/class/power_supply/axp22-battery/capacity",
+		"/sys/class/power_supply/axp2202-battery/capacity", // Anbernic H700 (Knulli)
 		"/proc/battery",
 		"/proc/miyoo/battery",
 		"/sys/class/mstar/battery",
@@ -966,6 +967,9 @@ func (app *MiyooPod) drawPowerExitWarning() {
 
 // getBrightness reads the current PWM duty_cycle (brightness level)
 func getBrightness() int {
+	if isKnulli {
+		return getBacklightPercent()
+	}
 	data, err := os.ReadFile("/sys/class/pwm/pwmchip0/pwm0/duty_cycle")
 	if err != nil {
 		return -1
@@ -985,6 +989,10 @@ func setBrightness(level int) {
 	}
 	if level > 100 {
 		level = 100
+	}
+	if isKnulli {
+		setBacklightPercent(level)
+		return
 	}
 	os.WriteFile("/sys/class/pwm/pwmchip0/pwm0/duty_cycle", []byte(fmt.Sprintf("%d", level)), 0644)
 }
