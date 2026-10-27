@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var SETTINGS_PATH = dataPath(".miyoopod_settings.json")
+func SETTINGS_PATH() string { return dataPath(".miyoopod_settings.json") }
 
 type Settings struct {
 	InstallationID        string `json:"installation_id,omitempty"`
@@ -25,7 +25,7 @@ type Settings struct {
 
 // loadSettings loads theme and lock key preferences from a lightweight JSON file
 func (app *MiyooPod) loadSettings() error {
-	data, err := os.ReadFile(SETTINGS_PATH)
+	data, err := os.ReadFile(SETTINGS_PATH())
 	if err != nil {
 		return err
 	}
@@ -151,5 +151,5 @@ func (app *MiyooPod) saveSettings() error {
 		return err
 	}
 
-	return os.WriteFile(SETTINGS_PATH, data, 0644)
+	return os.WriteFile(SETTINGS_PATH(), data, 0644)
 }

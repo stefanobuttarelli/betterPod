@@ -281,7 +281,7 @@ func (ui *IpodUI) libraryInfoView() *View {
 			items = append(items, info("Free space", humanBytes(free)+" of "+humanBytes(total)))
 		}
 		if time.Since(dataSizeCache.at) > 10*time.Second {
-			dataSizeCache.size = dirSize(filepath.Dir(LIBRARY_JSON_PATH))
+			dataSizeCache.size = databaseSize(dataDir())
 			dataSizeCache.at = time.Now()
 		}
 		items = append(items, info("Library data", humanBytes(dataSizeCache.size)))

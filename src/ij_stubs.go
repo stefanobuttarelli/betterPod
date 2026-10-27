@@ -7,6 +7,9 @@ import "time"
 // rescanLibrary rescans the music folder in the background and rebuilds
 // the menus when it's done.
 func (ui *IpodUI) rescanLibrary() {
+	if dbBusy { // the database is being moved
+		return
+	}
 	go func() {
 		done := make(chan struct{})
 		ui.app.startLibraryScan(func() { close(done) })

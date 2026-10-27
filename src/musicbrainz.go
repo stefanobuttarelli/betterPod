@@ -343,7 +343,7 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 	}
 
 	// Create artwork directory if it doesn't exist
-	if err := os.MkdirAll(ARTWORK_DIR, 0755); err != nil {
+	if err := os.MkdirAll(ARTWORK_DIR(), 0755); err != nil {
 		return fmt.Errorf("failed to create artwork directory: %v", err)
 	}
 
@@ -353,7 +353,7 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 		album.ArtExt = sniffImageExt(album.ArtData)
 	}
 	filename := fmt.Sprintf("%s.%s", hash, album.ArtExt)
-	filepath := ARTWORK_DIR + filename
+	filepath := ARTWORK_DIR() + filename
 
 	// Write artwork to disk
 	if err := os.WriteFile(filepath, album.ArtData, 0644); err != nil {

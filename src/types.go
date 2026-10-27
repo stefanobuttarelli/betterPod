@@ -23,8 +23,9 @@ const SCREEN_HEIGHT = 480
 // Music source and data files: /userdata/music and the port's conf folder on
 // Knulli (MIYOOPOD_MUSIC_DIR / MIYOOPOD_DATA_DIR, see knulli.go).
 var MUSIC_ROOT = musicRoot()
-var LIBRARY_JSON_PATH = dataPath(".miyoopod_library.json")
-var ARTWORK_DIR = dataPath(".miyoopod_artwork/")
+
+func LIBRARY_JSON_PATH() string { return dataPath(".miyoopod_library.json") }
+func ARTWORK_DIR() string       { return dataPath(".miyoopod_artwork/") }
 
 // UI layout constants (at 640x480 native resolution, classic UI; the iPod UI
 // has its own metrics in ij_*.go)

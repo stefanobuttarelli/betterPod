@@ -53,7 +53,7 @@ func (ui *IpodUI) databaseView() *View {
 		}
 		var items []Item
 		if dbBusy {
-			items = append(items, Item{Label: dbStatus, NoArrow: true, Preview: PrevSettings})
+			items = append(items, Item{Label: "Please wait", Sublabel: dbStatus, NoArrow: true, Preview: PrevSettings})
 		} else if dbStatus != "" {
 			items = append(items, Item{Label: "Status", Sublabel: dbStatus, NoArrow: true, Preview: PrevSettings})
 		} else if dataDirMissing != "" {
@@ -132,11 +132,36 @@ func (ui *IpodUI) folderBrowserView(dir string) *View {
 	return v
 }
 
-// backToDatabase closes the folder browser screens.
+// backToDatabase closes the folder browser screens. It is called from a
+// sheet's action, while the sheet is still sliding away: hideView would only
+// close the sheet, so the browser views are taken off the stack here.
 func (ui *IpodUI) backToDatabase() {
-	for len(ui.split) > 1 && ui.topScreen().ID == "dbBrowse" {
-		ui.hideView()
+	if len(ui.full) > 0 {
+		return
 	}
+	var visible *View
+	for len(ui.split) > 1 && ui.split[len(ui.split)-1].ID == "dbBrowse" {
+		v := ui.split[len(ui.split)-1]
+		if visible == nil {
+			visible = v
+		}
+		ui.split = ui.split[:len(ui.split)-1]
+	}
+	if visible == nil {
+		return
+	}
+	visible.enter.To(1, durSlide, easeInOut, 0)
+	visible.exiting = true
+	ui.gone = append(ui.gone, visible)
+	top := ui.split[len(ui.split)-1]
+	top.hide.To(0, durSlide, easeCSS, 0)
+	if top.Build != nil {
+		top.Items = top.Build()
+	}
+	top.dirty = true
+	ui.headerTitle = top.Title
+	ui.updatePanels()
+	ui.dirty = true
 }
 
 // chooseDataDir asks what to do with the database for the folder dir.
@@ -182,6 +207,9 @@ func (ui *IpodUI) chooseDataDir(dir string) {
 // old copy. replace first clears the database already in dir.
 func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 	app := ui.app
+	if dbBusy || app.LibScanRunning {
+		return
+	}
 	old := dataDir()
 	dbBusy, dbStatus = true, "Moving the database…"
 	ui.backToDatabase()
@@ -191,17 +219,24 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 	ui.savePrefs()
 	app.savePlaybackState()
 	logMsg(fmt.Sprintf("DATABASE: moving %s -> %s", old, dir))
+	progress := func(n int) {
+		ui.post(func() {
+			if dbBusy {
+				dbStatus = fmt.Sprintf("Copying… %d files", n)
+				ui.refreshBuilt()
+			}
+		})
+	}
 	go func() {
 		if replace {
 			removeDatabase(dir)
 		}
-		err := copyDatabase(old, dir, func(n int) {
-			ui.post(func() {
-				dbStatus = fmt.Sprintf("Copying… %d files", n)
-				ui.refreshBuilt()
-			})
-		})
+		err := copyDatabase(old, dir, false, progress)
 		ui.post(func() {
+			if err == nil {
+				// what the app saved meanwhile (artwork, playback position)
+				err = copyDatabase(old, dir, true, nil)
+			}
 			if err == nil {
 				err = setDataDir(dir)
 			}
@@ -212,7 +247,7 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 				return
 			}
 			rebaseArtPaths(app.Library)
-			dbBusy, dbStatus = false, "Database moved to "+dir
+			dbStatus = "Database moved to " + dir
 			ui.refreshBuilt()
 			go func() {
 				if app.Library != nil {
@@ -220,8 +255,14 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 						logMsg("DATABASE: " + err.Error())
 					}
 				}
-				removeDatabase(old)
+				if filepath.Clean(old) != filepath.Clean(dir) {
+					removeDatabase(old)
+				}
 				logMsg("DATABASE: now in " + dir)
+				ui.post(func() {
+					dbBusy = false
+					ui.refreshBuilt()
+				})
 			}()
 		})
 	}()
@@ -231,6 +272,9 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 // the SD card with the music) and loads its library.
 func (ui *IpodUI) useDataDir(dir string) {
 	app := ui.app
+	if dbBusy || app.LibScanRunning {
+		return
+	}
 	if err := setDataDir(dir); err != nil {
 		dbStatus = "Can't switch: " + err.Error()
 		ui.refreshBuilt()
@@ -241,7 +285,7 @@ func (ui *IpodUI) useDataDir(dir string) {
 	ui.backToDatabase()
 	ui.refreshBuilt()
 	// keep this console's settings if the folder has none
-	if _, err := os.Stat(SETTINGS_PATH); err != nil {
+	if _, err := os.Stat(SETTINGS_PATH()); err != nil {
 		_ = app.saveSettings()
 	}
 	if _, err := os.Stat(ipodPrefsPath()); err != nil {

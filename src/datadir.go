@@ -4,7 +4,8 @@ package main
 // scan statistics, game saves). The default is MIYOOPOD_DATA_DIR (the port's
 // conf folder); Settings → Database can move it to another folder, e.g. the
 // SD card with the music. The choice is kept in a small pointer file in the
-// default folder, which is always there.
+// default folder, which is always there. All paths are computed on use
+// (dataPath), so switching folders never races with background saves.
 
 import (
 	"fmt"
@@ -76,16 +77,6 @@ func dataDir() string {
 	return defaultDataDir()
 }
 
-// refreshDataPaths recomputes the paths kept in package variables.
-func refreshDataPaths() {
-	LIBRARY_JSON_PATH = dataPath(".miyoopod_library.json")
-	ARTWORK_DIR = dataPath(".miyoopod_artwork/")
-	SETTINGS_PATH = dataPath(".miyoopod_settings.json")
-	PLAYBACK_STATE_PATH = dataPath(".miyoopod_playback.json")
-	UPDATE_INFO_PATH = dataPath(".miyoopod_update.json")
-	UPDATE_STATUS_PATH = dataPath(".miyoopod_update_status")
-}
-
 // setDataDir makes dir the database folder and remembers the choice.
 func setDataDir(dir string) error {
 	dir = filepath.Clean(dir)
@@ -108,16 +99,29 @@ func setDataDir(dir string) error {
 	dataDirOverride = dir
 	dataDirMu.Unlock()
 	dataDirMissing = ""
-	refreshDataPaths()
 	return nil
 }
 
-// checkWritable makes sure dir exists and files can be written in it.
+// checkWritable tells whether the database could be written in dir. If dir
+// doesn't exist yet, its nearest existing parent is tested instead: nothing
+// is created until the move is confirmed.
 func checkWritable(dir string) error {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+	d := dir
+	for {
+		st, err := os.Stat(d)
+		if err == nil {
+			if !st.IsDir() {
+				return fmt.Errorf("%s is not a folder", d)
+			}
+			break
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return err
+		}
+		d = parent
 	}
-	f, err := os.CreateTemp(dir, ".knullipod-test-*")
+	f, err := os.CreateTemp(d, ".knullipod-test-*")
 	if err != nil {
 		return err
 	}
@@ -133,9 +137,21 @@ func hasDatabase(dir string) bool {
 }
 
 // copyDatabase copies the database items from src to dst; progress is
-// called with the number of files copied so far.
-func copyDatabase(src, dst string, progress func(int)) error {
+// called with the number of files copied so far. With onlyNewer, files
+// already in dst are copied again only if src's copy is newer (the final
+// pass of a move, for what the app wrote while copying).
+func copyDatabase(src, dst string, onlyNewer bool, progress func(int)) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
 	n := 0
+	skip := func(from, to string, info os.FileInfo) bool {
+		if !onlyNewer {
+			return false
+		}
+		st, err := os.Stat(to)
+		return err == nil && !info.ModTime().After(st.ModTime())
+	}
 	for _, name := range dataItems {
 		from := filepath.Join(src, name)
 		st, err := os.Stat(from)
@@ -153,6 +169,9 @@ func copyDatabase(src, dst string, progress func(int)) error {
 				if info.IsDir() {
 					return os.MkdirAll(target, 0755)
 				}
+				if !info.Mode().IsRegular() || strings.HasSuffix(p, ".tmp") || skip(p, target, info) {
+					return nil
+				}
 				if err := copyFile(p, target); err != nil {
 					return err
 				}
@@ -162,7 +181,7 @@ func copyDatabase(src, dst string, progress func(int)) error {
 				}
 				return nil
 			})
-		} else {
+		} else if !skip(from, to, st) {
 			err = copyFile(from, to)
 			n++
 		}
@@ -222,7 +241,7 @@ func rebaseArtPaths(lib *Library) {
 	}
 	for _, al := range lib.Albums {
 		if al.ArtPath != "" {
-			al.ArtPath = ARTWORK_DIR + filepath.Base(al.ArtPath)
+			al.ArtPath = ARTWORK_DIR() + filepath.Base(al.ArtPath)
 		}
 	}
 }
@@ -236,9 +255,24 @@ func artPathFor(p string) string {
 	if _, err := os.Stat(p); err == nil {
 		return p
 	}
-	alt := ARTWORK_DIR + filepath.Base(p)
+	alt := ARTWORK_DIR() + filepath.Base(p)
 	if _, err := os.Stat(alt); err == nil {
 		return alt
 	}
 	return p
+}
+
+// databaseSize is the space taken by the database items in dir (not by the
+// rest of the folder, which may be big: /userdata, a card's root…).
+func databaseSize(dir string) int64 {
+	var n int64
+	for _, name := range dataItems {
+		p := filepath.Join(dir, name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			n += st.Size()
+		} else if err == nil {
+			n += dirSize(p)
+		}
+	}
+	return n
 }

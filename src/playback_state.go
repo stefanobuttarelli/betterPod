@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var PLAYBACK_STATE_PATH = dataPath(".miyoopod_playback.json")
+func PLAYBACK_STATE_PATH() string { return dataPath(".miyoopod_playback.json") }
 
 // PlaybackState stores queue and playback position for session persistence
 type PlaybackState struct {
@@ -25,7 +25,7 @@ type PlaybackState struct {
 func (app *MiyooPod) savePlaybackState() {
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		// Remove stale state file if queue is empty
-		os.Remove(PLAYBACK_STATE_PATH)
+		os.Remove(PLAYBACK_STATE_PATH())
 		return
 	}
 
@@ -67,14 +67,14 @@ func (app *MiyooPod) savePlaybackState() {
 		return
 	}
 
-	if err := os.WriteFile(PLAYBACK_STATE_PATH, data, 0644); err != nil {
+	if err := os.WriteFile(PLAYBACK_STATE_PATH(), data, 0644); err != nil {
 		logMsg(fmt.Sprintf("ERROR: Failed to save playback state: %v", err))
 	}
 }
 
 // restorePlaybackState loads a previously saved queue and resumes paused at the saved position
 func (app *MiyooPod) restorePlaybackState() {
-	data, err := os.ReadFile(PLAYBACK_STATE_PATH)
+	data, err := os.ReadFile(PLAYBACK_STATE_PATH())
 	if err != nil {
 		// No saved state, nothing to restore
 		return

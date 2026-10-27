@@ -10,8 +10,8 @@ import (
 	"github.com/fogleman/gg"
 )
 
-var UPDATE_INFO_PATH = dataPath(".miyoopod_update.json")
-var UPDATE_STATUS_PATH = dataPath(".miyoopod_update_status")
+func UPDATE_INFO_PATH() string   { return dataPath(".miyoopod_update.json") }
+func UPDATE_STATUS_PATH() string { return dataPath(".miyoopod_update_status") }
 
 type UpdateRequest struct {
 	Version  string `json:"version"`
@@ -163,7 +163,7 @@ func (app *MiyooPod) launchUpdater() {
 		return
 	}
 
-	if err := os.WriteFile(UPDATE_INFO_PATH, data, 0644); err != nil {
+	if err := os.WriteFile(UPDATE_INFO_PATH(), data, 0644); err != nil {
 		logMsg(fmt.Sprintf("ERROR: Failed to write update request: %v", err))
 		app.showError("Failed to prepare update")
 		return
@@ -195,7 +195,7 @@ func (app *MiyooPod) launchUpdater() {
 	if err != nil {
 		logMsg(fmt.Sprintf("ERROR: Failed to exec updater: %v", err))
 		// If exec fails, clean up the update request file
-		os.Remove(UPDATE_INFO_PATH)
+		os.Remove(UPDATE_INFO_PATH())
 	}
 }
 
@@ -241,13 +241,13 @@ func (app *MiyooPod) manualCheckForUpdates() {
 
 // handleUpdateStatus checks for a status file from a previous OTA update
 func (app *MiyooPod) handleUpdateStatus() {
-	data, err := os.ReadFile(UPDATE_STATUS_PATH)
+	data, err := os.ReadFile(UPDATE_STATUS_PATH())
 	if err != nil {
 		return // No status file, nothing to do
 	}
 
 	// Remove the status file immediately
-	os.Remove(UPDATE_STATUS_PATH)
+	os.Remove(UPDATE_STATUS_PATH())
 
 	var status UpdateStatus
 	if err := json.Unmarshal(data, &status); err != nil {
@@ -368,17 +368,17 @@ func (app *MiyooPod) performClearAppData() {
 	app.triggerRefresh()
 
 	// Delete library cache
-	if err := os.Remove(LIBRARY_JSON_PATH); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(LIBRARY_JSON_PATH()); err != nil && !os.IsNotExist(err) {
 		logMsg(fmt.Sprintf("WARNING: Failed to remove library cache: %v", err))
 	}
 
 	// Delete settings
-	if err := os.Remove(SETTINGS_PATH); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(SETTINGS_PATH()); err != nil && !os.IsNotExist(err) {
 		logMsg(fmt.Sprintf("WARNING: Failed to remove settings: %v", err))
 	}
 
 	// Delete artwork directory
-	if err := os.RemoveAll(ARTWORK_DIR); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(ARTWORK_DIR()); err != nil && !os.IsNotExist(err) {
 		logMsg(fmt.Sprintf("WARNING: Failed to remove artwork: %v", err))
 	}
 
@@ -388,7 +388,7 @@ func (app *MiyooPod) performClearAppData() {
 	}
 	data, err := json.MarshalIndent(minimalSettings, "", "  ")
 	if err == nil {
-		os.WriteFile(SETTINGS_PATH, data, 0644)
+		os.WriteFile(SETTINGS_PATH(), data, 0644)
 	}
 
 	logMsg("INFO: App data cleared, restarting...")

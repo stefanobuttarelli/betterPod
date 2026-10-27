@@ -461,7 +461,7 @@ func (app *MiyooPod) rgbaCachePath(album *Album) string {
 		return ""
 	}
 	hash := generateAlbumCacheKey(album.Artist, album.Name)
-	return fmt.Sprintf("%s%s_%d.rgba", ARTWORK_DIR, hash, COVER_CENTER_SIZE)
+	return fmt.Sprintf("%s%s_%d.rgba", ARTWORK_DIR(), hash, COVER_CENTER_SIZE)
 }
 
 // loadRGBACache loads a pre-resized RGBA pixel buffer from disk
@@ -481,7 +481,7 @@ func (app *MiyooPod) loadRGBACache(path string, size int) image.Image {
 
 // saveRGBACache writes a pre-resized RGBA pixel buffer to disk
 func (app *MiyooPod) saveRGBACache(path string, img *image.RGBA) {
-	os.MkdirAll(ARTWORK_DIR, 0755)
+	os.MkdirAll(ARTWORK_DIR(), 0755)
 	if err := os.WriteFile(path, img.Pix, 0644); err != nil {
 		logMsg(fmt.Sprintf("WARNING: Failed to save RGBA cache: %v", err))
 	}
@@ -728,7 +728,7 @@ func (app *MiyooPod) saveLibraryJSON() error {
 		return fmt.Errorf("failed to marshal library: %v", err)
 	}
 
-	err = os.WriteFile(LIBRARY_JSON_PATH, data, 0644)
+	err = os.WriteFile(LIBRARY_JSON_PATH(), data, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write library file: %v", err)
 	}
@@ -742,7 +742,7 @@ func (app *MiyooPod) loadLibraryJSON() error {
 	logMsg("Loading library from JSON...")
 	start := time.Now()
 
-	data, err := os.ReadFile(LIBRARY_JSON_PATH)
+	data, err := os.ReadFile(LIBRARY_JSON_PATH())
 	if err != nil {
 		return fmt.Errorf("failed to read library file: %v", err)
 	}
