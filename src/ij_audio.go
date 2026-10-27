@@ -254,6 +254,8 @@ type sysVolume struct {
 	changed int32 // external change waiting for the UI (atomic), -1 none
 	active  int32 // unused (kept for the UI loop)
 	events  chan struct{}
+	// seenChange: an outside change was logged once
+	seenChange bool
 }
 
 var sysVol = &sysVolume{want: -1, cur: -1, changed: -1, wake: make(chan struct{}, 1), events: make(chan struct{}, 1)}
@@ -492,6 +494,10 @@ func (s *sysVolume) refresher() {
 		// ignore echoes of our own writes while the wheel is moving
 		own := s.want >= 0 || time.Since(s.lastSet) < 700*time.Millisecond
 		if !own && v != s.cur {
+			if !s.seenChange {
+				s.seenChange = true
+				logMsg("System volume: following changes made outside the app")
+			}
 			s.cur = v
 			atomic.StoreInt32(&s.changed, int32(v))
 		}

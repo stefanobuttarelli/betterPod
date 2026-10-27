@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.25.4 (2026-10-27)
+
+### Fixed
+- **Volume overlay outside Now Playing:** KnulliPod now also reads the console's volume keys from the input devices (read-only; Knulli still changes the volume). A press shows the overlay at once, even at 0% or 100%, and the level follows as soon as the system has changed it. Before, the overlay depended only on PipeWire reporting the change.
+- The log notes which input devices are watched, and the first volume change made outside the app.
+
 ## v0.25.3 (2026-10-27)
 
 ### Fixed

@@ -88,6 +88,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 - `MIYOOPOD_SOFT_VOLUME=1`: use the app's internal volume instead of the console's.
 - `MIYOOPOD_MEDIA_KEYS=0`: ignore headphone buttons.
 - `MIYOOPOD_BT_ICON=0`: no Bluetooth icon and no pause on disconnect.
+- `MIYOOPOD_VOLUME_KEYS=0`: don't read the volume keys (the volume overlay then follows the system volume only).
 - `MIYOOPOD_PERF=1`: log the drawing times every second (useful if something stutters).
 - `MIYOOPOD_VSYNC=0`: disable vertical sync.
 - `MIYOOPOD_CLASSIC_UI=1`: go back to the original MiyooPod interface.

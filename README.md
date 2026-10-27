@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25.3-knulli.zip"><b>Download v0.25.3</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25.4-knulli.zip"><b>Download v0.25.4</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -73,7 +73,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.25.3-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25.3-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.25.4-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25.4-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -162,6 +162,7 @@ Advanced switches are environment variables. Uncomment them in `KnulliPod.sh`:
 | `MIYOOPOD_SOFT_VOLUME=1` | Use the app's own volume instead of the console's |
 | `MIYOOPOD_MEDIA_KEYS=0` | Ignore headphone buttons |
 | `MIYOOPOD_BT_ICON=0` | No Bluetooth icon and no pause on disconnect |
+| `MIYOOPOD_VOLUME_KEYS=0` | Don't read the volume keys (the overlay then follows the system volume only) |
 | `MIYOOPOD_PERF=1` | Log frame timings every second (for reporting stutter) |
 | `MIYOOPOD_VSYNC=0` | Disable vertical sync |
 | `MIYOOPOD_CLASSIC_UI=1` | Use the original MiyooPod interface |

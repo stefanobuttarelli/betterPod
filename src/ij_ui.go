@@ -125,6 +125,9 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	app.AutoLockMinutes = 0
 	ui.kb = newKenBurns()
 	startBluetoothWatch()
+	if isKnulli {
+		startVolumeKeyWatch()
+	}
 	home := ui.homeView()
 	home.firstIn = true
 	home.enter = newAnim(0)
@@ -1123,6 +1126,17 @@ func (ui *IpodUI) Run() {
 				if !ui.nowPlayingOnScreen() {
 					ui.showVolumeOSD()
 				}
+			}
+		}
+		if volKeyTake() {
+			// a volume key: the overlay (or Now Playing's bar) at once;
+			// the level follows when the system has changed it
+			ui.dirty = true
+			for _, npv := range ui.nowPlayingViews() {
+				npv.flashVolume(ui)
+			}
+			if !ui.nowPlayingOnScreen() {
+				ui.showVolumeOSD()
 			}
 		}
 		ui.tickOverlays(now)

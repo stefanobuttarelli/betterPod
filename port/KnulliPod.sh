@@ -54,6 +54,8 @@ export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 # Ignore headphone buttons / no Bluetooth icon:
 # export MIYOOPOD_MEDIA_KEYS=0
 # export MIYOOPOD_BT_ICON=0
+# Don't read the volume keys for the volume overlay:
+# export MIYOOPOD_VOLUME_KEYS=0
 # Log drawing times (to report stutter):
 # export MIYOOPOD_PERF=1
 # Disable vertical sync:
