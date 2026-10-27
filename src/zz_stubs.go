@@ -6,25 +6,25 @@ import (
 	"image"
 )
 
-const Clubs = 2
-const MEDIA_STOP Key = 1073745935
 const Hearts = 0
+const PrevNone PreviewKind = 0
 const PrevMusic PreviewKind = 1
-const Spades = 3
-const MEDIA_PLAY Key = 1073745931
-const Diamonds = 1
-const WHEEL_CCW Key = 1073745922
-const LOCK Key = 1073741925
+const Clubs = 2
+const MEDIA_PLAYPAUSE Key = 1073745930
+const HP_UNPLUG Key = 1073745936
 const PrevGames PreviewKind = 2
+const WHEEL_CW Key = 1073745921
+const Diamonds = 1
+const Spades = 3
+const WHEEL_CCW Key = 1073745922
+const MEDIA_PLAY Key = 1073745931
 const PrevSettings PreviewKind = 3
 const MEDIA_NEXT Key = 1073745933
-const MEDIA_PLAYPAUSE Key = 1073745930
-const MEDIA_PREV Key = 1073745934
-const PrevNone PreviewKind = 0
-const WHEEL_CW Key = 1073745921
-const HP_UNPLUG Key = 1073745936
 const MEDIA_PAUSE Key = 1073745932
+const MEDIA_PREV Key = 1073745934
 const PrevNowPlaying PreviewKind = 4
+const LOCK Key = 1073741925
+const MEDIA_STOP Key = 1073745935
 var backsideBuf *image.RGBA
 var marqueeActive bool
 var ipodUI *IpodUI
