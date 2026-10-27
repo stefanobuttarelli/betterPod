@@ -109,6 +109,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 
   The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up (card removed), KnulliPod uses the port folder and says so on the same screen.
 - **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts KnulliPod. Your library, settings and saves are not touched, and the previous binary is kept as `knullipod/MiyooPod.prev`. KnulliPod also checks once a day by itself: when a new version is out, the main menu shows "Update Available".
+- **Music → Internet Archive:** with Wi-Fi on, search archive.org; every result shows its license. An item offers Download FLAC (lossless) or Download MP3, or a single track; downloads go to `Internet Archive/<creator>/<title>/` in the music folder and appear in the library when they finish. Download only what you have the right to.
 - **Log:** the app log is `knullipod/miyoopod.log`.
 - **Settings → Theme:** light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00).
 - **Shuffle and Repeat:** in Settings they open a submenu, with a tick on the active option.

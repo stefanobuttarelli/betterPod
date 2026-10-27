@@ -4,7 +4,6 @@ package main
 
 import (
 	"math/rand"
-	"os"
 	"sort"
 	"strings"
 )
@@ -41,10 +40,7 @@ func (ui *IpodUI) musicView() *View {
 			{Label: "Albums", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.albumsView(nil), "") }},
 			{Label: "Search", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchView(), "") }},
 		}
-		// Internet Archive: still being tested, shown with MIYOOPOD_IA=1
-		if os.Getenv("MIYOOPOD_IA") == "1" {
-			items = append(items, Item{Label: "Internet Archive", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.iaSearchView(), "") }})
-		}
+		items = append(items, Item{Label: "Internet Archive", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.iaSearchView(), "") }})
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying})
 		}

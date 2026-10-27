@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.27.2-knulli.zip"><b>Download v0.27.2</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.28-knulli.zip"><b>Download v0.28</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -48,6 +48,7 @@
   - a Bluetooth icon shows in the status bar.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
+- **Internet Archive.** Search archive.org, see each item's license, and download albums in FLAC or MP3 straight into your library.
 - **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
@@ -73,7 +74,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.27.2-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.27.2-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.28-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.28-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -136,6 +137,18 @@ What happens depends on the folder:
 
 The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up, for example because the card was removed, KnulliPod falls back to the port folder and says so on the Database screen.
 
+### Internet Archive
+
+<img src="docs/images/internet-archive.png" width="320" align="right" alt="Internet Archive search">
+
+Music → Internet Archive searches [archive.org](https://archive.org) over Wi-Fi.
+
+- **Results:** each one shows its title, creator, year and license, as archive.org records it (Creative Commons, public domain, or "No license stated").
+- **An item:** shows Download FLAC (lossless) and Download MP3 with their size, and the tracks; selecting a track downloads just that one.
+- **Where it goes:** downloads go to `<music>/Internet Archive/<creator>/<title>/` with the item's cover. The library is rescanned when they finish.
+
+The search is not filtered: check the license before you download, and download only what you have the right to.
+
 ### Software Update
 
 <img src="docs/images/update.png" width="320" align="right" alt="Software Update">
@@ -197,6 +210,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/main.c`, `src/audio.c` | SDL2 input (gamepad, stick wheel, media keys), display and vsync; SDL_mixer playback with sample-rate switching |
 | `src/library.go`, `src/ij_libinfo.go` | Library scan, album grouping, artwork, scan statistics |
 | `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
+| `src/ij_archive.go` | Music → Internet Archive (search, item, download) |
 | `src/ij_update.go` | Settings → Software Update (manifest, download, install, restart) |
 | `src/duration.go` | Track lengths read from the file headers |
 | `src/knulli.go` | Knulli integration: paths, backlight, system volume, Bluetooth |

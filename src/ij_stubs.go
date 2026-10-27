@@ -19,5 +19,8 @@ func (ui *IpodUI) rescanLibrary() {
 			ui.kb.initialized = false
 			ui.refreshBuilt()
 		})
+		// covers from the files and from cover.jpg / folder.jpg of the new
+		// albums (at start-up main runs this pass; after a rescan, here)
+		ui.app.deferredArtExtraction()
 	}()
 }

@@ -438,6 +438,9 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 				st.err = iaErrText(err)
 			}
 			ui.refreshView(v)
+			if err == nil && len(v.Items) > 1 && v.Index == 0 {
+				v.Index = 1 // on the first download button
+			}
 		})
 	}()
 	return v

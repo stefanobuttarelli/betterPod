@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.28 (2026-10-27)
+
+### Added
+- **Music → Internet Archive:** search archive.org with the wheel keyboard (✓ runs the search).
+  - **Results:** title, creator, year and the item's license, as archive.org records it (Creative Commons, public domain, or "No license stated").
+  - **An item:** its license, Download FLAC (lossless) and Download MP3 with their size, and the tracks with their lengths; selecting a track downloads just that one.
+  - **Downloading:** a white page with the album, the track being downloaded and the blue progress bar, and Cancel / Done.
+  - **Where it goes:** files go to `<music>/Internet Archive/<creator>/<title>/` with the item's cover as `cover.jpg`. The library is rescanned at the end, and the album shows up in Albums and Cover Flow.
+
+### Fixed
+- **Covers after a rescan:** albums added by a rescan (or a download) now get their cover from `cover.jpg` / `folder.jpg` straight away, instead of after the next start.
+
 ## v0.27.2 (2026-10-27)
 
 ### Changed

@@ -1,8 +1,8 @@
 {
-  "version": "0.27.2",
-  "path": "release/knullipod-v0.27.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.27.2-knulli.zip",
-  "sha256": "5876223f3a4793db8cf5593fb2b169e278a45fbbf3b2cb0fb8cbfeaeb5286bdf",
-  "size": 14270298,
-  "notes": "Minimal lossless badge"
+  "version": "0.28",
+  "path": "release/knullipod-v0.28-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.28-knulli.zip",
+  "sha256": "913dc4736308af079f4c66925844bebe8ad2f1795cd3c26f326c12a2ee7f81df",
+  "size": 14272049,
+  "notes": "Internet Archive: search and download\nCovers show up right after a rescan"
 }

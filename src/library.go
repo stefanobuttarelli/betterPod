@@ -566,8 +566,15 @@ func (app *MiyooPod) deferredArtExtraction() {
 		logMsg(fmt.Sprintf("INFO: Background art extraction: found art for %d albums", extracted))
 		app.NPCacheDirty = true
 		app.requestRedraw()
+		if onArtExtracted != nil {
+			onArtExtracted()
+		}
 	}
 }
+
+// onArtExtracted is called when the background pass found new artwork (the
+// iPod UI drops the covers it drew without it).
+var onArtExtracted func()
 
 // drawLibraryScanScreen renders the library scan progress screen.
 // Called from drawCurrentScreen on the main thread only.

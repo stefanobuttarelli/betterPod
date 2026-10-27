@@ -124,6 +124,15 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	// (the screen can still be locked by hand with the MENU/function button)
 	app.AutoLockMinutes = 0
 	ui.kb = newKenBurns()
+	// new artwork found in the background: the covers drawn without it
+	// (the default cover) are dropped and loaded again
+	onArtExtracted = func() {
+		ui.post(func() {
+			ui.artc.clear()
+			ui.kb.initialized = false
+			ui.onArtLoaded()
+		})
+	}
 	startBluetoothWatch()
 	if isKnulli {
 		startVolumeKeyWatch()

@@ -51,6 +51,16 @@ func newArtCache() *artCache {
 	}
 }
 
+// clear drops every image in memory (the scaled files on disk stay, so
+// they come back at once).
+func (c *artCache) clear() {
+	c.mu.Lock()
+	c.imgs = map[artKey]*list.Element{}
+	c.lru.Init()
+	c.bytes = 0
+	c.mu.Unlock()
+}
+
 // get returns a cached image and marks it as just used.
 func (c *artCache) get(k artKey) *image.RGBA {
 	if e, ok := c.imgs[k]; ok {
