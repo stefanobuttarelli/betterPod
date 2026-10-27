@@ -1,8 +1,8 @@
 {
-  "version": "0.32",
-  "path": "release/knullipod-v0.32-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32-knulli.zip",
-  "sha256": "b915c325c9f137675bba93aa6a1f5f86401726b4f1739814530d02b0633f96f4",
-  "size": 14335431,
-  "notes": "Missing Covers: choose each album's cover from the search results, or search by hand"
+  "version": "0.32.1",
+  "path": "release/knullipod-v0.32.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32.1-knulli.zip",
+  "sha256": "c442a1c032181217034eb58bcd24b7293c859b1305590c67b38bffbe5461f3e3",
+  "size": 14336469,
+  "notes": "Damaged folders: the readable songs are scanned anyway"
 }

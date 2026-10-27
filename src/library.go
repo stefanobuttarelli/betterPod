@@ -58,10 +58,26 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	fileCount := 0
 	scanBegin()
 
-	filepath.Walk(MUSIC_ROOT, func(path string, info os.FileInfo, err error) error {
+	var walk filepath.WalkFunc
+	walk = func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			logMsg(fmt.Sprintf("[SCAN] cannot read %s: %v", path, err))
-			scanNote(func(s *ScanStats) { s.scanFolder(path, "Couldn't open: "+shortErr(err)) })
+			note := "Couldn't open: " + shortErr(err)
+			if info != nil && info.IsDir() {
+				// a folder that can't be listed in full (a damaged folder
+				// on the card): keep whatever part of it can be read
+				names := readDirPartial(path)
+				logMsg(fmt.Sprintf("[SCAN] %s: %d entries read anyway", path, len(names)))
+				if len(names) > 0 {
+					note += fmt.Sprintf(" (%d %s read anyway)", len(names), pluralize(len(names), "entry", "entries"))
+				}
+				scanNote(func(s *ScanStats) { s.scanFolder(path, note) })
+				for _, n := range names {
+					filepath.Walk(filepath.Join(path, n), walk)
+				}
+				return nil
+			}
+			scanNote(func(s *ScanStats) { s.scanFolder(path, note) })
 			return nil
 		}
 		if !app.Running {
@@ -144,7 +160,8 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 		}
 
 		return nil
-	})
+	}
+	filepath.Walk(MUSIC_ROOT, walk)
 
 	finishAlbums(app.Library)
 
@@ -982,6 +999,25 @@ func readSampleRate(path string) int {
 		}
 	}
 	return 0
+}
+
+// readDirPartial lists a folder a little at a time, keeping the names read
+// before an error (filepath.Walk drops them all).
+func readDirPartial(dir string) []string {
+	f, err := os.Open(dir)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var names []string
+	for len(names) < 100000 {
+		n, err := f.Readdirnames(16)
+		names = append(names, n...)
+		if err != nil {
+			break
+		}
+	}
+	return names
 }
 
 // shortErr: the reason of a file error, without the path.

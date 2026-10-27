@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.32.1 (2026-10-28)
+
+### Fixed
+- **A folder that can't be read in full no longer loses all its songs.** When the card answers a folder's listing with an error ("input/output error", usually a damaged folder on the card), the songs listed before the error are scanned anyway. Scanned Folders says how many entries were read.
+
 ## v0.32 (2026-10-28)
 
 ### Added
