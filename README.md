@@ -1,33 +1,202 @@
-# KnulliPod — sorgenti
+<h1 align="center">KnulliPod</h1>
 
-Lettore musicale in stile iPod per Knulli (Anbernic H700, aarch64), avviabile da PortMaster.
-Guida d'uso e comandi: [port/knullipod/README.md](port/knullipod/README.md).
+<p align="center">
+  <b>An iPod-style music player for Anbernic handhelds running Knulli.</b><br>
+  The iPod classic interface, rebuilt natively from <a href="https://github.com/tvillarete/ipod-classic-js">iPod.js</a>.<br>
+  Split-screen menus, Cover Flow, a 3D Now Playing screen, wheel-keyboard search and games.<br>
+  Your own music, lossless and hi-res, played at its native sample rate.
+</p>
 
-Interfaccia ricostruita da [iPod.js](https://github.com/tvillarete/ipod-classic-js) (Tanner Villarete, MIT).
-Audio e libreria da [MiyooPod](https://github.com/danfragoso/miyoopod) (Danilo Fragoso, MIT).
+<p align="center">
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.21-knulli.zip"><b>Download v0.21</b></a> ·
+  <a href="#installation">Install</a> ·
+  <a href="#controls">Controls</a> ·
+  <a href="#building-from-source">Build</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-## Struttura
+<p align="center">
+  <img src="docs/images/hero.png" alt="KnulliPod: main menu, Cover Flow and Now Playing" width="100%">
+</p>
 
-- `src/`: codice Go e C (SDL2 / SDL2_mixer).
-  - `ij_*.go`: l'interfaccia iPod.js.
-  - `main.c`: input, display e vsync.
-  - `audio.c`: SDL_mixer, con cambio della frequenza di campionamento.
-  - `knulli.go`: integrazione con il sistema (volume, luminosità, Bluetooth).
-- `port/`: il pacchetto PortMaster, cioè `KnulliPod.sh` e la cartella `knullipod`. Contiene asset, font e le librerie `libSDL2_mixer` / `libavcodec_kp` / `libavutil_kp`.
-- `tools/build.sh`: compila e crea `dist/knullipod.zip`.
-- `docs/recovery/` e `tools/recover/`: come sono stati ricostruiti i sorgenti della v0.20 partendo dal binario (vedi `STATUS.md`).
+---
 
-## Compilare
+## Features
 
-Servono:
+- **The iPod classic interface, faithfully.** KnulliPod redraws iPod.js natively at 640×480:
+  - split-screen menus with live previews and a Ken Burns pan over the album art;
+  - the list styles and the slide transitions.
 
-- Go 1.24
-- `zig` (`pip install ziglang`) come compilatore C per aarch64 con glibc 2.28
-- gli header SDL2 e `libSDL2-2.0.so` per aarch64, in una cartella con `include/SDL2` e `lib/`
+  Sizes, colours, icons and animation timings come from the original code.
+- **Cover Flow.** Flick through your albums in 3D with reflections. Flip a cover to see its tracks and play one straight from the back.
+- **Now Playing.** The tilted 3D cover, a scrubber for seeking and a volume bar. Small icons show shuffle and repeat.
+- **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
+- **Games:** Brick and Solitaire, the classic iPod games. Solitaire saves your game.
+- **Audio quality:**
+  - every track plays at its own sample rate (44.1, 48, 96, 192 kHz…), with 32-bit float mixing;
+  - 24-bit FLAC and ALAC reach the system mixer untouched;
+  - formats: FLAC, ALAC, AAC/HE-AAC (`.m4a`), WAV, AIFF, MP3 and OGG.
+- **A library that handles real-world folders:**
+  - albums stay whole across mixed artists, and CD1/CD2 subfolders count as one album;
+  - untagged files get artist, album and track number from their folders and file names;
+  - cover art comes from the file (JPEG, PNG, WebP) or from `cover.jpg` / `folder.jpg` next to it.
+- **Headphones:**
+  - wired and Bluetooth media buttons work, even in Hold;
+  - unplugging pauses the music, like on an iPod;
+  - a Bluetooth icon shows in the status bar.
+- **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
+- **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
+- **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
+
+<p align="center">
+  <img src="docs/images/coverflow.gif" alt="Cover Flow animation" width="480">
+</p>
+
+## Screenshots
+
+| | | |
+|:-:|:-:|:-:|
+| <img src="docs/images/albums.png" width="260" alt="Albums"><br>Albums | <img src="docs/images/coverflow-back.png" width="260" alt="Cover Flow, flipped"><br>Cover Flow track list | <img src="docs/images/np-volume.png" width="260" alt="Now Playing volume"><br>Now Playing, volume |
+| <img src="docs/images/search.png" width="260" alt="Search"><br>Search | <img src="docs/images/brick.png" width="260" alt="Brick"><br>Brick | <img src="docs/images/solitaire.png" width="260" alt="Solitaire"><br>Solitaire |
+| <img src="docs/images/albums-dark.png" width="260" alt="Albums, dark theme"><br>Dark theme | <img src="docs/images/coverflow-dark.png" width="260" alt="Cover Flow, dark theme"><br>Cover Flow, dark | <img src="docs/images/database.png" width="260" alt="Settings, Database"><br>Settings → Database |
+
+<sub>Screenshots are real frames from the app. The albums, artists and covers are made up for the demo.</sub>
+
+## Requirements
+
+- An Anbernic handheld with the Allwinner H700 (aarch64) running [Knulli](https://knulli.org).
+- PortMaster-style ports enabled: KnulliPod is launched from **Ports**.
+- Your music on the console (or a card), any of the formats above.
+
+## Installation
+
+1. Download [`knullipod-v0.21-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.21-knulli.zip) and unzip it.
+2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
+3. Put your music in `/userdata/music`, the `music` share on the network.
+   - `Artist/Album/` folders with tagged files work best.
+   - DRM-protected `.m4a` files, such as old iTunes purchases, can't be played.
+4. In EmulationStation, update the game lists and start **KnulliPod** from Ports.
+
+The first start scans the music folder. Later starts load the saved library instantly. Settings → Library → **Rescan now** picks up new music.
+
+## Controls
+
+| Button | On the iPod | Action |
+|---|---|---|
+| D-pad or either stick | Click wheel | Down/right = forward, up/left = back; hold to keep scrolling |
+| A, or a stick click | Centre button | Select; hold 0.5 s for options (Play Next / Play Later) |
+| B | MENU | Back; hold 0.5 s to return to the main menu |
+| START or X | Play/Pause | Play/Pause |
+| L / R | ⏮ / ⏭ | Previous / next track |
+| Y | | Options for the selected song or album |
+| SELECT | Hold switch | Lock/unlock the controls and dim the screen; the music keeps playing |
+| MENU (function key) | | Tap: screen off/on. Hold 5 s: quit |
+| SELECT + START | | Quit |
+
+- **Now Playing:**
+  - up/down change the volume;
+  - the centre button switches to the scrubber, and then up/down seek.
+- **Search keyboard:** L and R jump six keys at a time.
+- **Hold:**
+  - up/down set the brightness, and KnulliPod remembers it;
+  - after 5 seconds the Now Playing screen comes up, with the clock in the status bar.
+- **Solitaire:**
+  - the wheel moves the hand, and A picks up or drops cards;
+  - holding A undoes a move, and B opens the pause menu.
+- **Brick:** left/right move the paddle, and A launches the ball.
+
+## Settings
+
+| Setting | What it does |
+|---|---|
+| Shuffle, Repeat | Submenus with the options; the active one is ticked |
+| Theme | Light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00) |
+| Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now** |
+| Database | Folder for the library, artwork, settings, statistics and game saves |
+
+### Database folder
+
+By default everything is kept in `knullipod/conf`. Settings → Database offers:
+
+- **Port folder:** the default, `knullipod/conf`.
+- **Music folder:** `/userdata/music/.knullipod`, which is hidden so the library scan skips it.
+- **A `knullipod` folder** on each card or drive mounted under `/media`.
+- **Choose a folder…:** browse to any folder, or create a new `knullipod` folder.
+
+What happens depends on the folder:
+
+- **No database there:** KnulliPod moves the current one ("Move database here").
+- **A database already there**, for example from another console:
+  - **Use database there** loads it as it is;
+  - **Replace with current** overwrites it with this console's database.
+
+The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up, for example because the card was removed, KnulliPod falls back to the port folder and says so on the Database screen.
+
+## Options
+
+Advanced switches are environment variables. Uncomment them in `KnulliPod.sh`:
+
+| Variable | Effect |
+|---|---|
+| `MIYOOPOD_SWAP_AB=0` | Swap A and B, if they are reversed on your device |
+| `MIYOOPOD_STICK_WHEEL=1` | Turn the stick like the click wheel instead of using it as arrows (faster spin, faster scroll) |
+| `MIYOOPOD_WHEEL_STEP=15` | Degrees of stick rotation per wheel step (5–90) |
+| `MIYOOPOD_HOLD_BRIGHTNESS=10` | Brightness in Hold, in % (default: a fifth of the current one) |
+| `MIYOOPOD_HOLD_ADJUST=0` | Up/down don't change the brightness in Hold |
+| `MIYOOPOD_SOFT_VOLUME=1` | Use the app's own volume instead of the console's |
+| `MIYOOPOD_MEDIA_KEYS=0` | Ignore headphone buttons |
+| `MIYOOPOD_BT_ICON=0` | No Bluetooth icon and no pause on disconnect |
+| `MIYOOPOD_PERF=1` | Log frame timings every second (for reporting stutter) |
+| `MIYOOPOD_VSYNC=0` | Disable vertical sync |
+| `MIYOOPOD_CLASSIC_UI=1` | Use the original MiyooPod interface |
+
+The log is written to `knullipod/miyoopod.log`.
+
+## Building from source
+
+You need:
+
+- Go 1.24;
+- [zig](https://ziglang.org), installed with `pip install ziglang`, used as the aarch64 C compiler with glibc 2.28;
+- the SDL2 headers and `libSDL2-2.0.so` for aarch64, in a folder with `include/SDL2` and `lib/`.
+
+`SDL2_mixer` (with the ALAC, AAC and 24-bit patches) is linked against the copy shipped in `port/knullipod/libs`.
 
 ```sh
-SDL2_SYSROOT=/percorso/sysroot tools/build.sh
-# -> dist/knullipod.zip  (KnulliPod.sh + knullipod/, binario knullipod/MiyooPod)
+SDL2_SYSROOT=/path/to/sysroot tools/build.sh
+# -> dist/knullipod.zip   (KnulliPod.sh + knullipod/, binary: knullipod/MiyooPod)
 ```
 
-Il binario va compilato dalla lista dei file (`src/*.go`), non come package: i file `.c` sono inclusi da `main.go`.
+The binary is built from the file list (`src/*.go`), not as a package, because `main.go` includes the C files (`main.c`, `audio.c`).
+
+### Source layout
+
+| Path | Contents |
+|---|---|
+| `src/ij_*.go` | The iPod.js interface: views, Cover Flow, Now Playing, search, sheets, games, themes |
+| `src/main.c`, `src/audio.c` | SDL2 input (gamepad, stick wheel, media keys), display and vsync; SDL_mixer playback with sample-rate switching |
+| `src/library.go`, `src/ij_libinfo.go` | Library scan, album grouping, artwork, scan statistics |
+| `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
+| `src/knulli.go` | Knulli integration: paths, backlight, system volume, Bluetooth |
+| other `src/*.go` | Player, queue, playback state and settings, inherited from MiyooPod |
+| `port/` | The package: launcher, assets, fonts, bundled libraries |
+| `tools/` | Build script and the tools used to recover the v0.20 sources |
+
+## How this repository came to be
+
+The v0.20 source tree was lost. It was rebuilt from the surviving release binary and build cache, file by file. Each function was recompiled and its machine code compared with the original v0.20 object until they matched: 978 functions identical, 53 equivalent. [docs/recovery](docs/recovery) describes the method and the result. Version 0.21 builds on the recovered code.
+
+## Credits
+
+- **[iPod.js](https://github.com/tvillarete/ipod-classic-js)** by Tanner Villarete: the interface design, layouts and assets KnulliPod recreates (MIT).
+- **[MiyooPod](https://github.com/danfragoso/miyoopod)** by Danilo Fragoso: the player engine, library scan and original app KnulliPod is built on (MIT).
+- **[Inter](https://rsms.me/inter/)** by Rasmus Andersson: the font (SIL Open Font License).
+- Apple's reference **[ALAC decoder](https://github.com/macosforge/alac)** (Apache 2.0), **[FFmpeg](https://ffmpeg.org)**'s AAC decoder (LGPL 2.1), **[SDL2 and SDL2_mixer](https://libsdl.org)** (zlib).
+
+See [THIRD_PARTY_LICENSES.md](port/knullipod/THIRD_PARTY_LICENSES.md) for the full list.
+
+## License
+
+KnulliPod is released under the [MIT License](LICENSE).
+
+iPod is a trademark of Apple Inc. This is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.

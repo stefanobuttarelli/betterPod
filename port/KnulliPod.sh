@@ -1,6 +1,7 @@
 #!/bin/bash
-# KnulliPod - lettore musicale in stile iPod per Knulli (PortMaster)
-# UI ricreata da iPod.js di Tanner Villarete (MIT); motore audio da MiyooPod di Danilo Fragoso (MIT)
+# KnulliPod - an iPod-style music player for Knulli (PortMaster-style port)
+# UI recreated from iPod.js by Tanner Villarete (MIT); player engine from MiyooPod by Danilo Fragoso (MIT)
+# https://github.com/stefanobuttarelli/knullipod
 
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 
@@ -23,37 +24,42 @@ cd "$GAMEDIR"
 
 > "$GAMEDIR/log.txt" && exec > >(tee "$GAMEDIR/log.txt") 2>&1
 
-# --- Cartella musica -------------------------------------------------------
-# Su Knulli la cartella standard e' /userdata/music (accessibile anche via rete
-# come "music"). Se non esiste, si usa knullipod/music dentro la cartella ports.
+# --- Music folder ----------------------------------------------------------
+# On Knulli the standard folder is /userdata/music (the "music" network share).
+# If it doesn't exist, knullipod/music inside the ports folder is used.
 if [ -d "/userdata/music" ]; then
   export MIYOOPOD_MUSIC_DIR="/userdata/music"
 else
   mkdir -p "$GAMEDIR/music"
   export MIYOOPOD_MUSIC_DIR="$GAMEDIR/music"
 fi
-# Libreria, impostazioni e copertine restano nella cartella del port
+# Library, settings and artwork stay in the port folder (Settings > Database
+# can move them elsewhere)
 export MIYOOPOD_DATA_DIR="$GAMEDIR/conf"
 
-# --- Comandi ----------------------------------------------------------------
-# Il gamepad e' letto direttamente da SDL (niente gptokeyb, evita input doppi).
+# --- Controls --------------------------------------------------------------
+# The gamepad is read directly through SDL (no gptokeyb, no double input).
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
-# A e B seguono le etichette Anbernic. Se risultano invertiti, togli il # qui sotto:
+# A and B follow the Anbernic labels. If they are swapped, remove the # below:
 # export MIYOOPOD_SWAP_AB=0
-# Lo stick funziona come le frecce. Per usarlo ruotandolo come una ghiera:
+# The stick works like the arrows. To turn it like a click wheel instead:
 # export MIYOOPOD_STICK_WHEEL=1
-# export MIYOOPOD_WHEEL_STEP=15   # gradi di rotazione per scatto (5-90)
-# Luminosita' (in %) durante Hold (SELECT). Di base un quinto di quella attuale:
+# export MIYOOPOD_WHEEL_STEP=15   # degrees of rotation per step (5-90)
+# Brightness (in %) during Hold (SELECT). Default: a fifth of the current one:
 # export MIYOOPOD_HOLD_BRIGHTNESS=10
-# In Hold le frecce su/giu' regolano la luminosita'. Per disattivarlo:
+# In Hold, up/down set the brightness. To turn that off:
 # export MIYOOPOD_HOLD_ADJUST=0
-# Volume interno dell'app invece del volume della console:
+# Use the app's internal volume instead of the console volume:
 # export MIYOOPOD_SOFT_VOLUME=1
-# Ignora i tasti delle cuffie / niente icona Bluetooth:
+# Ignore headphone buttons / no Bluetooth icon:
 # export MIYOOPOD_MEDIA_KEYS=0
 # export MIYOOPOD_BT_ICON=0
-# Registro dei tempi di disegno (per segnalare scatti):
+# Log drawing times (to report stutter):
 # export MIYOOPOD_PERF=1
+# Disable vertical sync:
+# export MIYOOPOD_VSYNC=0
+# Original MiyooPod interface:
+# export MIYOOPOD_CLASSIC_UI=1
 
 export LD_LIBRARY_PATH="$GAMEDIR/libs:$LD_LIBRARY_PATH"
 

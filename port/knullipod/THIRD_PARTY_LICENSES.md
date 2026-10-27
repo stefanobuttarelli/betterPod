@@ -1,61 +1,61 @@
-# Third-Party Licenses
+# Third-party licenses
 
-MiyooPod itself is licensed under the [MIT License](LICENSE). It bundles and
-depends on the following third-party components, each distributed under its own
-license. Copyright and license notices for these components are retained by
-their respective authors.
+KnulliPod is licensed under the [MIT License](https://github.com/stefanobuttarelli/knullipod/blob/main/LICENSE). It includes and depends on the components below. Each is distributed under its own license, and the copyright notices stay with their authors.
 
-## Bundled Native Libraries (`libs/`)
+## Projects KnulliPod is based on
 
-| Component | License |
+| Project | Author | License | Used for |
+| --- | --- | --- | --- |
+| [iPod.js](https://github.com/tvillarete/ipod-classic-js) | Tanner Villarete | MIT (`LICENSE.ipod.js`) | Interface design, layouts, icons and images in `assets/ipod` |
+| [MiyooPod](https://github.com/danfragoso/miyoopod) | Danilo Fragoso | MIT (`LICENSE.MiyooPod`) | Player engine, library scan, original app |
+
+## Fonts (`assets/`)
+
+| Font | License |
 | --- | --- |
-| SDL2 | zlib License |
-| SDL2_mixer | zlib License |
-| zlib (`libSDL2_z`) | zlib License |
-| json-c (`libSDL2_json-c`) | MIT License |
-| libmpg123 | LGPL 2.1 |
-| dr_flac (statically linked in SDL2_mixer) | Public Domain (Unlicense) / MIT-0 |
-| stb_vorbis (statically linked in SDL2_mixer) | Public Domain (Unlicense) / MIT |
+| Inter (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/COPYRIGHT-Inter.txt`) |
 
-### Note on libmpg123 (LGPL 2.1)
+## Bundled native libraries (`libs/`)
 
-libmpg123 is licensed under the GNU Lesser General Public License, version 2.1.
-It is dynamically linked (as a shared `.so`), which satisfies the LGPL
-requirement that users be able to replace or relink the library. Its license
-text and source are available from https://www.mpg123.de/.
+| Library | License | Notes |
+| --- | --- | --- |
+| SDL2_mixer (`libSDL2_mixer-2.0.so.0`) | zlib | Patched build: ALAC and AAC support, 24-bit FLAC. MP3 through minimp3 (CC0), Ogg Vorbis through stb_vorbis (public domain / MIT), FLAC through dr_flac (public domain / MIT-0), all built in |
+| Apple ALAC decoder (inside SDL2_mixer) | Apache 2.0 (`libs/LICENSE.ALAC-Apache-2.0.txt`) | See below |
+| FFmpeg AAC decoder (`libavcodec_kp.so.60`, `libavutil_kp.so.58`) | LGPL 2.1 (`libs/LICENSE.FFmpeg-LGPL-2.1.txt`) | See below |
 
-## Apple Lossless (ALAC) decoder
+SDL2 itself is not bundled: KnulliPod uses the one provided by Knulli.
 
-KnulliPod's SDL_mixer build (`libs/libSDL2_mixer-2.0.so.0`) includes Apple's
-reference ALAC decoder (https://github.com/macosforge/alac), Copyright (c) 2011
-Apple Inc., licensed under the Apache License 2.0 (see
-`libs/LICENSE.ALAC-Apache-2.0.txt`). The C++ decoder class was ported to C and
-an MP4 demuxer and SDL_mixer music interface were added; FLAC decoding was
-changed to keep full 24-bit resolution.
+### Apple Lossless (ALAC) decoder
 
-## FFmpeg (AAC decoder, LGPL 2.1)
+The SDL_mixer build includes Apple's [reference ALAC decoder](https://github.com/macosforge/alac), Copyright (c) 2011 Apple Inc., under the Apache License 2.0. Changes:
 
-`libs/libavcodec_kp.so.60` and `libs/libavutil_kp.so.58` are a minimal build of
-FFmpeg 6.1.2 (https://ffmpeg.org, source: https://github.com/FFmpeg/FFmpeg,
-tag n6.1.2) containing only the AAC decoder, licensed under the GNU Lesser
-General Public License 2.1 (see `libs/LICENSE.FFmpeg-LGPL-2.1.txt`). They are
-separate shared libraries and can be replaced. Configure flags:
-`--disable-everything --disable-autodetect --enable-decoder=aac
---enable-parser=aac --disable-programs --disable-doc --disable-avformat
---disable-swscale --disable-swresample --disable-avdevice --disable-avfilter
---disable-network --enable-shared --disable-static --enable-pic
---build-suffix=_kp`.
+- the C++ decoder class was ported to C;
+- an MP4 demuxer and an SDL_mixer music interface were added;
+- FLAC decoding was changed to keep the full 24-bit resolution.
 
-## Go Module Dependencies
+### FFmpeg (AAC decoder, LGPL 2.1)
+
+`libavcodec_kp.so.60` and `libavutil_kp.so.58` are a minimal build of [FFmpeg](https://ffmpeg.org) 6.1.2 ([source](https://github.com/FFmpeg/FFmpeg), tag `n6.1.2`) containing only the AAC decoder.
+
+- **License:** GNU Lesser General Public License 2.1.
+- **Replaceable:** they are separate shared libraries, so they can be swapped for another build.
+- **Configure flags:** `--disable-everything --disable-autodetect --enable-decoder=aac --enable-parser=aac --disable-programs --disable-doc --disable-avformat --disable-swscale --disable-swresample --disable-avdevice --disable-avfilter --disable-network --enable-shared --disable-static --enable-pic --build-suffix=_kp`.
+
+## Go modules (compiled into `MiyooPod`)
 
 | Module | License |
 | --- | --- |
-| github.com/dhowden/tag | BSD-2-Clause |
-| github.com/fogleman/gg | MIT License |
-| github.com/google/uuid | BSD-3-Clause |
-| github.com/skip2/go-qrcode | MIT License |
-| golang.org/x/image | BSD-3-Clause |
-| github.com/golang/freetype | FreeType License / GPLv2 |
+| [github.com/dhowden/tag](https://github.com/dhowden/tag) | BSD-2-Clause |
+| [github.com/fogleman/gg](https://github.com/fogleman/gg) | MIT |
+| [github.com/golang/freetype](https://github.com/golang/freetype) | FreeType License (dual-licensed with GPLv2; used under the FreeType License) |
+| [github.com/google/uuid](https://github.com/google/uuid) | BSD-3-Clause |
+| [github.com/skip2/go-qrcode](https://github.com/skip2/go-qrcode) | MIT |
+| [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) | BSD-3-Clause |
+| [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | BSD-3-Clause |
+| The Go standard library | BSD-3-Clause |
 
-Full license texts for each dependency are available in their respective source
-repositories.
+The full license texts are in each project's repository.
+
+## Trademarks
+
+iPod is a trademark of Apple Inc. KnulliPod is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.

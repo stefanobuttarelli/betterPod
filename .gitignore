@@ -1,7 +1,11 @@
+# build output
 /build/
 /dist/
-/deps/src/
-/deps/out/
 *.o
+# the binary is built into the package by tools/build.sh
 port/knullipod/MiyooPod
-miyoo/App/KnulliPod/KnulliPod
+# runtime data and logs from local test runs
+port/knullipod/conf/*
+!port/knullipod/conf/.gitkeep
+port/knullipod/*.log
+port/log.txt
