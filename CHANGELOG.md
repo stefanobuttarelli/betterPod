@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.32 (2026-10-28)
+
+### Added
+- **Missing Covers** (Settings → Library, it replaces Find Missing Covers): the albums without a cover, one by one.
+  - **Choosing an album:** MusicBrainz is searched for it at once (title and artist, then the title alone, then its main part before ":").
+  - **The results:** everything MusicBrainz answers is listed, not only the sure matches. Each has its cover as a thumbnail, its artist, year and type; the ones the automatic search would take come first, marked "Best match".
+  - **Choosing a result:** its cover is downloaded and given to the album, which leaves the list.
+  - **Nothing right?** "Edit search" (or "None of these?" at the bottom) opens the keyboard to search by hand: plain words, matched against title, artist and the rest. Holding the button offers "Clear search" and "Search automatically again".
+  - **Errors** are shown as such ("MusicBrainz didn't answer", with the reason and a retry), so a missing connection doesn't look like "no results".
+  - **Automatic search:** "Search All Automatically", at the top, is still there, for all the albums at once (best matches only).
+
 ## v0.31.2 (2026-10-28)
 
 ### Added

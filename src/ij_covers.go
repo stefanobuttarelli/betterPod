@@ -1,6 +1,6 @@
 package main
 
-// ij_covers.go — Settings → Library → Find Missing Covers: covers for the
+// ij_covers.go — Settings → Library → Missing Covers → Search All Automatically: covers for the
 // albums that have none, from the Cover Art Archive (coverartarchive.org),
 // found through MusicBrainz.
 //
@@ -238,6 +238,8 @@ type mbGroup struct {
 		Name string `json:"name"`
 	} `json:"artist-credit"`
 	Secondary []string `json:"secondary-types"`
+	Primary   string   `json:"primary-type"`
+	First     string   `json:"first-release-date"`
 }
 
 func (g mbGroup) soundtrack() bool {
@@ -258,8 +260,17 @@ func (g mbGroup) artist() string {
 }
 
 func mbSearchGroups(q string) ([]mbGroup, error) {
+	return mbSearch(q, false, 8)
+}
+
+// mbSearch runs a release-group search: q in Lucene syntax, or (dismax) as
+// plain words matched against title, artist and so on.
+func mbSearch(q string, dismax bool, limit int) ([]mbGroup, error) {
 	mbWait()
-	u := mbBase() + "/ws/2/release-group/?fmt=json&limit=8&query=" + url.QueryEscape(q)
+	u := fmt.Sprintf("%s/ws/2/release-group/?fmt=json&limit=%d&query=%s", mbBase(), limit, url.QueryEscape(q))
+	if dismax {
+		u += "&dismax=true"
+	}
 	resp, err := coverGet(u, 15*time.Second)
 	if err != nil {
 		return nil, err
@@ -420,8 +431,12 @@ func mbReleaseGroups(a *Album) ([]string, error) {
 
 // caaFront downloads a release group's front cover at 1200 px (nil, nil if
 // it has none).
-func caaFront(rgid string) ([]byte, error) {
-	resp, err := coverGet(caaBase()+"/release-group/"+rgid+"/front-1200", 30*time.Second)
+func caaFront(rgid string) ([]byte, error) { return caaImage(rgid, "front-1200") }
+
+// caaImage downloads a release group's front cover at a size ("front-250",
+// "front-1200"); nil, nil if it has none.
+func caaImage(rgid, size string) ([]byte, error) {
+	resp, err := coverGet(caaBase()+"/release-group/"+rgid+"/"+size, 30*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -481,6 +496,28 @@ func albumFolder(a *Album) string {
 		return ""
 	}
 	return dir
+}
+
+// saveCoverFile saves a found cover as cover.jpg in the album's folder
+// (best effort: only a folder of its own, without a cover yet).
+func saveCoverFile(a *Album, data []byte) {
+	if dir := albumFolder(a); dir != "" {
+		if p := filepath.Join(dir, "cover.jpg"); !fileExists(p) && sniffImageExt(data) == "jpg" {
+			_ = writeFileAtomic(p, data)
+		}
+	}
+}
+
+// setAlbumCover gives the album the cover and saves it in the artwork
+// cache; on the UI goroutine (the album is shared with it).
+func (ui *IpodUI) setAlbumCover(a *Album, data []byte) {
+	a.ArtData, a.ArtExt = data, sniffImageExt(data)
+	if err := ui.app.saveAlbumArtwork(a); err != nil {
+		logMsg("Covers: saving " + a.Name + ": " + err.Error())
+	}
+	ui.artc.dropAlbum(a)
+	ui.kb.initialized = false
+	ui.onArtLoaded()
 }
 
 // missingCovers: albums without artwork that can be searched for.
@@ -557,22 +594,10 @@ func (ui *IpodUI) startCoverSearch() {
 				j.mu.Unlock()
 				continue
 			}
-			// save in the album folder (best effort) and in the artwork
-			// cache, on the UI goroutine (the album is shared with it)
-			if dir := albumFolder(a); dir != "" {
-				if p := filepath.Join(dir, "cover.jpg"); !fileExists(p) && sniffImageExt(data) == "jpg" {
-					_ = writeFileAtomic(p, data)
-				}
-			}
+			saveCoverFile(a, data)
 			done := make(chan struct{})
 			ui.post(func() {
-				a.ArtData, a.ArtExt = data, sniffImageExt(data)
-				if err := ui.app.saveAlbumArtwork(a); err != nil {
-					logMsg("Covers: saving " + a.Name + ": " + err.Error())
-				}
-				ui.artc.dropAlbum(a)
-				ui.kb.initialized = false
-				ui.onArtLoaded()
+				ui.setAlbumCover(a, data)
 				close(done)
 			})
 			<-done

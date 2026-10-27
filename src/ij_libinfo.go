@@ -287,7 +287,7 @@ func (ui *IpodUI) libraryInfoView() *View {
 			if n > 0 {
 				sub = fmt.Sprintf("%d %s without a cover", n, pluralize(n, "album", "albums"))
 			}
-			items = append(items, Item{Label: "Find Missing Covers", Sublabel: sub, OnSelect: func() { ui.showView(ui.coverView(), "") }})
+			items = append(items, Item{Label: "Missing Covers", Sublabel: sub, OnSelect: func() { ui.showView(ui.missingCoversView(), "") }})
 			if st := scanStats; st != nil && len(st.FolderList) > 0 {
 				withMusic := 0
 				for _, f := range st.FolderList {

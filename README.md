@@ -48,7 +48,7 @@
   - a Bluetooth icon shows in the status bar.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
-- **Missing covers found online.** Settings → Library → Find Missing Covers fetches them from the Cover Art Archive (MusicBrainz).
+- **Missing covers found online.** Settings → Library → Missing Covers lists the albums without one: choose one to see what MusicBrainz finds (with thumbnails) and pick, or search by hand; Search All Automatically fetches them from the Cover Art Archive (MusicBrainz).
 - **Internet Archive.** Search archive.org, see each item's license, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
 - **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
@@ -120,7 +120,7 @@ The first start scans the music folder. Later starts load the saved library inst
 |---|---|
 | Shuffle, Repeat | Submenus with the options; the active one is ticked |
 | Theme | Light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00) |
-| Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Find Missing Covers**, **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
+| Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Missing Covers** (each album's search results with thumbnails, search by hand, or all automatically), **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
 | Database | Folder for the library, artwork, settings, statistics and game saves |
 | Software Update | Checks for a new version over Wi-Fi and installs it |
 
@@ -217,7 +217,8 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
 | `src/ij_archive.go` | Music → Internet Archive (search, item, download) |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
-| `src/ij_covers.go` | Find Missing Covers (MusicBrainz, Cover Art Archive) |
+| `src/ij_covers.go` | Cover search (MusicBrainz, Cover Art Archive), Search All Automatically |
+| `src/ij_coverpick.go` | Missing Covers: the albums without a cover, each one's results to choose from |
 | `src/ij_update.go` | Settings → Software Update (manifest, download, install, restart) |
 | `src/duration.go` | Track lengths read from the file headers |
 | `src/knulli.go` | Knulli integration: paths, backlight, system volume, Bluetooth |
