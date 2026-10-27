@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.31.1 (2026-10-28)
+
+### Fixed
+- **Find Missing Covers finds soundtracks and compilations.**
+  - **Artists:** all the album's artists are tried (album artist, then track artists). A compilation also accepts MusicBrainz's "Various Artists".
+  - **Titles:** the main title before ":" counts too ("Hercules: An Original Walt Disney Records Soundtrack" / "Hercules"), when the artist matches or both are soundtracks. Singular and plural count as the same word ("Record" / "Records").
+  - **No artist match:** the title alone is searched, still checking every result, so a soundtrack only takes the cover of a soundtrack and not of another album with the same name.
+  - **End screen:** albums that could not be looked up (no connection, MusicBrainz busy) are counted apart from the ones not found.
+
 ## v0.31 (2026-10-28)
 
 ### Changed

@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -168,9 +169,28 @@ func titleWords(s string) []string {
 		if editionWords[w] || len(w) == 4 && w >= "1900" && w <= "2099" {
 			continue
 		}
-		out = append(out, w)
+		out = append(out, singular(w))
 	}
 	return out
+}
+
+// singular: "records" and "record" compare the same.
+func singular(w string) string {
+	if len(w) > 3 && strings.HasSuffix(w, "s") && !strings.HasSuffix(w, "ss") {
+		return w[:len(w)-1]
+	}
+	return w
+}
+
+// mainTitle: the part before a subtitle ("Hercules: An Original Walt
+// Disney Records Soundtrack" → "Hercules").
+func mainTitle(s string) string {
+	for _, sep := range []string{": ", " - ", " – ", " — "} {
+		if i := strings.Index(s, sep); i > 0 {
+			return s[:i]
+		}
+	}
+	return s
 }
 
 func sameWords(a, b []string) bool {
@@ -217,6 +237,16 @@ type mbGroup struct {
 	Credit []struct {
 		Name string `json:"name"`
 	} `json:"artist-credit"`
+	Secondary []string `json:"secondary-types"`
+}
+
+func (g mbGroup) soundtrack() bool {
+	for _, t := range g.Secondary {
+		if strings.EqualFold(t, "Soundtrack") {
+			return true
+		}
+	}
+	return false
 }
 
 func (g mbGroup) artist() string {
@@ -255,11 +285,76 @@ func usableArtist(a string) bool {
 	return l != "" && l != "unknown artist" && l != "various artists" && l != "various" && l != "va"
 }
 
+// albumQuery is what is known of an album to look it up.
+type albumQuery struct {
+	title      string
+	artists    []string // album artist and track artists, most common first
+	various    bool     // several different track artists (a compilation)
+	soundtrack bool     // the title says so
+}
+
+func newAlbumQuery(a *Album) albumQuery {
+	q := albumQuery{title: a.Name}
+	count := map[string]int{}
+	var order []string
+	addArt := func(n string, w int) {
+		n = strings.TrimSpace(n)
+		if !usableArtist(n) {
+			return
+		}
+		if count[n] == 0 {
+			order = append(order, n)
+		}
+		count[n] += w
+	}
+	addArt(a.Artist, 100)
+	for _, t := range a.Tracks {
+		if t != nil {
+			addArt(t.AlbumArtist, 10)
+			addArt(t.Artist, 1)
+		}
+	}
+	sort.SliceStable(order, func(i, j int) bool { return count[order[i]] > count[order[j]] })
+	q.artists = order
+	trackArtists := map[string]bool{}
+	for _, t := range a.Tracks {
+		if t != nil && usableArtist(t.Artist) {
+			trackArtists[strings.ToLower(cleanArtist(t.Artist))] = true
+		}
+	}
+	q.various = len(trackArtists) > 2 || !usableArtist(a.Artist)
+	low := strings.ToLower(a.Name)
+	q.soundtrack = strings.Contains(low, "soundtrack") || strings.Contains(low, "o.s.t") || strings.Contains(low, " ost")
+	return q
+}
+
+// artistOK: the release group's artist is one of ours, or "Various
+// Artists" for a compilation.
+func (q albumQuery) artistOK(g mbGroup) bool {
+	ga := g.artist()
+	for _, a := range q.artists {
+		if sameArtist(a, ga) {
+			return true
+		}
+	}
+	return q.various && (strings.EqualFold(strings.TrimSpace(ga), "Various Artists") || ga == "")
+}
+
+// titleOK: the same title; or the same main title (before ":") when the
+// artist matches too, or both are soundtracks.
+func (q albumQuery) titleOK(g mbGroup) bool {
+	if sameTitle(q.title, g.Title) {
+		return true
+	}
+	mainSame := sameTitle(mainTitle(q.title), mainTitle(g.Title)) || sameTitle(mainTitle(q.title), g.Title)
+	return mainSame && (q.artistOK(g) || q.soundtrack && g.soundtrack())
+}
+
 // mbReleaseGroups returns release group IDs for the album, best first (at
-// most 3), trying the steps above in turn.
-func mbReleaseGroups(album, artist string) ([]string, error) {
-	title := cleanTitle(album)
-	art := cleanArtist(artist)
+// most 3): by title and each of its artists, then by the main title alone
+// (soundtracks and compilations), every result checked.
+func mbReleaseGroups(a *Album) ([]string, error) {
+	q := newAlbumQuery(a)
 	var ids []string
 	add := func(id string) {
 		for _, x := range ids {
@@ -271,40 +366,53 @@ func mbReleaseGroups(album, artist string) ([]string, error) {
 			ids = append(ids, id)
 		}
 	}
-	if usableArtist(art) {
-		// 1. phrases
+	check := func(gs []mbGroup, needArtist bool) {
+		for _, g := range gs {
+			if !q.titleOK(g) {
+				continue
+			}
+			if needArtist && !q.artistOK(g) {
+				continue
+			}
+			add(g.ID)
+		}
+	}
+	title := cleanTitle(q.title)
+	// 1–2. with the artists (at most two), as phrases then as words
+	for n, art := range q.artists {
+		if n == 2 || len(ids) > 0 {
+			break
+		}
+		art = cleanArtist(art)
 		gs, err := mbSearchGroups("releasegroup:" + mbEscape(title) + " AND artist:" + mbEscape(art))
 		if err != nil {
 			return nil, err
 		}
-		for _, g := range gs {
-			if sameTitle(album, g.Title) && sameArtist(artist, g.artist()) {
-				add(g.ID)
-			}
-		}
+		check(gs, true)
 		if len(ids) > 0 {
-			return ids, nil
+			break
 		}
-		// 2. words, checked one by one
 		gs, err = mbSearchGroups("releasegroup:(" + lucene(title) + ") AND artist:(" + lucene(art) + ")")
 		if err != nil {
 			return nil, err
 		}
-		for _, g := range gs {
-			if sameTitle(album, g.Title) && sameArtist(artist, g.artist()) {
-				add(g.ID)
-			}
-		}
+		check(gs, true)
+	}
+	if len(ids) > 0 {
 		return ids, nil
 	}
-	// 3. no artist to go by: the title alone, exact
-	gs, err := mbSearchGroups("releasegroup:" + mbEscape(title))
-	if err != nil {
-		return nil, err
-	}
-	for _, g := range gs {
-		if sameTitle(album, g.Title) {
-			add(g.ID)
+	// 3. the title alone (also its main part): only results whose title
+	// matches as above, and whose artist is ours, or for soundtracks and
+	// compilations any credit
+	short := cleanTitle(mainTitle(q.title))
+	for _, t := range []string{title, short} {
+		gs, err := mbSearchGroups("releasegroup:" + mbEscape(t))
+		if err != nil {
+			return nil, err
+		}
+		check(gs, !(q.soundtrack || q.various))
+		if len(ids) > 0 || short == title {
+			break
 		}
 	}
 	return ids, nil
@@ -336,7 +444,7 @@ func caaFront(rgid string) ([]byte, error) {
 
 // findCover looks up one album; nil data means no cover was found.
 func findCover(a *Album) ([]byte, error) {
-	ids, err := mbReleaseGroups(a.Name, a.Artist)
+	ids, err := mbReleaseGroups(a)
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +500,7 @@ type coverJob struct {
 	mu                   sync.Mutex
 	albums               []*Album
 	missed               []string // albums without a cover found
+	errors               int      // albums that could not be looked up
 	index, found, failed int
 	current              *Album
 	err                  string
@@ -432,6 +541,7 @@ func (ui *IpodUI) startCoverSearch() {
 				logMsg("Covers: " + a.Name + ": " + err.Error())
 				j.mu.Lock()
 				j.failed++
+				j.errors++
 				j.err = iaErrText(err)
 				j.mu.Unlock()
 				if netErrs++; netErrs >= 3 {
@@ -576,6 +686,7 @@ func (cv *CoverView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 		j.mu.Lock()
 		n, i, found, failed, cur, fin, canc, errs := len(j.albums), j.index, j.found, j.failed, j.current, j.finished, j.cancelled, j.err
 		missed := append([]string(nil), j.missed...)
+		nerr := j.errors
 		j.mu.Unlock()
 		switch {
 		case fin && n == 0:
@@ -586,9 +697,14 @@ func (cv *CoverView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 			if canc {
 				line1 = "Stopped · " + line1
 			}
-			if errs != "" && found == 0 && len(missed) == 0 {
+			switch {
+			case nerr > 0 && len(missed) == 0:
+				line1 = fmt.Sprintf("%d could not be looked up", nerr)
 				line2 = errs
-			} else if len(missed) > 0 {
+			case nerr > 0:
+				line1 = fmt.Sprintf("%d not found · %d could not be looked up (%s)", len(missed), nerr, errs)
+				line2 = "Not found: " + strings.Join(missed, ", ")
+			case len(missed) > 0:
 				line2 = "Not found: " + strings.Join(missed, ", ")
 			}
 			button = "Done"

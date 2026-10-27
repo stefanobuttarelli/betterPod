@@ -1,8 +1,8 @@
 {
-  "version": "0.31",
-  "path": "release/knullipod-v0.31-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.31-knulli.zip",
-  "sha256": "198c7643c1beed25661da1c913058fb479d40728272505f2da684cb8d31fe7e7",
-  "size": 14311849,
-  "notes": "New QWERTY keyboard for searches\nCover search finds more, never wrong ones"
+  "version": "0.31.1",
+  "path": "release/knullipod-v0.31.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.31.1-knulli.zip",
+  "sha256": "c95594aba847a9524d8b8a3991d43093da42816d4dc1f4b078e4e76e69e4d5d2",
+  "size": 14314557,
+  "notes": "Covers: soundtracks and compilations found"
 }
