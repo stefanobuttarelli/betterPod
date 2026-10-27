@@ -5,8 +5,12 @@ package main
 //
 // The repository carries a small manifest, release/latest.json:
 //
-//	{"version": "0.22", "url": ".../knullipod-v0.22-knulli.zip",
+//	{"version": "0.22", "path": "release/knullipod-v0.22-knulli.zip",
+//	 "url": "https://raw.githubusercontent.com/…/knullipod-v0.22-knulli.zip",
 //	 "sha256": "…", "size": 6012345, "notes": "…"}
+//
+// Both are read through GitHub's API (current right after a push), with
+// raw.githubusercontent.com as the fallback.
 //
 // "Check for updates" reads it; when the version is newer, "Install"
 // downloads the zip (checking size and SHA-256), unpacks it next to the
@@ -48,14 +52,20 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.25.2"
+	KNULLIPOD_VERSION  = "0.25.3"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
+	// GitHub's API serves the current files at once; raw.githubusercontent
+	// keeps "main" pointing at the previous commit for up to 5 minutes
+	// after a push (it is the fallback, e.g. over the API's rate limit)
+	updateAPIBase     = "https://api.github.com/repos/stefanobuttarelli/knullipod/contents/"
+	updateManifestRel = "release/latest.json"
 )
 
 type updateManifest struct {
 	Version string `json:"version"`
 	URL     string `json:"url"`
+	Path    string `json:"path,omitempty"` // the zip in the repository, read through the API
 	SHA256  string `json:"sha256"`
 	Size    int64  `json:"size"`
 	Notes   string `json:"notes"`
@@ -416,20 +426,33 @@ func updateClient(timeout time.Duration) *http.Client {
 }
 
 func fetchManifest() (*updateManifest, error) {
-	url := updateManifestURL
 	if u := os.Getenv("MIYOOPOD_UPDATE_URL"); u != "" {
-		url = u
+		return fetchManifestFrom(u, false)
 	}
-	// a unique query makes GitHub's CDN (5-minute cache) return the
-	// current manifest
-	sep := "?"
-	if strings.Contains(url, "?") {
-		sep = "&"
+	m, err := fetchManifestFrom(updateAPIBase+updateManifestRel, true)
+	if err == nil {
+		return m, nil
 	}
-	url += fmt.Sprintf("%st=%d", sep, time.Now().UnixNano())
-	req, _ := http.NewRequest("GET", url, nil)
+	logMsg("Update check through the API failed (" + err.Error() + "), trying raw")
+	return fetchManifestFrom(updateManifestURL, false)
+}
+
+// githubGet requests url; through the API it asks for the raw file.
+func githubGet(url string, api bool, timeout time.Duration) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Cache-Control", "no-cache")
-	resp, err := updateClient(15 * time.Second).Do(req)
+	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+	if api {
+		req.Header.Set("Accept", "application/vnd.github.raw")
+	}
+	return updateClient(timeout).Do(req)
+}
+
+func fetchManifestFrom(url string, api bool) (*updateManifest, error) {
+	resp, err := githubGet(url, api, 15*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -445,6 +468,31 @@ func fetchManifest() (*updateManifest, error) {
 		return nil, errors.New("Bad update info")
 	}
 	return &m, nil
+}
+
+// openDownload starts the download of the zip: through the API when the
+// manifest names its path, else (or if that fails) from its URL.
+func openDownload(m *updateManifest) (*http.Response, error) {
+	if m.Path != "" && os.Getenv("MIYOOPOD_UPDATE_URL") == "" {
+		resp, err := githubGet(updateAPIBase+m.Path, true, 10*time.Minute)
+		if err == nil && resp.StatusCode == 200 {
+			return resp, nil
+		}
+		if err == nil {
+			resp.Body.Close()
+			err = fmt.Errorf("status %d", resp.StatusCode)
+		}
+		logMsg("Download through the API failed (" + err.Error() + "), trying raw")
+	}
+	resp, err := githubGet(m.URL, false, 10*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("Download failed (%d)", resp.StatusCode)
+	}
+	return resp, nil
 }
 
 // --- install ---------------------------------------------------------------
@@ -490,14 +538,11 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 
 	// download, hashing as it arrives
 	zipPath := filepath.Join(stage, "update.zip")
-	resp, err := updateClient(10 * time.Minute).Get(m.URL)
+	resp, err := openDownload(m)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("Download failed (%d)", resp.StatusCode)
-	}
 	out, err := os.Create(zipPath)
 	if err != nil {
 		return err

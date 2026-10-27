@@ -1,12 +1,14 @@
 # Changelog
 
+## v0.25.3 (2026-10-27)
+
+### Fixed
+- **Software Update finds a new version right after it is published.** The version information and the download now come through GitHub's API. Before, they came through raw.githubusercontent.com, which can keep serving the previous version for up to 5 minutes after a release. raw.githubusercontent.com stays as the fallback.
+
 ## v0.25.2 (2026-10-27)
 
 ### Changed
 - **Music preview:** the covers beside the menu now cycle in a random order, reshuffled each time the preview starts, instead of alphabetically.
-
-### Fixed
-- **Software Update:** the check now always gets the latest version information, instead of a copy GitHub may keep for up to 5 minutes after a release.
 
 ## v0.25.1 (2026-10-27)
 
