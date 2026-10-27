@@ -45,6 +45,9 @@ type NowPlayingView struct {
 	marqOn   bool
 	lastDraw time.Time
 	wasPause bool
+	// the lossless badge's bars: 1 moving, 0 still (paused)
+	barsLive *Anim
+	barsOn   bool
 }
 
 func newNowPlayingView() *NowPlayingView {
@@ -57,6 +60,7 @@ func newNowPlayingView() *NowPlayingView {
 		scrubX:     newAnim(1.1),
 		change:     newAnim(1),
 		dir:        1,
+		barsLive:   newAnim(0),
 	}
 }
 
@@ -76,8 +80,9 @@ func (np *NowPlayingView) Animating(now time.Time) bool {
 	if np.mainX.Running() || np.volX.Running() || np.scrubX.Running() || np.tilt.Running() || np.change.Running() {
 		return true
 	}
-	// a scrolling line keeps the view redrawing while it is on screen
-	return np.marqOn && now.Sub(np.lastDraw) < 200*time.Millisecond
+	// a scrolling line or the moving bars keep the view redrawing while it
+	// is on screen
+	return (np.marqOn || np.barsOn) && now.Sub(np.lastDraw) < 200*time.Millisecond
 }
 
 // updateControls slides the control rows for the current mode.
@@ -362,6 +367,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		k := np.change.Get(now)
 		off := 22 * np.dir
 		np.marqOn = false
+		np.barsOn = false
 		if k < 1 && np.oldT != nil {
 			if !np.hideArt {
 				// the cover cross-fades only when the album changes
@@ -477,7 +483,16 @@ func (ui *IpodUI) drawNPInfo(dst *image.RGBA, np *NowPlayingView, t *Track, npMe
 		y += l.lh
 	}
 	if badge {
-		ui.drawLosslessBadge(dst, af, x0+dx, y+losslessBadgeGap, maxW, alpha)
+		// the bars move while the song plays and settle when it pauses
+		target := 0.0
+		if p := ui.app.Playing; p != nil && p.State == StatePlaying {
+			target = 1
+		}
+		if np.barsLive.Target() != target {
+			np.barsLive.To(target, 450*time.Millisecond, easeInOut, 0)
+		}
+		ui.drawLosslessBadge(dst, af, x0+dx, y+losslessBadgeGap, maxW, alpha, np.barsLive.Get(now), now)
+		np.barsOn = target == 1 || np.barsLive.Running()
 	}
 }
 

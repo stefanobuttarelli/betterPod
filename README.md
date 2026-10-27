@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.28-knulli.zip"><b>Download v0.28</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.29-knulli.zip"><b>Download v0.29</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -30,7 +30,7 @@
   Sizes, colours, icons and animation timings come from the original code.
 - **Cover Flow.** Flick through your albums in 3D with reflections. Flip a cover to see its tracks, with their lengths and a scrollbar, and play one straight from the back.
 - **Now Playing while you browse.** While music plays, the menus show the cover, song, artist and album at the bottom, like on an iPod nano. Long lines scroll, a pause dims the cover, and changing song slides to the next one.
-- **Now Playing.** The tilted 3D cover, a scrubber for seeking and a volume bar. Small icons show shuffle and repeat. Lossless files get a small LOSSLESS badge.
+- **Now Playing.** The tilted 3D cover, a scrubber for seeking and a volume bar. Small icons show shuffle and repeat. Lossless files get a LOSSLESS badge with a small animated level meter.<br><img src="docs/images/lossless.gif" width="240" alt="Lossless badge">
 - **Japanese titles too.** Latin, Greek and Cyrillic come from Inter, kana and kanji from Noto Sans JP.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **Games:** Brick and Solitaire, the classic iPod games. Solitaire saves your game.
@@ -74,7 +74,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.28-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.28-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.29-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.29-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -143,7 +143,7 @@ The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing a
 
 Music → Internet Archive searches [archive.org](https://archive.org) over Wi-Fi.
 
-- **Results:** each one shows its title, creator, year and license, as archive.org records it (Creative Commons, public domain, or "No license stated").
+- **Results:** each one shows its title, creator, year and license, as archive.org records it (Creative Commons, public domain, or "No license stated"). They come 50 at a time; **More results…** loads the next page.
 - **An item:** shows Download FLAC (lossless) and Download MP3 with their size, and the tracks; selecting a track downloads just that one.
 - **Where it goes:** downloads go to `<music>/Internet Archive/<creator>/<title>/` with the item's cover. The library is rescanned when they finish.
 

@@ -2,8 +2,9 @@ package main
 
 // ij_lossless.go — the "Lossless" badge under the song in Now Playing.
 //
-// For lossless files (FLAC, ALAC, WAV, AIFF) a small outlined pill shows two
-// little crossing waves and LOSSLESS, nothing else. It is KnulliPod's own
+// For lossless files (FLAC, ALAC, WAV, AIFF): five small rounded bars, a
+// level meter that moves softly while the song plays, and LOSSLESS. It is
+// KnulliPod's own
 // design, drawn in the theme's secondary text colour (light and dark).
 // The format comes from the file headers, read once per track in the
 // background.
@@ -12,10 +13,11 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"time"
 )
 
 const (
-	losslessBadgeH   = 13.0 // CSS px
+	losslessBadgeH   = 12.0 // CSS px (the tallest bar)
 	losslessBadgeGap = 7.0
 )
 
@@ -50,37 +52,50 @@ func (ui *IpodUI) trackFormat(t *Track) (audioFormat, bool) {
 }
 
 // drawLosslessBadge draws the badge with its left edge at x, top at y (CSS
-// px), within maxW.
-func (ui *IpodUI) drawLosslessBadge(dst *image.RGBA, af audioFormat, x, y, maxW, alpha float64) {
+// px), within maxW: five rounded bars, like a small level meter, and
+// LOSSLESS. While the song plays the bars rise and fall, each at its own
+// pace (two slow sines mixed, so they move with some rhythm rather than in
+// step); paused, they settle back to the logo's shape.
+func (ui *IpodUI) drawLosslessBadge(dst *image.RGBA, af audioFormat, x, y, maxW, alpha float64, live float64, now time.Time) {
 	if alpha <= 0.002 {
 		return
 	}
-	label := "LOSSLESS"
 	c := th.npSub
-	lf := face(W700, 8)
-	const track = 0.7 // letter spacing (CSS px)
-	lw := 0.0
-	for _, r := range label {
-		lw += textWidth(lf, string(r))/DPR + track
+	col := Col{c.R, c.G, c.B, alpha}
+	d := DPR
+	const barW, barGap = 2.2, 1.7
+	base := [5]float64{0.42, 0.72, 1, 0.72, 0.42} // the logo's shape
+	// each bar: two frequencies (rad/s) and phases
+	freq := [5][2]float64{{2.3, 5.1}, {3.1, 1.7}, {1.9, 4.3}, {2.7, 6.1}, {3.6, 2.2}}
+	phase := [5][2]float64{{0, 1.3}, {2.1, 0.4}, {4.0, 2.8}, {1.2, 5.0}, {3.3, 0.9}}
+	t := float64(now.UnixNano()%int64(600*time.Second)) / 1e9
+	cy := y + losslessBadgeH/2
+	full := losslessBadgeH
+	bx := x
+	for i := range base {
+		h := base[i]
+		if live > 0 {
+			m := 0.5 + 0.32*math.Sin(t*freq[i][0]+phase[i][0]) + 0.18*math.Sin(t*freq[i][1]+phase[i][1])
+			// half the logo's shape, half free movement (25–100%), so the
+			// middle stays the tallest on average
+			mv := 0.5*base[i] + 0.5*(0.25+0.75*m)
+			h = h*(1-live) + mv*live
+		}
+		bh := math.Max(barW, full*h)
+		fillRoundedGradient(dst, bx*d, (cy-bh/2)*d, (bx+barW)*d, (cy+bh/2)*d, barW/2*d,
+			[]GradStop{{0, col}, {1, col}}, 1)
+		bx += barW + barGap
 	}
-	lw -= track
-	pad := 5.0
-	const waveW, waveGap = 12.0, 3.5
-	pw := pad + waveW + waveGap + lw + pad
-	if pw > maxW {
+	// LOSSLESS, letter-spaced
+	lf := face(W700, 9)
+	const track = 0.9
+	tx := bx + 3.5
+	if tx > x+maxW {
 		return
 	}
-	d := DPR
-	strokeRounded(dst, x*d, y*d, (x+pw)*d, (y+losslessBadgeH)*d, 3*d, 1.2*d, c, alpha)
-	base := y + losslessBadgeH/2 + lineCapHeight(8)/2
-	col := Col{c.R, c.G, c.B, alpha}
-	// a little wave, then LOSSLESS
-	// two waves in opposite phase, crossing
-	drawWave(dst, (x+pad)*d, (y+losslessBadgeH/2)*d, waveW*d, 2.3*d, 1.1*d, col)
-	drawWave(dst, (x+pad)*d, (y+losslessBadgeH/2)*d, waveW*d, -2.3*d, 1.1*d, col)
-	tx := x + pad + waveW + waveGap
-	for _, r := range label {
-		drawText(dst, lf, string(r), tx*d, base*d, col)
+	baseLine := cy + lineCapHeight(9)/2
+	for _, r := range "LOSSLESS" {
+		drawText(dst, lf, string(r), tx*d, baseLine*d, col)
 		tx += textWidth(lf, string(r))/DPR + track
 	}
 }
@@ -92,52 +107,4 @@ func khz(rate int) string {
 		return fmt.Sprintf("%d", int(math.Round(k)))
 	}
 	return fmt.Sprintf("%.1f", k)
-}
-
-// drawWave strokes one and a half periods of a sine wave, w wide and amp
-// high (device px; a negative amp is the opposite phase), centred
-// vertically on cy, with a round pen lw thick.
-func drawWave(dst *image.RGBA, x0, cy, w, amp, lw float64, c Col) {
-	const n = 96
-	var pts [n + 1][2]float64
-	// the ends are trimmed (7% of the curve on each side), so two waves in
-	// opposite phase cross in the middle but their tips stay apart
-	const t0, t1 = 0.07, 0.93
-	for i := range pts {
-		t := t0 + (t1-t0)*float64(i)/n
-		pts[i] = [2]float64{x0 + t*w, cy - amp*math.Sin(t*3*math.Pi)}
-	}
-	r := lw / 2
-	b := dst.Bounds()
-	ha := math.Abs(amp)
-	for py := int(cy - ha - lw - 1); py <= int(cy+ha+lw+1); py++ {
-		for px := int(x0 - lw - 1); px <= int(x0+w+lw+1); px++ {
-			if px < b.Min.X || px >= b.Max.X || py < b.Min.Y || py >= b.Max.Y {
-				continue
-			}
-			fx, fy := float64(px)+0.5, float64(py)+0.5
-			best := math.Inf(1)
-			for i := 0; i < n; i++ {
-				// distance to the segment pts[i]–pts[i+1]
-				ax, ay := pts[i][0], pts[i][1]
-				bx, by := pts[i+1][0], pts[i+1][1]
-				vx, vy := bx-ax, by-ay
-				t := ((fx-ax)*vx + (fy-ay)*vy) / (vx*vx + vy*vy)
-				t = math.Max(0, math.Min(1, t))
-				dx, dy := fx-(ax+t*vx), fy-(ay+t*vy)
-				if dd := dx*dx + dy*dy; dd < best {
-					best = dd
-				}
-			}
-			cov := r + 0.5 - math.Sqrt(best)
-			if cov <= 0 {
-				continue
-			}
-			if cov > 1 {
-				cov = 1
-			}
-			o := dst.PixOffset(px, py)
-			blendPx(dst.Pix[o:o+4], c, c.A*cov)
-		}
-	}
 }

@@ -12,11 +12,15 @@ package main
 //
 // Every result shows its license as archive.org records it (Creative
 // Commons, public domain, or "No license stated"); the search is not
-// filtered. Downloads go to <music>/Internet Archive/<creator>/<title>/,
+// filtered. Results come 50 at a time ("More results…" loads the next
+// page); every request shows its state in the list and has a timeout, a
+// download that stalls for 30 s stops, and answers to an older search are
+// dropped. Downloads go to <music>/Internet Archive/<creator>/<title>/,
 // one file at a time (a .part file renamed when complete), with the item's
 // cover saved as cover.jpg; the library is rescanned at the end.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -86,23 +91,29 @@ func iaGet(u string, timeout time.Duration, v any) error {
 	return json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(v)
 }
 
-// iaSearch returns up to 50 audio items for the query, most downloaded first.
-func iaSearch(q string) ([]iaResult, error) {
+// iaPageSize: results per page (the list asks for the next page on demand).
+const iaPageSize = 50
+
+// iaSearch returns one page (1-based) of audio items for the query, most
+// downloaded first, and how many there are in all.
+func iaSearch(q string, page int) ([]iaResult, int, error) {
 	v := url.Values{}
 	v.Set("q", "("+q+") AND mediatype:(audio OR etree)")
 	for _, f := range []string{"identifier", "title", "creator", "year", "date", "licenseurl"} {
 		v.Add("fl[]", f)
 	}
 	v.Set("sort[]", "downloads desc")
-	v.Set("rows", "50")
+	v.Set("rows", strconv.Itoa(iaPageSize))
+	v.Set("page", strconv.Itoa(page))
 	v.Set("output", "json")
 	var out struct {
 		Response struct {
-			Docs []map[string]json.RawMessage `json:"docs"`
+			NumFound int                          `json:"numFound"`
+			Docs     []map[string]json.RawMessage `json:"docs"`
 		} `json:"response"`
 	}
 	if err := iaGet(iaBase()+"/advancedsearch.php?"+v.Encode(), 20*time.Second, &out); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var res []iaResult
 	for _, d := range out.Response.Docs {
@@ -124,7 +135,7 @@ func iaSearch(q string) ([]iaResult, error) {
 		}
 		res = append(res, r)
 	}
-	return res, nil
+	return res, out.Response.NumFound, nil
 }
 
 type iaFile struct {
@@ -287,9 +298,12 @@ func (ui *IpodUI) iaSearchView() *View {
 		term, ran, status string
 		busy              bool
 		res               []iaResult
+		total, page       int
+		gen               int // the current search; older answers are dropped
 	}{}
 	v := &View{ID: "iaSearch", Title: "Internet Archive", Kind: KindFull}
 	var run func()
+	var more func()
 	v.Build = func() []Item {
 		sub := "Enter text, then ✓ to search"
 		if st.term != "" {
@@ -298,11 +312,8 @@ func (ui *IpodUI) iaSearchView() *View {
 		items := []Item{{Label: "Search archive.org", Sublabel: sub, Icon: "search_icon", OnSelect: func() {
 			ui.showKeyboard(func(k string) { iaKey(ui, v, &st.term, k, run) })
 		}}}
-		switch {
-		case st.busy:
-			items = append(items, Item{Label: "Searching…", NoArrow: true})
-		case st.status != "":
-			items = append(items, Item{Label: st.status, NoArrow: true})
+		if st.total > 0 {
+			items[0].Sublabel = fmt.Sprintf("%s · %d %s", st.ran, st.total, pluralize(st.total, "result", "results"))
 		}
 		for _, r := range st.res {
 			r := r
@@ -314,31 +325,73 @@ func (ui *IpodUI) iaSearchView() *View {
 			items = append(items, Item{Label: r.Title, Sublabel: sub,
 				OnSelect: func() { ui.showView(ui.iaItemView(r), "") }})
 		}
+		switch {
+		case st.busy:
+			items = append(items, Item{Label: "Searching…", NoArrow: true})
+		case st.status != "":
+			items = append(items, Item{Label: st.status, NoArrow: true, OnSelect: func() {
+				if len(st.res) > 0 {
+					more() // an error on a later page: try it again
+				} else {
+					run()
+				}
+			}})
+		case len(st.res) < st.total:
+			items = append(items, Item{Label: "More results…",
+				Sublabel: fmt.Sprintf("%d of %d shown", len(st.res), st.total), OnSelect: more})
+		}
 		return items
+	}
+	fetch := func(q string, page int, gen int) {
+		go func() {
+			res, total, err := iaSearch(q, page)
+			ui.post(func() {
+				if gen != st.gen {
+					return // a newer search has started
+				}
+				st.busy = false
+				if err != nil {
+					st.status = iaErrText(err) + " · press to retry"
+				} else {
+					st.status = ""
+					st.res = append(st.res, res...)
+					st.total, st.page = total, page
+					if len(res) == 0 {
+						st.total = len(st.res) // no more pages
+					}
+					if len(st.res) == 0 {
+						st.status = "No results"
+					}
+				}
+				first := v.Index
+				ui.refreshView(v)
+				if page == 1 && len(st.res) > 0 {
+					v.Index = 1
+				} else {
+					v.Index = first
+				}
+			})
+		}()
 	}
 	run = func() {
 		q := strings.TrimSpace(st.term)
-		if q == "" || st.busy {
+		if q == "" {
 			return
 		}
+		st.gen++
 		st.busy, st.status, st.ran = true, "", q
+		st.res, st.total, st.page = nil, 0, 0
+		v.Index = 0
 		ui.refreshView(v)
-		go func() {
-			res, err := iaSearch(q)
-			ui.post(func() {
-				st.busy, st.res = false, res
-				if err != nil {
-					st.status = iaErrText(err)
-				} else if len(res) == 0 {
-					st.status = "No results"
-				}
-				v.Index = 0
-				if len(res) > 0 {
-					v.Index = 1
-				}
-				ui.refreshView(v)
-			})
-		}()
+		fetch(q, 1, st.gen)
+	}
+	more = func() {
+		if st.busy || st.ran == "" {
+			return
+		}
+		st.busy, st.status = true, ""
+		ui.refreshView(v)
+		fetch(st.ran, st.page+1, st.gen)
 	}
 	v.Items = v.Build()
 	ui.showKeyboard(func(k string) { iaKey(ui, v, &st.term, k, run) })
@@ -477,6 +530,15 @@ type iaDownload struct {
 
 var iaCur *iaDownload
 
+// iaStall: a download that receives nothing for this long is stopped
+// (MIYOOPOD_IA_STALL, in seconds, changes it for tests).
+var iaStall = func() time.Duration {
+	if v, err := strconv.Atoi(os.Getenv("MIYOOPOD_IA_STALL")); err == nil && v > 0 {
+		return time.Duration(v) * time.Second
+	}
+	return 30 * time.Second
+}()
+
 func safeName(s string) string {
 	s = strings.Map(func(r rune) rune {
 		if strings.ContainsRune(`/\:*?"<>|`, r) || r < 32 {
@@ -548,10 +610,20 @@ func (d *iaDownload) run(ui *IpodUI) error {
 	client := updateClient(0)
 	get := func(name string, dst string, count bool) error {
 		u := iaBase() + "/download/" + url.PathEscape(d.item.ID) + "/" + escapePath(name)
-		req, _ := http.NewRequest("GET", u, nil)
+		// a connection that stops sending for iaStall is dropped (the
+		// request is cancelled, the read fails)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var stalled atomic.Bool
+		watchdog := time.AfterFunc(iaStall, func() { stalled.Store(true); cancel() })
+		defer watchdog.Stop()
+		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 		req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
 		resp, err := client.Do(req)
 		if err != nil {
+			if stalled.Load() {
+				return errors.New("Connection stalled")
+			}
 			return err
 		}
 		defer resp.Body.Close()
@@ -574,6 +646,7 @@ func (d *iaDownload) run(ui *IpodUI) error {
 			}
 			n, rerr := resp.Body.Read(buf)
 			if n > 0 {
+				watchdog.Reset(iaStall)
 				if _, err := out.Write(buf[:n]); err != nil {
 					out.Close()
 					os.Remove(part)
@@ -592,6 +665,9 @@ func (d *iaDownload) run(ui *IpodUI) error {
 			if rerr != nil {
 				out.Close()
 				os.Remove(part)
+				if stalled.Load() {
+					return errors.New("Connection stalled")
+				}
 				return rerr
 			}
 		}

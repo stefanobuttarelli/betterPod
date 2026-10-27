@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.29 (2026-10-27)
+
+### Changed
+- **Lossless badge:** five small rounded bars, a level meter, and LOSSLESS. While the song plays the bars rise and fall softly, each at its own pace, so they move with some rhythm. Paused, they settle back to the logo's shape.
+- **Internet Archive:**
+  - results come 50 at a time; "More results…" at the end of the list loads the next page and shows how many there are;
+  - an error on a page can be retried from the list;
+  - a download that receives nothing for 30 s stops ("Connection stalled") instead of waiting forever;
+  - the answer to an older search no longer replaces a newer one.
+
 ## v0.28 (2026-10-27)
 
 ### Added
