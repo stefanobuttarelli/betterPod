@@ -453,6 +453,11 @@ func (ui *IpodUI) drawNPInfo(dst *image.RGBA, np *NowPlayingView, t *Track, npMe
 	for _, l := range lines {
 		h += l.lh
 	}
+	af, hasFmt := ui.trackFormat(t)
+	badge := hasFmt && af.lossless
+	if badge {
+		h += losslessBadgeGap + losslessBadgeHeight(af)
+	}
 	y := (npMetaH - h) / 2
 	b := dst.Bounds()
 	for _, l := range lines {
@@ -470,6 +475,9 @@ func (ui *IpodUI) drawNPInfo(dst *image.RGBA, np *NowPlayingView, t *Track, npMe
 			}
 		}
 		y += l.lh
+	}
+	if badge {
+		ui.drawLosslessBadge(dst, af, x0+dx, y+losslessBadgeGap, maxW, alpha)
 	}
 }
 

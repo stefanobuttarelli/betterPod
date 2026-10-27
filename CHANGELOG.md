@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.27 (2026-10-27)
+
+### Added
+- **Lossless badge in Now Playing:** for FLAC, ALAC, WAV and AIFF files, an outlined pill under the song reads LOSSLESS, or HI-RES LOSSLESS above 48 kHz. Under it, the bit depth and sample rate ("24-bit · 96 kHz"). It follows the light and dark themes, and shows in Cover Flow's Now Playing too. The format comes from the file headers: in `.m4a` files, ALAC counts as lossless and AAC does not.
+
 ## v0.26 (2026-10-27)
 
 ### Added

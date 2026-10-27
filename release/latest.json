@@ -1,8 +1,8 @@
 {
-  "version": "0.26",
-  "path": "release/knullipod-v0.26-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.26-knulli.zip",
-  "sha256": "e62cb93ad0d0c594c69096d03828187619f57008a32f4596539d76d846191d45",
-  "size": 14238167,
-  "notes": "Checks for updates once a day\nUpdate Available in the main menu"
+  "version": "0.27",
+  "path": "release/knullipod-v0.27-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.27-knulli.zip",
+  "sha256": "8680624ca937f89e9fa8b4c925ecd535584d4e96cf490043129749623a06a5fe",
+  "size": 14242369,
+  "notes": "Lossless badge in Now Playing\nBit depth and sample rate shown"
 }

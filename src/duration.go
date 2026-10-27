@@ -331,3 +331,132 @@ func oggDuration(f io.ReaderAt, size int64) float64 {
 	}
 	return (float64(g) - preSkip) / rate
 }
+
+// audioFormat is what the Now Playing badge shows: whether the file is
+// lossless (FLAC, ALAC, WAV, AIFF) and, when the headers say, its bit depth
+// and sample rate.
+type audioFormat struct {
+	lossless bool
+	bits     int
+	rate     int
+}
+
+// probeFormat reads the format from the headers (no decoding).
+func probeFormat(path string) audioFormat {
+	f, err := os.Open(path)
+	if err != nil {
+		return audioFormat{}
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return audioFormat{}
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".flac":
+		off := id3Skip(f)
+		var b [42]byte
+		if _, err := f.ReadAt(b[:], off); err != nil || string(b[:4]) != "fLaC" {
+			return audioFormat{lossless: true}
+		}
+		si := b[8:]
+		rate := int(si[10])<<12 | int(si[11])<<4 | int(si[12])>>4
+		bits := (int(si[12]&1)<<4 | int(si[13])>>4) + 1
+		return audioFormat{true, bits, rate}
+	case ".wav":
+		return wavFormat(f)
+	case ".aif", ".aiff":
+		return aiffFormat(f)
+	case ".m4a", ".mp4":
+		return mp4Format(f, st.Size())
+	}
+	return audioFormat{}
+}
+
+func wavFormat(f io.ReaderAt) audioFormat {
+	var h [12]byte
+	if _, err := f.ReadAt(h[:], 0); err != nil || string(h[:4]) != "RIFF" || string(h[8:12]) != "WAVE" {
+		return audioFormat{}
+	}
+	var c [24]byte
+	for off := int64(12); off < 1<<20; {
+		if _, err := f.ReadAt(c[:8], off); err != nil {
+			return audioFormat{}
+		}
+		sz := int64(binary.LittleEndian.Uint32(c[4:8]))
+		if string(c[:4]) == "fmt " {
+			if _, err := f.ReadAt(c[:16], off+8); err != nil {
+				return audioFormat{}
+			}
+			tag := binary.LittleEndian.Uint16(c[0:2])
+			// PCM, IEEE float, extensible: uncompressed
+			lossless := tag == 1 || tag == 3 || tag == 0xfffe
+			return audioFormat{lossless, int(binary.LittleEndian.Uint16(c[14:16])), int(binary.LittleEndian.Uint32(c[4:8]))}
+		}
+		off += 8 + sz + sz&1
+	}
+	return audioFormat{}
+}
+
+func aiffFormat(f io.ReaderAt) audioFormat {
+	var h [12]byte
+	if _, err := f.ReadAt(h[:], 0); err != nil || string(h[:4]) != "FORM" {
+		return audioFormat{}
+	}
+	aifc := string(h[8:12]) == "AIFC"
+	var c [30]byte
+	for off := int64(12); off < 1<<20; {
+		if _, err := f.ReadAt(c[:8], off); err != nil {
+			return audioFormat{}
+		}
+		sz := int64(binary.BigEndian.Uint32(c[4:8]))
+		if string(c[:4]) == "COMM" {
+			if _, err := f.ReadAt(c[8:30], off+8); err != nil {
+				return audioFormat{}
+			}
+			lossless := true
+			if aifc && sz >= 22 {
+				// AIFF-C: only the uncompressed codes count
+				switch string(c[26:30]) {
+				case "NONE", "sowt", "twos", "fl32", "fl64", "in24", "in32":
+				default:
+					lossless = false
+				}
+			}
+			return audioFormat{lossless, int(binary.BigEndian.Uint16(c[14:16])), int(ieeeExtended(c[16:26]) + 0.5)}
+		}
+		off += 8 + sz + sz&1
+	}
+	return audioFormat{}
+}
+
+// mp4Format: ALAC is lossless, AAC is not. The first track's sample
+// description (moov/trak/mdia/minf/stbl/stsd) names the codec; the ALAC
+// configuration box carries the bit depth and sample rate.
+func mp4Format(f io.ReaderAt, size int64) audioFormat {
+	from, to := int64(0), size
+	for _, name := range []string{"moov", "trak", "mdia", "minf", "stbl", "stsd"} {
+		a, b, ok := mp4Find(f, from, to, name)
+		if !ok {
+			return audioFormat{}
+		}
+		from, to = a, b
+	}
+	var e [8 + 28 + 8 + 4 + 24]byte
+	if _, err := f.ReadAt(e[:], from+8); err != nil {
+		return audioFormat{}
+	}
+	if string(e[4:8]) != "alac" {
+		return audioFormat{}
+	}
+	af := audioFormat{lossless: true, bits: int(binary.BigEndian.Uint16(e[8+18 : 8+20])), rate: int(binary.BigEndian.Uint32(e[8+24:8+28]) >> 16)}
+	// the "alac" configuration box after the 28-byte sample entry
+	if cfg := e[36:]; string(cfg[4:8]) == "alac" {
+		c := cfg[12:]
+		af.bits = int(c[5])
+		if r := int(binary.BigEndian.Uint32(c[20:24])); r > 0 {
+			af.rate = r
+		}
+	}
+	return af
+}
