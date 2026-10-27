@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.24 (2026-10-27)
+
+### Changed
+- **Now Playing block:** the song title is shown without quotes.
+
 ## v0.23 (2026-10-27)
 
 ### Added

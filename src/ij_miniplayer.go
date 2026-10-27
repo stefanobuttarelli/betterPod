@@ -1,7 +1,7 @@
 package main
 
 // ij_miniplayer.go — the Now Playing block at the bottom of the menus (as on
-// the iPod nano): the cover, the song in quotes, the artist and the album on
+// the iPod nano): the cover, the song, the artist and the album on
 // a dark woven panel.
 //
 // It belongs to the panel, not to a list: it stays put while the menus
@@ -202,7 +202,7 @@ func (ui *IpodUI) drawMiniContent(dst *image.RGBA, t *Track, x, top, w, dx, a fl
 	}
 	x += dx
 	art := 40.0
-	// “Song”, artist, album
+	// song, artist, album
 	tx := x + 7 + art + 7
 	tw := x + w - 8 - tx
 	lines := []struct {
@@ -211,7 +211,7 @@ func (ui *IpodUI) drawMiniContent(dst *image.RGBA, t *Track, x, top, w, dx, a fl
 		size float64
 		a    float64
 	}{
-		{"“" + t.Title + "”", W700, 12, 1},
+		{t.Title, W700, 12, 1},
 		{t.Artist, W600, 11, 0.86},
 		{t.Album, W500, 11, 0.86},
 	}

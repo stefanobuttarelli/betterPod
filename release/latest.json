@@ -1,7 +1,7 @@
 {
-  "version": "0.23",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.23-knulli.zip",
-  "sha256": "2efa59d1312e174c6cc8cba192260c15679b943f0cc33d0d6777e204bbc4bf8c",
-  "size": 14230342,
-  "notes": "Now Playing block in every menu\nSmoother Cover Flow, striped track list\nCovers no longer reload, Japanese titles\nScrolling titles, pause and song-change animations"
+  "version": "0.24",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.24-knulli.zip",
+  "sha256": "7bc49cd123bbd7b7cf5c2da8b472a2fb972a77aecaf60e3faa7cd36e8d5d0531",
+  "size": 14228585,
+  "notes": "Now Playing block: title without quotes"
 }
