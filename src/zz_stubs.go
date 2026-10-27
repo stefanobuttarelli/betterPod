@@ -6,23 +6,23 @@ import (
 	"image"
 )
 
-const HP_UNPLUG Key = 1073745936
-const PrevNowPlaying PreviewKind = 4
-const PrevSettings PreviewKind = 3
-const Clubs = 2
-const LOCK Key = 1073741925
-const MEDIA_PLAYPAUSE Key = 1073745930
-const WHEEL_CW Key = 1073745921
-const PrevGames PreviewKind = 2
-const WHEEL_CCW Key = 1073745922
-const MEDIA_PREV Key = 1073745934
-const PrevMusic PreviewKind = 1
-const MEDIA_PLAY Key = 1073745931
-const Diamonds = 1
-const MEDIA_NEXT Key = 1073745933
 const MEDIA_STOP Key = 1073745935
-const PrevNone PreviewKind = 0
+const WHEEL_CW Key = 1073745921
+const Diamonds = 1
+const Clubs = 2
+const MEDIA_PLAYPAUSE Key = 1073745930
+const PrevSettings PreviewKind = 3
+const WHEEL_CCW Key = 1073745922
+const HP_UNPLUG Key = 1073745936
 const Hearts = 0
+const MEDIA_PLAY Key = 1073745931
+const PrevMusic PreviewKind = 1
+const PrevNone PreviewKind = 0
+const LOCK Key = 1073741925
+const PrevGames PreviewKind = 2
+const PrevNowPlaying PreviewKind = 4
+const MEDIA_PREV Key = 1073745934
+const MEDIA_NEXT Key = 1073745933
 const Spades = 3
 const MEDIA_PAUSE Key = 1073745932
 var backsideBuf *image.RGBA
@@ -30,5 +30,3 @@ var marqueeActive bool
 var ipodUI *IpodUI
 var trackLoading int32
 type PreviewKind int
-//go:noinline
-func folderArtwork(album *Album) ([]uint8, string) { panic("stub") }

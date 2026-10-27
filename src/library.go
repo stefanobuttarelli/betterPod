@@ -11,11 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dhowden/tag"
 	"github.com/fogleman/gg"
+	// decoder for folder.webp covers
+	_ "golang.org/x/image/webp"
 )
 
 // startLibraryScan launches a background library scan, switching to the scan screen.
@@ -52,26 +55,47 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	}
 
 	fileCount := 0
+	scanBegin()
 
 	filepath.Walk(MUSIC_ROOT, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !app.Running {
+		if err != nil {
+			logMsg(fmt.Sprintf("[SCAN] cannot read %s: %v", path, err))
+			return nil
+		}
+		if !app.Running {
 			return nil
 		}
 		if info.IsDir() {
-			if isSystemPath(info.Name()) {
+			if isSystemPath(info.Name()) || (path != MUSIC_ROOT && strings.HasPrefix(info.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			app.LibScanFolder = path
+			scanNote(func(s *ScanStats) { s.Folders++ })
 			return nil
 		}
 
-		if isSystemPath(filepath.Base(path)) {
+		if isSystemPath(filepath.Base(path)) || strings.HasPrefix(filepath.Base(path), "._") {
 			return nil
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
+		scanNote(func(s *ScanStats) { s.Files++ })
+		if name, ok := unsupportedAudio[ext]; ok {
+			scanNote(func(s *ScanStats) { s.Skipped[name]++ })
+			logMsg("[SCAN] unsupported format: " + path)
+		}
 		switch ext {
-		case ".mp3", ".flac", ".ogg":
+		case ".mp3", ".flac", ".ogg", ".wav", ".m4a", ".mp4", ".aif", ".aiff":
+			fname := formatName(ext)
+			if ext == ".m4a" || ext == ".mp4" {
+				fname = mp4Codec(path)
+				if fname == "" {
+					scanNote(func(s *ScanStats) { s.Skipped["MP4 (protected/no audio)"]++ })
+					logMsg("[SCAN] MP4 without a playable audio track: " + path)
+					return nil
+				}
+			}
+			scanNote(func(s *ScanStats) { s.Audio++; s.AudioBytes += info.Size(); s.ByFormat[fname]++ })
 			app.scanTrack(path)
 			fileCount++
 			app.LibScanCount = fileCount
@@ -90,6 +114,8 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 
 		return nil
 	})
+
+	finishAlbums(app.Library)
 
 	// Sort phase
 	app.LibScanPhase = "sorting"
@@ -136,6 +162,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 		logMsg(fmt.Sprintf("WARNING: Failed to save library: %v", err))
 	}
 
+	scanEnd(app.Library, start)
 	elapsed := time.Since(start)
 	app.LibScanElapsed = elapsed.Truncate(time.Second).String()
 	app.LibScanStatus = fmt.Sprintf("%d tracks, %d albums, %d artists",
@@ -187,6 +214,7 @@ func (app *MiyooPod) scanTrack(path string) {
 		}
 	} else {
 		logMsg(fmt.Sprintf("[SCAN] Tag read error: %s | Error: %v", filepath.Base(path), err))
+		scanNote(func(s *ScanStats) { s.TagErrors++ })
 	}
 
 	// Duration and sample rate are lazy-filled on first play to speed up scanning
@@ -194,6 +222,33 @@ func (app *MiyooPod) scanTrack(path string) {
 	// Fallback: use filename as title
 	if track.Title == "" {
 		track.Title = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	}
+
+	if err != nil || track.Album == "" || track.Artist == "" { // untagged: use Artist/Album/NN Title.ext
+		dir := filepath.Dir(path)
+		album := filepath.Base(dir)
+		artist := filepath.Base(filepath.Dir(dir))
+		root := filepath.Clean(musicRoot())
+		if track.Album == "" && filepath.Clean(dir) != root && album != "." {
+			track.Album = album
+		}
+		if track.Artist == "" && filepath.Clean(filepath.Dir(dir)) != root && filepath.Clean(dir) != root && artist != "." {
+			track.Artist = artist
+		}
+		if track.TrackNum == 0 {
+			base := filepath.Base(path)
+			n := 0
+			for n < len(base) && n < 3 && base[n] >= '0' && base[n] <= '9' {
+				n++
+			}
+			if n > 0 {
+				track.TrackNum, _ = strconv.Atoi(base[:n])
+				t := strings.TrimLeft(track.Title[min(n, len(track.Title)):], " -._")
+				if strings.HasPrefix(track.Title, base[:n]) && t != "" {
+					track.Title = t
+				}
+			}
+		}
 	}
 	if track.Artist == "" {
 		track.Artist = "Unknown Artist"
@@ -211,7 +266,7 @@ func (app *MiyooPod) scanTrack(path string) {
 	if albumArtist == "" {
 		albumArtist = track.Artist
 	}
-	albumKey := albumArtist + "|" + track.Album
+	albumKey := albumKeyFor(track)
 
 	// Register or get album
 	album, exists := app.Library.AlbumsByKey[albumKey]
@@ -219,6 +274,7 @@ func (app *MiyooPod) scanTrack(path string) {
 		album = &Album{
 			Name:   track.Album,
 			Artist: albumArtist,
+			Key:    albumKey,
 		}
 		app.Library.AlbumsByKey[albumKey] = album
 		app.Library.Albums = append(app.Library.Albums, album)
@@ -492,6 +548,16 @@ func (app *MiyooPod) deferredArtExtraction() {
 			app.requestRedraw()
 			break // Got art for this album
 		}
+		// No embedded art: cover.jpg / folder.jpg next to the tracks
+		if album.ArtPath == "" && album.ArtData == nil {
+			if data, ext := folderArtwork(album); data != nil {
+				album.ArtData, album.ArtExt = data, ext
+				if err := app.saveAlbumArtwork(album); err == nil {
+					extracted++
+				}
+				album.ArtData = nil
+			}
+		}
 	}
 
 	if extracted > 0 {
@@ -709,8 +775,10 @@ func (app *MiyooPod) loadLibraryJSON() error {
 	}
 
 	for _, album := range lib.Albums {
-		albumKey := album.Artist + "|" + album.Name
-		lib.AlbumsByKey[albumKey] = album
+		if album.Key == "" {
+			return fmt.Errorf("library from an older version: rescanning")
+		}
+		lib.AlbumsByKey[album.Key] = album
 	}
 
 	for _, artist := range lib.Artists {
@@ -728,13 +796,7 @@ func (app *MiyooPod) loadLibraryJSON() error {
 
 	// Rebuild track-album relationships and extract album art
 	for _, track := range lib.Tracks {
-		albumArtist := track.AlbumArtist
-		if albumArtist == "" {
-			albumArtist = track.Artist
-		}
-		albumKey := albumArtist + "|" + track.Album
-
-		if album, exists := lib.AlbumsByKey[albumKey]; exists {
+		if album, exists := lib.AlbumsByKey[albumKeyFor(track)]; exists {
 			album.Tracks = append(album.Tracks, track)
 		}
 	}
@@ -783,7 +845,7 @@ func (app *MiyooPod) fillTrackTechInfo(track *Track, duration float64) {
 	}
 
 	if track.SampleRate == 0 {
-		if sr := readSampleRate(track.Path); sr > 0 {
+		if sr := probeSampleRate(track.Path); sr > 0 {
 			track.SampleRate = sr
 			app.NPCacheDirty = true
 			app.requestRedraw()
@@ -888,4 +950,52 @@ func isSystemPath(name string) bool {
 		return true
 	}
 	return strings.HasPrefix(name, "._") || strings.HasPrefix(name, "__MACOSX")
+}
+
+// folderArtwork finds a cover image (cover/folder/front.jpg…) next to the
+// album's tracks. Returns the image data and its extension.
+func folderArtwork(album *Album) ([]byte, string) {
+	if len(album.Tracks) == 0 || album.Tracks[0] == nil {
+		return nil, ""
+	}
+	dir := filepath.Dir(album.Tracks[0].Path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, ""
+	}
+	var imgs []string
+	best := ""
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		n := e.Name()
+		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(n), "."))
+		if ext != "jpg" && ext != "jpeg" && ext != "png" && ext != "webp" {
+			continue
+		}
+		imgs = append(imgs, n)
+		base := strings.ToLower(strings.TrimSuffix(n, filepath.Ext(n)))
+
+		if base == "cover" || base == "folder" || base == "front" {
+			best = n
+		} else if best == "" && (strings.HasPrefix(base, "albumart") || strings.Contains(base, "cover") || strings.Contains(base, "front")) {
+			best = n
+		}
+	}
+	if best == "" && len(imgs) == 1 {
+		best = imgs[0]
+	}
+	if best == "" {
+		return nil, ""
+	}
+	data, err := os.ReadFile(filepath.Join(dir, best))
+	if err != nil || len(data) == 0 {
+		return nil, ""
+	}
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(best), "."))
+	if ext == "jpeg" {
+		ext = "jpg"
+	}
+	return data, ext
 }
