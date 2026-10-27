@@ -3,8 +3,8 @@ package main
 // ij_library.go — the menus: home, Music, Artists, Albums, Playlists, Songs, Games, Settings (Shuffle, Repeat).
 
 import (
-	"os"
 	"math/rand"
+	"os"
 	"sort"
 	"strings"
 )
