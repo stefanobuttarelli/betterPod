@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.1-knulli.zip"><b>Download v0.30.1</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.2-knulli.zip"><b>Download v0.30.2</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -49,7 +49,7 @@
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
 - **Missing covers found online.** Settings → Library → Find Missing Covers fetches them from the Cover Art Archive (MusicBrainz).
-- **Internet Archive.** Search archive.org, see each item's license, and download albums in FLAC or MP3 straight into your library.
+- **Internet Archive.** Search archive.org, see each item's license, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
 - **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
@@ -75,7 +75,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.30.1-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.1-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.30.2-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.2-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -145,7 +145,7 @@ The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing a
 Music → Internet Archive searches [archive.org](https://archive.org) over Wi-Fi.
 
 - **Results:** each one shows its title, creator, year and license, as archive.org records it (Creative Commons, public domain, or "No license stated"). They come 50 at a time; **More results…** loads the next page.
-- **An item:** shows Download FLAC (lossless) and Download MP3 with their size, and the tracks; selecting a track downloads just that one.
+- **An item:** shows a download button for each format it has (FLAC, ALAC, WAV, AIFF, MP3) with its size, and the tracks; selecting a track downloads just that one.
 - **Where it goes:** downloads go to `<music>/Internet Archive/<creator>/<title>/` with the item's cover. The library is rescanned when they finish.
 
 To open an item you know, type its identifier (the part of the link after `/details/`) and choose **Open item**. This also works for items that archive.org's search doesn't list. The search is not filtered: check the license before you download, and download only what you have the right to.

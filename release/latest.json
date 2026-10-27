@@ -1,8 +1,8 @@
 {
-  "version": "0.30.1",
-  "path": "release/knullipod-v0.30.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.30.1-knulli.zip",
-  "sha256": "c1431b7c998fa4d62c37b7a61bb3f346605c2e1c0595406ea379c125b27f050d",
-  "size": 14286120,
-  "notes": "Scrolling title, artist and album move together"
+  "version": "0.30.2",
+  "path": "release/knullipod-v0.30.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.30.2-knulli.zip",
+  "sha256": "2955e47859bfc4eb323b1d9cd8944715986716fddef010d70618c8ccf257d301",
+  "size": 14286413,
+  "notes": "Internet Archive: ALAC, WAV and AIFF downloads"
 }

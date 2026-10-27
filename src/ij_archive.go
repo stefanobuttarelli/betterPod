@@ -151,13 +151,20 @@ type iaItem struct {
 	Cover                             string              // an image file to save as cover.jpg
 }
 
-// iaAudioGroup maps archive.org's format names to the two download
-// choices (other formats are left out).
+// iaAudioGroup maps archive.org's format names to the download choices:
+// the lossless ones (FLAC, ALAC, WAV, AIFF) and MP3 (the best variant);
+// other formats are left out.
 func iaAudioGroup(format string) (string, int) {
 	f := strings.ToLower(format)
 	switch {
 	case strings.Contains(f, "flac"):
 		return "FLAC", 0
+	case strings.Contains(f, "apple lossless"), strings.Contains(f, "alac"):
+		return "ALAC", 0
+	case strings.Contains(f, "wav"):
+		return "WAV", 0
+	case strings.Contains(f, "aiff"), f == "aif":
+		return "AIFF", 0
 	case f == "vbr mp3":
 		return "MP3", 0
 	case f == "320kbps mp3":
@@ -430,6 +437,9 @@ func (ui *IpodUI) iaSearchView() *View {
 	return v
 }
 
+// iaGroupOrder: the download buttons, lossless formats first.
+var iaGroupOrder = []string{"FLAC", "ALAC", "WAV", "AIFF", "MP3"}
+
 // iaLooksLikeID: letters, digits, '-', '_' and '.' only (archive.org
 // identifiers).
 func iaLooksLikeID(s string) bool {
@@ -493,9 +503,9 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 		}
 		it := st.item
 		if len(it.Groups) == 0 {
-			return append(items, Item{Label: "No FLAC or MP3 files in this item", NoArrow: true})
+			return append(items, Item{Label: "No audio files KnulliPod can play", NoArrow: true})
 		}
-		for _, g := range []string{"FLAC", "MP3"} {
+		for _, g := range iaGroupOrder {
 			fs := it.Groups[g]
 			if len(fs) == 0 {
 				continue
@@ -505,7 +515,7 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 				size += f.Size
 			}
 			label := "Download " + g
-			if g == "FLAC" {
+			if g != "MP3" {
 				label += " (lossless)"
 			}
 			g := g
@@ -513,9 +523,13 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 				Sublabel: fmt.Sprintf("%d %s · %s", len(fs), pluralize(len(fs), "track", "tracks"), formatBytes(size)),
 				OnSelect: func() { ui.startIADownload(it, g, it.Groups[g]) }})
 		}
-		g := "FLAC"
-		if len(it.Groups[g]) == 0 {
-			g = "MP3"
+		// the track list shows the first format there is (lossless first)
+		g := ""
+		for _, o := range iaGroupOrder {
+			if len(it.Groups[o]) > 0 {
+				g = o
+				break
+			}
 		}
 		for _, f := range it.Groups[g] {
 			f := f

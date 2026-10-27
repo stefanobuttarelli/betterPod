@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.30.2 (2026-10-27)
+
+### Added
+- **Internet Archive: more lossless formats.** Besides FLAC and MP3, an item's page now offers Download ALAC, Download WAV and Download AIFF (lossless) when the item has them, each with its size. The track list shows the first lossless format there is.
+
 ## v0.30.1 (2026-10-27)
 
 ### Changed
