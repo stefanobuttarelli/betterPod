@@ -48,7 +48,7 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.25"
+	KNULLIPOD_VERSION  = "0.25.1"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 )
@@ -253,7 +253,6 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 		u.sel = 0
 	}
 	f := face(W700, 14)
-	_, asc := lineBox(14)
 	bh := 28.0
 	by := 220 - 8 - float64(len(b))*(bh+6) + 6
 	bx0, bx1 := 40.0, wCSS-40
@@ -264,8 +263,10 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 		}
 		fillRoundedGradient(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, grad, 1)
 		strokeRounded(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, 2, border, 1)
+		// centred on the button: the label's cap height sits in the middle
 		tw := textWidth(f, bt.label)
-		drawText(dst, f, bt.label, (float64(W)-tw)/2, (by+(bh-14)/2+asc+0.5)*DPR, tc)
+		base := by + bh/2 + lineCapHeight(14)/2
+		drawText(dst, f, bt.label, (float64(W)-tw)/2, base*DPR, tc)
 		by += bh + 6
 	}
 }

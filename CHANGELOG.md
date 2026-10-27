@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.25.1 (2026-10-27)
+
+### Fixed
+- **Software Update:** the button labels are centred vertically on the button.
+
 ## v0.25 (2026-10-27)
 
 ### Changed
