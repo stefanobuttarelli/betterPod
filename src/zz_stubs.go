@@ -8,45 +8,35 @@ import (
 	"time"
 )
 
-const Clubs = 2
-const PhHolding SolPhase = 1
-const PhWon SolPhase = 3
-const TTableauEmpty TargetType = 4
-const Hearts = 0
-const PhBrowsing SolPhase = 0
-const MEDIA_NEXT Key = 1073745933
 const PrevGames PreviewKind = 2
-const PrevMusic PreviewKind = 1
-const TFoundation TargetType = 2
-const PrevSettings PreviewKind = 3
-const LOCK Key = 1073741925
-const WHEEL_CW Key = 1073745921
 const MEDIA_PREV Key = 1073745934
 const PhMenu SolPhase = 2
+const PrevSettings PreviewKind = 3
 const PrevNone PreviewKind = 0
+const MEDIA_NEXT Key = 1073745933
+const TFoundation TargetType = 2
 const TTableau TargetType = 3
-const PrevNowPlaying PreviewKind = 4
-const TWaste TargetType = 1
-const MEDIA_STOP Key = 1073745935
-const MEDIA_PLAY Key = 1073745931
+const PrevMusic PreviewKind = 1
 const Spades = 3
+const MEDIA_STOP Key = 1073745935
 const Diamonds = 1
+const MEDIA_PAUSE Key = 1073745932
+const PhHolding SolPhase = 1
+const HP_UNPLUG Key = 1073745936
+const Hearts = 0
+const MEDIA_PLAYPAUSE Key = 1073745930
+const WHEEL_CW Key = 1073745921
+const PhBrowsing SolPhase = 0
+const Clubs = 2
+const PrevNowPlaying PreviewKind = 4
 const WHEEL_CCW Key = 1073745922
 const PhLost SolPhase = 4
-const HP_UNPLUG Key = 1073745936
-const MEDIA_PAUSE Key = 1073745932
-const MEDIA_PLAYPAUSE Key = 1073745930
+const TWaste TargetType = 1
+const LOCK Key = 1073741925
 const TStock TargetType = 0
-func (_ *BrickGame) resetPlayerPos() { panic("stub") }
-func (_ *IpodUI) library() *Library { panic("stub") }
-func (_ *NowPlayingView) Animating(now time.Time) bool { panic("stub") }
-func (_ *IpodUI) gamesView() *View { panic("stub") }
-func (_ *IpodUI) mediaOptions(tracks []*Track) []SheetOption { panic("stub") }
-func (_ *IpodUI) repeatMode() RepeatMode { panic("stub") }
-func (_ *IpodUI) aboutView() *View { panic("stub") }
-func (_ *IpodUI) musicPreviewVisible() bool { panic("stub") }
-func (_ *IpodUI) artistsListView(artists []*Artist, showImages bool) *View { panic("stub") }
-func (_ *Sheet) heightCSS() float64 { panic("stub") }
+const MEDIA_PLAY Key = 1073745931
+const PhWon SolPhase = 3
+const TTableauEmpty TargetType = 4
 func (_ SolState) clone() SolState { panic("stub") }
 func (_ SCard) red() bool { panic("stub") }
 func (_ *solAnims) animating() bool { panic("stub") }
@@ -60,31 +50,8 @@ func (_ *Selection) resetToStock(s SolState) { panic("stub") }
 func (_ *solAnims) hidden() []Target { panic("stub") }
 func targetsEqual(a Target, b Target) bool { panic("stub") }
 func (_ *Solitaire) isHidden(hidden []Target, t Target) bool { panic("stub") }
-func (_ *Keyboard) scrollBy(dir int, velocity float64) { panic("stub") }
-func (_ *IpodUI) holdAnimating(now time.Time) bool { panic("stub") }
-func (_ *IpodUI) nowPlayingViews() []*NowPlayingView { panic("stub") }
-var brickColors []brickColor
-var easeFramer Easing
 var backsideBuf *image.RGBA
 var marqueeActive bool
-var hold holdState
-var keyLog bool
-var volOSD struct { a *Anim; until time.Time }
-var padlockBadgeGrad []GradStop
-var useIpodUI bool
-var npPanStart time.Time
-var npPanShown time.Time
-var greyPreviewBg *image.RGBA
-var musicLayer *image.RGBA
-var keyboardKeys []kbKey
-var springOut Easing
-var kbBgGrad []GradStop
-var kbOptsGrad []GradStop
-var kbHiGrad []GradStop
-var kbLayer *image.RGBA
-var kbStatic *image.RGBA
-var kbInset *image.RGBA
-var sheetBgGrad []GradStop
 var solSeed int64
 var rankNames []string
 var solMenuItems []string
@@ -98,40 +65,6 @@ var trackLoading int32
 type TargetType int
 type SolPhase int
 type PreviewKind int
-type kbKey struct{key string; label string; icon string}
-type AboutView struct{list *View; buf *image.RGBA}
-type SheetOption struct{Label string; Selected bool; OnSelect func()}
-type Sheet struct{opts []SheetOption; index int; anim *Anim; exiting bool; cache *image.RGBA; cacheIx int}
-type CoverFlow struct{albums []*Album; active int; selected *Album; playing bool; covers map[int]*cfCover; back *View; backAnim *Anim; backAlbum *Album; infoFade *Anim; npFade *Anim; paused bool; tilt *Anim; backShown *Album; backSince time.Time; np *NowPlayingView; fadeIn *Anim; exiting bool; layer *image.RGBA; npBuf *image.RGBA}
-type cfCover struct{from cfXform; to cfXform; start time.Time; dur time.Duration; opacity *Anim; artAlpha *Anim; inited bool}
-type cfXform struct{X float64; Y float64; Z float64; S1 float64; Z2 float64; A float64; TY float64; S2 float64}
-type NowPlayingView struct{scrubbing bool; volActive bool; volTimer *time.Timer; volEnabled bool; scrubTime float64; scrubActive bool; seekTimer *time.Timer; mainX *Anim; volX *Anim; scrubX *Anim; H float64; hideArt bool; warpTrack *Track; warpArt *image.RGBA; warpReady bool; tilt *Anim; tiltInit bool; warpTilt float64; warpSrc *image.RGBA; warpSrcT *Track; lastFrame int}
-type Keyboard struct{index int; scroll float64; anim *Anim; exiting bool; onKey func(key string)}
-type KenBurns struct{stack []*Album; animStart map[*Album]time.Time; mounted time.Time; transStart time.Time; lastCycle time.Time; initialized bool}
-type BrickGame struct{w float64; h float64; s float64; phase string; level int; menuIndex int; px float64; py float64; pw float64; ph float64; pvel float64; pspeed float64; score int; lives int; bx float64; by float64; br float64; bspeed float64; dx float64; dy float64; bricks []brk; lastStep time.Time; acc time.Duration; onQuit func(); bg *image.RGBA}
-type brk struct{x float64; y float64; w float64; h float64; c int}
-type brickColor struct {
-	top Col
-	bottom Col
-	points int
-}
-type mat4 [16]float64
-type texMap struct {
-	img *image.RGBA
-	su float64
-	ou float64
-	sv float64
-	ov float64
-	u0 float64
-	v0 float64
-	u1 float64
-	v1 float64
-	reflFrom float64
-	reflMax float64
-	reflStart float64
-}
-type previewLine struct{text string; size float64; weight FontWeight}
-type searchState struct{term string}
 type SCard struct{Suit int "json:\"suit\""; Rank int "json:\"rank\""; FaceUp bool "json:\"faceUp\""}
 type SolState struct{Stock []SCard "json:\"stock\""; Waste []SCard "json:\"waste\""; Foundations [4][]SCard "json:\"foundations\""; Tableau [7][]SCard "json:\"tableau\""; StockPasses int "json:\"stockPasses\""}
 type Target struct{T TargetType; Index int; Column int; CardIndex int}
@@ -161,275 +94,6 @@ type glyphBounds struct {
 	minY float64
 	maxY float64
 }
-type holdState struct {
-	on bool
-	selDown bool
-	selCombo bool
-	savedLevel int
-	badge *Anim
-	badgeUntil time.Time
-	level int
-	cur int
-	levelShown time.Time
-	adjust bool
-	since time.Time
-	autoNP bool
-	repKey Key
-	repStart time.Time
-	repLast time.Time
-}
-//go:noinline
-func (a *AboutView) Animating(now time.Time) bool { panic("stub") }
-//go:noinline
-func (a *AboutView) OnCenter(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (a *AboutView) OnScroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (a *AboutView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) openBrick() { panic("stub") }
-//go:noinline
-func newBrickGame(w float64, h float64) *BrickGame { panic("stub") }
-//go:noinline
-func (g *BrickGame) resetBall() { panic("stub") }
-//go:noinline
-func (g *BrickGame) setupBricks() { panic("stub") }
-//go:noinline
-func (g *BrickGame) step() { panic("stub") }
-//go:noinline
-func (g *BrickGame) bounceOff(b brk) { panic("stub") }
-//go:noinline
-func (g *BrickGame) die() { panic("stub") }
-//go:noinline
-func (g *BrickGame) advanceLevel() { panic("stub") }
-//go:noinline
-func (g *BrickGame) reset() { panic("stub") }
-//go:noinline
-func (g *BrickGame) Animating(now time.Time) bool { panic("stub") }
-//go:noinline
-func (g *BrickGame) OnScroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (g *BrickGame) OnCenter(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (g *BrickGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func softShadow(dst *image.RGBA, x float64, y float64, w float64, h float64, blur float64, alpha float64) { panic("stub") }
-//go:noinline
-func strokeRect(dst *image.RGBA, x float64, y float64, w float64, h float64, lw float64, c Col) { panic("stub") }
-//go:noinline
-func (g *BrickGame) drawBall(dst *image.RGBA) { panic("stub") }
-//go:noinline
-func radialT(x float64, y float64, x0 float64, y0 float64, r0 float64, x1 float64, y1 float64, r1 float64) float64 { panic("stub") }
-//go:noinline
-func fillCircle(dst *image.RGBA, cx float64, cy float64, r float64, c Col) { panic("stub") }
-//go:noinline
-func (g *BrickGame) drawHUD(dst *image.RGBA) { panic("stub") }
-//go:noinline
-func (g *BrickGame) drawGameOver(dst *image.RGBA) { panic("stub") }
-//go:noinline
-func lerpX(a cfXform, b cfXform, t float64) cfXform { panic("stub") }
-//go:noinline
-func (c *cfCover) value(now time.Time) cfXform { panic("stub") }
-//go:noinline
-func (c *cfCover) running(now time.Time) bool { panic("stub") }
-//go:noinline
-func (c *cfCover) set(to cfXform, dur time.Duration, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) openCoverFlow() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) closeCoverFlow() { panic("stub") }
-//go:noinline
-func (cf *CoverFlow) targetFor(i int) (cfXform, time.Duration) { panic("stub") }
-//go:noinline
-func (cf *CoverFlow) sync(now time.Time) { panic("stub") }
-//go:noinline
-func (cf *CoverFlow) scroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (cf *CoverFlow) center(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (cf *CoverFlow) menu(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) backsideList(al *Album) *View { panic("stub") }
-//go:noinline
-func (cf *CoverFlow) animating(now time.Time) bool { panic("stub") }
-//go:noinline
-func mRotY(deg float64) mat4 { panic("stub") }
-//go:noinline
-func coverMatrix(x cfXform) mat4 { panic("stub") }
-//go:noinline
-func inv3(a [9]float64) ([9]float64, bool) { panic("stub") }
-//go:noinline
-func drawTex(dst *image.RGBA, m mat4, t texMap, opacity float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawBackside(layer *image.RGBA, m mat4, final mat4, now time.Time) { panic("stub") }
-//go:noinline
-func backsideInfoH() float64 { panic("stub") }
-//go:noinline
-func backsideHeight(final mat4, bu0 float64, bv0 float64, bw float64) float64 { panic("stub") }
-//go:noinline
-func drawMarquee(dst *image.RGBA, f font.Face, s string, x float64, baseline float64, maxW float64, c Col, since time.Time, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) backsideTexture(w float64, h float64, now time.Time) *image.RGBA { panic("stub") }
-//go:noinline
-func npCoverPose(t float64) cfXform { panic("stub") }
-//go:noinline
-func holdDimPercent() int { panic("stub") }
-//go:noinline
-func (ui *IpodUI) setHold(on bool) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) showHoldBadge() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) holdFilter(ev int) bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) holdRepeat(now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) holdBrightness(up bool) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) tickOverlays(now time.Time) bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) showVolumeOSD() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawVolumeOSD(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func drawPadlock(dst *image.RGBA, x float64, y float64, s float64, body []GradStop, shackle Col, op float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawHoldBadge(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) mediaKey(ev int) bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) pauseIfPlaying(why string) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) goNowPlaying() { panic("stub") }
-//go:noinline
-func (ui *IpodUI) homeView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) musicView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) artistsView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) artistView(ar *Artist) *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) albumsView(albums []*Album) *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) albumView(al *Album) *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) playlistsView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) playlistView(pl *Playlist) *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) songsView(tracks []*Track) *View { panic("stub") }
-//go:noinline
-func albumTracks(al *Album) []*Track { panic("stub") }
-//go:noinline
-func sortedArtists(in []*Artist) []*Artist { panic("stub") }
-//go:noinline
-func (ui *IpodUI) enqueue(tracks []*Track, next bool) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) settingsView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) shuffleView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) repeatView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) setShuffle(mode string) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) applyShuffle() { panic("stub") }
-//go:noinline
-func albumShuffleOrder(tracks []*Track, startIdx int) []int { panic("stub") }
-//go:noinline
-func (ui *IpodUI) setRepeat(r RepeatMode) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) refreshBuilt() { panic("stub") }
-//go:noinline
-func drawSpinner(dst *image.RGBA, cx float64, cy float64, sizeCSS float64, now time.Time) { panic("stub") }
-//go:noinline
-func drawThickLine(dst *image.RGBA, x0 float64, y0 float64, x1 float64, y1 float64, w float64, c Col) { panic("stub") }
-//go:noinline
-func ipodLoadingScreen(app *MiyooPod, done chan struct {}) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) showNowPlaying() { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) updateControls() { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) OnCenter(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) OnScroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) applyVolume() { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool { panic("stub") }
-//go:noinline
-func sampleBilinear(img *image.RGBA, x float64, y float64) [4]uint8 { panic("stub") }
-//go:noinline
-func formatPlaybackTime(sec float64) string { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawNPInfo(dst *image.RGBA, t *Track, npMetaH float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawProgressBar(dst *image.RGBA, x float64, y float64, w float64, percent float64, scrubber bool) { panic("stub") }
-//go:noinline
-func reflectBar(dst *image.RGBA, x0 int, x1 int, yTop int, h int) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawTimeLabel(dst *image.RGBA, s string, x float64, w float64, y float64, right bool) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawTrackProgress(dst *image.RGBA, x float64, y float64, p *NowPlaying) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawVolumeBar(dst *image.RGBA, x float64, y float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawScrubber(dst *image.RGBA, x float64, y float64, cur float64, dur float64, has bool) { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) activateVolume(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (np *NowPlayingView) flashVolume(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) nowPlayingOnScreen() bool { panic("stub") }
-//go:noinline
-func (kb *KenBurns) reset(ui *IpodUI, now time.Time) { panic("stub") }
-//go:noinline
-func (kb *KenBurns) update(now time.Time) { panic("stub") }
-//go:noinline
-func (kb *KenBurns) animating(ui *IpodUI) bool { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawNowPlayingPan(dst *image.RGBA, art *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (kb *KenBurns) render(ui *IpodUI, dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func blitShiftX(dst *image.RGBA, src *image.RGBA, x float64, y int, opacity float64) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawIconPreview(dst *image.RGBA, icon string, iconCSS float64, lines []previewLine) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) showKeyboard(onKey func(string)) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) hideKeyboard() { panic("stub") }
-//go:noinline
-func (kb *Keyboard) center(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) searchView() *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) searchKey(v *View, st *searchState, k string) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) playlistsListView(pls []*Playlist) *View { panic("stub") }
-//go:noinline
-func (ui *IpodUI) showSheet(opts []SheetOption) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) hideSheet() { panic("stub") }
-//go:noinline
-func (s *Sheet) scroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (s *Sheet) selectCurrent(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (s *Sheet) render(ui *IpodUI) *image.RGBA { panic("stub") }
-//go:noinline
-func drawTextShadow(dst *image.RGBA, f font.Face, s string, x float64, y float64, c Col, sh Col) { panic("stub") }
-//go:noinline
-func (ui *IpodUI) drawSheets(dst *image.RGBA, now time.Time) { panic("stub") }
 //go:noinline
 func solDeal() SolState { panic("stub") }
 //go:noinline

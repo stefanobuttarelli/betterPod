@@ -52,8 +52,8 @@ type BrickGame struct {
 	bg               *image.RGBA
 }
 
-// openBrick starts a new game full screen.
-//
+// openBrick starts a new game full screen; Quit in the Game Over
+// menu goes back to the Games menu.
 func (ui *IpodUI) openBrick() {
 	g := newBrickGame(320, 220)
 	v := &View{ID: "brickGame", Title: "Brick", Kind: KindFull, Custom: g}
@@ -210,8 +210,8 @@ func (g *BrickGame) reset() {
 	g.phase = "waiting"
 }
 
-// CustomView: the game redraws every frame.
-//
+// Animating: the game redraws every frame (CustomView); the input
+// methods move the paddle and drive the menu.
 func (g *BrickGame) Animating(now time.Time) bool { return true }
 
 func (g *BrickGame) OnScroll(ui *IpodUI, dir int, velocity float64) {
@@ -296,11 +296,11 @@ func softShadow(dst *image.RGBA, x, y, w, h, blur, alpha float64) {
 		fillRoundedGradient(dst, (x-e)*DPR, (y-e)*DPR, (x+w+e)*DPR, (y+h+e)*DPR, e*DPR, []GradStop{{0, Col{0, 0, 0, a}}, {1, Col{0, 0, 0, a}}}, 1)
 	}
 }
-// strokeRect strokes a rectangle (CSS px) with a lw wide line.
+
 func strokeRect(dst *image.RGBA, x, y, w, h, lw float64, c Col) {
 	strokeRounded(dst, (x-lw/2)*DPR, (y-lw/2)*DPR, (x+w+lw/2)*DPR, (y+h+lw/2)*DPR, 0, lw*DPR, c, 1)
 }
-// drawBall: soft shadow and a shiny radial-gradient sphere.
+
 func (g *BrickGame) drawBall(dst *image.RGBA) {
 	r := g.br
 	// shadow
@@ -360,7 +360,7 @@ func radialT(x, y, x0, y0, r0, x1, y1, r1 float64) float64 {
 	}
 	return math.Max(0, math.Min(1, t))
 }
-// fillCircle fills an antialiased circle (CSS px).
+
 func fillCircle(dst *image.RGBA, cx, cy, r float64, c Col) {
 	x0, x1 := int((cx-r-1)*DPR), int((cx+r+1)*DPR)
 	y0, y1 := int((cy-r-1)*DPR), int((cy+r+1)*DPR)
@@ -382,7 +382,7 @@ func fillCircle(dst *image.RGBA, cx, cy, r float64, c Col) {
 		}
 	}
 }
-// drawHUD: the score and the lives left.
+
 func (g *BrickGame) drawHUD(dst *image.RGBA) {
 	s := g.s
 	mx := 30 * s
@@ -399,7 +399,7 @@ func (g *BrickGame) drawHUD(dst *image.RGBA) {
 		fillCircle(dst, sx+float64(i)*(8*s), 24*s, 2.5*s, Col{255, 255, 255, 0.85})
 	}
 }
-// drawGameOver: the Game Over panel with New Game / Quit.
+
 func (g *BrickGame) drawGameOver(dst *image.RGBA) {
 	s := g.s
 	fillRect(dst, 0, 0, dst.Bounds().Dx(), dst.Bounds().Dy(), Col{0, 0, 0, 0.7})
