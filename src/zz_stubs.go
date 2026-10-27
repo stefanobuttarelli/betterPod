@@ -3,146 +3,32 @@
 package main
 
 import (
-	"golang.org/x/image/font"
 	"image"
-	"time"
 )
 
-const MEDIA_PLAYPAUSE Key = 1073745930
-const WHEEL_CW Key = 1073745921
-const Diamonds = 1
-const MEDIA_PLAY Key = 1073745931
-const MEDIA_NEXT Key = 1073745933
-const MEDIA_PREV Key = 1073745934
-const Spades = 3
-const WHEEL_CCW Key = 1073745922
 const PrevGames PreviewKind = 2
+const Spades = 3
+const PrevSettings PreviewKind = 3
+const WHEEL_CW Key = 1073745921
+const Clubs = 2
+const Diamonds = 1
+const MEDIA_PAUSE Key = 1073745932
 const PrevNone PreviewKind = 0
 const PrevMusic PreviewKind = 1
-const LOCK Key = 1073741925
-const MEDIA_PAUSE Key = 1073745932
-const HP_UNPLUG Key = 1073745936
-const Clubs = 2
 const PrevNowPlaying PreviewKind = 4
+const WHEEL_CCW Key = 1073745922
+const MEDIA_PREV Key = 1073745934
 const MEDIA_STOP Key = 1073745935
+const LOCK Key = 1073741925
+const MEDIA_PLAY Key = 1073745931
+const MEDIA_PLAYPAUSE Key = 1073745930
+const MEDIA_NEXT Key = 1073745933
 const Hearts = 0
-const PrevSettings PreviewKind = 3
-func (_ *Solitaire) animateCursor(from Pos, to Pos, d time.Duration) { panic("stub") }
-func (_ *Solitaire) checkLoss() { panic("stub") }
-func (_ *Solitaire) isHidden(hidden []Target, t Target) bool { panic("stub") }
+const HP_UNPLUG Key = 1073745936
 var backsideBuf *image.RGBA
 var marqueeActive bool
-var rankNames []string
-var solMenuItems []string
-var solWinItems []string
-var solLostItems []string
-var scaledAssetCache map[scaledKey]*image.RGBA
-var suitAssets []string
-var emptyOutline *image.RGBA
 var ipodUI *IpodUI
 var trackLoading int32
 type PreviewKind int
-type Pos struct{X float64; Y float64}
-type Solitaire struct{ui *IpodUI; w float64; h float64; s float64; l solLayout; state SolState; sel Selection; anims solAnims; undo []SolState; menuIx int; winIx int; lostIx int; wins int; cursorAnim *struct{from Pos; to Pos; start time.Time; dur time.Duration}; sprites map[int]*image.RGBA; bg *image.RGBA; onQuit func()}
-type solLayout struct{cw float64; ch float64; topY float64; tabY float64; colSp float64; colX float64; stockX float64; wasteX float64; fX float64; fSp float64; baseOv float64; downOv float64; maxTabH float64}
-type scaledKey struct {
-	src *image.RGBA
-	w int
-	h int
-}
-type glyphBounds struct {
-	minY float64
-	maxY float64
-}
-//go:noinline
-func (ui *IpodUI) openSolitaire() { panic("stub") }
-//go:noinline
-func newSolitaire(ui *IpodUI, w float64, h float64) *Solitaire { panic("stub") }
-//go:noinline
-func (g *Solitaire) computeLayout() { panic("stub") }
-//go:noinline
-func (g *Solitaire) overlaps(col []SCard) []float64 { panic("stub") }
-//go:noinline
-func (g *Solitaire) cardY(col []SCard, idx int) float64 { panic("stub") }
-//go:noinline
-func (g *Solitaire) targetPos(s SolState, t Target) Pos { panic("stub") }
-//go:noinline
-func (g *Solitaire) cursorCenter(s SolState, sel *Selection, t Target) Pos { panic("stub") }
-//go:noinline
-func (g *Solitaire) Animating(now time.Time) bool { panic("stub") }
-//go:noinline
-func (g *Solitaire) OnScroll(ui *IpodUI, dir int, velocity float64) { panic("stub") }
-//go:noinline
-func (g *Solitaire) OnCenter(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (g *Solitaire) stockDraw() { panic("stub") }
-//go:noinline
-func (g *Solitaire) placeCards() { panic("stub") }
-//go:noinline
-func (g *Solitaire) scheduleAutoMoves(skipWaste bool, skip []int) { panic("stub") }
-//go:noinline
-func (g *Solitaire) performAutoMoves(skipWaste bool, skip []int) { panic("stub") }
-//go:noinline
-func (g *Solitaire) OnLongPress(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (g *Solitaire) OnMenu(ui *IpodUI) { panic("stub") }
-//go:noinline
-func (g *Solitaire) redeal() { panic("stub") }
-//go:noinline
-func (g *Solitaire) animateDeal() { panic("stub") }
-//go:noinline
-func (g *Solitaire) findRevealed(old SolState, cur SolState) *flipAnim { panic("stub") }
-//go:noinline
-func (g *Solitaire) pushUndo() { panic("stub") }
-//go:noinline
-func (g *Solitaire) save() { panic("stub") }
-//go:noinline
-func (g *Solitaire) load() bool { panic("stub") }
-//go:noinline
-func (g *Solitaire) clearSave() { panic("stub") }
-//go:noinline
-func (g *Solitaire) loadWins() int { panic("stub") }
-//go:noinline
-func (g *Solitaire) saveWins() { panic("stub") }
-//go:noinline
-func (g *Solitaire) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (g *Solitaire) cursorAnimPos(now time.Time) (Pos, bool) { panic("stub") }
-//go:noinline
-func (g *Solitaire) highlightFor(t Target) string { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawStock(dst *image.RGBA) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawWaste(dst *image.RGBA, hidden []Target) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawFoundations(dst *image.RGBA, hidden []Target) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawTableau(dst *image.RGBA, hidden []Target) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawFlips(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawAnims(dst *image.RGBA, now time.Time) { panic("stub") }
-//go:noinline
-func (g *Solitaire) blitCard(dst *image.RGBA, key int, x float64, y float64) { panic("stub") }
-//go:noinline
-func scaledAsset(src *image.RGBA, w int, h int) *image.RGBA { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawSuit(dst *image.RGBA, suit int, cx float64, cy float64, size float64, alpha float64) { panic("stub") }
-//go:noinline
-func (g *Solitaire) sprite(key int) *image.RGBA { panic("stub") }
-//go:noinline
-func fontBounds(f font.Face, s string) (glyphBounds, bool) { panic("stub") }
-//go:noinline
-func fillRectF(dst *image.RGBA, x float64, y float64, w float64, h float64, c Col) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawEmpty(dst *image.RGBA, x float64, y float64, suit int) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawHighlight(dst *image.RGBA, x float64, y float64, w float64, h float64, kind string) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawCursor(dst *image.RGBA, p Pos) { panic("stub") }
-//go:noinline
-func (g *Solitaire) drawMenu(dst *image.RGBA, labels []string, sel int, title string, subtitle string) { panic("stub") }
-//go:noinline
-func dashedRoundRect(dst *image.RGBA, x float64, y float64, w float64, h float64, r float64, c Col) { panic("stub") }
 //go:noinline
 func folderArtwork(album *Album) ([]uint8, string) { panic("stub") }

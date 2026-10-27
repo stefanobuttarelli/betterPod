@@ -3,11 +3,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 static Mix_Music *current_music = NULL;
 static volatile int music_finished_flag = 0;
 static double cached_duration = 0.0;
+static int cur_rate = 0;        // rate the device is open at (0 = closed)
+static int last_volume = 128;   // re-applied after the device is reopened
+
+// Bigger chunks at high sample rates keep the callback rate (and the CPU
+// cost) about the same as 4096 frames at 44.1/48 kHz.
+static int chunk_for(int rate) {
+    return rate <= 48000 ? 4096 : rate <= 96000 ? 8192 : 16384;
+}
 
 // Memory buffer for current track - eliminates SD card I/O during playback
+// (owned here: freed on the next load, on a rate change and on quit)
+//
 static void *current_music_data = NULL;
 
 static void on_music_finished() {
@@ -18,11 +29,21 @@ int audio_init() {
     c_log("audio_init entered");
 
     c_log("calling Mix_OpenAudio...");
-    // Increased buffer to 524288 (512KB) to handle high-bitrate files (>9MB)
-    // Live albums and 320kbps MP3s need larger buffer to prevent SD card read starvation
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 524288) < 0) {
-        c_logf("Mix_OpenAudio failed: %s", SDL_GetError());
-        return -1;
+    // Float output first (no clipping in the mixer); fall back to the
+    // default 16-bit format.
+    if (Mix_OpenAudio(44100, AUDIO_F32SYS, 2, 4096) < 0) {
+        c_logf("Mix_OpenAudio (f32) failed: %s", SDL_GetError());
+        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0) {
+            c_logf("Mix_OpenAudio failed: %s", SDL_GetError());
+            return -1;
+        }
+    }
+    cur_rate = 44100;
+    {
+        int freq = 0, ch = 0; Uint16 fmt = 0; char b[96];
+        Mix_QuerySpec(&freq, &fmt, &ch);
+        snprintf(b, sizeof(b), "audio device: %d Hz, format 0x%x, %d ch (driver %s)", freq, fmt, ch, SDL_GetCurrentAudioDriver());
+        c_log(b);
     }
     c_log("Mix_OpenAudio OK");
 
@@ -36,6 +57,45 @@ int audio_init() {
     else c_log("Mix_Init OGG OK");
 
     Mix_HookMusicFinished(on_music_finished);
+    return 0;
+}
+
+static void free_current(void) {
+    if (current_music) {
+        Mix_HaltMusic();
+        Mix_FreeMusic(current_music);
+        current_music = NULL;
+    }
+    if (current_music_data) {
+        free(current_music_data);
+        current_music_data = NULL;
+    }
+}
+
+// Reopen the audio device at the sample rate of the track (no resampling
+// for 48/88.2/96 kHz files). The current track is unloaded: the caller
+int audio_set_rate(int rate) {
+    int freq = 0, ch = 0;
+    Uint16 fmt = 0;
+    if (rate < 8000 || rate > 384000 || rate == cur_rate) return 0;
+    free_current();
+    Mix_CloseAudio();
+    if (Mix_OpenAudio(rate, AUDIO_F32SYS, 2, chunk_for(rate)) < 0) {
+        char b[160]; snprintf(b, sizeof(b), "Mix_OpenAudio(%d) failed: %s, back to 44100", rate, SDL_GetError());
+        c_log(b);
+        rate = 44100; if (Mix_OpenAudio(rate, AUDIO_F32SYS, 2, 4096) < 0 &&
+            Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0) {
+            c_logf("Mix_OpenAudio failed: %s", SDL_GetError());
+            cur_rate = 0;
+            return -1;
+        }
+    }
+    cur_rate = rate;
+    Mix_QuerySpec(&freq, &fmt, &ch);
+    { char b[96]; snprintf(b, sizeof(b), "audio device: %d Hz, format 0x%x, %d ch", freq, fmt, ch); c_log(b); }
+    Mix_HookMusicFinished(on_music_finished);
+    Mix_VolumeMusic(last_volume);
+    music_finished_flag = 0;
     return 0;
 }
 
@@ -99,7 +159,11 @@ int audio_load_mem(void *data, int size) {
 int audio_play() {
     if (!current_music) return -1;
     music_finished_flag = 0;
-    return Mix_PlayMusic(current_music, 0);
+    if (Mix_PlayMusic(current_music, 0) < 0) {
+        c_logf("Mix_PlayMusic failed: %s", Mix_GetError());
+        return -1;
+    }
+    return 0;
 }
 
 void audio_pause() {
@@ -148,15 +212,15 @@ double audio_get_file_duration(const char *path) {
         fprintf(stderr, "Failed to load music for duration: %s - Error: %s\n", path, Mix_GetError());
         return 0.0;
     }
-    
+
     double duration = Mix_MusicDuration(temp_music);
     if (duration < 0) {
         fprintf(stderr, "Mix_MusicDuration failed for: %s - Error: %s\n", path, Mix_GetError());
         duration = 0.0;
     }
-    
+
     Mix_FreeMusic(temp_music);
-    
+
     return duration;
 }
 
@@ -166,6 +230,7 @@ int audio_seek(double position) {
 }
 
 void audio_set_volume(int volume) {
+    last_volume = volume;
     Mix_VolumeMusic(volume);
 }
 

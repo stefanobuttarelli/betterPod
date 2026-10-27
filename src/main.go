@@ -2,7 +2,7 @@ package main
 
 /*
 #cgo CFLAGS: -I/root/include/SDL2 -O2 -w -D_GNU_SOURCE=1 -D_REENTRANT
-#cgo LDFLAGS: -L/root/lib -Wl,-rpath-link,/root/lib -Wl,-rpath,'$ORIGIN' -Wl,--unresolved-symbols=ignore-in-shared-libs -lSDL2 -lSDL2_mixer -lpthread
+#cgo LDFLAGS: -lSDL2 -lSDL2_mixer -lm -lpthread
 #include <stdlib.h>
 #include "main.c"
 #include "audio.c"
@@ -21,8 +21,8 @@ import (
 )
 
 func init() {
-	// Use both Cortex-A7 cores so audio decode thread gets its own core
-	runtime.GOMAXPROCS(2)
+	// Use all the H700 cores (Cortex-A53 x4)
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	// Pin main goroutine to a stable OS thread for CGO/SDL calls
 	runtime.LockOSThread()
 }
@@ -35,8 +35,8 @@ func (app *MiyooPod) Init() {
 	app.LocalLogsEnabled = true
 	app.SentryEnabled = true // Default: developer logs enabled
 
-	// Initialize PostHog client early so C logs during SDL init are captured
-	app.initSentry()
+	// Analytics and crash reporting are disabled on Knulli: nothing is
+	// sent anywhere.
 
 	logMsg("INFO: Initializing MiyooPod...")
 	logMsg("INFO: SDL init...")
@@ -80,7 +80,7 @@ func (app *MiyooPod) Init() {
 	app.RedrawChan = make(chan struct{}, 1)
 
 	// Power management defaults
-	app.AutoLockMinutes = 3 // Auto-lock after 3 minutes of inactivity
+	app.AutoLockMinutes = 3        // Auto-lock after 3 minutes of inactivity
 	app.UpdateNotifications = true // Default: show update prompts
 	app.LastActivityTime = time.Now()
 
@@ -102,8 +102,10 @@ func (app *MiyooPod) Init() {
 	// Save the original CPU governor so we can restore it on exit
 	app.initCPUGovernor()
 
-	// Draw splash screen with logo (now using restored theme if available)
-	app.drawLogoSplash()
+	// Draw splash screen with logo (the iPod UI draws its own loading screen)
+	if !useIpodUI {
+		app.drawLogoSplash()
+	}
 
 	// Check for updates asynchronously (don't block startup)
 	app.VersionCheckDone = make(chan struct{})
@@ -177,7 +179,7 @@ func createApp() *MiyooPod {
 }
 
 func main() {
-	// Global panic recovery — sends crash report synchronously before dying
+	// Global panic recovery — logs the panic and the stack before dying
 	defer func() {
 		if r := recover(); r != nil {
 			panicMsg := fmt.Sprintf("%v", r)
@@ -192,9 +194,9 @@ func main() {
 				logFile.Sync()
 			}
 
-			// Send crash report synchronously — blocks until HTTP completes
-			sendCrashReport("go_panic", panicMsg, stackTrace)
-
+			// No crash report is sent: the log file keeps the panic and the
+			// stack trace.
+			//
 			panic(r) // Re-panic to show error
 		}
 	}()
@@ -208,8 +210,10 @@ func main() {
 	app := createApp()
 	app.Init()
 
-	go app.RunUI()
-	time.Sleep(100 * time.Millisecond)
+	if !useIpodUI {
+		go app.RunUI()
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	// Load library from JSON or perform full scan
 	err := app.loadLibraryJSON()
@@ -223,30 +227,34 @@ func main() {
 			close(scanDone)
 		})
 
-		// Wait for scan to complete (main loop continues polling keys/redraws)
-		for {
-			select {
-			case <-scanDone:
-				goto scanFinished
-			case <-app.RedrawChan:
-				app.drawCurrentScreen()
-			default:
-			}
-			// Poll SDL events so the scan screen renders
-			keyEvent := C_GetKeyPress()
-			if keyEvent != -1 {
-				if keyEvent < 0 {
-					keyReleased := Key(-keyEvent - 1)
-					app.handleKeyRelease(keyReleased)
-				} else {
-					app.handleKey(Key(keyEvent))
+		if useIpodUI {
+			ipodLoadingScreen(app, scanDone)
+		} else {
+			// Wait for scan to complete (main loop continues polling keys/redraws)
+			//
+			for {
+				select {
+				case <-scanDone:
+					goto scanFinished
+				case <-app.RedrawChan:
+					app.drawCurrentScreen()
+				default:
 				}
+				// Poll SDL events so the scan screen renders
+				keyEvent := C_GetKeyPress()
+				if keyEvent != -1 {
+					if keyEvent < 0 {
+						keyReleased := Key(-keyEvent - 1)
+						app.handleKeyRelease(keyReleased)
+					} else {
+						app.handleKey(Key(keyEvent))
+					}
+				}
+				time.Sleep(33 * time.Millisecond)
 			}
-			time.Sleep(33 * time.Millisecond)
 		}
 	scanFinished:
 	}
-
 	// Restore saved playback state (queue, position) before building menu
 	app.restorePlaybackState()
 
@@ -280,13 +288,21 @@ func main() {
 		}
 	}()
 
-	// Main loop: poll SDL events on main thread (required by SDL2)
-	// SDL_PollEvent MUST run on the thread that called SDL_Init (LockOSThread in init)
-	// Sleep between polls to keep CPU usage low (replaces old runtime.Gosched spin loop)
+	// The iPod UI runs its own loop (input, animations, rendering) until
+	// the app quits; the classic UI uses the loop below.
+	//
+	if useIpodUI {
+		ipodUI = newIpodUI(app)
+		ipodUI.Run()
+	}
 	for app.Running {
 		keyEvent := C_GetKeyPress()
 		if keyEvent != -1 {
-			if keyEvent < 0 {
+			if keyEvent == int(LOCK) {
+				app.handlePowerButtonPress()
+			} else if keyEvent == -int(LOCK)-1 {
+				app.handlePowerButtonRelease()
+			} else if keyEvent < 0 {
 				// Key release — clear repeat state if it's the held key
 				keyReleased := Key(-keyEvent - 1)
 				app.handleKeyRelease(keyReleased)
@@ -540,6 +556,9 @@ func (app *MiyooPod) handleNowPlayingKey(key Key) {
 }
 
 func (app *MiyooPod) drawCurrentScreen() {
+	if useIpodUI {
+		return
+	}
 	switch app.CurrentScreen {
 	case ScreenMenu:
 		app.drawMenuScreen()
@@ -598,6 +617,17 @@ func (app *MiyooPod) drawCurrentScreen() {
 
 	app.triggerRefresh()
 }
+
+// Framebuffer and vsync, for the iPod UI.
+func refreshFramebuffer(p unsafe.Pointer) {
+	C.refreshScreenPtr((*C.uchar)(p))
+}
+
+func refreshFramebufferRows(p unsafe.Pointer, y0, y1 int) {
+	C.refreshScreenRows((*C.uchar)(p), C.int(y0), C.int(y1))
+}
+
+func displayVsync() bool { return C.c_vsync() != 0 }
 
 func C_GetKeyPress() int {
 	return int(C.pollEvents())
