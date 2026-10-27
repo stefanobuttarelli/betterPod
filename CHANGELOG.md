@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.27.2 (2026-10-27)
+
+### Changed
+- **Lossless badge:** minimal. Two small crossing waves, with a gap between their tips, and LOSSLESS, without the bit depth and sample rate under it.
+
 ## v0.27.1 (2026-10-27)
 
 ### Changed
