@@ -230,15 +230,15 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 		if cf.back != nil && len(cf.back.Items) > 0 {
 			it := cf.back.Items[cf.back.Index]
 			ui.playSong(it.Tracks, it.TrackIdx, false)
-			//
-			cf.playing = true
-			cf.backAnim.To(0, 300*time.Millisecond, easeInOut, 0)
-			cf.np = newNowPlayingView()
-			cf.np.hideArt = true
-			cf.npFade.To(1, 300*time.Millisecond, easeFramer, 0)
-			cf.infoFade.To(0, 300*time.Millisecond, easeInOut, 0)
-			ui.headerTitle = "Now Playing"
 		}
+		cf.playing = true
+		cf.backAnim.To(0, 300*time.Millisecond, easeInOut, 0)
+		cf.np = newNowPlayingView()
+		cf.np.hideArt = true
+		cf.npFade.To(1, 300*time.Millisecond, easeFramer, 0)
+		cf.infoFade.To(0, 300*time.Millisecond, easeInOut, 0)
+		ui.headerTitle = "Now Playing"
+		// (the cover art stays in the flow: Now Playing shows only the info)
 	} else if len(cf.albums) == 0 {
 		return
 	} else {
@@ -575,14 +575,14 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 			if np := cf.npFade.Get(now); np > 0.001 {
 				tm.v1 = 166.4
 				tm.reflFrom, tm.reflMax, tm.reflStart = 128, 0.2*np, 0.7
-				drawTex(layer, m, tm, aa*op)
-				goto back
 			}
+			drawTex(layer, m, tm, aa*op)
+		} else {
+			// the other covers always have their reflection
+			tm.v1 = 166.4
+			tm.reflFrom, tm.reflMax, tm.reflStart = 128, 0.2, 0.7
+			drawTex(layer, m, tm, aa*op)
 		}
-		tm.v1 = 166.4
-		tm.reflFrom, tm.reflMax, tm.reflStart = 128, 0.2, 0.7
-		drawTex(layer, m, tm, aa*op)
-	back:
 		if it.i == cf.active && cf.albums[it.i] == cf.backAlbum {
 			ui.drawBackside(layer, coverMatrix(c.to), m, now)
 		}
@@ -629,12 +629,12 @@ func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) 
 	tm := texMap{
 		img: tex,
 		su:  -k / scale, ou: (cxu/scale + cxu - bu0) * k,
-		sv: k / scale, ov: (-cyv/scale + cyv - bv0) * k,
-		//
-		//
-		//
-		u0: cxu - bw/2*scale, u1: cxu + bw/2*scale,
-		v0: cyv - bh/2*scale, v1: cyv + bh/2*scale}
+		sv: k / scale, ov: (-cyv/scale + cyv - bv0) * k}
+	// only the card's own area: the texture is the card, the rest of the
+	// cover plane stays transparent
+	//
+	tm.u0, tm.u1 = cxu-bw/2*scale, cxu+bw/2*scale
+	tm.v0, tm.v1 = cyv-bh/2*scale, cyv+bh/2*scale
 	drawTex(layer, m, tm, s)
 }
 
