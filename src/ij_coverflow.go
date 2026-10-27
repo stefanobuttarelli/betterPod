@@ -358,3 +358,125 @@ func inv3(a [9]float64) ([9]float64, bool) {
 		(a[3]*a[7] - a[4]*a[6]) * id, (a[1]*a[6] - a[0]*a[7]) * id, (a[0]*a[4] - a[1]*a[3]) * id,
 	}, true
 }
+
+type texMap struct {
+	img       *image.RGBA
+	su, ou    float64 // image x = u*su + ou
+	sv, ov    float64
+	u0, v0    float64 // visible part of the plane
+	u1, v1    float64
+	reflFrom  float64 // v where the reflection starts (0: none)
+	reflMax   float64 // reflection opacity at the edge
+	reflStart float64 // fraction where it fades out
+}
+
+func drawTex(dst *image.RGBA, m mat4, t texMap, opacity float64) {
+	if opacity <= 0.002 {
+		return
+	}
+	H := planeH(m)
+	Hi, ok := inv3(H)
+	if !ok {
+		return
+	}
+	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for _, c := range [4][2]float64{{t.u0, t.v0}, {t.u1, t.v0}, {t.u0, t.v1}, {t.u1, t.v1}} {
+		w := H[6]*c[0] + H[7]*c[1] + H[8]
+		if w <= 0 {
+			return
+		}
+		x := (H[0]*c[0] + H[1]*c[1] + H[2]) / w
+		y := (H[3]*c[0] + H[4]*c[1] + H[5]) / w
+		minX, maxX = math.Min(minX, x), math.Max(maxX, x)
+		minY, maxY = math.Min(minY, y), math.Max(maxY, y)
+	}
+	b := dst.Bounds()
+	x0 := int(math.Max(float64(b.Min.X), math.Floor(minX*DPR)))
+	x1 := int(math.Min(float64(b.Max.X), math.Ceil(maxX*DPR)))
+	y0 := int(math.Max(float64(b.Min.Y), math.Floor(minY*DPR)))
+	y1 := int(math.Min(float64(b.Max.Y), math.Ceil(maxY*DPR)))
+	if x1 <= x0 || y1 <= y0 {
+		return
+	}
+	img := t.img
+	iw, ih := img.Bounds().Dx(), img.Bounds().Dy()
+	sp, sst := pix32(img)
+	dp, dst32 := pix32(dst)
+	op := uint32(opacity*256 + 0.5)
+	if op > 256 {
+		op = 256
+	}
+	reflH := t.reflFrom
+	// rows in parallel; along a row the mapping is linearised every 8 px
+	parallelRows(y0, y1, func(ya, yb int) {
+		for py := ya; py < yb; py++ {
+			sy := (float64(py) + 0.5) / DPR
+			sx0 := (float64(x0) + 0.5) / DPR
+			du := Hi[0] / DPR
+			dv := Hi[3] / DPR
+			dw := Hi[6] / DPR
+			U := Hi[0]*sx0 + Hi[1]*sy + Hi[2]
+			V := Hi[3]*sx0 + Hi[4]*sy + Hi[5]
+			W := Hi[6]*sx0 + Hi[7]*sy + Hi[8]
+			row := dp[py*dst32:]
+			u, v := U/W, V/W
+			for px0 := x0; px0 < x1; px0 += 8 {
+				n := 8
+				if px0+8 > x1 {
+					n = x1 - px0
+				}
+				U2, V2, W2 := U+du*float64(n), V+dv*float64(n), W+dw*float64(n)
+				u2, v2 := U2/W2, V2/W2
+				su, sv := (u2-u)/float64(n), (v2-v)/float64(n)
+				uu, vv := u, v
+				for k := 0; k < n; k, uu, vv = k+1, uu+su, vv+sv {
+					if uu < t.u0 || uu >= t.u1 || vv < t.v0 || vv >= t.v1 {
+						continue
+					}
+					alpha := op
+					vs := vv
+					if t.reflFrom > 0 && vv >= t.reflFrom {
+						f := (2*t.reflFrom - vv) / reflH
+						if f < t.reflStart {
+							continue
+						}
+						alpha = uint32(float64(op) * t.reflMax * (f - t.reflStart) / (1 - t.reflStart))
+						if alpha == 0 {
+							continue
+						}
+						vs = 2*t.reflFrom - vv
+					}
+					tx := uu*t.su + t.ou - 0.5
+					ty := vs*t.sv + t.ov - 0.5
+					if tx < 0 {
+						tx = 0
+					}
+					if ty < 0 {
+						ty = 0
+					}
+					ix, iy := int(tx), int(ty)
+					fx := uint32((tx - float64(ix)) * 256)
+					fy := uint32((ty - float64(iy)) * 256)
+					ix1, iy1 := ix+1, iy+1
+					if ix >= iw-1 {
+						ix, ix1, fx = iw-1, iw-1, 0
+					}
+					if iy >= ih-1 {
+						iy, iy1, fy = ih-1, ih-1, 0
+					}
+					r0, r1 := iy*sst, iy1*sst
+					c := lerp32(lerp32(sp[r0+ix], sp[r0+ix1], fx), lerp32(sp[r1+ix], sp[r1+ix1], fx), fy)
+					if alpha < 256 {
+						c = scale32(c, alpha)
+					}
+					if c>>24 == 0 {
+						continue
+					}
+					o := px0 + k
+					row[o] = over32(c, row[o])
+				}
+				U, V, W, u, v = U2, V2, W2, u2, v2
+			}
+		}
+	})
+}
