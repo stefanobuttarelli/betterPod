@@ -34,18 +34,18 @@ type Item struct {
 	NoArrow        bool   // no chevron on the selected row
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+// How a row behaves when selected (centerClick):
+//   - Tracks set: play Tracks from TrackIdx, then show Now Playing if
+//     ShowNowPlaying (holding A opens the LongPress sheet instead)
+//   - otherwise OnSelect runs (it usually pushes a view or opens a sheet;
+//     a view's Build is called again when it comes back on top)
+//
+// Preview is what the right half shows while the row is selected (split
+// views only). Value and Checked are for settings rows; NoArrow hides the
+// chevron of rows that act in place. Album and Icon are the row's
+// thumbnail (album art, or an asset for the menus that have icons), and
+// Sublabel is the grey second line.
+//
 // isSong reports whether selecting the row plays a track.
 func (it *Item) isSong() bool { return it.Tracks != nil }
 
@@ -311,3 +311,7 @@ func (ui *IpodUI) renderEmpty(dst *image.RGBA, msg string) {
 	tw := textWidth(f, msg)
 	drawText(dst, f, msg, (w-tw)/2, h/2-lh*DPR/2+asc*DPR, th.empty)
 }
+
+// marqueeActive is set while a scrolling (marquee) title is on screen, so
+// the main loop keeps redrawing at 30 fps.
+var marqueeActive bool

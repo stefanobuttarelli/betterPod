@@ -232,7 +232,7 @@ func (ui *IpodUI) enqueue(tracks []*Track, next bool) {
 }
 
 // gamesView: Brick and Solitaire.
-//
+// The preview on the right is the Games icon.
 func (ui *IpodUI) gamesView() *View {
 	v := &View{ID: "games", Title: "Games", Kind: KindSplit}
 	v.Items = []Item{

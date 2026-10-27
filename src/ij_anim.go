@@ -54,8 +54,8 @@ func cubicBezier(x1, y1, x2, y2 float64) Easing {
 		return bez(t, y1, y2)
 	}
 }
-// CSS "ease", "ease-in-out" and "linear"
-var (
+
+var ( // CSS "ease", "ease-in-out" and "linear"
 	easeCSS    = cubicBezier(0.25, 0.1, 0.25, 1)
 	easeInOut  = cubicBezier(0.42, 0, 0.58, 1)
 	easeLinear = Easing(func(t float64) float64 { return t })

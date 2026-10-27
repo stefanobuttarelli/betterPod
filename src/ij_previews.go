@@ -80,12 +80,12 @@ func (kb *KenBurns) animating(ui *IpodUI) bool {
 // to the left over 14 s and fading back to the start over 2 s. The pan
 // continues where it was when the preview comes back within 0.5 s.
 //
+// npPanStart is when the current pan began, npPanShown when the preview
+// was last drawn: coming back within 0.5 s continues the same pan, later
+// it starts over from the left edge.
 //
-//
-//
-//
-//
-//
+// The state is global: there is a single preview, drawn by the main
+// thread only.
 var npPanStart, npPanShown time.Time
 
 func (ui *IpodUI) drawNowPlayingPan(dst, art *image.RGBA, now time.Time) {
@@ -263,7 +263,7 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 }
 
 // clearRGBA makes img fully transparent.
-//
+// (used for the layers that are composited with an alpha)
 func clearRGBA(img *image.RGBA) {
 	for i := range img.Pix {
 		img.Pix[i] = 0
@@ -303,3 +303,14 @@ func (ui *IpodUI) drawIconPreview(dst *image.RGBA, icon string, iconCSS float64,
 		y += lh
 	}
 }
+
+// PreviewKind is what the right half of the split screen shows.
+type PreviewKind int
+
+const (
+	PrevNone PreviewKind = iota
+	PrevMusic
+	PrevGames
+	PrevSettings
+	PrevNowPlaying
+)

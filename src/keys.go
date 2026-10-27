@@ -31,3 +31,19 @@ const (
 	MENU   Key = 27         // SDLK_ESCAPE (KEY_ESC)
 	POWER  Key = 0          // SDLK_UNKNOWN / SDLK_FIRST (Onion OS maps KEY_POWER to SDLK_FIRST which is 0)
 )
+
+// Knulli (Anbernic H700) extra keys, made up by main.c (SDL has no keycodes
+// for them): the lock switch, media keys from Bluetooth / USB headsets and
+// headphone unplug, and the analog stick used as a click wheel.
+const (
+	LOCK            Key = 0x40000065 // SDLK_APPLICATION (Function / Home)
+	WHEEL_CW        Key = 0x40001001
+	WHEEL_CCW       Key = 0x40001002
+	MEDIA_PLAYPAUSE Key = 0x4000100A
+	MEDIA_PLAY      Key = 0x4000100B
+	MEDIA_PAUSE     Key = 0x4000100C
+	MEDIA_NEXT      Key = 0x4000100D
+	MEDIA_PREV      Key = 0x4000100E
+	MEDIA_STOP      Key = 0x4000100F
+	HP_UNPLUG       Key = 0x40001010
+)

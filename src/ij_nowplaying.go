@@ -155,7 +155,7 @@ func (ui *IpodUI) applyVolume() {
 // view is a 1000 px perspective from x = 160 at the height of the text
 // block's centre. Each output pixel is mapped back onto the card plane and
 // sampled bilinearly.
-//
+// The warp is cached per (track, tilt) and rebuilt only when either changes.
 func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 	if np.warpSrcT != t || np.warpSrc == nil {
 		album := ui.trackAlbum(t)
@@ -430,7 +430,7 @@ func (ui *IpodUI) drawProgressBar(dst *image.RGBA, x, y, w, percent float64, scr
 
 // reflectBar mirrors the h rows above yTop below it, fading out (the
 // reflection under the progress bar), from x0 to x1 (device px).
-//
+// The rows are read from dst itself, so the bar must be drawn first.
 func reflectBar(dst *image.RGBA, x0, x1, yTop, h int) {
 	b := dst.Bounds()
 	if x0 < b.Min.X {
@@ -568,9 +568,9 @@ func (ui *IpodUI) nowPlayingViews() []*NowPlayingView {
 	}
 	return out
 }
-// nowPlayingOnScreen: Now Playing is the visible screen.
+
 //go:noinline
-func (ui *IpodUI) nowPlayingOnScreen() bool {
+func (ui *IpodUI) nowPlayingOnScreen() bool { // Now Playing is the visible screen
 	if cf := ui.cover; cf != nil && !cf.exiting && cf.np != nil && cf.npFade.Target() > 0 {
 		return true
 	}

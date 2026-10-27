@@ -15,7 +15,7 @@ import (
 // Hold: SELECT pressed and released on its own toggles it; while on, the
 // screen dims, every key is ignored except UP/DOWN (brightness, when
 // MIYOOPOD_HOLD_ADJUST isn't 0) and, after 5 s, Now Playing is shown.
-//
+// The Hold badge (padlock) shows in the header while it is on.
 type holdState struct {
 	on, selDown, selCombo bool
 	savedLevel            int // brightness before Hold
@@ -173,7 +173,7 @@ func (ui *IpodUI) holdBrightness(up bool) {
 
 // tickOverlays runs the Hold / volume overlay timers and reports whether
 // an overlay is visible or animating.
-//
+// Called once per frame from the main loop.
 func (ui *IpodUI) tickOverlays(now time.Time) bool {
 	vis := false
 	ui.holdRepeat(now)
@@ -294,7 +294,7 @@ func (ui *IpodUI) drawHoldBadge(dst *image.RGBA, now time.Time) {
 }
 
 // mediaKey handles headphone / media keys (they work in Hold too).
-//
+// It returns false for keys that are not media keys.
 func (ui *IpodUI) mediaKey(ev int) bool {
 	k := Key(ev)
 	if ev < 0 {

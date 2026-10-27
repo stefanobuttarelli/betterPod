@@ -6,7 +6,7 @@ import (
 
 const (
 	seekHoldThreshold = 400 * time.Millisecond // Hold this long before seeking starts
-	seekTickInterval  = 200 * time.Millisecond  // How often seek ticks fire
+	seekTickInterval  = 200 * time.Millisecond // How often seek ticks fire
 )
 
 // seekAmount returns how many seconds to seek per tick, accelerating over time.

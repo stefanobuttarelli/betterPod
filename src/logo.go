@@ -147,4 +147,3 @@ func (app *MiyooPod) drawLogoSplash() {
 
 	app.triggerRefresh()
 }
-

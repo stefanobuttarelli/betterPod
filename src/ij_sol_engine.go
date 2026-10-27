@@ -667,3 +667,11 @@ func (a *solAnims) clear() {
 	a.flips = nil
 	a.onComplete = nil
 }
+
+// suits (Hearts and Diamonds are red)
+const (
+	Hearts = iota
+	Diamonds
+	Clubs
+	Spades
+)

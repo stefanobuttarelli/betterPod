@@ -38,14 +38,14 @@ type IpodUI struct {
 	noMarquee   bool
 	frameNo     int
 
-	leftX       *Anim // menu panel position (0 shown, -1 off to the left)
-	fullX       *Anim // full-screen panel (0 shown, 1 off to the right)
-	previewHide *Anim
-	preview     PreviewKind
+	leftX        *Anim // menu panel position (0 shown, -1 off to the left)
+	fullX        *Anim // full-screen panel (0 shown, 1 off to the right)
+	previewHide  *Anim
+	preview      PreviewKind
 	previewTimer *time.Timer
-	pendingPrev PreviewKind
-	musicPrev   *Anim
-	kb          *KenBurns
+	pendingPrev  PreviewKind
+	musicPrev    *Anim
+	kb           *KenBurns
 
 	assets   map[string]*image.RGBA
 	assetsMu sync.Mutex
@@ -191,8 +191,8 @@ func (ui *IpodUI) isPlayingTrack(t *Track) bool {
 	return p != nil && p.Track == t && p.State == StatePlaying
 }
 
-
-// topScreen is the view on top (full-screen first).
+// topScreen is the view on top (full-screen first): the one that gets the
+// keys.
 func (ui *IpodUI) topScreen() *View {
 	if len(ui.full) > 0 {
 		return ui.full[len(ui.full)-1]
@@ -571,7 +571,7 @@ func (ui *IpodUI) HandleKey(ev int) {
 }
 
 // checkRepeat repeats a held d-pad direction (after 300 ms, faster after 1.5 s).
-//
+// Only UP/DOWN/LEFT/RIGHT repeat; A and B act on release instead.
 func (ui *IpodUI) checkRepeat(now time.Time) {
 	if ui.repeatKey == NONE || now.Sub(ui.repeatStart) < 300*time.Millisecond {
 		return
@@ -612,7 +612,7 @@ func (ui *IpodUI) checkLongPress(now time.Time) {
 }
 
 // animating reports whether another frame must be drawn now.
-//
+// Idle screens are not redrawn at all: input or a timer marks them dirty.
 func (ui *IpodUI) animating(now time.Time) bool {
 	if ui.leftX.Running() || ui.fullX.Running() || ui.previewHide.Running() || ui.musicPrev.Running() {
 		return true
@@ -797,15 +797,15 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 
 // newCanvasCached reuses *buf when it has the right size (layers that are
 // redrawn every frame: Cover Flow, preview).
-//
+// The returned canvas is not cleared.
 func newCanvasCached(buf **image.RGBA, w, h int) *image.RGBA {
 	if *buf == nil || (*buf).Bounds().Dx() != w || (*buf).Bounds().Dy() != h {
 		*buf = newCanvas(w, h)
 	}
 	return *buf
 }
-// scaleProfile scales a shadow profile (fading shadow while the panel slides).
-func scaleProfile(p []float64, s float64) []float64 {
+
+func scaleProfile(p []float64, s float64) []float64 { // the panel shadow, fading while it slides
 	out := make([]float64, len(p))
 	for i, v := range p {
 		out[i] = v * s
@@ -813,10 +813,10 @@ func scaleProfile(p []float64, s float64) []float64 {
 	return out
 }
 
-var (
-	coverLayer, previewBuf, headerBg *image.RGBA
-)
-// header gradient (light theme; the themes carry their own)
+var coverLayer, previewBuf, headerBg *image.RGBA
+
+// header gradient (light theme; the themes carry their own), top to bottom
+// of the 20 px bar
 var headerGrad = []GradStop{{0, rgb(254, 255, 255)}, {1, rgb(177, 182, 185)}}
 
 func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
@@ -974,8 +974,8 @@ func (ui *IpodUI) onlyKenBurns(now time.Time) bool {
 // present uploads the frame. Only the rows that changed since the last
 // frame are uploaded (most frames change a list row or the progress bar),
 // and identical frames are skipped.
-//
-//
+// It returns false when nothing was uploaded (the frame was identical to
+// the previous one).
 func (ui *IpodUI) present() bool {
 	pix := ui.fb.Pix
 	stride := ui.fb.Stride

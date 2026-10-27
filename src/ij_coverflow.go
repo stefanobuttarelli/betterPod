@@ -90,12 +90,12 @@ type CoverFlow struct {
 // flips the active cover (-180°) to show its track list, and playing a
 // track turns it to the Now Playing pose next to the track info.
 //
+// Covers are textured quads drawn with a perspective projection (mat4);
+// the reflection is the same quad mirrored below, fading out. Art comes
+// from the shared art cache at 128 px, the selected cover's back is a
+// texture rebuilt only when its list scrolls (backsideTexture).
 //
-//
-//
-//
-//
-//
+// easeFramer is the flip curve (a slower ease-out than CSS "ease").
 var easeFramer = cubicBezier(0.25, 0.1, 0.35, 1)
 
 func (ui *IpodUI) openCoverFlow() {
@@ -639,9 +639,9 @@ func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) 
 }
 
 // backsideInfoH: height of the album / artist block on the back.
-//
-//
-//
+// Title and artist lines (16 and 14 px bold) with 5 px padding above,
+// 4 below; the track rows start right after it and a 1 px separator.
+// Shared by the card's height search and its texture.
 func backsideInfoH() float64 {
 	tlh, _ := lineBox(16)
 	slh, _ := lineBox(14)
@@ -650,8 +650,8 @@ func backsideInfoH() float64 {
 
 // backsideHeight finds by bisection the card height whose bottom edge
 // lands at y = 216 (screen CSS px), at least the info block plus a row.
-//
-//
+// The bisection runs on the final flip pose, so the card does not change
+// size while it turns.
 func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
 	H := planeH(final)
 	bottom := func(v float64) float64 {
@@ -686,9 +686,9 @@ func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
 
 // drawMarquee draws s clipped to maxW, scrolling it (pause 1.5 s, then
 // 32 px/s) when it does not fit.
-//
-//
-//
+// The text scrolls left until its end is visible, waits, then jumps back;
+// since is when the text appeared (the cycle restarts from there).
+// The clip is done per glyph: nothing is drawn outside x..x+maxW.
 func drawMarquee(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float64, c Col, since, now time.Time) {
 	tw := textWidth(f, s) / DPR
 	r := image.Rect(px(x), 0, px(x+maxW), dst.Bounds().Dy()).Intersect(dst.Bounds())
@@ -751,7 +751,7 @@ func (ui *IpodUI) backsideTexture(w, h float64, now time.Time) *image.RGBA {
 
 // npCoverPose: the active cover in Cover Flow's Now Playing, at the left
 // next to the track info, turned by 35°×t like the Now Playing screen.
-//
+// t goes 0 → 1 while Now Playing fades in.
 func npCoverPose(t float64) cfXform {
 	th0 := 35 * math.Pi / 180
 	th := th0 * t
@@ -759,8 +759,11 @@ func npCoverPose(t float64) cfXform {
 	// keep the cover's left edge where it is at the resting angle
 	//
 	return cfXform{
-		X: p + 64*math.Cos(th0) - 64*math.Cos(th),
-		Y: 8,
-		Z: -64*math.Sin(th0) + 64*math.Sin(th),
+		X:  p + 64*math.Cos(th0) - 64*math.Cos(th),
+		Y:  8,
+		Z:  -64*math.Sin(th0) + 64*math.Sin(th),
 		S1: 1, A: 35 * t, S2: 1}
 }
+
+// backsideBuf is the reused canvas of the flipped cover's track list.
+var backsideBuf *image.RGBA

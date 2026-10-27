@@ -2,7 +2,7 @@ package main
 
 /*
 #cgo CFLAGS: -I/root/include/SDL2 -O2 -w -D_GNU_SOURCE=1 -D_REENTRANT
-#cgo LDFLAGS: -lSDL2 -lSDL2_mixer -lm -lpthread
+#cgo LDFLAGS: -Wl,-rpath,'$ORIGIN/libs' -lSDL2 -lSDL2_mixer -lm -lpthread
 #include <stdlib.h>
 #include "main.c"
 #include "audio.c"
@@ -751,3 +751,6 @@ func audioGetState() AudioStateSnapshot {
 		Finished:  state.finished != 0,
 	}
 }
+
+// ipodUI is the iPod interface when it is in use (useIpodUI).
+var ipodUI *IpodUI

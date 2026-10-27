@@ -244,16 +244,16 @@ func probeMP3(path string) int {
 // "pactl subscribe", so the volume bar follows them right away.
 
 type sysVolume struct {
-	mu       sync.Mutex
-	ok       bool
-	bin      string // batocera-audio, used for writes when present
-	want     int    // pending write, -1 if none
-	cur      int
-	lastSet  time.Time
-	wake     chan struct{}
-	changed  int32 // external change waiting for the UI (atomic), -1 none
-	active   int32 // unused (kept for the UI loop)
-	events   chan struct{}
+	mu      sync.Mutex
+	ok      bool
+	bin     string // batocera-audio, used for writes when present
+	want    int    // pending write, -1 if none
+	cur     int
+	lastSet time.Time
+	wake    chan struct{}
+	changed int32 // external change waiting for the UI (atomic), -1 none
+	active  int32 // unused (kept for the UI loop)
+	events  chan struct{}
 }
 
 var sysVol = &sysVolume{want: -1, cur: -1, changed: -1, wake: make(chan struct{}, 1), events: make(chan struct{}, 1)}

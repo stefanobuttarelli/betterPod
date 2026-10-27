@@ -285,7 +285,7 @@ func scaleImage(src image.Image, w, h int) *image.RGBA {
 // roundedCoverage returns how much of the device pixel centred at (pxc, pyc)
 // is inside the rounded rectangle (x0, y0)-(x1, y1) with radius r
 // (signed-distance antialiasing, 1 px wide).
-//
+// Inside the straight edges it is the plain box coverage.
 func roundedCoverage(pxc, pyc, x0, y0, x1, y1, r float64) float64 {
 	cx := math.Max(x0+r, math.Min(pxc, x1-r))
 	cy := math.Max(y0+r, math.Min(pyc, y1-r))

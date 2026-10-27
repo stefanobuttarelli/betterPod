@@ -44,8 +44,8 @@ var fontMu sync.Mutex
 // parsed fonts by weight, and built faces by (weight, size)
 var fontCache = map[FontWeight]*sfnt.Font{}
 var faceCache = map[faceKey]font.Face{}
-
 var fontDir = "./assets/fonts/"
+
 // face returns the Inter face for weight w at CSS size cssSize (device px are
 // cssSize*DPR). Parsed fonts and built faces are both cached.
 func face(w FontWeight, cssSize float64) font.Face {

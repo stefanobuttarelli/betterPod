@@ -176,8 +176,8 @@ type searchState struct {
 }
 
 // pluralize returns one or many depending on n.
-//
-//
+// Only English plurals are needed ("1 song", "2 songs"): the
+// interface is in English like the iPod.
 func pluralize(n int, one, many string) string {
 	if n == 1 {
 		return one

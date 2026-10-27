@@ -1,26 +1,33 @@
 # Recovery status
 
-Byte-for-byte reconstruction of the lost v0.20 sources, verified by rebuilding
-each file for linux/arm64 with Go 1.24.7 and comparing the machine code of
-every function against the surviving v0.20 object (tools/recover/cmp.py).
+The v0.20 sources were rebuilt from the surviving v0.20 binary. Each file was
+rebuilt for linux/arm64 with Go 1.24.7, and the machine code of every function
+was compared against the v0.20 object (`tools/recover/ecmp.py all`).
 
-## Recovered (verified identical to v0.20)
+## Result
 
-- ij_theme.go     — light/dark themes, Theme submenu
-- ij_libinfo.go   — album grouping, scan stats, Library screen
-- ij_gfx.go       — colours, gradients, blending, rounded rects, text
-- ij_anim.go      — cubic-bezier easings, tweens, animated values
-- ij_swar.go      — SWAR pixel helpers (lerp/scale/over)
-- ij_parallel.go  — per-row work split across cores
-- ij_stubs.go     — rescan glue
-- ij_fonts.go     — Inter faces, caches, line metrics
+- 978 Go functions are identical and 53 are equivalent: the same
+  instructions, with a different register or stack slot chosen by the
+  compiler.
+- 11 Go functions differ only in compiler scheduling or stack-slot choices
+  inside identical source logic: `scroll`, `drawHeader`, `Run`,
+  `backsideTexture`, `sprite`, `drawHoldBadge`, `OnCenter`, `selectCurrent`,
+  `drawKeyboard`, `drawIconPreview` and `AboutView.Render`.
+- The two `_cgoexp_*` exports differ only by the package hash in their names.
+- C (`main.c`, `audio.c`): every function is identical except three:
+  - `pollEvents`: the media-key detection loop is vectorised differently. It
+    tests the same set of key codes.
+  - `audio_init` and `audio_set_rate`: one instruction is scheduled
+    differently and one relocation offset differs.
+- The package-level initializers (`main.init`) are identical.
+- The rebuilt binary is 8,094,088 bytes; the original is 8,094,120. Its
+  `.text` section is 72 bytes smaller. Both have the same NEEDED libraries
+  and the same RUNPATH (`$ORIGIN/libs`).
 
-Trivial instruction-scheduling ties (same behaviour, different register/slot
-choice by the compiler) are treated as matches.
+The only `gofmt` deviation left is the one-line `NowPlayingView.Animating` in
+`ij_nowplaying.go`. Reformatting it would move every following line of the
+file, so it was kept as it was in v0.20.
 
-## Still upstream MiyooPod code (not yet reconciled)
+## Build
 
-Everything else under src/ is still the original MiyooPod source. The app does
-not build yet (the ij_* UI references types/functions from files not recovered).
-The remaining ij_* files and the Knulli-specific changes to the upstream files
-(main.c, audio.c, library.go, knulli.go, …) are next.
+See the top-level README.md (`tools/build.sh`).

@@ -17,10 +17,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sync"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // isKnulli is true unless MIYOOPOD_PLATFORM=miyoo is set (keeps upstream behaviour).
@@ -121,8 +121,8 @@ func toolEnv() []string {
 }
 
 var brightLogged int
-// dispRaw maps a percentage to the display engine's 0..255 range, never
-// fully dark unless 0 is asked for.
+
+// dispRaw maps a percentage to the display engine's 0..255 range (0 = off).
 func dispRaw(pct int) int {
 	if pct <= 0 {
 		return 0
