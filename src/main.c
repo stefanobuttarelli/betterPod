@@ -545,8 +545,8 @@ int init() {
     c_log("Creating renderer...");
     // vsync unless MIYOOPOD_VSYNC=0; fall back to no vsync, then software
     const char *vs = getenv("MIYOOPOD_VSYNC");
-    Uint32 fl = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
-    if (vs && vs[0] == '0') fl = SDL_RENDERER_ACCELERATED;
+    Uint32 fl = SDL_RENDERER_ACCELERATED;
+    if (!vs || vs[0] != '0') fl |= SDL_RENDERER_PRESENTVSYNC;
     renderer = SDL_CreateRenderer(window, -1, fl);
     if (!renderer && (fl & SDL_RENDERER_PRESENTVSYNC))
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
