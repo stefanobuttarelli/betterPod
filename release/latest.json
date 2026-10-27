@@ -1,8 +1,8 @@
 {
-  "version": "0.27",
-  "path": "release/knullipod-v0.27-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.27-knulli.zip",
-  "sha256": "8680624ca937f89e9fa8b4c925ecd535584d4e96cf490043129749623a06a5fe",
-  "size": 14242369,
-  "notes": "Lossless badge in Now Playing\nBit depth and sample rate shown"
+  "version": "0.27.1",
+  "path": "release/knullipod-v0.27.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.27.1-knulli.zip",
+  "sha256": "e31c8a5b0bead2b6fa8102fc3cd0fcb7ddb27b4be0c5e277aaf7ef1e724d5755",
+  "size": 14244021,
+  "notes": "Lossless badge: a small wave and LOSSLESS"
 }

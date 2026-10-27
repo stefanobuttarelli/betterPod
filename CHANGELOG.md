@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.27.1 (2026-10-27)
+
+### Changed
+- **Lossless badge:** a small wave and LOSSLESS, for every lossless file. The bit depth and sample rate stay on the line under it.
+
 ## v0.27 (2026-10-27)
 
 ### Added
