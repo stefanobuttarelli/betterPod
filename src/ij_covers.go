@@ -321,7 +321,7 @@ func (cv *CoverView) progress() float64 {
 	return float64(j.index) / float64(len(j.albums))
 }
 
-func (cv *CoverView) Animating(now time.Time) bool { return math.Abs(cv.progress()-cv.shown) > 0.002 }
+func (cv *CoverView) Animating(now time.Time) bool                   { return math.Abs(cv.progress()-cv.shown) > 0.002 }
 func (cv *CoverView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 
 func (cv *CoverView) OnCenter(ui *IpodUI) {
