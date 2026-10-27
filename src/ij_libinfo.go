@@ -245,6 +245,12 @@ func (ui *IpodUI) libraryInfoView() *View {
 			items = append(items, Item{Label: "Folder", Sublabel: folder, NoArrow: true})
 		} else {
 			items = append(items, Item{Label: "Rescan now", OnSelect: func() { ui.rescanWithProgress(v) }})
+			n := len(ui.missingCovers())
+			sub := "Every album has a cover"
+			if n > 0 {
+				sub = fmt.Sprintf("%d %s without a cover", n, pluralize(n, "album", "albums"))
+			}
+			items = append(items, Item{Label: "Find Missing Covers", Sublabel: sub, OnSelect: func() { ui.showView(ui.coverView(), "") }})
 		}
 		items = append(items, Item{Label: "Music folder", Sublabel: MUSIC_ROOT, NoArrow: true})
 		lib := ui.library()

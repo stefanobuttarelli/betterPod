@@ -21,7 +21,7 @@ var keyboardKeys = func() []kbKey {
 	for c := 'a'; c <= 'z'; c++ {
 		keys = append(keys, kbKey{string(c), strings.ToUpper(string(c)), ""})
 	}
-	for _, c := range "1234567890" {
+	for _, c := range "1234567890-._" {
 		keys = append(keys, kbKey{string(c), string(c), ""})
 	}
 	return keys

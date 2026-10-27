@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.30 (2026-10-27)
+
+### Added
+- **Settings → Library → Find Missing Covers.** For albums without artwork, KnulliPod searches MusicBrainz and downloads the front cover from the Cover Art Archive at 1200 px.
+  - **Requests:** one per second, as MusicBrainz asks, with a User-Agent that names the app.
+  - **Matching:** only good matches are used.
+  - **Saving:** a cover found is saved as `cover.jpg` in the album's folder and shows straight away.
+  - **The page:** white, with the album being looked up, the bar, and how many covers were found and not found, plus Cancel.
+- **Internet Archive:**
+  - **Edit search:** reopens the keyboard on the current text, and the row shows what you are typing. Holding the centre button offers Clear search.
+  - **Open by identifier:** typing an item's identifier (the part of the link after `/details/`) shows **Open item “…”**, which opens it directly. This works for items left out of archive.org's search index.
+  - **Keyboard:** now has `-`, `.` and `_`.
+- **Now Playing block:** after 10 minutes of pause it slides away; it comes back when the song plays again.
+
 ## v0.29 (2026-10-27)
 
 ### Changed

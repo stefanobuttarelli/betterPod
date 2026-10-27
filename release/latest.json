@@ -1,8 +1,8 @@
 {
-  "version": "0.29",
-  "path": "release/knullipod-v0.29-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.29-knulli.zip",
-  "sha256": "a0356da9948a6a5c3b7f6ce3b1f77e8b26a3fb61a308476a4e825ef28d18e70c",
-  "size": 14271249,
-  "notes": "Animated lossless badge\nInternet Archive: pages, retry, stall stop"
+  "version": "0.30",
+  "path": "release/knullipod-v0.30-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.30-knulli.zip",
+  "sha256": "de913e91eb3b1a6bb2867edb878f5cfd71a2bcd417b262351226e814f51a008a",
+  "size": 14285564,
+  "notes": "Find Missing Covers (Cover Art Archive)\nInternet Archive: edit search, open by ID\nNow Playing block hides after 10 min pause"
 }

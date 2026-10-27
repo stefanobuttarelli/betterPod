@@ -1149,6 +1149,7 @@ func (ui *IpodUI) Run() {
 			}
 		}
 		ui.autoCheckTick(now)
+		ui.followPause(now)
 		ui.tickOverlays(now)
 		ui.checkLongPress(now)
 		ui.checkRepeat(now)

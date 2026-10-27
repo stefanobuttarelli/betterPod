@@ -10,12 +10,15 @@ package main
 //
 //   - Playing: long lines scroll (marquee).
 //   - Paused: the lines stop at their start, the cover shrinks a little,
-//     dims and shows a pause sign.
+//     dims and shows a pause sign; after 10 minutes of pause the block
+//     slides away (it comes back when the song plays again).
 //   - Next / previous song: the old song slides out and the new one in,
 //     in the direction of the change.
 
 import (
 	"image"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -52,9 +55,45 @@ var mini = miniState{
 // read by the song-change animations; automatic advances count as next.
 var skipDir = 1.0
 
-// miniPlayerTrack: the track the block shows (nil: no block).
+// miniPauseHide: the block slides away after the song has been paused this
+// long, and comes back when it plays again (MIYOOPOD_PAUSE_HIDE, in seconds,
+// changes it).
+var miniPauseHide = func() time.Duration {
+	if v, err := strconv.Atoi(os.Getenv("MIYOOPOD_PAUSE_HIDE")); err == nil && v > 0 {
+		return time.Duration(v) * time.Second
+	}
+	return 10 * time.Minute
+}()
+
+// pausedSince is when playback was last paused (zero while playing),
+// followed by the UI loop (followPause).
+var pausedSince time.Time
+
+// followPause notes when a pause starts; it marks the screen dirty when the
+// block's pause time runs out, so it slides away even on an idle screen.
+func (ui *IpodUI) followPause(now time.Time) {
+	p := ui.app.Playing
+	paused := p != nil && p.Track != nil && p.State == StatePaused
+	switch {
+	case !paused:
+		if !pausedSince.IsZero() {
+			pausedSince = time.Time{}
+			ui.dirty = true
+		}
+	case pausedSince.IsZero():
+		pausedSince = now
+	case now.Sub(pausedSince) >= miniPauseHide && now.Sub(pausedSince) < miniPauseHide+2*time.Second:
+		ui.dirty = true
+	}
+}
+
+// miniPlayerTrack: the track the block shows (nil: no block, also after a
+// long pause).
 func (ui *IpodUI) miniPlayerTrack() *Track {
 	if p := ui.app.Playing; p != nil && p.Track != nil && p.State != StateStopped {
+		if p.State == StatePaused && !pausedSince.IsZero() && animNow().Sub(pausedSince) >= miniPauseHide {
+			return nil
+		}
 		return p.Track
 	}
 	return nil

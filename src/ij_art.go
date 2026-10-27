@@ -61,6 +61,19 @@ func (c *artCache) clear() {
 	c.mu.Unlock()
 }
 
+// dropAlbum forgets every size of one album's artwork (it has a new cover).
+func (c *artCache) dropAlbum(a *Album) {
+	c.mu.Lock()
+	for k, e := range c.imgs {
+		if k.a == a {
+			c.bytes -= len(e.Value.(*artEntry).img.Pix)
+			c.lru.Remove(e)
+			delete(c.imgs, k)
+		}
+	}
+	c.mu.Unlock()
+}
+
 // get returns a cached image and marks it as just used.
 func (c *artCache) get(k artKey) *image.RGBA {
 	if e, ok := c.imgs[k]; ok {

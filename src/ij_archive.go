@@ -199,7 +199,7 @@ func iaMetadata(id string) (*iaItem, error) {
 		return nil, err
 	}
 	if out.Metadata == nil {
-		return nil, errors.New("item not found")
+		return nil, errors.New("Item not found")
 	}
 	it := &iaItem{ID: id, Groups: map[string][]iaFile{},
 		Title: jsonString(out.Metadata["title"]), Creator: jsonString(out.Metadata["creator"]),
@@ -305,15 +305,47 @@ func (ui *IpodUI) iaSearchView() *View {
 	var run func()
 	var more func()
 	v.Build = func() []Item {
-		sub := "Enter text, then ✓ to search"
-		if st.term != "" {
-			sub = st.term
+		// the search row: while the keyboard is up it shows the text being
+		// typed (with a caret); afterwards the search and its results, and
+		// pressing it opens the keyboard again on the same text to change
+		// it (⌫ deletes, hold the centre button for Clear search)
+		editing := ui.keyboard != nil && !ui.keyboard.exiting
+		label, sub := "Search archive.org", "Enter text, then ✓ to search"
+		switch {
+		case editing:
+			sub = st.term + "▏"
+			if st.term == "" {
+				sub = "Type, then ✓ to search"
+			}
+		case st.total > 0:
+			label = "Edit search"
+			sub = fmt.Sprintf("%s · %d %s", st.ran, st.total, pluralize(st.total, "result", "results"))
+		case st.term != "":
+			label, sub = "Edit search", st.term
 		}
-		items := []Item{{Label: "Search archive.org", Sublabel: sub, Icon: "search_icon", OnSelect: func() {
+		edit := func() {
 			ui.showKeyboard(func(k string) { iaKey(ui, v, &st.term, k, run) })
-		}}}
-		if st.total > 0 {
-			items[0].Sublabel = fmt.Sprintf("%s · %d %s", st.ran, st.total, pluralize(st.total, "result", "results"))
+			ui.refreshView(v)
+		}
+		items := []Item{{Label: label, Sublabel: sub, Icon: "search_icon", OnSelect: edit,
+			LongPress: []SheetOption{
+				{Label: "Clear search", OnSelect: func() {
+					st.term = ""
+					edit()
+				}},
+			}}}
+		// a term without spaces may be an item's identifier (the part of
+		// the link after /details/): open it directly, which also works for
+		// items left out of archive.org's search index
+		if id := strings.TrimSpace(st.term); !editing && id != "" && !strings.ContainsAny(id, " \t") && iaLooksLikeID(id) {
+			found := false
+			for _, r := range st.res {
+				found = found || r.ID == id
+			}
+			if !found {
+				items = append(items, Item{Label: "Open item “" + id + "”", Sublabel: "By its identifier (archive.org/details/" + id + ")",
+					OnSelect: func() { ui.showView(ui.iaItemView(iaResult{ID: id, Title: id}), "") }})
+			}
 		}
 		for _, r := range st.res {
 			r := r
@@ -396,6 +428,20 @@ func (ui *IpodUI) iaSearchView() *View {
 	v.Items = v.Build()
 	ui.showKeyboard(func(k string) { iaKey(ui, v, &st.term, k, run) })
 	return v
+}
+
+// iaLooksLikeID: letters, digits, '-', '_' and '.' only (archive.org
+// identifiers).
+func iaLooksLikeID(s string) bool {
+	if len(s) < 3 || len(s) > 100 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 func iaKey(ui *IpodUI, v *View, term *string, k string, run func()) {
@@ -489,6 +535,12 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 			st.item = it
 			if err != nil {
 				st.err = iaErrText(err)
+			} else if it.Title != "" {
+				// opened by identifier: the real title for the header
+				v.Title = it.Title
+				if ui.topScreen() == v {
+					ui.headerTitle = it.Title
+				}
 			}
 			ui.refreshView(v)
 			if err == nil && len(v.Items) > 1 && v.Index == 0 {
