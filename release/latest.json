@@ -1,8 +1,8 @@
 {
-  "version": "0.32.1",
-  "path": "release/knullipod-v0.32.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32.1-knulli.zip",
-  "sha256": "c442a1c032181217034eb58bcd24b7293c859b1305590c67b38bffbe5461f3e3",
-  "size": 14336469,
-  "notes": "Damaged folders: the readable songs are scanned anyway"
+  "version": "0.32.2",
+  "path": "release/knullipod-v0.32.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32.2-knulli.zip",
+  "sha256": "ef68413209285f9eed8d4a57ffd2e96cf8c3fab97a5b20361ce3fe4f476c3f1e",
+  "size": 14338580,
+  "notes": "Internet Archive downloads: time left and speed"
 }

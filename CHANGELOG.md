@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.32.2 (2026-10-28)
+
+### Added
+- **Internet Archive downloads show the time left** next to the percentage ("49% · 0:07 left"), and the speed next to the size ("2 MB of 3 MB · ALAC · 258 KB/s").
+  - **How it's worked out:** from the speed of the last few seconds, so it settles after a moment and follows the connection getting faster or slower.
+  - **When it shows:** after the first 3 seconds of a download. If nothing arrives for 4 seconds it says "waiting for data…" instead.
+
 ## v0.32.1 (2026-10-28)
 
 ### Fixed

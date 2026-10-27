@@ -768,6 +768,62 @@ type IADownloadView struct {
 	sel   int
 	shown float64
 	last  time.Time
+
+	// time left: the speed, smoothed over the last seconds
+	sampleAt   time.Time
+	sampleDone int64
+	speed      float64   // bytes per second
+	since      time.Time // first sample
+	movedAt    time.Time // last time bytes arrived
+	etaText    string
+	etaAt      time.Time
+}
+
+// eta updates the speed and returns the time left ("2:13 left"), "" while
+// it can't be told yet.
+func (dv *IADownloadView) eta(now time.Time, done, total int64) string {
+	if total <= 0 || done >= total {
+		return ""
+	}
+	if dv.sampleAt.IsZero() || done < dv.sampleDone {
+		dv.sampleAt, dv.sampleDone, dv.since, dv.movedAt, dv.speed = now, done, now, now, 0
+		return ""
+	}
+	if dt := now.Sub(dv.sampleAt).Seconds(); dt >= 0.5 {
+		inst := float64(done-dv.sampleDone) / dt
+		if done > dv.sampleDone {
+			dv.movedAt = now
+		}
+		if dv.speed == 0 {
+			dv.speed = inst
+		} else {
+			k := math.Min(1, dt/5) // about the last 5 seconds
+			dv.speed += (inst - dv.speed) * k
+		}
+		dv.sampleAt, dv.sampleDone = now, done
+	}
+	switch {
+	case now.Sub(dv.since) < 3*time.Second || dv.speed <= 0:
+		return ""
+	case now.Sub(dv.movedAt) > 4*time.Second:
+		return "waiting for data…"
+	}
+	// the text changes at most once a second, so it doesn't flicker
+	if now.Sub(dv.etaAt) >= time.Second || dv.etaText == "" {
+		left := int(float64(total-done)/dv.speed + 0.5)
+		switch {
+		case left >= 3600:
+			dv.etaText = fmt.Sprintf("%d:%02d:%02d left", left/3600, left/60%60, left%60)
+		default:
+			dv.etaText = fmt.Sprintf("%d:%02d left", left/60, left%60)
+		}
+		dv.etaAt = now
+	}
+	return dv.etaText
+}
+
+func formatSpeed(bps float64) string {
+	return formatBytes(int64(bps)) + "/s"
 }
 
 func (ui *IpodUI) iaDownloadView() *View {
@@ -794,7 +850,17 @@ func (dv *IADownloadView) progress() float64 {
 }
 
 func (dv *IADownloadView) Animating(now time.Time) bool {
-	return math.Abs(dv.progress()-dv.shown) > 0.002
+	if math.Abs(dv.progress()-dv.shown) > 0.002 {
+		return true
+	}
+	// while downloading, redraw each second for the time left
+	if d := iaCur; d != nil {
+		d.mu.Lock()
+		running := !d.finished
+		d.mu.Unlock()
+		return running && now.Sub(dv.etaAt) >= time.Second
+	}
+	return false
 }
 
 func (dv *IADownloadView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
@@ -865,13 +931,25 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		status = fmt.Sprintf("Track %d of %d · %s", min(idx+1, n), n, state)
 	}
 	center(face(W600, 13), status, 76+a13, th.text)
+	eta := ""
+	if !fin {
+		eta = dv.eta(now, done, total)
+	}
 	if total > 0 && !fin {
-		center(face(W500, 12), fmt.Sprintf("%s of %s · %s", formatBytes(done), formatBytes(total), format), 94+a12, th.sub)
+		line := fmt.Sprintf("%s of %s · %s", formatBytes(done), formatBytes(total), format)
+		if eta != "" && dv.speed > 0 && now.Sub(dv.movedAt) <= 4*time.Second {
+			line += " · " + formatSpeed(dv.speed)
+		}
+		center(face(W500, 12), line, 94+a12, th.sub)
 	}
 	bw := math.Min(240, wCSS-80)
 	mid := 124.0
 	ui.drawProgressBar(dst, (wCSS-bw)/2, mid-8, bw, dv.shown*100, false)
-	center(face(W700, 12), fmt.Sprintf("%d%%", int(dv.shown*100+0.5)), mid+22+a12, th.sub)
+	pct := fmt.Sprintf("%d%%", int(dv.shown*100+0.5))
+	if eta != "" {
+		pct += " · " + eta
+	}
+	center(face(W700, 12), pct, mid+22+a12, th.sub)
 	// one button: Cancel while downloading, Done at the end
 	label := "Cancel"
 	if fin {
