@@ -316,11 +316,11 @@ func (ui *IpodUI) iaSearchView() *View {
 		// typed (with a caret); afterwards the search and its results, and
 		// pressing it opens the keyboard again on the same text to change
 		// it (⌫ deletes, hold the centre button for Clear search)
-		editing := ui.keyboard != nil && !ui.keyboard.exiting
+		editing := ui.keyboardEditing(&st.term)
 		label, sub := "Search archive.org", "Enter text, then ✓ to search"
 		switch {
 		case editing:
-			sub = st.term + "▏"
+			sub = ui.withCaret(&st.term)
 			if st.term == "" {
 				sub = "Type, then ✓ to search"
 			}
@@ -331,7 +331,7 @@ func (ui *IpodUI) iaSearchView() *View {
 			label, sub = "Edit search", st.term
 		}
 		edit := func() {
-			ui.showKeyboard(func(k string) { iaKey(ui, v, &st.term, k, run) })
+			ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 			ui.refreshView(v)
 		}
 		items := []Item{{Label: label, Sublabel: sub, Icon: "search_icon", OnSelect: edit,
@@ -433,7 +433,7 @@ func (ui *IpodUI) iaSearchView() *View {
 		fetch(st.ran, st.page+1, st.gen)
 	}
 	v.Items = v.Build()
-	ui.showKeyboard(func(k string) { iaKey(ui, v, &st.term, k, run) })
+	ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 	return v
 }
 
@@ -452,20 +452,6 @@ func iaLooksLikeID(s string) bool {
 		}
 	}
 	return true
-}
-
-func iaKey(ui *IpodUI, v *View, term *string, k string, run func()) {
-	switch k {
-	case "Enter":
-		run()
-	case "delete":
-		if r := []rune(*term); len(r) > 0 {
-			*term = string(r[:len(r)-1])
-		}
-	default:
-		*term += k
-	}
-	ui.refreshView(v)
 }
 
 func iaErrText(err error) string {

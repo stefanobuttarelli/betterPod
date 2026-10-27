@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.2-knulli.zip"><b>Download v0.30.2</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.31-knulli.zip"><b>Download v0.31</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -75,7 +75,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.30.2-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.30.2-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.31-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.31-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -101,7 +101,11 @@ The first start scans the music folder. Later starts load the saved library inst
 - **Now Playing:**
   - up/down change the volume;
   - the centre button switches to the scrubber, and then up/down seek.
-- **Search keyboard:** L and R jump six keys at a time.
+- **Search keyboard:** a QWERTY grid.
+  - the d-pad moves between the keys;
+  - A types the selected key, B deletes, holding B closes the keyboard;
+  - X types a space, Y switches to 123 (digits and symbols);
+  - L / R move the cursor in the text, START searches.
 - **Hold:**
   - up/down set the brightness, and KnulliPod remembers it;
   - after 5 seconds the Now Playing screen comes up, with the clock in the status bar.
@@ -212,6 +216,8 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/library.go`, `src/ij_libinfo.go` | Library scan, album grouping, artwork, scan statistics |
 | `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
 | `src/ij_archive.go` | Music → Internet Archive (search, item, download) |
+| `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
+| `src/ij_covers.go` | Find Missing Covers (MusicBrainz, Cover Art Archive) |
 | `src/ij_update.go` | Settings → Software Update (manifest, download, install, restart) |
 | `src/duration.go` | Track lengths read from the file headers |
 | `src/knulli.go` | Knulli integration: paths, backlight, system volume, Bluetooth |

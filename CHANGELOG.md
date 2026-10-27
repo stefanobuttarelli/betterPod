@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.31 (2026-10-28)
+
+### Changed
+- **New on-screen keyboard** for Search and Internet Archive: a QWERTY grid that slides up from the bottom, made for the d-pad, instead of the row of keys the click wheel scrolled through.
+  - **Moving:** the d-pad moves between the keys. Left and right wrap round a row; up and down go to the nearest key of the next row; held, it keeps moving.
+  - **Buttons:** A types, B deletes the character before the cursor (held, it closes the keyboard), X types a space, Y switches to 123 (digits and `- . _ ' & ! ? ( ) @ # : , / + =`), L / R move the cursor, START searches.
+  - **The text:** the search row shows it with the cursor.
+- **Find Missing Covers finds more, and never a wrong one.**
+  - **Cleaning:** titles are cleaned of edition notes, brackets and disc numbers ("(Remastered 2009)", "[Deluxe Edition]", "CD1"), and artists of "feat. …".
+  - **Search:** first as phrases, then word by word, to find other spellings.
+  - **Checking:** every result is checked: the same title words (accents, punctuation, apostrophes, "&"/"and" and "The" don't matter; years and edition words are left out) and the same artist. Another album that only starts the same ("Rumours" / "Rumours Live") is not used.
+  - **The end screen** lists the albums not found; the log says whether each one is missing from MusicBrainz or has no cover there.
+
 ## v0.30.2 (2026-10-27)
 
 ### Added

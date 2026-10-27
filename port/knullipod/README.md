@@ -38,7 +38,11 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 | MENU (function key) | | Tap: screen off/on. Hold 5 s: quit |
 | SELECT + START | | Quit |
 
-- **Search keyboard:** L and R jump six keys at a time.
+- **Search keyboard:** a QWERTY grid.
+  - the d-pad moves between the keys;
+  - A types the selected key, B deletes, holding B closes the keyboard;
+  - X types a space, Y switches to 123 (digits and symbols);
+  - L / R move the cursor in the text, START searches.
 - **Now Playing:**
   - up/down change the volume;
   - the centre button switches to the scrubber, and then up/down move through the track.

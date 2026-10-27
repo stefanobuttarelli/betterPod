@@ -389,7 +389,7 @@ func skipFor(velocity float64) int {
 
 func (ui *IpodUI) scroll(dir int, velocity float64) {
 	if kb := ui.keyboard; kb != nil && !kb.exiting {
-		kb.scrollBy(dir, velocity)
+		kb.step(dir)
 		ui.dirty = true
 		return
 	}
@@ -430,7 +430,7 @@ func (ui *IpodUI) scroll(dir int, velocity float64) {
 
 func (ui *IpodUI) centerClick() {
 	if kb := ui.keyboard; kb != nil && !kb.exiting {
-		kb.center(ui)
+		kb.press(ui)
 		ui.dirty = true
 		return
 	}
@@ -463,6 +463,11 @@ func (ui *IpodUI) centerClick() {
 
 // menuClick: MENU button. Views with their own menu handling (Solitaire) get it first.
 func (ui *IpodUI) menuClick() {
+	if kb := ui.keyboard; kb != nil && !kb.exiting {
+		kb.backspace() // on the keyboard B deletes
+		ui.dirty = true
+		return
+	}
 	if ui.keyboard == nil && ui.cover == nil && len(ui.sheets) == 0 {
 		if mh, ok := ui.topScreen().Custom.(interface{ OnMenu(*IpodUI) }); ok {
 			mh.OnMenu(ui)
@@ -551,6 +556,14 @@ func (ui *IpodUI) HandleKey(ev int) {
 		return
 	}
 	k := Key(ev)
+	// the keyboard takes the d-pad and its own buttons (A and B act on
+	// release, below)
+	if ui.keyboardKey(k) {
+		if k == UP || k == DOWN || k == LEFT || k == RIGHT {
+			ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
+		}
+		return
+	}
 	switch k {
 	case WHEEL_CW:
 		ui.wheelTick(1)
@@ -568,16 +581,6 @@ func (ui *IpodUI) HandleKey(ev int) {
 		ui.app.togglePlayPause()
 		ui.dirty = true
 	case L, R:
-		if kb := ui.keyboard; kb != nil && !kb.exiting {
-			// on the keyboard, L/R jump 6 keys
-			step := 6
-			if k == L {
-				step = -6
-			}
-			kb.index = int(math.Max(0, math.Min(float64(len(keyboardKeys)-1), float64(kb.index+step))))
-			ui.dirty = true
-			break
-		}
 		if k == R {
 			skipDir = 1
 			go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
@@ -605,6 +608,9 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 		return
 	}
 	ui.repeatLast = now
+	if ui.keyboardKey(ui.repeatKey) {
+		return
+	}
 	if ui.repeatKey == DOWN || ui.repeatKey == RIGHT {
 		ui.scroll(1, 0)
 	} else {
@@ -622,9 +628,13 @@ func (ui *IpodUI) checkLongPress(now time.Time) {
 		ui.longFired[k] = true
 		switch k {
 		case A:
-			ui.centerLongPress()
+			if ui.keyboard == nil {
+				ui.centerLongPress()
+			}
 		case B:
-			if top := ui.topScreen(); !top.DisableLongPress || ui.cover != nil {
+			if kb := ui.keyboard; kb != nil && !kb.exiting {
+				ui.hideKeyboard() // held on the keyboard: close it
+			} else if top := ui.topScreen(); !top.DisableLongPress || ui.cover != nil {
 				ui.resetViews()
 			}
 		}

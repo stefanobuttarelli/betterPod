@@ -1,8 +1,8 @@
 {
-  "version": "0.30.2",
-  "path": "release/knullipod-v0.30.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.30.2-knulli.zip",
-  "sha256": "2955e47859bfc4eb323b1d9cd8944715986716fddef010d70618c8ccf257d301",
-  "size": 14286413,
-  "notes": "Internet Archive: ALAC, WAV and AIFF downloads"
+  "version": "0.31",
+  "path": "release/knullipod-v0.31-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.31-knulli.zip",
+  "sha256": "198c7643c1beed25661da1c913058fb479d40728272505f2da684cb8d31fe7e7",
+  "size": 14311849,
+  "notes": "New QWERTY keyboard for searches\nCover search finds more, never wrong ones"
 }
