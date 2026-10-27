@@ -423,8 +423,8 @@ func (ui *IpodUI) drawProgressBar(dst *image.RGBA, x, y, w, percent float64, scr
 	} else {
 		d := ui.asset("scrubber")
 		blit(dst, d, px(x+fw-8), px(y), 1)
-		return
 	}
+
 	reflectBar(dst, px(x-8), px(x+w+8), px(y), px(16))
 }
 

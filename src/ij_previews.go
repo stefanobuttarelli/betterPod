@@ -241,7 +241,7 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 				ui.drawNowPlayingPan(dst, art, now)
 			}
 		}
-		return
+		// (the Music preview may still be sliding out over it)
 	}
 	// the Music preview slides out to the right while fading
 	m := ui.musicPrev.Get(now)
