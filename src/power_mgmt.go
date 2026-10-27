@@ -9,6 +9,10 @@ import (
 
 // restoreBrightness sets brightness back to a visible level before app exits
 func restoreBrightness() {
+	if isKnulli {
+		restoreBacklight()
+		return
+	}
 	// Set to mid-level brightness (duty_cycle range is typically 0-100)
 	brightnessPath := "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
 	defaultBrightness := "50"
@@ -87,6 +91,11 @@ func (app *MiyooPod) resetInactivityTimer() {
 
 // dimScreen reduces brightness to minimum (for locked state)
 func (app *MiyooPod) dimScreen() {
+	if isKnulli {
+		setBacklightRaw(0)
+		logMsg("Screen dimmed (locked)")
+		return
+	}
 	brightnessPath := "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
 	dimBrightness := "0"
 
