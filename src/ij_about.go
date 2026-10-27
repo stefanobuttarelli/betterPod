@@ -14,7 +14,7 @@ type AboutView struct {
 
 func (ui *IpodUI) aboutView() *View {
 	a := &AboutView{list: &View{ID: "aboutList", Kind: KindFull, Items: []Item{
-		{Label: "KnulliPod 0.21"},
+		{Label: "KnulliPod " + KNULLIPOD_VERSION},
 		{Label: "Interface: iPod.js", Sublabel: "Tanner Villarete · MIT"},
 		{Label: "Audio engine: MiyooPod", Sublabel: "Danilo Fragoso · MIT"},
 		{Label: "Font: Inter", Sublabel: "Rasmus Andersson · OFL"}}}}

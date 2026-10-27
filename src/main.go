@@ -381,6 +381,9 @@ func main() {
 	close(app.RefreshChan)
 
 	sdlCleanup()
+
+	// after Settings → Software Update: start the new binary
+	restartIfUpdated()
 }
 
 // setScreen changes the current screen and tracks the page view

@@ -475,3 +475,76 @@ func splitWords(s string) []string {
 	}
 	return words
 }
+
+// lineCapHeight: the cap height of Inter at size (CSS px), to centre marks
+// on a line of text.
+func lineCapHeight(size float64) float64 { return size * 0.727 }
+
+// fillTriangle fills the triangle (device px, fractional) with c,
+// antialiased with 4x4 supersampling on the edge pixels.
+func fillTriangle(dst *image.RGBA, ax, ay, bx, by, cx, cy float64, c Col) {
+	minX := int(math.Floor(math.Min(ax, math.Min(bx, cx))))
+	maxX := int(math.Ceil(math.Max(ax, math.Max(bx, cx))))
+	minY := int(math.Floor(math.Min(ay, math.Min(by, cy))))
+	maxY := int(math.Ceil(math.Max(ay, math.Max(by, cy))))
+	edge := func(x0, y0, x1, y1, x, y float64) float64 { return (x1-x0)*(y-y0) - (y1-y0)*(x-x0) }
+	area := edge(ax, ay, bx, by, cx, cy)
+	if area == 0 {
+		return
+	}
+	inside := func(x, y float64) bool {
+		e0 := edge(ax, ay, bx, by, x, y) * area
+		e1 := edge(bx, by, cx, cy, x, y) * area
+		e2 := edge(cx, cy, ax, ay, x, y) * area
+		return e0 >= 0 && e1 >= 0 && e2 >= 0
+	}
+	b := dst.Bounds()
+	for y := minY; y < maxY; y++ {
+		if y < b.Min.Y || y >= b.Max.Y {
+			continue
+		}
+		for x := minX; x < maxX; x++ {
+			if x < b.Min.X || x >= b.Max.X {
+				continue
+			}
+			n := 0
+			for sy := 0; sy < 4; sy++ {
+				for sx := 0; sx < 4; sx++ {
+					if inside(float64(x)+(float64(sx)+0.5)/4, float64(y)+(float64(sy)+0.5)/4) {
+						n++
+					}
+				}
+			}
+			if n == 0 {
+				continue
+			}
+			o := dst.PixOffset(x, y)
+			blendPx(dst.Pix[o:o+4], c, c.A*float64(n)/16)
+		}
+	}
+}
+
+// fillRoundedGradientH fills a rounded rectangle (device px) with a
+// horizontal gradient (left to right).
+func fillRoundedGradientH(dst *image.RGBA, x0, y0, x1, y1, r float64, stops []GradStop) {
+	ix0, iy0 := int(math.Floor(x0)), int(math.Floor(y0))
+	ix1, iy1 := int(math.Ceil(x1)), int(math.Ceil(y1))
+	b := dst.Bounds()
+	for x := ix0; x < ix1; x++ {
+		if x < b.Min.X || x >= b.Max.X {
+			continue
+		}
+		c := gradAt(stops, (float64(x)+0.5-x0)/(x1-x0))
+		for y := iy0; y < iy1; y++ {
+			if y < b.Min.Y || y >= b.Max.Y {
+				continue
+			}
+			cov := roundedCoverage(float64(x)+0.5, float64(y)+0.5, x0, y0, x1, y1, r)
+			if cov <= 0 {
+				continue
+			}
+			o := dst.PixOffset(x, y)
+			blendPx(dst.Pix[o:o+4], c, c.A*cov)
+		}
+	}
+}

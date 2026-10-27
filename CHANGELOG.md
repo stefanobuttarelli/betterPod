@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.22 (2026-10-27)
+
+### Added
+- **Settings → Software Update:** checks for a new version over Wi-Fi and installs it in place, then restarts. The download is checked against the size and SHA-256 in `release/latest.json`; the database is never touched, and the previous binary is kept as `MiyooPod.prev`.
+- **Now Playing in the main menu:** while music plays, a block at the bottom of the main menu shows the cover, song, artist and album, on a dark woven panel, like the iPod nano.
+- **Track lengths before playing:** durations are read from the file headers (FLAC, MP3, AAC/ALAC, WAV, AIFF, Ogg) during the scan. Libraries scanned by older versions fill them in when an album is opened.
+
+### Changed
+- **Cover Flow:**
+  - the artist under the album title is smaller and grey;
+  - the flipped cover's track list reaches the bottom of the screen;
+  - each track shows its length at the right;
+  - the playing track has a play mark before its title, instead of the speaker at the right;
+  - a scrollbar shows the position in long albums;
+  - long titles scroll when selected.
+- **Status bar:** the pause icon's two bars are now the same width.
+
 ## v0.21 (2026-10-27)
 
 ### Added

@@ -191,6 +191,12 @@ func (ui *IpodUI) isPlayingTrack(t *Track) bool {
 	return p != nil && p.Track == t && p.State == StatePlaying
 }
 
+// isCurrentTrack: t is the loaded track, playing or paused.
+func (ui *IpodUI) isCurrentTrack(t *Track) bool {
+	p := ui.app.Playing
+	return p != nil && p.Track == t && p.State != StateStopped
+}
+
 // topScreen is the view on top (full-screen first): the one that gets the
 // keys.
 func (ui *IpodUI) topScreen() *View {
@@ -673,7 +679,14 @@ func (ui *IpodUI) viewBuffer(v *View, wDev, hDev int, now time.Time) *image.RGBA
 		return v.cache
 	}
 	if v.dirty || v.marqueeOn {
-		ui.renderList(v, v.cache)
+		if t := ui.miniPlayerTrack(); v.ID == "home" && t != nil {
+			// the main menu keeps the Now Playing block at its bottom
+			r := image.Rect(0, 0, wDev, hDev-px(miniPlayerH))
+			ui.renderList(v, v.cache.SubImage(r).(*image.RGBA))
+			ui.drawMiniPlayer(v.cache, t)
+		} else {
+			ui.renderList(v, v.cache)
+		}
 		v.dirty = false
 	}
 	return v.cache

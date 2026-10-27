@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.21-knulli.zip"><b>Download v0.21</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.22-knulli.zip"><b>Download v0.22</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -28,7 +28,8 @@
   - the list styles and the slide transitions.
 
   Sizes, colours, icons and animation timings come from the original code.
-- **Cover Flow.** Flick through your albums in 3D with reflections. Flip a cover to see its tracks and play one straight from the back.
+- **Cover Flow.** Flick through your albums in 3D with reflections. Flip a cover to see its tracks, with their lengths and a scrollbar, and play one straight from the back.
+- **Now Playing in the main menu.** While music plays, the main menu shows the cover, song, artist and album at the bottom, like on an iPod nano.
 - **Now Playing.** The tilted 3D cover, a scrubber for seeking and a volume bar. Small icons show shuffle and repeat.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **Games:** Brick and Solitaire, the classic iPod games. Solitaire saves your game.
@@ -46,6 +47,7 @@
   - a Bluetooth icon shows in the status bar.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
+- **Updates over Wi-Fi.** Settings → Software Update checks this repository and installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
 <p align="center">
@@ -70,7 +72,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.21-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.21-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.22-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.22-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -113,6 +115,7 @@ The first start scans the music folder. Later starts load the saved library inst
 | Theme | Light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00) |
 | Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now** |
 | Database | Folder for the library, artwork, settings, statistics and game saves |
+| Software Update | Checks for a new version over Wi-Fi and installs it |
 
 ### Database folder
 
@@ -131,6 +134,16 @@ What happens depends on the folder:
   - **Replace with current** overwrites it with this console's database.
 
 The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up, for example because the card was removed, KnulliPod falls back to the port folder and says so on the Database screen.
+
+### Software Update
+
+Settings → Software Update → **Check for updates** reads [`release/latest.json`](release/latest.json) from this repository over Wi-Fi. When a newer version is listed, **Install** does the following:
+
+1. downloads the release zip and checks its size and SHA-256;
+2. replaces the app's files one by one, keeping the previous binary as `knullipod/MiyooPod.prev`;
+3. restarts KnulliPod.
+
+The database (`knullipod/conf`, or the folder chosen in Settings → Database) is never touched. You can also update by hand at any time: copy the new zip over the old installation.
 
 ## Options
 
@@ -177,6 +190,8 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/main.c`, `src/audio.c` | SDL2 input (gamepad, stick wheel, media keys), display and vsync; SDL_mixer playback with sample-rate switching |
 | `src/library.go`, `src/ij_libinfo.go` | Library scan, album grouping, artwork, scan statistics |
 | `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
+| `src/ij_update.go` | Settings → Software Update (manifest, download, install, restart) |
+| `src/duration.go` | Track lengths read from the file headers |
 | `src/knulli.go` | Knulli integration: paths, backlight, system volume, Bluetooth |
 | other `src/*.go` | Player, queue, playback state and settings, inherited from MiyooPod |
 | `port/` | The package: launcher, assets, fonts, bundled libraries |
@@ -184,7 +199,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 
 ## How this repository came to be
 
-The v0.20 source tree was lost. It was rebuilt from the surviving release binary and build cache, file by file. Each function was recompiled and its machine code compared with the original v0.20 object until they matched: 978 functions identical, 53 equivalent. [docs/recovery](docs/recovery) describes the method and the result. Version 0.21 builds on the recovered code.
+The v0.20 source tree was lost. It was rebuilt from the surviving release binary and build cache, file by file. Each function was recompiled and its machine code compared with the original v0.20 object until they matched: 978 functions identical, 53 equivalent. [docs/recovery](docs/recovery) describes the method and the result. Versions 0.21 and later build on the recovered code.
 
 ## Credits
 

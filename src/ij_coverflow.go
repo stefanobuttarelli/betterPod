@@ -4,6 +4,7 @@ package main
 // rasterizer), the flip to the track list on the back, and Now Playing.
 
 import (
+	"fmt"
 	"image"
 	"math"
 	"time"
@@ -273,10 +274,44 @@ func (cf *CoverFlow) menu(ui *IpodUI) {
 }
 
 func (ui *IpodUI) backsideList(al *Album) *View {
-	v := &View{ID: "coverFlowBack", Kind: KindFull}
+	v := &View{ID: "coverFlowBack", Kind: KindFull, TrackList: true}
 	tracks := albumTracks(al)
 	for i, t := range tracks {
-		v.Items = append(v.Items, Item{Label: t.Title, Tracks: tracks, TrackIdx: i})
+		d := ""
+		if t.Duration > 0 {
+			d = formatTrackLength(t.Duration)
+		}
+		v.Items = append(v.Items, Item{Label: t.Title, Tracks: tracks, TrackIdx: i, Duration: d, NoArrow: true})
+	}
+	// libraries scanned before durations were read: read the missing ones
+	// in the background and update the list
+	var missing []*Track
+	for _, t := range tracks {
+		if t.Duration <= 0 {
+			missing = append(missing, t)
+		}
+	}
+	if len(missing) > 0 {
+		go func() {
+			durs := make([]float64, len(missing))
+			for i, t := range missing {
+				durs[i] = probeDuration(t.Path)
+			}
+			ui.post(func() {
+				for i, t := range missing {
+					if t.Duration <= 0 && durs[i] > 0 {
+						t.Duration = durs[i]
+					}
+				}
+				for i := range v.Items {
+					if t := v.Items[i].Tracks[v.Items[i].TrackIdx]; t.Duration > 0 {
+						v.Items[i].Duration = formatTrackLength(t.Duration)
+					}
+				}
+				v.dirty = true
+				ui.dirty = true
+			})
+		}()
 	}
 	v.dirty = true
 	return v
@@ -506,14 +541,24 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 	// is flipped
 	if fo := cf.infoFade.Get(now) * (1 - cf.backAnim.Get(now)); fo > 0.002 && len(cf.albums) > 0 && cf.active < len(cf.albums) {
 		al := cf.albums[cf.active]
-		f := face(W700, 16)
+		// album in bold, the artist under it a little smaller and grey
 		lh, asc := lineBox(16)
-		y := 204 - lh*2
-		for _, s := range []string{al.Name, al.Artist} {
-			s = ellipsize(f, s, 576)
-			tw := textWidth(f, s)
-			drawText(layer, f, s, (float64(W)-tw)/2, (y+asc)*DPR, Col{th.text.R, th.text.G, th.text.B, fo})
-			y += lh
+		alh, aasc := lineBox(13)
+		y := 204 - lh - alh
+		lines := []struct {
+			s       string
+			f       font.Face
+			lh, asc float64
+			c       Col
+		}{
+			{al.Name, face(W700, 16), lh, asc, th.text},
+			{al.Artist, face(W600, 13), alh, aasc, th.sub},
+		}
+		for _, l := range lines {
+			s := ellipsize(l.f, l.s, 576)
+			tw := textWidth(l.f, s)
+			drawText(layer, l.f, s, (float64(W)-tw)/2, (y+l.asc)*DPR, Col{l.c.R, l.c.G, l.c.B, fo})
+			y += l.lh
 		}
 	}
 	// back to front: covers further from the active one first, then by index
@@ -599,6 +644,15 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 	blitOpaque(dst, layer, 0, px(20))
 }
 
+// formatTrackLength: m:ss (h:mm:ss from an hour), like the iPod lists.
+func formatTrackLength(sec float64) string {
+	s := int(sec + 0.5)
+	if s >= 3600 {
+		return fmt.Sprintf("%d:%02d:%02d", s/3600, s/60%60, s%60)
+	}
+	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
 func absInt(x int) int {
 	if x < 0 {
 		return -x
@@ -649,7 +703,8 @@ func backsideInfoH() float64 {
 }
 
 // backsideHeight finds by bisection the card height whose bottom edge
-// lands at y = 216 (screen CSS px), at least the info block plus a row.
+// lands just past the bottom of the screen (y = 221 in the 220 px layer,
+// so the card touches the edge and its bottom border is off screen), at least the info block plus a row.
 // The bisection runs on the final flip pose, so the card does not change
 // size while it turns.
 func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
@@ -665,7 +720,7 @@ func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
 		}
 		return m
 	}
-	target := 216.0
+	target := 221.0
 	lo, hi := bv0+60, bv0+600
 	for i := 0; i < 40; i++ {
 		mid := (lo + hi) / 2

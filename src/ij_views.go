@@ -32,6 +32,7 @@ type Item struct {
 	Value          string // right-aligned value (settings)
 	Checked        bool   // checkmark (submenus)
 	NoArrow        bool   // no chevron on the selected row
+	Duration       string // track length, right-aligned (Cover Flow track list)
 }
 
 // How a row behaves when selected (centerClick):
@@ -65,6 +66,7 @@ type View struct {
 	Build            func() []Item // rebuilds Items (refreshBuilt)
 	Empty            string        // message shown when there are no items
 	DisableLongPress bool
+	TrackList        bool // Cover Flow back: durations, play mark, scrollbar
 	Index            int
 	Scroll           float64 // CSS px
 	Custom           CustomView
@@ -178,7 +180,10 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		return
 	}
 	v.ensureVisible(hCSS)
-	tops, _ := v.rowTops()
+	tops, total := v.rowTops()
+	scrollable := total > hCSS+0.5
+	dfont := face(W600, 14)
+	capH := lineCapHeight(14)
 	lfont := face(W700, 14)
 	sfont := face(W400, 12)
 	_, lasc := lineBox(14)
@@ -209,6 +214,9 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		}
 
 		right := wCSS
+		if v.TrackList && scrollable {
+			right -= sbW
+		}
 		showArrow := sel && !it.NoArrow
 		if showArrow {
 			right -= 24
@@ -226,11 +234,26 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 			right -= valueW
 		}
 		playing := !sel && it.isSong() && ui.isPlayingTrack(it.Tracks[it.TrackIdx])
+		durW := 0.0
+		mark := false
+		if v.TrackList {
+			// the playing track gets a play mark before its title instead
+			// of the speaker at the right
+			playing = false
+			if it.isSong() && ui.isCurrentTrack(it.Tracks[it.TrackIdx]) {
+				mark = true
+				x += playMarkW
+			}
+			if it.Duration != "" {
+				durW = textWidth(dfont, it.Duration)/DPR + 10
+				right -= durW
+			}
+		}
 		if playing {
 			right -= 24
 		}
 		padRight := 16.0
-		if showArrow || it.Value != "" || it.Checked {
+		if showArrow || it.Value != "" || it.Checked || durW > 0 {
 			padRight = 0
 		}
 		textW := right - x - padRight - 8
@@ -289,6 +312,18 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 				drawText(dst, vfont, val, (rx-vw)*DPR, (ty+4+lasc)*DPR, vc)
 			}
 		}
+		if v.TrackList {
+			if mark {
+				// play mark: a small triangle, black (white when selected)
+				cy := ty + 4 + lasc - capH/2
+				fillTriangle(dst, (x-playMarkW+5)*DPR, (cy-4.5)*DPR, (x-playMarkW+5)*DPR, (cy+4.5)*DPR, (x-playMarkW+12.5)*DPR, cy*DPR, tc)
+			}
+			if it.Duration != "" {
+				rx := right + durW - 8
+				dw := textWidth(dfont, it.Duration) / DPR
+				drawText(dst, dfont, it.Duration, (rx-dw)*DPR, (ty+4+lasc)*DPR, tc)
+			}
+		}
 		if showArrow {
 			blit(dst, ui.asset("arrow_right"), px(wCSS-24), px(y+(rh-24)/2)+1, 1)
 		}
@@ -296,6 +331,50 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 			blit(dst, ui.themed("volume_full_16"), px(wCSS-8-16), px(y+(rh-16)/2), 1)
 		}
 	}
+	if v.TrackList && scrollable {
+		drawScrollbar(dst, wCSS-sbW, 0, sbW, hCSS, v.Scroll, total)
+	}
+}
+
+// Cover Flow track list: width of the play mark before the playing title
+// and of the scrollbar column (CSS px).
+const (
+	playMarkW = 14.0
+	sbW       = 9.0
+)
+
+// drawScrollbar draws the iPod scrollbar in the column x..x+w (CSS px):
+// a thin rounded track with a 1 px border and a grey glossy thumb sized
+// by the visible fraction of the list.
+func drawScrollbar(dst *image.RGBA, x, y, w, h, scroll, total float64) {
+	bw := 6.0
+	x0 := x + (w-bw)/2 - 1
+	y0, y1 := y+3, y+h-3
+	track := []GradStop{{0, hex("#e4e4e4")}, {1, hex("#f7f7f7")}}
+	border := hex("#b4b4b4")
+	thumb := []GradStop{{0, hex("#a8a8a8")}, {0.5, hex("#8a8a8a")}, {1, hex("#767676")}}
+	if th.dark {
+		track = []GradStop{{0, hex("#26282c")}, {1, hex("#303237")}}
+		border = hex("#45484e")
+		thumb = []GradStop{{0, hex("#a3a6ac")}, {0.5, hex("#868990")}, {1, hex("#72757b")}}
+	}
+	d := DPR
+	fillRoundedGradient(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, track, 1)
+	strokeRounded(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, 1, border, 1)
+	th0 := (y1 - y0) * h / total
+	if th0 < 14 {
+		th0 = 14
+	}
+	maxS := total - h
+	f := 0.0
+	if maxS > 0 {
+		f = math.Min(1, math.Max(0, scroll/maxS))
+	}
+	ty := y0 + (y1-y0-th0)*f
+	// the thumb's gradient runs across it (left to right), like a rod
+	tw := bw - 1
+	tx := x0 + 0.5
+	fillRoundedGradientH(dst, tx*d, ty*d, (tx+tw)*d, (ty+th0)*d, tw/2*d, thumb)
 }
 
 // renderEmpty: centred grey message for empty lists.

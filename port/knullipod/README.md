@@ -106,6 +106,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
   - If there already is one (for example a card used on another console), you can use it as it is ("Use database there") or replace it with the current one ("Replace with current").
 
   The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up (card removed), KnulliPod uses the port folder and says so on the same screen.
+- **Settings → Software Update:** with Wi-Fi on, "Check for updates" looks for a new version on GitHub. "Install" downloads it, checks it, replaces the app's files and restarts KnulliPod. Your library, settings and saves are not touched, and the previous binary is kept as `knullipod/MiyooPod.prev`.
 - **Log:** the app log is `knullipod/miyoopod.log`.
 - **Settings → Theme:** light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00).
 - **Shuffle and Repeat:** in Settings they open a submenu, with a tick on the active option.
@@ -118,4 +119,6 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 
   "Rescan now" starts a new scan from there.
 - **Albums:** they are grouped by folder and album name, so they stay whole even when tracks have different artists or no "album artist" tag. CD1, CD2, Disc 1… subfolders count as one album.
+- **Main menu:** while music plays, the cover, song, artist and album show at the bottom.
+- **Cover Flow:** flip a cover to see its tracks with their lengths; the playing one has a ▶ before its title.
 - **Not included:** Settings leaves out the iPod.js items that make no sense on the console (streaming service, sign-in, iPod body theme and haptics).

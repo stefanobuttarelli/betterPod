@@ -15,6 +15,12 @@ KnulliPod is licensed under the [MIT License](https://github.com/stefanobuttarel
 | --- | --- |
 | Inter (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/COPYRIGHT-Inter.txt`) |
 
+## Certificates (`assets/cacert.pem`)
+
+| Component | License | Notes |
+| --- | --- | --- |
+| Mozilla CA certificate bundle (as packaged by [certifi](https://github.com/certifi/python-certifi)) | MPL 2.0 | Used by Software Update to verify the HTTPS connection to GitHub when the system certificates are missing |
+
 ## Bundled native libraries (`libs/`)
 
 | Library | License | Notes |

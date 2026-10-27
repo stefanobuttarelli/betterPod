@@ -217,7 +217,9 @@ func (app *MiyooPod) scanTrack(path string) {
 		scanNote(func(s *ScanStats) { s.TagErrors++ })
 	}
 
-	// Duration and sample rate are lazy-filled on first play to speed up scanning
+	// the length comes from the headers (no decoding); the sample rate is
+	// filled on first play
+	track.Duration = probeDuration(path)
 
 	// Fallback: use filename as title
 	if track.Title == "" {
