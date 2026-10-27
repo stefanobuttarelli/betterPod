@@ -1,7 +1,6 @@
 package main
 
-// ij_fonts.go — Inter font faces at CSS weights and sizes, cached, plus the
-// line metrics ipod.js uses to place text.
+// ij_fonts.go — cached Inter faces at CSS weights/sizes and ipod.js line metrics.
 
 import (
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"golang.org/x/image/font/sfnt"
 )
 
-// FontWeight is a CSS font-weight.
 type FontWeight int
 
 const (
@@ -25,7 +23,6 @@ const (
 	W900 FontWeight = 900
 )
 
-// Inter weight → file name.
 var fontFiles = map[FontWeight]string{
 	W400: "Inter-Regular.otf",
 	W500: "Inter-Medium.otf",
@@ -34,11 +31,14 @@ var fontFiles = map[FontWeight]string{
 	W900: "Inter-Black.otf",
 }
 
+// fontFiles maps each CSS weight to its Inter file (assets/fonts); a face
+// is built per (weight, size) and kept: the UI uses a handful of sizes.
 type faceKey struct {
 	w    FontWeight
 	size float64
 }
 
+// fontMu guards both caches (the loading screen builds faces too).
 var fontMu sync.Mutex
 
 // parsed fonts by weight, and built faces by (weight, size)
@@ -99,7 +99,8 @@ func lineBox(size float64) (float64, float64) {
 	return h, a + baselineTweak[size]/DPR
 }
 
-// baselineTweak nudges the baseline for sizes that would otherwise look off.
+// baselineTweak nudges the baseline for sizes that would otherwise look off
+// (CSS px, before DPR): 14 px text sits a pixel too low in the list rows.
 var baselineTweak = map[float64]float64{
 	14: -1,
 }

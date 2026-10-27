@@ -36,7 +36,7 @@ func hex(s string) Col {
 var (
 	colWhite       = rgb(255, 255, 255)
 	colBlack       = rgb(0, 0, 0)
-	colTransparent = rgba(0, 0, 0, 0)
+	colTransparent = Col{}
 )
 
 // GradStop is a CSS gradient colour stop (Pos in 0..1).

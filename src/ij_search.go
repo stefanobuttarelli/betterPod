@@ -76,7 +76,7 @@ func (kb *Keyboard) center(ui *IpodUI) {
 
 // keyboard gradients and cached layers
 var kbBgGrad = []GradStop{{0, hex("#ffffff")}, {0.097, hex("#a9a9a9")}, {0.5024, hex("#232323")}, {0.8958, hex("#181d1b")}}
-var kbOptsGrad = []GradStop{{0, Col{0, 0, 0, 1}}, {1, Col{102, 102, 102, 0}}}
+var kbOptsGrad = []GradStop{{0, rgb(0, 0, 0)}, {1, rgba(102, 102, 102, 0)}}
 var kbHiGrad = []GradStop{{0, hex("#8aebf7")}, {1, hex("#258af9")}}
 var kbLayer, kbStatic, kbInset *image.RGBA
 

@@ -20,11 +20,11 @@ type brk struct {
 // brickColors are the rows, top to bottom: the gradient of the bricks
 // and the points a brick of the row is worth.
 var brickColors = []brickColor{
-	{Col{255, 196, 196, 1}, Col{239, 26, 26, 1}, 7},
-	{Col{255, 202, 161, 1}, Col{255, 120, 30, 1}, 5},
-	{Col{254, 242, 189, 1}, Col{240, 195, 31, 1}, 3},
-	{Col{167, 255, 209, 1}, Col{23, 200, 112, 1}, 1},
-	{Col{140, 200, 255, 1}, Col{0, 100, 222, 1}, 1},
+	{rgb(255, 196, 196), rgb(239, 26, 26), 7},
+	{rgb(255, 202, 161), rgb(255, 120, 30), 5},
+	{rgb(254, 242, 189), rgb(240, 195, 31), 3},
+	{rgb(167, 255, 209), rgb(23, 200, 112), 1},
+	{rgb(140, 200, 255), rgb(0, 100, 222), 1},
 }
 
 type brickColor struct {

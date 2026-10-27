@@ -71,21 +71,21 @@ type IpodUI struct {
 }
 
 // Timings (durSlide, durPanel…) and easings are in ij_anim.go, matching the
-// ipod.js transitions.
-//
-//
-//
+// ipod.js transitions. Rendering happens on the main thread (SDL needs it);
+// other goroutines post work through ui.events / ui.post. A frame is drawn
+// only when something is dirty or animating, and only the rows that changed
+// are uploaded (refreshFramebufferRows).
 //
 
-// MIYOOPOD_PERF=1 logs frame timings once a second.
+// MIYOOPOD_PERF=1 logs frame timings once a second (render, present,
+// late and unchanged frames).
 var perfLog = os.Getenv("MIYOOPOD_PERF") != ""
-
 var (
-	perfFrames int
-	perfTotal  time.Duration
-	perfMax    time.Duration
-	perfStart  = time.Now()
+	perfFrames         int
+	perfTotal, perfMax time.Duration
+	perfStart          = time.Now()
 )
+
 func newIpodUI(app *MiyooPod) *IpodUI {
 	ui := &IpodUI{
 		app:         app,
