@@ -14,6 +14,7 @@ KnulliPod is licensed under the [MIT License](https://github.com/stefanobuttarel
 | Font | License |
 | --- | --- |
 | Inter (`assets/fonts`) | SIL Open Font License 1.1 (`assets/fonts/COPYRIGHT-Inter.txt`) |
+| Noto Sans JP (`assets/fonts/NotoSansJP-*.otf`, from [Noto CJK](https://github.com/notofonts/noto-cjk)) | SIL Open Font License 1.1 (`assets/fonts/LICENSE-NotoSansCJK.txt`) |
 
 ## Certificates (`assets/cacert.pem`)
 

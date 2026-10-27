@@ -474,6 +474,22 @@ static void present_rows(unsigned char *pixels, int y0, int y1) {
         FILE *f = fopen(tmp, "wb");
         if (f) { fwrite(pixels, 1, RENDER_WIDTH * RENDER_HEIGHT * 4, f); fclose(f); rename(tmp, dump); }
     }
+    // MIYOOPOD_DUMP_SEQ=dir writes every frame as dir/fNNNNN.raw while the
+    // file dir/on exists (to study animations frame by frame)
+    static const char *seq;
+    static int seq_init, seq_n;
+    if (!seq_init) { seq = getenv("MIYOOPOD_DUMP_SEQ"); seq_init = 1; }
+    if (seq) {
+        char path[512];
+        snprintf(path, sizeof(path), "%s/on", seq);
+        FILE *on = fopen(path, "rb");
+        if (on) fclose(on);
+        if (on) {
+            snprintf(path, sizeof(path), "%s/f%05d.raw", seq, seq_n++);
+            FILE *f = fopen(path, "wb");
+        if (f) { fwrite(pixels, 1, RENDER_WIDTH * RENDER_HEIGHT * 4, f); fclose(f); }
+        }
+    }
 }
 
 static void present_frame(unsigned char *pixels) {

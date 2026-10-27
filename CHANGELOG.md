@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.23 (2026-10-27)
+
+### Added
+- **Now Playing block in every menu:** Music, Artists, Albums, Songs, Playlists, Games and Settings keep it at the bottom while you browse. It stays in place while the menus slide, and hides on the settings detail screens.
+  - **Paused:** the cover shrinks and dims, shows a pause sign, and the lines stop scrolling.
+  - **Next / previous song:** the old song slides out and the new one slides in, in the direction of the change.
+- **Scrolling lines:** long titles, artists and albums scroll in Now Playing and in the block while the song plays.
+- **Japanese titles:** characters Inter lacks (kana, kanji) are drawn with Noto Sans JP.
+
+### Changed
+- **Now Playing:** paused, the cover shrinks to 85% as well as straightening up. A song change slides the lines, and cross-fades the cover when the album changes.
+- **Cover Flow track list:**
+  - every other row is light grey;
+  - the rows line up with the album title above them;
+  - the scrollbar shows only while the list scrolls.
+- **Cover Flow animations:**
+  - the track list stays where it is while it fades;
+  - a turned cover shows its plain back instead of mirrored artwork;
+  - the cover keeps turning the same way into Now Playing;
+  - the album title under the flow no longer flashes.
+- **Artwork:** covers already shown once appear immediately instead of reloading. The cache keeps the most recently used covers (by memory, not by count), and list thumbnails are prepared in the background.
+- **Battery icon:** reads full down to 85%; at 80% it shows a small gap.
+
+### Fixed
+- Black bars under the progress bar during Cover Flow's Now Playing transitions (a premultiplied-alpha overflow).
+
 ## v0.22 (2026-10-27)
 
 ### Added

@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"math"
 	"os"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/font/sfnt"
+	"golang.org/x/image/math/fixed"
 )
 
 type FontWeight int
@@ -67,7 +69,8 @@ func face(w FontWeight, cssSize float64) font.Face {
 		}
 		fontCache[w] = f
 	}
-	fc, _ := opentype.NewFace(f, &opentype.FaceOptions{Size: cssSize * DPR, DPI: 72})
+	pf, _ := opentype.NewFace(f, &opentype.FaceOptions{Size: cssSize * DPR, DPI: 72})
+	fc := &fbFace{pri: pf, priFont: f, w: w, size: cssSize, has: map[rune]bool{}}
 	// remember the CSS size each face was built at (keyed by the face
 	// value itself, so drawText callers can recover it)
 	//
@@ -104,3 +107,92 @@ func lineBox(size float64) (float64, float64) {
 var baselineTweak = map[float64]float64{
 	14: -1,
 }
+
+// ---- fallback for the characters Inter does not have ----
+//
+// Inter covers Latin, Greek and Cyrillic. Japanese (kana and kanji, and the
+// Chinese characters they share) comes from Noto Sans JP, loaded the first
+// time such a character is drawn: Regular for weights up to 500, Bold above.
+
+var fallbackFiles = map[bool]string{false: "NotoSansJP-Regular.otf", true: "NotoSansJP-Bold.otf"}
+var fallbackFonts = map[bool]*sfnt.Font{}
+var fallbackFailed = map[bool]bool{}
+
+// fbFace draws each rune with Inter when it has the glyph, with the
+// fallback font otherwise.
+type fbFace struct {
+	pri     font.Face
+	priFont *sfnt.Font
+	buf     sfnt.Buffer
+	w       FontWeight
+	size    float64
+	has     map[rune]bool // rune → Inter has it
+	fb      font.Face
+	fbTried bool
+}
+
+func (f *fbFace) inPrimary(r rune) bool {
+	if r < 0x2000 {
+		return true // Latin, Greek, Cyrillic…: always Inter
+	}
+	if v, ok := f.has[r]; ok {
+		return v
+	}
+	i, err := f.priFont.GlyphIndex(&f.buf, r)
+	v := err == nil && i != 0
+	f.has[r] = v
+	return v
+}
+
+func (f *fbFace) fallback() font.Face {
+	if f.fbTried {
+		return f.fb
+	}
+	f.fbTried = true
+	bold := f.w >= W600
+	fontMu.Lock()
+	fnt, ok := fallbackFonts[bold]
+	if !ok && !fallbackFailed[bold] {
+		data, err := os.ReadFile(fontDir + fallbackFiles[bold])
+		if err == nil {
+			fnt, err = opentype.Parse(data)
+		}
+		if err != nil {
+			fallbackFailed[bold] = true
+			fnt = nil
+		} else {
+			fallbackFonts[bold] = fnt
+		}
+	}
+	fontMu.Unlock()
+	if fnt != nil {
+		f.fb, _ = opentype.NewFace(fnt, &opentype.FaceOptions{Size: f.size * DPR, DPI: 72})
+	}
+	return f.fb
+}
+
+func (f *fbFace) pick(r rune) font.Face {
+	if f.inPrimary(r) {
+		return f.pri
+	}
+	if fb := f.fallback(); fb != nil {
+		return fb
+	}
+	return f.pri
+}
+
+func (f *fbFace) Close() error { return nil }
+func (f *fbFace) Glyph(dot fixed.Point26_6, r rune) (image.Rectangle, image.Image, image.Point, fixed.Int26_6, bool) {
+	return f.pick(r).Glyph(dot, r)
+}
+func (f *fbFace) GlyphBounds(r rune) (fixed.Rectangle26_6, fixed.Int26_6, bool) {
+	return f.pick(r).GlyphBounds(r)
+}
+func (f *fbFace) GlyphAdvance(r rune) (fixed.Int26_6, bool) { return f.pick(r).GlyphAdvance(r) }
+func (f *fbFace) Kern(r0, r1 rune) fixed.Int26_6 {
+	if f.inPrimary(r0) && f.inPrimary(r1) {
+		return f.pri.Kern(r0, r1)
+	}
+	return 0
+}
+func (f *fbFace) Metrics() font.Metrics { return f.pri.Metrics() }

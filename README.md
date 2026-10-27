@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.22-knulli.zip"><b>Download v0.22</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.23-knulli.zip"><b>Download v0.23</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -29,8 +29,9 @@
 
   Sizes, colours, icons and animation timings come from the original code.
 - **Cover Flow.** Flick through your albums in 3D with reflections. Flip a cover to see its tracks, with their lengths and a scrollbar, and play one straight from the back.
-- **Now Playing in the main menu.** While music plays, the main menu shows the cover, song, artist and album at the bottom, like on an iPod nano.
+- **Now Playing while you browse.** While music plays, the menus show the cover, song, artist and album at the bottom, like on an iPod nano. Long lines scroll, a pause dims the cover, and changing song slides to the next one.
 - **Now Playing.** The tilted 3D cover, a scrubber for seeking and a volume bar. Small icons show shuffle and repeat.
+- **Japanese titles too.** Latin, Greek and Cyrillic come from Inter, kana and kanji from Noto Sans JP.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **Games:** Brick and Solitaire, the classic iPod games. Solitaire saves your game.
 - **Audio quality:**
@@ -72,7 +73,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.22-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.22-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.23-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.23-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -205,7 +206,7 @@ The v0.20 source tree was lost. It was rebuilt from the surviving release binary
 
 - **[iPod.js](https://github.com/tvillarete/ipod-classic-js)** by Tanner Villarete: the interface design, layouts and assets KnulliPod recreates (MIT).
 - **[MiyooPod](https://github.com/danfragoso/miyoopod)** by Danilo Fragoso: the player engine, library scan and original app KnulliPod is built on (MIT).
-- **[Inter](https://rsms.me/inter/)** by Rasmus Andersson: the font (SIL Open Font License).
+- **[Inter](https://rsms.me/inter/)** by Rasmus Andersson and **[Noto Sans JP](https://github.com/notofonts/noto-cjk)** (Google, Adobe): the fonts (SIL Open Font License).
 - Apple's reference **[ALAC decoder](https://github.com/macosforge/alac)** (Apache 2.0), **[FFmpeg](https://ffmpeg.org)**'s AAC decoder (LGPL 2.1), **[SDL2 and SDL2_mixer](https://libsdl.org)** (zlib).
 
 See [THIRD_PARTY_LICENSES.md](port/knullipod/THIRD_PARTY_LICENSES.md) for the full list.

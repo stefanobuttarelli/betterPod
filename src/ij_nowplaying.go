@@ -8,6 +8,8 @@ import (
 	"image"
 	"math"
 	"time"
+
+	"golang.org/x/image/font"
 )
 
 type NowPlayingView struct {
@@ -32,6 +34,17 @@ type NowPlayingView struct {
 	warpSrc     *image.RGBA
 	warpSrcT    *Track
 	lastFrame   int
+	// song change: the old song slides out while the new one comes in
+	shownT  *Track
+	oldT    *Track
+	oldWarp *image.RGBA
+	change  *Anim
+	dir     float64
+	// long lines scroll while playing (from since); marqOn while they do
+	since    time.Time
+	marqOn   bool
+	lastDraw time.Time
+	wasPause bool
 }
 
 func newNowPlayingView() *NowPlayingView {
@@ -42,6 +55,8 @@ func newNowPlayingView() *NowPlayingView {
 		mainX:      newAnim(0),
 		volX:       newAnim(1.1),
 		scrubX:     newAnim(1.1),
+		change:     newAnim(1),
+		dir:        1,
 	}
 }
 
@@ -57,7 +72,13 @@ func (ui *IpodUI) showNowPlaying() {
 }
 
 // Animating: a control row is sliding or the cover is tilting.
-func (np *NowPlayingView) Animating(now time.Time) bool { return np.mainX.Running() || np.volX.Running() || np.scrubX.Running() || np.tilt.Running() }
+func (np *NowPlayingView) Animating(now time.Time) bool {
+	if np.mainX.Running() || np.volX.Running() || np.scrubX.Running() || np.tilt.Running() || np.change.Running() {
+		return true
+	}
+	// a scrolling line keeps the view redrawing while it is on screen
+	return np.marqOn && now.Sub(np.lastDraw) < 200*time.Millisecond
+}
 
 // updateControls slides the control rows for the current mode.
 func (np *NowPlayingView) updateControls() {
@@ -185,6 +206,7 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 	//
 	th := 35 * tilt * math.Pi / 180
 	th0 := 35 * math.Pi / 180
+	scl := 0.85 + 0.15*tilt
 	sinT, cosT := math.Sin(th), math.Cos(th)
 	const pv = 1000.0
 	ox, oy := 160.0, npMetaH/2
@@ -209,8 +231,10 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 				X := ((ax-ox)*pv - (pv-bz)*A) / (sinT*A - pv*cosT)
 				k := pv / (pv - bz + X*sinT)
 				Y := oy + (py/DPR-oy)/k - cy
-				u := X + 64
-				v := Y + 64
+				// paused (tilt 0) the cover is 85% of its size, about
+				// its centre
+				u := X/scl + 64
+				v := Y/scl + 64
 				if u < 0 || u >= 128 || v < 0 || v >= 256 {
 					continue
 				}
@@ -311,14 +335,57 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 			}
 			np.lastFrame = ui.frameNo
 			tv := np.tilt.Get(now)
+			if t != np.shownT && np.shownT != nil && np.lastFrame == ui.frameNo && np.warpArt != nil {
+				// keep the old cover for the change animation
+				np.oldWarp = cloneRGBA(np.oldWarp, np.warpArt)
+			}
 			if np.warpTrack != t || np.warpArt == nil || np.warpTilt != tv {
 				np.buildWarp(ui, t, tv)
 			}
-			if np.warpArt != nil {
+		}
+		// song change: start the slide when the view was on screen
+		if t != np.shownT {
+			if np.shownT != nil && now.Sub(np.lastDraw) < 200*time.Millisecond {
+				np.oldT, np.dir = np.shownT, skipDir
+				np.change.Set(0)
+				np.change.To(1, 420*time.Millisecond, easeInOut, 0)
+			} else {
+				np.oldWarp = nil
+			}
+			np.shownT, np.since = t, now
+		}
+		paused := p.State != StatePlaying
+		if np.wasPause && !paused {
+			np.since = now // scrolling starts again from the beginning
+		}
+		np.wasPause = paused
+		k := np.change.Get(now)
+		off := 22 * np.dir
+		np.marqOn = false
+		if k < 1 && np.oldT != nil {
+			if !np.hideArt {
+				// the cover cross-fades only when the album changes
+				sameArt := ui.trackAlbum(np.oldT) == ui.trackAlbum(t)
+				if np.oldWarp != nil && !sameArt {
+					blit(dst, np.oldWarp, 0, 0, 1)
+					if np.warpArt != nil {
+						blit(dst, np.warpArt, 0, 0, k)
+					}
+				} else if np.warpArt != nil {
+					blit(dst, np.warpArt, 0, 0, 1)
+				}
+			}
+			// the old lines leave, then the new ones come in
+			out, in := changePhases(k)
+			ui.drawNPInfo(dst, np, np.oldT, npMetaH, -off*out, 1-out, false, now)
+			ui.drawNPInfo(dst, np, t, npMetaH, off*(1-in), in, false, now)
+		} else {
+			if !np.hideArt && np.warpArt != nil {
 				blit(dst, np.warpArt, 0, 0, 1)
 			}
+			ui.drawNPInfo(dst, np, t, npMetaH, 0, 1, !paused, now)
 		}
-		ui.drawNPInfo(dst, t, npMetaH)
+		np.lastDraw = now
 	}
 	// control rows, sliding horizontally
 	//
@@ -352,30 +419,76 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	}
 }
 
-func (ui *IpodUI) drawNPInfo(dst *image.RGBA, t *Track, npMetaH float64) {
-	// title (wrapped), artist and album (2 lines each), vertically centred
-	// in the top 70% of the view, starting at x = 168
+func (ui *IpodUI) drawNPInfo(dst *image.RGBA, np *NowPlayingView, t *Track, npMetaH, dx, alpha float64, live bool, now time.Time) {
+	// title, artist and album on one line each, vertically centred in the
+	// top 70% of the view, starting at x = 168; lines too long to fit
+	// scroll while the song plays (marquee), and stop at their start when
+	// paused
+	if alpha <= 0.002 {
+		return
+	}
 	tf := face(W600, 14.72)
 	sf := face(W600, 12)
 	tlh, tasc := lineBox(14.72)
 	slh, sasc := lineBox(12)
-	title := wrapLines(tf, t.Title, 288, 99)
-	artist := wrapLines(sf, t.Artist, 288, 2)
-	album := wrapLines(sf, t.Album, 288, 2)
-	if t.Title == "" {
-		title = nil
+	const x0, maxW = 168.0, 144.0
+	type line struct {
+		s   string
+		f   font.Face
+		asc float64
+		lh  float64
+		c   Col
 	}
-	h := float64(len(title))*tlh + float64(len(artist)+len(album))*slh
+	var lines []line
+	if t.Title != "" {
+		lines = append(lines, line{t.Title, tf, tasc, tlh, th.text})
+	}
+	if t.Artist != "" {
+		lines = append(lines, line{t.Artist, sf, sasc, slh, th.npSub})
+	}
+	if t.Album != "" {
+		lines = append(lines, line{t.Album, sf, sasc, slh, th.npSub})
+	}
+	h := 0.0
+	for _, l := range lines {
+		h += l.lh
+	}
 	y := (npMetaH - h) / 2
-	for _, l := range title {
-		drawText(dst, tf, l, 336, (y+tasc)*DPR, th.text)
-		y += tlh
+	b := dst.Bounds()
+	for _, l := range lines {
+		c := Col{l.c.R, l.c.G, l.c.B, l.c.A * alpha}
+		x := x0 + dx
+		if live && textWidth(l.f, l.s)/DPR > maxW {
+			drawMarquee(dst, l.f, l.s, x, y+l.asc, maxW, c, np.since, now)
+			np.marqOn = true
+		} else {
+			s := ellipsize(l.f, l.s, maxW*DPR)
+			// clipped to the text column (it slides during a song change)
+			r := image.Rect(px(x0-24), b.Min.Y, px(x0+maxW+24), b.Max.Y).Intersect(b)
+			if sub, ok := dst.SubImage(r).(*image.RGBA); ok {
+				drawText(sub, l.f, s, x*DPR, (y+l.asc)*DPR, c)
+			}
+		}
+		y += l.lh
 	}
-	sub := th.npSub
-	for _, l := range append(artist, album...) {
-		drawText(dst, sf, l, 336, (y+sasc)*DPR, sub)
-		y += slh
+}
+
+// changePhases splits a song change (k: 0 → 1) into the old song leaving
+// (out: 0 → 1 over the first 45%) and the new one arriving (in: 0 → 1
+// over the last 55%), each eased.
+func changePhases(k float64) (out, in float64) {
+	out = math.Min(1, k/0.45)
+	in = math.Max(0, (k-0.45)/0.55)
+	return easeInOut(out), easeInOut(in)
+}
+
+// cloneRGBA copies src into buf (reused when it has the right size).
+func cloneRGBA(buf, src *image.RGBA) *image.RGBA {
+	if buf == nil || buf.Bounds() != src.Bounds() {
+		buf = image.NewRGBA(src.Bounds())
 	}
+	copy(buf.Pix, src.Pix)
+	return buf
 }
 
 func (ui *IpodUI) drawNPStatus(dst *image.RGBA) {
@@ -450,8 +563,18 @@ func reflectBar(dst *image.RGBA, x0, x1, yTop, h int) {
 			continue
 		}
 		so, do := dst.PixOffset(x0, sy), dst.PixOffset(x0, dy)
-		for k := 0; k < (x1-x0)*4; k++ {
-			dst.Pix[do+k] = uint8(float64(dst.Pix[do+k])*(1-a) + float64(dst.Pix[so+k])*a + 0.5)
+		for k := 0; k < (x1-x0)*4; k += 4 {
+			// mix premultiplied pixels; the colour can never exceed the
+			// alpha (rounding would make it overflow when composited)
+			al := uint8(float64(dst.Pix[do+k+3])*(1-a) + float64(dst.Pix[so+k+3])*a + 0.5)
+			for c := 0; c < 3; c++ {
+				v := uint8(float64(dst.Pix[do+k+c])*(1-a) + float64(dst.Pix[so+k+c])*a + 0.5)
+				if v > al {
+					v = al
+				}
+				dst.Pix[do+k+c] = v
+			}
+			dst.Pix[do+k+3] = al
 		}
 	}
 }

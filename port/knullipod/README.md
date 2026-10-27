@@ -11,7 +11,7 @@ The interface is a native recreation of [iPod.js](https://github.com/tvillarete/
 
 Sizes, colours, icons and animation timings come from the original code.
 
-Playback and the library scan come from [MiyooPod](https://github.com/danfragoso/miyoopod) by Danilo Fragoso. Both projects are MIT-licensed (see `LICENSE.ipod.js` and `LICENSE.MiyooPod`). The Inter font is under the SIL Open Font License. The Apple Lossless decoder is Apple's reference implementation (Apache 2.0). See `THIRD_PARTY_LICENSES.md`.
+Playback and the library scan come from [MiyooPod](https://github.com/danfragoso/miyoopod) by Danilo Fragoso. Both projects are MIT-licensed (see `LICENSE.ipod.js` and `LICENSE.MiyooPod`). The Inter and Noto Sans JP fonts are under the SIL Open Font License. The Apple Lossless decoder is Apple's reference implementation (Apache 2.0). See `THIRD_PARTY_LICENSES.md`.
 
 Source code, screenshots and updates: https://github.com/stefanobuttarelli/knullipod
 
@@ -119,6 +119,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 
   "Rescan now" starts a new scan from there.
 - **Albums:** they are grouped by folder and album name, so they stay whole even when tracks have different artists or no "album artist" tag. CD1, CD2, Disc 1… subfolders count as one album.
-- **Main menu:** while music plays, the cover, song, artist and album show at the bottom.
+- **Now Playing block:** while music plays, the menus show the cover, song, artist and album at the bottom. Paused, the cover dims and shows a pause sign.
+- **Languages:** Japanese titles are drawn with Noto Sans JP.
 - **Cover Flow:** flip a cover to see its tracks with their lengths; the playing one has a ▶ before its title.
 - **Not included:** Settings leaves out the iPod.js items that make no sense on the console (streaming service, sign-in, iPod body theme and haptics).

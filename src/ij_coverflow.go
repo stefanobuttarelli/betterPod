@@ -148,11 +148,15 @@ func (cf *CoverFlow) targetFor(i int) (cfXform, time.Duration) {
 		x := cfXform{X: 100, Y: 4, Z: 20, S1: 1, S2: 1}
 		if cf.selected != nil && cf.albums[i] == cf.selected {
 			if cf.playing {
-				// next to the track info, tilted like Now Playing
-				return npCoverPose(cf.tilt.Target()), 500 * time.Millisecond
+				// next to the track info, tilted like Now Playing; the
+				// angle is taken a full turn back so the cover keeps
+				// turning the way it flipped (-180° → -325°) instead of
+				// spinning back through the front
+				p := npCoverPose(cf.tilt.Target())
+				p.A -= 360
+				return p, 500 * time.Millisecond
 			}
-			x.A, x.TY, x.S2 = -180, 32, 0.96
-			return x, 500 * time.Millisecond
+			return backPose(), 500 * time.Millisecond
 		}
 		return x, 300 * time.Millisecond
 	}
@@ -163,7 +167,20 @@ func (cf *CoverFlow) targetFor(i int) (cfXform, time.Duration) {
 	return cfXform{X: getOffsetPx(i-cf.active, 160), S1: 1.1, Z2: -65, A: a, S2: 1}, 250 * time.Millisecond
 }
 
+// backPose: the active cover flipped to show its track list.
+func backPose() cfXform {
+	return cfXform{X: 100, Y: 4, Z: 20, S1: 1, A: -180, TY: 32, S2: 0.96}
+}
+
 func (cf *CoverFlow) sync(now time.Time) {
+	// the album title under the flow shows only when no cover is flipped
+	want := 1.0
+	if cf.selected != nil {
+		want = 0
+	}
+	if cf.infoFade.Target() != want {
+		cf.infoFade.To(want, 300*time.Millisecond, easeInOut, 0)
+	}
 	for i := cf.active - 15; i <= cf.active+15; i++ {
 		if i < 0 || i >= len(cf.albums) {
 			continue
@@ -210,6 +227,9 @@ func (cf *CoverFlow) scroll(ui *IpodUI, dir int, velocity float64) {
 			if ni >= len(cf.back.Items) {
 				ni = len(cf.back.Items) - 1
 			}
+			if ni != cf.back.Index {
+				cf.back.scrolledAt = animNow()
+			}
 			cf.back.Index = ni
 			cf.back.dirty = true
 		}
@@ -233,11 +253,10 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 			ui.playSong(it.Tracks, it.TrackIdx, false)
 		}
 		cf.playing = true
-		cf.backAnim.To(0, 300*time.Millisecond, easeInOut, 0)
+		cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
 		cf.np = newNowPlayingView()
 		cf.np.hideArt = true
 		cf.npFade.To(1, 300*time.Millisecond, easeFramer, 0)
-		cf.infoFade.To(0, 300*time.Millisecond, easeInOut, 0)
 		ui.headerTitle = "Now Playing"
 		// (the cover art stays in the flow: Now Playing shows only the info)
 	} else if len(cf.albums) == 0 {
@@ -255,9 +274,15 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 func (cf *CoverFlow) menu(ui *IpodUI) {
 	// back out: Now Playing → track list → flow → menus
 	if cf.selected != nil && cf.playing {
+		// start the turn back from where the cover is now (Now Playing
+		// may have tilted it), a full turn back like targetFor
+		if c := cf.covers[cf.active]; c != nil {
+			p := npCoverPose(cf.tilt.Get(animNow()))
+			p.A -= 360
+			c.from, c.to, c.dur = p, p, 0
+		}
 		cf.playing = false
 		cf.npFade.To(0, 300*time.Millisecond, easeInOut, 0)
-		cf.infoFade.To(1, 300*time.Millisecond, easeFramer, 0)
 		ui.headerTitle = "Cover Flow"
 		// flip back to the track list
 		cf.back = ui.backsideList(cf.selected)
@@ -265,7 +290,7 @@ func (cf *CoverFlow) menu(ui *IpodUI) {
 		cf.backAnim.To(1, 500*time.Millisecond, easeInOut, 0)
 	} else if cf.selected != nil {
 		cf.selected = nil
-		cf.backAnim.To(0, 300*time.Millisecond, easeInOut, 0)
+		cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
 		ui.headerTitle = "Cover Flow"
 	} else {
 		ui.closeCoverFlow()
@@ -327,6 +352,9 @@ func (cf *CoverFlow) animating(now time.Time) bool {
 		}
 	}
 	if cf.backAlbum != nil && marqueeActive {
+		return true
+	}
+	if cf.back != nil && cf.back.scrollbarAnimating(now) {
 		return true
 	}
 	return cf.np != nil && cf.np.Animating(now)
@@ -539,7 +567,7 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 	fillRect(layer, 0, 0, W, H, th.bg)
 	// album title and artist under the flow, fading out while the cover
 	// is flipped
-	if fo := cf.infoFade.Get(now) * (1 - cf.backAnim.Get(now)); fo > 0.002 && len(cf.albums) > 0 && cf.active < len(cf.albums) {
+	if fo := cf.infoFade.Get(now); fo > 0.002 && len(cf.albums) > 0 && cf.active < len(cf.albums) {
 		al := cf.albums[cf.active]
 		// album in bold, the artist under it a little smaller and grey
 		lh, asc := lineBox(16)
@@ -609,8 +637,13 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 		if art == nil {
 			art = ui.defaultArtSized(size)
 		}
-		aa := c.artAlpha.Get(now)
+		aa := 1.0
 		selected := cf.selected != nil && cf.albums[it.i] == cf.selected && it.i == cf.active
+		if !facesViewer(m) {
+			// turned away: the plain back of the cover, never its art
+			// seen mirrored
+			art = coverBackFace()
+		}
 		sc := float64(art.Bounds().Dx()) / 128
 		tm := texMap{img: art, su: sc, sv: sc, u1: 128, v1: 128}
 		if selected {
@@ -629,7 +662,8 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 			drawTex(layer, m, tm, aa*op)
 		}
 		if it.i == cf.active && cf.albums[it.i] == cf.backAlbum {
-			ui.drawBackside(layer, coverMatrix(c.to), m, now)
+			bm := coverMatrix(backPose())
+			ui.drawBackside(layer, bm, bm, now)
 		}
 	}
 	// Now Playing (track info and controls) over the flow
@@ -746,7 +780,8 @@ func backsideHeight(final mat4, bu0, bv0, bw float64) float64 {
 // The clip is done per glyph: nothing is drawn outside x..x+maxW.
 func drawMarquee(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float64, c Col, since, now time.Time) {
 	tw := textWidth(f, s) / DPR
-	r := image.Rect(px(x), 0, px(x+maxW), dst.Bounds().Dy()).Intersect(dst.Bounds())
+	b := dst.Bounds()
+	r := image.Rect(px(x), b.Min.Y, px(x+maxW), b.Max.Y).Intersect(b)
 	clip, ok := dst.SubImage(r).(*image.RGBA)
 	if !ok {
 		return
@@ -814,11 +849,42 @@ func npCoverPose(t float64) cfXform {
 	// keep the cover's left edge where it is at the resting angle
 	//
 	return cfXform{
-		X:  p + 64*math.Cos(th0) - 64*math.Cos(th),
-		Y:  8,
-		Z:  -64*math.Sin(th0) + 64*math.Sin(th),
-		S1: 1, A: 35 * t, S2: 1}
+		X: p + 64*math.Cos(th0) - 64*math.Cos(th),
+		Y: 8,
+		Z: -64*math.Sin(th0) + 64*math.Sin(th),
+		// paused (t = 0) the cover also shrinks to 85%
+		S1: 1, A: 35 * t, S2: 0.85 + 0.15*t}
 }
 
 // backsideBuf is the reused canvas of the flipped cover's track list.
 var backsideBuf *image.RGBA
+
+// facesViewer reports whether the cover's front faces the screen under m
+// (the projected quad keeps its winding).
+func facesViewer(m mat4) bool {
+	H := planeH(m)
+	pr := func(u, v float64) (float64, float64) {
+		w := H[6]*u + H[7]*v + H[8]
+		return (H[0]*u + H[1]*v + H[2]) / w, (H[3]*u + H[4]*v + H[5]) / w
+	}
+	x0, y0 := pr(0, 0)
+	x1, y1 := pr(128, 0)
+	x2, y2 := pr(0, 128)
+	return (x1-x0)*(y2-y0)-(y1-y0)*(x2-x0) > 0
+}
+
+var coverBack *image.RGBA
+var coverBackDark bool
+
+// coverBackFace: the back of a cover, a plain card in the theme's colours.
+func coverBackFace() *image.RGBA {
+	if coverBack == nil || coverBackDark != th.dark {
+		coverBack, coverBackDark = newCanvas(16, 16), th.dark
+		c := hex("#e9eaec")
+		if th.dark {
+			c = rgb(46, 48, 52)
+		}
+		fillRect(coverBack, 0, 0, 16, 16, c)
+	}
+	return coverBack
+}

@@ -325,8 +325,10 @@ func (ui *IpodUI) mediaKey(ev int) bool {
 	case HP_UNPLUG:
 		ui.pauseIfPlaying("Headphones unplugged")
 	case MEDIA_NEXT:
+		skipDir = 1
 		go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
 	case MEDIA_PREV:
+		skipDir = -1
 		go func() { ui.app.prevTrack(); ui.post(ui.onTrackChanged) }()
 	}
 	ui.dirty = true

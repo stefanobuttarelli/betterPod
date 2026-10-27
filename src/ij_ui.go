@@ -490,6 +490,7 @@ func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) {
 		}
 		return
 	}
+	skipDir = 1
 	go func() {
 		app.Queue.Shuffle = ui.shuffleMode != "off"
 		app.playTrackFromList(tracks, idx)
@@ -566,8 +567,10 @@ func (ui *IpodUI) HandleKey(ev int) {
 			break
 		}
 		if k == R {
+			skipDir = 1
 			go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
 		} else {
+			skipDir = -1
 			go func() { ui.app.prevTrack(); ui.post(ui.onTrackChanged) }()
 		}
 	case Y:
@@ -656,6 +659,9 @@ func (ui *IpodUI) animating(now time.Time) bool {
 	if ui.kb.animating(ui) {
 		return true
 	}
+	if ui.miniAnimating(now) {
+		return true
+	}
 	return !ui.noMarquee && ui.listMarquee()
 }
 
@@ -678,12 +684,16 @@ func (ui *IpodUI) viewBuffer(v *View, wDev, hDev int, now time.Time) *image.RGBA
 		v.Custom.Render(ui, v, v.cache, now)
 		return v.cache
 	}
+	// lists that keep the Now Playing block under them leave its height free
+	res := ui.miniReserve(v)
+	if res != v.miniRes {
+		v.miniRes, v.dirty = res, true
+	}
 	if v.dirty || v.marqueeOn {
-		if t := ui.miniPlayerTrack(); v.ID == "home" && t != nil {
-			// the main menu keeps the Now Playing block at its bottom
+		if res {
+			fillRect(v.cache, 0, 0, wDev, hDev, th.bg)
 			r := image.Rect(0, 0, wDev, hDev-px(miniPlayerH))
 			ui.renderList(v, v.cache.SubImage(r).(*image.RGBA))
-			ui.drawMiniPlayer(v.cache, t)
 		} else {
 			ui.renderList(v, v.cache)
 		}
@@ -719,6 +729,12 @@ func (ui *IpodUI) drawStack(stack []*View, kind ViewKind, panelX, panelW int, no
 			draw(v)
 		}
 	}
+	// the Now Playing block stays at the bottom of the panel
+	var top *View
+	if len(stack) > 0 {
+		top = stack[len(stack)-1]
+	}
+	ui.drawMiniPlayer(kind, top, panelX, panelW, now)
 }
 
 func fillRectClipped(dst *image.RGBA, x, y, w, h int, c Col, clip image.Rectangle) {
@@ -732,6 +748,8 @@ func fillRectClipped(dst *image.RGBA, x, y, w, h int, c Col, clip image.Rectangl
 func (ui *IpodUI) renderFrame(now time.Time) {
 	ui.frameNo++
 	marqueeActive = false
+	mini.marqOn = false
+	artSyncLeft = artSyncBudget
 	fb := ui.fb
 	fillRect(fb, 0, 0, 640, 480, th.bg)
 
@@ -931,7 +949,10 @@ func (ui *IpodUI) drawBattery(dst *image.RGBA, x, y float64) {
 	if pct <= 20 && !charging {
 		fill = ui.asset("battery_fill_warn")
 	}
-	w := int(float64(fill.Bounds().Dx())*float64(pct)/100 + 0.5)
+	// the icon reads full down to 85%, then empties in proportion (80%
+	// shows a small gap), so a nearly full battery looks full
+	shown := math.Min(1, float64(pct)/85)
+	w := int(float64(fill.Bounds().Dx())*shown + 0.5)
 	sub := fill.SubImage(image.Rect(0, 0, w, fill.Bounds().Dy())).(*image.RGBA)
 	blit(dst, sub, px(x+1), px(y+1), 1)
 
@@ -1034,7 +1055,13 @@ func (ui *IpodUI) Run() {
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
 	lastBT := false
+	var prefetched *Library
 	for app.Running {
+		// thumbnails of a newly loaded library are prefetched
+		if lib := app.Library; lib != nil && lib != prefetched && !app.LibScanRunning && len(lib.Albums) > 0 {
+			prefetched = lib
+			go ui.prefetchArt(lib)
+		}
 		// input
 		for {
 			ev := C_GetKeyPress()
@@ -1103,6 +1130,7 @@ func (ui *IpodUI) Run() {
 		ui.checkRepeat(now)
 		if app.TrackEndPending {
 			app.TrackEndPending = false
+			skipDir = 1
 			app.handleTrackEnd()
 			ui.onTrackChanged()
 		}

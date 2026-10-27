@@ -1,7 +1,7 @@
 {
-  "version": "0.22",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.22-knulli.zip",
-  "sha256": "472c2785d2bcd78f54b2b0f3ff7e89f0ce94026418f9a61b2f861aba21ce36f3",
-  "size": 6311698,
-  "notes": "Software Update over Wi-Fi\nNow Playing block in the main menu\nCover Flow: track lengths, play mark, scrollbar\nTrack lengths read before playing"
+  "version": "0.23",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.23-knulli.zip",
+  "sha256": "2efa59d1312e174c6cc8cba192260c15679b943f0cc33d0d6777e204bbc4bf8c",
+  "size": 14230342,
+  "notes": "Now Playing block in every menu\nSmoother Cover Flow, striped track list\nCovers no longer reload, Japanese titles\nScrolling titles, pause and song-change animations"
 }

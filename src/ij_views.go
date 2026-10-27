@@ -66,7 +66,8 @@ type View struct {
 	Build            func() []Item // rebuilds Items (refreshBuilt)
 	Empty            string        // message shown when there are no items
 	DisableLongPress bool
-	TrackList        bool // Cover Flow back: durations, play mark, scrollbar
+	TrackList        bool      // Cover Flow back: durations, play mark, scrollbar
+	scrolledAt       time.Time // last scroll (the TrackList scrollbar shows for a moment)
 	Index            int
 	Scroll           float64 // CSS px
 	Custom           CustomView
@@ -77,6 +78,7 @@ type View struct {
 	firstIn   bool
 	cache     *image.RGBA
 	marqueeOn bool // the selected row is scrolling its title
+	miniRes   bool // the cache was drawn leaving room for the Now Playing block
 	marqIdx   int
 	marqSince time.Time
 	cacheW    int
@@ -198,10 +200,17 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 			continue
 		}
 		sel := i == v.Index
+		if v.TrackList && i%2 == 1 && !sel {
+			// every other row on a very light grey, like the iPod
+			fillRect(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), th.stripe)
+		}
 		if sel {
 			fillVGradient(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), selGrad)
 		}
 		x := 0.0
+		if v.TrackList {
+			x = trackListInset // the text lines up with the album title above
+		}
 		if it.Album != nil || it.Icon != "" {
 			var thumb *image.RGBA
 			if it.Icon != "" {
@@ -332,21 +341,51 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		}
 	}
 	if v.TrackList && scrollable {
-		drawScrollbar(dst, wCSS-sbW, 0, sbW, hCSS, v.Scroll, total)
+		if a := v.scrollbarAlpha(animNow()); a > 0 {
+			drawScrollbar(dst, wCSS-sbW, 0, sbW, hCSS, v.Scroll, total, a)
+		}
 	}
 }
 
 // Cover Flow track list: width of the play mark before the playing title
 // and of the scrollbar column (CSS px).
 const (
-	playMarkW = 14.0
-	sbW       = 9.0
+	playMarkW      = 14.0
+	sbW            = 9.0
+	trackListInset = 4.0
 )
+
+// The scrollbar shows while the list scrolls: fully for 0.9 s after the
+// last move, then it fades out over 0.35 s.
+const (
+	sbHold = 900 * time.Millisecond
+	sbFade = 350 * time.Millisecond
+)
+
+func (v *View) scrollbarAlpha(now time.Time) float64 {
+	if v.scrolledAt.IsZero() {
+		return 0
+	}
+	d := now.Sub(v.scrolledAt)
+	if d <= sbHold {
+		return 1
+	}
+	if d >= sbHold+sbFade {
+		return 0
+	}
+	return 1 - easeCSS(float64(d-sbHold)/float64(sbFade))
+}
+
+// scrollbarAnimating: the scrollbar is still on screen (frames are needed
+// until it has faded out).
+func (v *View) scrollbarAnimating(now time.Time) bool {
+	return !v.scrolledAt.IsZero() && now.Sub(v.scrolledAt) < sbHold+sbFade
+}
 
 // drawScrollbar draws the iPod scrollbar in the column x..x+w (CSS px):
 // a thin rounded track with a 1 px border and a grey glossy thumb sized
 // by the visible fraction of the list.
-func drawScrollbar(dst *image.RGBA, x, y, w, h, scroll, total float64) {
+func drawScrollbar(dst *image.RGBA, x, y, w, h, scroll, total, alpha float64) {
 	bw := 6.0
 	x0 := x + (w-bw)/2 - 1
 	y0, y1 := y+3, y+h-3
@@ -359,8 +398,8 @@ func drawScrollbar(dst *image.RGBA, x, y, w, h, scroll, total float64) {
 		thumb = []GradStop{{0, hex("#a3a6ac")}, {0.5, hex("#868990")}, {1, hex("#72757b")}}
 	}
 	d := DPR
-	fillRoundedGradient(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, track, 1)
-	strokeRounded(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, 1, border, 1)
+	fillRoundedGradient(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, track, alpha)
+	strokeRounded(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, 1, border, alpha)
 	th0 := (y1 - y0) * h / total
 	if th0 < 14 {
 		th0 = 14
@@ -374,7 +413,7 @@ func drawScrollbar(dst *image.RGBA, x, y, w, h, scroll, total float64) {
 	// the thumb's gradient runs across it (left to right), like a rod
 	tw := bw - 1
 	tx := x0 + 0.5
-	fillRoundedGradientH(dst, tx*d, ty*d, (tx+tw)*d, (ty+th0)*d, tw/2*d, thumb)
+	fillRoundedGradientH(dst, tx*d, ty*d, (tx+tw)*d, (ty+th0)*d, tw/2*d, thumb, alpha)
 }
 
 // renderEmpty: centred grey message for empty lists.

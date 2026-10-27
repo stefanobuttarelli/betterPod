@@ -21,6 +21,7 @@ type UITheme struct {
 	preview      []GradStop // grey icon previews
 	artBorder    Col        // 1px border around Now Playing artwork
 	cardBorder   Col        // Cover Flow backside card
+	stripe       Col        // every other row of the Cover Flow track list
 	sheetOpt     []GradStop
 	sheetBorder  Col
 	sheetText    Col
@@ -41,6 +42,7 @@ var lightTheme = UITheme{
 	preview:      []GradStop{{0, hex("#b1b5c0")}, {1, hex("#686e7a")}},
 	artBorder:    hex("#f3f3f3"),
 	cardBorder:   hex("#d3d3d3"),
+	stripe:       hex("#f2f3f5"),
 	sheetOpt:     []GradStop{{0, hex("#ffffff")}, {0.4844, hex("#cbccce")}, {1, hex("#dfdfdf")}},
 	sheetBorder:  hex("#3e4249"),
 	sheetText:    rgb(0, 0, 0),
@@ -62,6 +64,7 @@ var darkTheme = UITheme{
 	preview:      []GradStop{{0, hex("#3d414a")}, {1, hex("#17191d")}},
 	artBorder:    rgb(48, 50, 54),
 	cardBorder:   rgb(60, 62, 66),
+	stripe:       rgb(30, 31, 34),
 	sheetOpt:     []GradStop{{0, hex("#55585f")}, {0.4844, hex("#34373d")}, {1, hex("#3c3f45")}},
 	sheetBorder:  hex("#15171a"),
 	sheetText:    rgb(240, 241, 243),

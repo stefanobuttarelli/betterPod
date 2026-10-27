@@ -169,6 +169,15 @@ func fillHGradient(dst *image.RGBA, x, y, w, h int, stops []GradStop) {
 	}
 }
 
+// sat8 clamps a channel sum to 255 (a slightly off premultiplied source
+// must not wrap around to black).
+func sat8(v uint32) uint8 {
+	if v > 255 {
+		return 255
+	}
+	return uint8(v)
+}
+
 // blit composites a premultiplied RGBA image onto dst at (dx, dy).
 func blit(dst, src *image.RGBA, dx, dy int, opacity float64) {
 	if src == nil || opacity <= 0 {
@@ -193,10 +202,10 @@ func blit(dst, src *image.RGBA, dx, dy int, opacity float64) {
 					d[i], d[i+1], d[i+2], d[i+3] = s[i], s[i+1], s[i+2], 255
 				} else if sa != 0 {
 					ia := 255 - sa
-					d[i] = uint8(uint32(s[i]) + (uint32(d[i])*ia+127)/255)
-					d[i+1] = uint8(uint32(s[i+1]) + (uint32(d[i+1])*ia+127)/255)
-					d[i+2] = uint8(uint32(s[i+2]) + (uint32(d[i+2])*ia+127)/255)
-					d[i+3] = uint8(sa + (uint32(d[i+3])*ia+127)/255)
+					d[i] = sat8(uint32(s[i]) + (uint32(d[i])*ia+127)/255)
+					d[i+1] = sat8(uint32(s[i+1]) + (uint32(d[i+1])*ia+127)/255)
+					d[i+2] = sat8(uint32(s[i+2]) + (uint32(d[i+2])*ia+127)/255)
+					d[i+3] = sat8(sa + (uint32(d[i+3])*ia+127)/255)
 				}
 			}
 		} else {
@@ -206,10 +215,10 @@ func blit(dst, src *image.RGBA, dx, dy int, opacity float64) {
 					continue
 				}
 				ia := 255 - sa
-				d[i] = uint8((uint32(s[i])*a+127)/255 + (uint32(d[i])*ia+127)/255)
-				d[i+1] = uint8((uint32(s[i+1])*a+127)/255 + (uint32(d[i+1])*ia+127)/255)
-				d[i+2] = uint8((uint32(s[i+2])*a+127)/255 + (uint32(d[i+2])*ia+127)/255)
-				d[i+3] = uint8(sa + (uint32(d[i+3])*ia+127)/255)
+				d[i] = sat8((uint32(s[i])*a+127)/255 + (uint32(d[i])*ia+127)/255)
+				d[i+1] = sat8((uint32(s[i+1])*a+127)/255 + (uint32(d[i+1])*ia+127)/255)
+				d[i+2] = sat8((uint32(s[i+2])*a+127)/255 + (uint32(d[i+2])*ia+127)/255)
+				d[i+3] = sat8(sa + (uint32(d[i+3])*ia+127)/255)
 			}
 		}
 	}
@@ -526,7 +535,7 @@ func fillTriangle(dst *image.RGBA, ax, ay, bx, by, cx, cy float64, c Col) {
 
 // fillRoundedGradientH fills a rounded rectangle (device px) with a
 // horizontal gradient (left to right).
-func fillRoundedGradientH(dst *image.RGBA, x0, y0, x1, y1, r float64, stops []GradStop) {
+func fillRoundedGradientH(dst *image.RGBA, x0, y0, x1, y1, r float64, stops []GradStop, opacity float64) {
 	ix0, iy0 := int(math.Floor(x0)), int(math.Floor(y0))
 	ix1, iy1 := int(math.Ceil(x1)), int(math.Ceil(y1))
 	b := dst.Bounds()
@@ -544,7 +553,7 @@ func fillRoundedGradientH(dst *image.RGBA, x0, y0, x1, y1, r float64, stops []Gr
 				continue
 			}
 			o := dst.PixOffset(x, y)
-			blendPx(dst.Pix[o:o+4], c, c.A*cov)
+			blendPx(dst.Pix[o:o+4], c, c.A*cov*opacity)
 		}
 	}
 }
