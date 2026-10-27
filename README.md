@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.24-knulli.zip"><b>Download v0.24</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25-knulli.zip"><b>Download v0.25</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -73,7 +73,7 @@
 
 ## Installation
 
-1. Download [`knullipod-v0.24-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.24-knulli.zip) and unzip it.
+1. Download [`knullipod-v0.25-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.25-knulli.zip) and unzip it.
 2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
@@ -138,7 +138,9 @@ The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing a
 
 ### Software Update
 
-Settings → Software Update → **Check for updates** reads [`release/latest.json`](release/latest.json) from this repository over Wi-Fi. When a newer version is listed, **Install** does the following:
+<img src="docs/images/update.png" width="320" align="right" alt="Software Update">
+
+Settings → Software Update opens a full-screen page with a download bar. **Check for Updates** reads [`release/latest.json`](release/latest.json) from this repository over Wi-Fi. When a newer version is listed, the page shows what's new, and **Download and Install** does the following:
 
 1. downloads the release zip and checks its size and SHA-256;
 2. replaces the app's files one by one, keeping the previous binary as `knullipod/MiyooPod.prev`;

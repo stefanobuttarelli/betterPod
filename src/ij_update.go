@@ -30,7 +30,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -38,13 +40,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/image/font"
 )
 
 // KNULLIPOD_VERSION is the version shown in About and compared with the
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.24"
+	KNULLIPOD_VERSION  = "0.25"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 )
@@ -85,42 +89,185 @@ var upd struct {
 var restartAfterExit bool
 
 func (ui *IpodUI) updateView() *View {
-	v := &View{ID: "update", Title: "Update", Kind: KindSplit}
-	v.Build = func() []Item {
-		items := []Item{{Label: "Version", Value: KNULLIPOD_VERSION, NoArrow: true, Preview: PrevSettings}}
-		act := func(label, sub string, f func()) Item {
-			return Item{Label: label, Sublabel: sub, NoArrow: true, Preview: PrevSettings, OnSelect: f}
+	return &View{ID: "update", Title: "Software Update", Kind: KindFull, Custom: &UpdateView{}}
+}
+
+// UpdateView is the Software Update screen: white, with the KnulliPod name
+// and the state at the top, the download bar (blue, glossy, with its
+// reflection, like Now Playing's) in the middle, the release notes when a
+// new version is found, and the buttons at the bottom (the wheel moves
+// between them, the centre button presses).
+type UpdateView struct {
+	sel   int
+	shown float64 // the bar's fill as drawn, easing towards the download
+	last  time.Time
+}
+
+type updButton struct {
+	label string
+	do    func(ui *IpodUI)
+}
+
+func (u *UpdateView) buttons() []updButton {
+	check := updButton{"Check for Updates", func(ui *IpodUI) { ui.checkForUpdate() }}
+	switch upd.state {
+	case updIdle:
+		return []updButton{check}
+	case updUpToDate:
+		return []updButton{{"Check Again", check.do}}
+	case updFailed:
+		return []updButton{{"Try Again", check.do}}
+	case updAvailable:
+		return []updButton{
+			{"Download and Install", func(ui *IpodUI) { ui.installUpdate() }},
+			{"Not Now", func(ui *IpodUI) { ui.hideView() }},
 		}
-		info := func(label, sub string) Item {
-			return Item{Label: label, Sublabel: sub, NoArrow: true, Preview: PrevSettings}
-		}
-		switch upd.state {
-		case updIdle:
-			items = append(items, act("Check for updates", "Needs Wi-Fi", ui.checkForUpdate))
-		case updChecking:
-			items = append(items, info("Checking…", "Connecting to GitHub"))
-		case updUpToDate:
-			items = append(items, act("Check for updates", "KnulliPod is up to date", ui.checkForUpdate))
-		case updAvailable:
-			m := upd.manifest
-			items = append(items, act("Install v"+m.Version, fmt.Sprintf("%.1f MB download", float64(m.Size)/1e6), ui.installUpdate))
-			for _, l := range noteLines(m.Notes, 4) {
-				items = append(items, Item{Label: "• " + l, NoArrow: true, Preview: PrevSettings})
-			}
-		case updDownloading:
-			items = append(items, Item{Label: "Downloading…", Value: fmt.Sprintf("%d%%", int(upd.progress*100)),
-				Sublabel: "v" + upd.manifest.Version, NoArrow: true, Preview: PrevSettings})
-		case updInstalling:
-			items = append(items, info("Installing…", "Don't turn off the console"))
-		case updDone:
-			items = append(items, info("Restarting…", "Updated to v"+upd.manifest.Version))
-		case updFailed:
-			items = append(items, act("Try again", upd.err, ui.checkForUpdate))
-		}
-		return items
 	}
-	v.Items = v.Build()
-	return v
+	return nil
+}
+
+func (u *UpdateView) Animating(now time.Time) bool {
+	return math.Abs(u.target()-u.shown) > 0.002
+}
+
+func (u *UpdateView) target() float64 {
+	switch upd.state {
+	case updDownloading:
+		return upd.progress
+	case updInstalling, updDone:
+		return 1
+	}
+	return 0
+}
+
+func (u *UpdateView) OnScroll(ui *IpodUI, dir int, velocity float64) {
+	n := len(u.buttons())
+	if n == 0 {
+		return
+	}
+	u.sel = (u.sel + dir + n) % n
+	if u.sel < 0 {
+		u.sel = 0
+	}
+	ui.dirty = true
+}
+
+func (u *UpdateView) OnCenter(ui *IpodUI) {
+	b := u.buttons()
+	if len(b) == 0 {
+		return
+	}
+	if u.sel >= len(b) {
+		u.sel = 0
+	}
+	f := b[u.sel].do
+	u.sel = 0
+	f(ui)
+	ui.dirty = true
+}
+
+func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
+	W := dst.Bounds().Dx()
+	fillRect(dst, 0, 0, W, dst.Bounds().Dy(), th.bg)
+	wCSS := float64(W) / DPR
+	center := func(f font.Face, s string, y float64, c Col) {
+		s = ellipsize(f, s, (wCSS-40)*DPR)
+		drawText(dst, f, s, (float64(W)-textWidth(f, s))/2, y*DPR, c)
+	}
+	// the bar eases towards the download progress
+	dt := now.Sub(u.last).Seconds()
+	if u.last.IsZero() || dt > 0.5 {
+		dt = 0.5
+	}
+	u.last = now
+	t := u.target()
+	if t < u.shown {
+		u.shown = t
+	} else {
+		u.shown += (t - u.shown) * math.Min(1, dt*10)
+	}
+
+	// name and state
+	logo := ui.asset("ipod_logo")
+	blit(dst, logo, (W-logo.Bounds().Dx())/2, px(14), 1)
+	_, asc16 := lineBox(16)
+	_, asc13 := lineBox(13)
+	center(face(W700, 16), "KnulliPod", 14+32+8+asc16, th.text)
+	status, sub := "Version "+KNULLIPOD_VERSION, ""
+	m := upd.manifest
+	switch upd.state {
+	case updIdle:
+		sub = "Connect to Wi-Fi to check for a new version"
+	case updChecking:
+		status = "Checking for updates…"
+	case updUpToDate:
+		sub = "KnulliPod is up to date"
+	case updAvailable:
+		status = fmt.Sprintf("Version %s is available · %.1f MB", m.Version, float64(m.Size)/1e6)
+	case updDownloading:
+		status = "Downloading version " + m.Version + "…"
+		sub = fmt.Sprintf("%.1f of %.1f MB", upd.progress*float64(m.Size)/1e6, float64(m.Size)/1e6)
+	case updInstalling:
+		status = "Installing…"
+		sub = "Don't turn off the console"
+	case updDone:
+		status = "Updated to version " + m.Version
+		sub = "Restarting…"
+	case updFailed:
+		status = "Update failed"
+		sub = upd.err
+	}
+	y := 14 + 32 + 8 + 20.0
+	center(face(W600, 13), status, y+asc13, th.text)
+	if sub != "" {
+		center(face(W500, 12), sub, y+18+asc13, th.sub)
+	}
+
+	// middle: the release notes when a version is found, else the bar
+	mid := 122.0
+	if upd.state == updAvailable {
+		// what's new: up to three lines between the state and the
+		// buttons, aligned with the buttons
+		notes := noteLines(m.Notes, 3)
+		f := face(W500, 12)
+		lh, asc := lineBox(12)
+		lh += 1
+		ny := y + 22
+		for _, l := range notes {
+			s := ellipsize(f, "• "+l, (wCSS-84)*DPR)
+			drawText(dst, f, s, 42*DPR, (ny+asc)*DPR, th.sub)
+			ny += lh
+		}
+	} else {
+		bw := math.Min(240, wCSS-80)
+		ui.drawProgressBar(dst, (wCSS-bw)/2, mid-8, bw, u.shown*100, false)
+		if upd.state == updDownloading || upd.state == updInstalling || upd.state == updDone {
+			_, a := lineBox(12)
+			center(face(W700, 12), fmt.Sprintf("%d%%", int(u.shown*100+0.5)), mid+22+a, th.sub)
+		}
+	}
+
+	// buttons, at the bottom, in the action sheet's style
+	b := u.buttons()
+	if u.sel >= len(b) {
+		u.sel = 0
+	}
+	f := face(W700, 14)
+	_, asc := lineBox(14)
+	bh := 28.0
+	by := 220 - 8 - float64(len(b))*(bh+6) + 6
+	bx0, bx1 := 40.0, wCSS-40
+	for i, bt := range b {
+		grad, border, tc := th.sheetOpt, th.sheetBorder, th.sheetText
+		if i == u.sel {
+			grad, border, tc = selGrad, hex("#3a78ad"), colWhite
+		}
+		fillRoundedGradient(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, grad, 1)
+		strokeRounded(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, 2, border, 1)
+		tw := textWidth(f, bt.label)
+		drawText(dst, f, bt.label, (float64(W)-tw)/2, (by+(bh-14)/2+asc+0.5)*DPR, tc)
+		by += bh + 6
+	}
 }
 
 // noteLines splits the release notes into at most n lines for the list.

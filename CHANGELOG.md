@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.25 (2026-10-27)
+
+### Changed
+- **Software Update** is now a full-screen page:
+  - the version and state at the top;
+  - a blue glossy download bar in the middle that fills during the download;
+  - buttons at the bottom: Check for Updates, then Download and Install (or Not Now).
+
+  When a new version is found it shows what's new. After the download it installs and restarts by itself.
+
 ## v0.24 (2026-10-27)
 
 ### Changed
