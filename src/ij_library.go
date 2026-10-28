@@ -23,7 +23,7 @@ func (ui *IpodUI) homeView() *View {
 		}
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
-				LongPress: ui.clearNowPlayingOptions()})
+				OnLongPress: ui.askClearNowPlaying})
 		}
 		// a new version found (by hand or by the daily check)
 		if updateAvailable() {
@@ -47,7 +47,7 @@ func (ui *IpodUI) musicView() *View {
 		}
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
-				LongPress: ui.clearNowPlayingOptions()})
+				OnLongPress: ui.askClearNowPlaying})
 			items = append(items, Item{Label: "Up Next", Preview: PrevNowPlaying, OnSelect: func() { ui.showView(ui.upNextView(), "") }})
 		}
 		return items

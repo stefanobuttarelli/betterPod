@@ -29,6 +29,7 @@ type Item struct {
 	TrackIdx       int      // …and this row's track
 	ShowNowPlaying bool
 	LongPress      []SheetOption
+	OnLongPress    func() // instead of LongPress's sheet (Y or holding A)
 	Value          string // right-aligned value (settings)
 	Checked        bool   // checkmark (submenus)
 	NoArrow        bool   // no chevron on the selected row

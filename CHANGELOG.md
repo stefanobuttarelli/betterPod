@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.50 (2026-10-28)
+
+### Changed
+- **Clear Now Playing asks inside the Now Playing block,** with no sheet over the screen. Y (or holding A) on the Now Playing row of the main menu or of Music:
+  - **The question:** the song goes up and out of the block, and "Clear Now Playing?" comes up from below, with **Keep** (chosen first, so a press by mistake changes nothing) and **Clear** (red).
+  - **Keys:** left / right choose, A does it, B keeps.
+  - **Keep,** or 5 seconds without a key, brings the song back down.
+  - **Clear** stops the music, and the block goes down and away.
+  - Where the block isn't on screen, a sheet still asks.
+- **The header's icons are closer together:** 4 px apart instead of 8 (play, Bluetooth, battery, padlock, shuffle and repeat).
+
 ## v0.49.4 (2026-10-28)
 
 ### Fixed

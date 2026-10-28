@@ -577,6 +577,10 @@ func (ui *IpodUI) centerLongPress() {
 		return
 	}
 	it := v.Items[v.Index]
+	if it.OnLongPress != nil {
+		it.OnLongPress()
+		return
+	}
 	if len(it.LongPress) > 0 {
 		ui.showSheetTitled(it.Label, it.LongPress) // titled with what it's about
 	}
@@ -623,6 +627,9 @@ func (ui *IpodUI) onTrackChanged() {
 func (ui *IpodUI) HandleKey(ev int) {
 	now := animNow()
 	ui.app.LastActivityTime = now
+	if ui.miniConfirmKey(ev) {
+		return // the Now Playing block is asking (ij_clearnp.go)
+	}
 	if ev < 0 {
 		k := Key(-ev - 1)
 		if ui.repeatKey == k {
@@ -979,23 +986,24 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 	}
 	blitOpaque(sub, headerBg.SubImage(image.Rect(0, 0, w, px(20))).(*image.RGBA), x, 0)
 
-	// right side, from the right edge leftwards
+	// right side, from the right edge leftwards, 4 px apart
+	const gap = 4.0
 	right := float64(x)/DPR + float64(w)/DPR - 6
 	batW := 26.0
 	batX := right - batW
 	ui.drawBattery(sub, batX, 3.5)
-	iconsLeft := batX - 8
+	iconsLeft := batX - gap
 	if hold.on {
 		drawPadlock(sub, iconsLeft-8, 3.5, 1, th.padlock, th.padShackle, 1)
 		batX -= 16
-		iconsLeft = batX - 8
+		iconsLeft = batX - gap
 	}
 	if btConnected() {
 		ic := ui.themed("bluetooth")
 		iw := float64(ic.Bounds().Dx()) / DPR
 		blit(sub, ic, px(iconsLeft-iw), px(3.5), 1)
-		batX -= iw + 8
-		iconsLeft = batX - 8
+		batX -= iw + gap
+		iconsLeft = batX - gap
 	}
 	p := ui.app.Playing
 	if p != nil && p.Track != nil && p.State != StateStopped {
@@ -1007,7 +1015,7 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		iw := float64(ic.Bounds().Dx()) / DPR
 		ix := iconsLeft - iw
 		blit(sub, ic, px(ix), px(3.5), 1)
-		iconsLeft = ix - 8
+		iconsLeft = ix - gap
 	}
 
 	if q := ui.app.Queue; q != nil {
@@ -1024,16 +1032,16 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		for _, n := range icons {
 			ic := ui.themed(n)
 			iw := float64(ic.Bounds().Dx()) / DPR
-			ix := iconsLeft + 8 - 6 - iw
+			ix := iconsLeft + gap - 6 - iw
 			blit(sub, ic, px(ix), px(3), 1)
-			iconsLeft = ix - 8
+			iconsLeft = ix - gap
 		}
 	}
 	// title
 	f := face(W700, 13)
 	_, asc := lineBox(13)
 	tx := float64(x)/DPR + 6
-	maxW := iconsLeft + 8 - tx
+	maxW := iconsLeft + gap - tx
 
 	if hold.on && (x != 0 || w >= 640 || ui.nowPlayingOnScreen()) {
 		clock := time.Now().Format("15:04")

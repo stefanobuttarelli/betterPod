@@ -1,8 +1,8 @@
 {
-  "version": "0.49.4",
-  "path": "release/knullipod-v0.49.4-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.49.4-knulli.zip",
-  "sha256": "07d4aa7e7333e94af5518b5fb896d0729ffc8a9c401ab40554691506ff6babb4",
-  "size": 15101219,
-  "notes": "- Cover Flow's Now Playing cover looks square too when tilted\n- Now Playing's tilted cover looks square (0.49.3)\n- Y on Cover Flow's Now Playing opens Up Next (0.49.2)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)"
+  "version": "0.50",
+  "path": "release/knullipod-v0.50-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.50-knulli.zip",
+  "sha256": "37898c54a3da2bb438431cc6a8ef2d49415e6663be2bb98c8eaee61a12bc65b7",
+  "size": 15106574,
+  "notes": "- Clear Now Playing asks inside the Now Playing block: Keep or Clear, no sheet over the screen\n- The header's icons are closer together\n- Cover Flow's Now Playing cover looks square too (0.49.4)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)"
 }

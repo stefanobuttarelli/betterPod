@@ -119,7 +119,7 @@ func (ui *IpodUI) miniAnimating(now time.Time) bool {
 			return true
 		}
 	}
-	if mini.pause.Running() || mini.change.Running() {
+	if mini.pause.Running() || mini.change.Running() || miniAsk.a.Running() {
 		return true
 	}
 	return mini.marqOn && !ui.noMarquee && mini.drawnAt >= ui.frameNo-1 && marqSyncNeedsFrame(now)
@@ -179,6 +179,9 @@ func (ui *IpodUI) drawMiniPlayer(kind ViewKind, top *View, x, w int, now time.Ti
 		return
 	}
 	ui.updateMini(t, now)
+	if want == 0 && miniAsk.on {
+		ui.miniConfirmEnd(false) // the block left the screen: not asked any more
+	}
 	h := px(miniPlayerH)
 	y0 := 480 - h + int(float64(h)*(1-s)+0.5)
 	clip := image.Rect(x, y0, x+w, 480).Intersect(ui.fb.Bounds())
@@ -188,6 +191,16 @@ func (ui *IpodUI) drawMiniPlayer(kind ViewKind, top *View, x, w int, now time.Ti
 	dst := ui.fb.SubImage(clip).(*image.RGBA)
 	blitOpaque(dst, ui.miniPlayerTexture(w, h), x, y0)
 	mini.drawnAt = ui.frameNo
+	if e := easeInOut(miniAsk.a.Get(now)); e > 0.001 {
+		// Clear Now Playing? the song goes up and out, the question comes
+		// up from below (both clipped to the block)
+		X, Y, W := float64(x)/DPR, float64(y0)/DPR, float64(w)/DPR
+		if e < 0.999 {
+			ui.drawMiniContent(dst, t, X, Y-miniPlayerH*e, W, 0, 1-e, true, false, now)
+		}
+		ui.drawMiniConfirm(dst, X, Y+miniPlayerH*(1-e), W, miniAsk.sel)
+		return
+	}
 	k := mini.change.Get(now)
 	if k < 1 && mini.old != nil {
 		// the old song slides out, then the new one comes in; the cover
@@ -345,3 +358,39 @@ func scaledThumb(img *image.RGBA, d int) *image.RGBA {
 }
 
 var thumbScaleSrc, thumbScaleOut *image.RGBA
+
+// drawMiniConfirm: "Clear Now Playing?" inside the block, with Keep and
+// Clear under it (sel: 0 Keep, 1 Clear), its top at top.
+func (ui *IpodUI) drawMiniConfirm(dst *image.RGBA, x, top, w float64, sel int) {
+	f := face(W700, 12)
+	_, a12 := lineBox(12)
+	q := "Clear Now Playing?"
+	qw := textWidth(f, q) / DPR
+	qx := x + (w-qw)/2
+	drawText(dst, f, q, qx*DPR, (top+7+a12)*DPR+1, rgba(0, 0, 0, 0.35))
+	drawText(dst, f, q, qx*DPR, (top+7+a12)*DPR, colWhite)
+	gap, bh := 6.0, 22.0
+	bw := (w - 2*10 - gap) / 2
+	by := top + miniPlayerH - bh - 8
+	bf := face(W700, 11)
+	for i, label := range []string{"Keep", "Clear"} {
+		x0 := x + 10 + float64(i)*(bw+gap)
+		var g []GradStop
+		tc := colWhite
+		switch {
+		case i == sel && i == 1:
+			g = []GradStop{{0, hex("#ff6b5e")}, {1, hex("#d42a1e")}}
+		case i == sel:
+			g = []GradStop{{0, rgb(255, 255, 255)}, {1, rgb(214, 218, 224)}}
+			tc = rgb(30, 32, 36)
+		default:
+			g = []GradStop{{0, Col{255, 255, 255, 0.18}}, {1, Col{255, 255, 255, 0.08}}}
+			if i == 1 {
+				tc = hex("#ff8a80")
+			}
+		}
+		fillRoundedGradient(dst, x0*DPR, by*DPR, (x0+bw)*DPR, (by+bh)*DPR, 11*DPR, g, 1)
+		lw := textWidth(bf, label) / DPR
+		drawText(dst, bf, label, (x0+(bw-lw)/2)*DPR, (by+bh/2+lineCapHeight(11)/2)*DPR, tc)
+	}
+}
