@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.55 (2026-10-28)
+
+### Added
+- **Screensaver: the song playing in the bar,** next to the clock: its title in white and the artist in grey, cut short with "…" when there's no room.
+
 ## v0.54.3 (2026-10-28)
 
 ### Fixed

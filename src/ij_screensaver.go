@@ -949,6 +949,7 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 		ic := whiteIcon(ui, name)
 		iw := float64(ic.Bounds().Dx()) / DPR
 		blit(dst, ic, px(left-iw), px(3.5), 1)
+		left -= iw + gap
 	}
 	// left: the clock, or the brightness for a moment after it changes
 	if now.Before(s.briShown) || hold.on && now.Before(hold.levelShown) {
@@ -961,7 +962,33 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	}
 	f := face(W700, 13)
 	_, asc := lineBox(13)
-	drawText(dst, f, time.Now().Format("15:04"), 6*DPR, (1.5+asc)*DPR, colWhite)
+	clock := time.Now().Format("15:04")
+	drawText(dst, f, clock, 6*DPR, (1.5+asc)*DPR, colWhite)
+	// next to it, the song playing: its title, and the artist in grey
+	p := ui.app.Playing
+	if p == nil || p.Track == nil || p.State == StateStopped {
+		return
+	}
+	x := 6 + textWidth(f, clock)/DPR + 12
+	room := left - 10 - x
+	if room < 40 {
+		return
+	}
+	title := p.Track.Title
+	tw := textWidth(f, title) / DPR
+	if tw > room {
+		drawText(dst, f, ellipsize(f, title, room*DPR), x*DPR, (1.5+asc)*DPR, colWhite)
+		return
+	}
+	drawText(dst, f, title, x*DPR, (1.5+asc)*DPR, colWhite)
+	if p.Track.Artist == "" {
+		return
+	}
+	af := face(W500, 13)
+	art := "  " + p.Track.Artist
+	if rest := room - tw; rest > 30 {
+		drawText(dst, af, ellipsize(af, art, rest*DPR), (x+tw)*DPR, (1.5+asc)*DPR, Col{255, 255, 255, 0.55})
+	}
 }
 
 // ssBrightness: a sun and a bar where the clock is (as in the header).

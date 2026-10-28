@@ -1,8 +1,8 @@
 {
-  "version": "0.54.3",
-  "path": "release/knullipod-v0.54.3-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.54.3-knulli.zip",
-  "sha256": "c0e46f464adba100afc2b6bd24dcaedd91d4053d166c4815d879de420f0de93e",
-  "size": 15179781,
-  "notes": "- Screensaver: no cover shown twice; covers ready in the background from the start\n- YouTube download: no \"Track 1 of N\" while the audio downloads (0.54.2)\n- Screensaver: smoother flips, bar like the header, L2 / R2 brightness (0.54.1)\n- Screensaver: a mosaic of album covers that turn over (Settings → Screensaver, or SELECT + Y) (0.54)"
+  "version": "0.55",
+  "path": "release/knullipod-v0.55-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.55-knulli.zip",
+  "sha256": "041e0b8f0990df3b56ae0229d63b4a628acf14dca15c6e2d89e671a73324620d",
+  "size": 15180171,
+  "notes": "- Screensaver: the song playing next to the clock\n- Screensaver: no cover shown twice; covers ready in the background from the start (0.54.3)\n- YouTube download: no \"Track 1 of N\" while the audio downloads (0.54.2)\n- Screensaver: a mosaic of album covers that turn over (Settings → Screensaver, or SELECT + Y) (0.54)"
 }
