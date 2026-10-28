@@ -660,6 +660,15 @@ func (ui *IpodUI) HandleKey(ev int) {
 		}
 		return
 	}
+	// a screen of its own that takes the d-pad and L/R itself (the cover's
+	// square: moving it in two directions and zooming)
+	if ui.customKey(k) {
+		if k == UP || k == DOWN || k == LEFT || k == RIGHT || k == L || k == R {
+			ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
+		}
+		ui.dirty = true
+		return
+	}
 	switch k {
 	case WHEEL_CW:
 		ui.wheelTick(1)
@@ -687,6 +696,20 @@ func (ui *IpodUI) HandleKey(ev int) {
 	ui.dirty = true
 }
 
+// customKey offers a key to the screen on top when it takes keys itself
+// (OnKey), with nothing over it (a sheet, the keyboard) and not sliding.
+func (ui *IpodUI) customKey(k Key) bool {
+	if ui.keyboard != nil || len(ui.sheets) > 0 || len(ui.full) == 0 {
+		return false
+	}
+	v := ui.topScreen()
+	if v.exiting {
+		return false
+	}
+	ck, ok := v.Custom.(interface{ OnKey(*IpodUI, Key) bool })
+	return ok && ck.OnKey(ui, k)
+}
+
 // checkRepeat repeats a held d-pad direction (after 300 ms, faster after 1.5 s).
 // Only UP/DOWN/LEFT/RIGHT repeat; A and B act on release instead.
 func (ui *IpodUI) checkRepeat(now time.Time) {
@@ -702,6 +725,14 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 	}
 	ui.repeatLast = now
 	if ui.keyboardKey(ui.repeatKey) {
+		return
+	}
+	if ui.customKey(ui.repeatKey) {
+		ui.dirty = true
+		return
+	}
+	if ui.repeatKey == L || ui.repeatKey == R {
+		ui.repeatKey = NONE // repeated only for a screen that takes them
 		return
 	}
 	ui.scroll(ui.keyDir(ui.repeatKey), 0)

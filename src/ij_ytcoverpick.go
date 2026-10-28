@@ -10,10 +10,10 @@ package main
 //	│░░░░░│           │░░░░░░░░░│   │        │
 //	│░░░░░└───────────┘░░░░░░░░░│   └────────┘
 //	└───────────────────────────┘
-//	◀ ▶ Move the square · A Use This · Y Options
+//	◀ ▶ ▲ ▼ Move · L R Zoom · A Use This · Y More
 //
-// the arrows move the square (held, they keep moving), A keeps it, B goes
-// back as it was; Y offers Whole Picture (blurred sides, nothing cut off)
+// the arrows move the square (held, they keep moving), R zooms in (a
+// smaller square), L out, A keeps it, B goes back as it was; Y offers Whole Picture (blurred sides, nothing cut off)
 // and Automatic. The cover is made from the choice when the download runs.
 
 import (
@@ -87,8 +87,8 @@ func ytCoverAutoFind(src image.Image) (mode string, r image.Rectangle, why strin
 		return "crop", r, "the cover found in the picture"
 	}
 	s := min(b.Dx(), b.Dy())
-	r = image.Rect(b.Min.X+(b.Dx()-s)/2, b.Min.Y+(b.Dy()-s)/2, 0, 0)
-	r.Max = r.Min.Add(image.Pt(s, s))
+	o := image.Pt(b.Min.X+(b.Dx()-s)/2, b.Min.Y+(b.Dy()-s)/2)
+	r = image.Rectangle{Min: o, Max: o.Add(image.Pt(s, s))}
 	return "whole", r, "whole picture, blurred sides"
 }
 
@@ -234,29 +234,56 @@ func drawLoadStripes(dst *image.RGBA, x, y, w, h int, now time.Time) {
 	}
 }
 
-// OnScroll moves the square: across a wide picture, up and down a tall one.
+// OnScroll (the wheel) moves the square along the picture's long side.
 func (ed *ytCoverEditor) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	if !ed.ready {
 		return // still getting the picture ready
 	}
 	b := ed.src.Bounds()
+	if b.Dx() >= b.Dy() {
+		ed.move(ui, dir, 0)
+	} else {
+		ed.move(ui, 0, dir)
+	}
+}
+
+// OnKey: the arrows move the square, R zooms in (a smaller square), L out.
+func (ed *ytCoverEditor) OnKey(ui *IpodUI, k Key) bool {
+	switch k {
+	case LEFT, RIGHT, UP, DOWN, L, R:
+	default:
+		return false
+	}
+	if !ed.ready {
+		return true // still getting the picture ready
+	}
+	switch k {
+	case LEFT:
+		ed.move(ui, -1, 0)
+	case RIGHT:
+		ed.move(ui, 1, 0)
+	case UP:
+		ed.move(ui, 0, -1)
+	case DOWN:
+		ed.move(ui, 0, 1)
+	case R:
+		ed.zoom(ui, 0.92)
+	case L:
+		ed.zoom(ui, 1/0.92)
+	}
+	return true
+}
+
+// cropMode: from the whole picture, the square starts where it was.
+func (ed *ytCoverEditor) cropMode() {
 	if ed.choice.mode != "crop" {
-		// from the whole picture: the square starts where it was
 		ed.choice.mode = "crop"
 	}
-	r := ed.choice.rect
-	wide := b.Dx() >= b.Dy()
-	span := b.Dx() - r.Dx()
-	if !wide {
-		span = b.Dy() - r.Dy()
-	}
-	step := max(1, span/40)
-	d := image.Pt(dir*step, 0)
-	if !wide {
-		d = image.Pt(0, dir*step)
-	}
-	r = r.Add(d)
-	// inside the picture
+}
+
+// fitIn keeps r (a square) inside the picture.
+func (ed *ytCoverEditor) fitIn(r image.Rectangle) image.Rectangle {
+	b := ed.src.Bounds()
 	if r.Min.X < b.Min.X {
 		r = r.Add(image.Pt(b.Min.X-r.Min.X, 0))
 	}
@@ -269,7 +296,40 @@ func (ed *ytCoverEditor) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	if r.Max.Y > b.Max.Y {
 		r = r.Add(image.Pt(0, b.Max.Y-r.Max.Y))
 	}
-	ed.choice.rect = r
+	return r
+}
+
+// move: the square a step (a 20th of its side) across or down.
+func (ed *ytCoverEditor) move(ui *IpodUI, dx, dy int) {
+	ed.cropMode()
+	r := ed.choice.rect
+	step := max(1, r.Dx()/20)
+	ed.choice.rect = ed.fitIn(r.Add(image.Pt(dx*step, dy*step)))
+	ui.dirty = true
+}
+
+// zoom: the square's side times f, about its centre; from the whole
+// picture's height (or width) down to a sixth of it.
+func (ed *ytCoverEditor) zoom(ui *IpodUI, f float64) {
+	ed.cropMode()
+	b := ed.src.Bounds()
+	r := ed.choice.rect
+	maxS := min(b.Dx(), b.Dy())
+	minS := max(32, maxS/6)
+	s := int(math.Round(float64(r.Dx()) * f))
+	if f < 1 && s == r.Dx() {
+		s--
+	} else if f > 1 && s == r.Dx() {
+		s++
+	}
+	s = min(max(s, minS), maxS)
+	if s == r.Dx() {
+		return
+	}
+	c := image.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
+	o := image.Pt(c.X-s/2, c.Y-s/2)
+	n := image.Rectangle{Min: o, Max: o.Add(image.Pt(s, s))}
+	ed.choice.rect = ed.fitIn(n)
 	ui.dirty = true
 }
 
@@ -366,12 +426,9 @@ func (ed *ytCoverEditor) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.T
 	cap := "Cover"
 	drawText(dst, f, cap, px0+(float64(px(prevS))-textWidth(f, cap))/2, py0+float64(px(prevS))+14*DPR, th.sub)
 	// the keys
-	hint := "◀ ▶ Move the square · A Use This · Y Whole Picture or Automatic"
-	if b.Dx() < b.Dy() {
-		hint = "▲ ▼ Move the square · A Use This · Y Whole Picture or Automatic"
-	}
+	hint := "◀ ▶ ▲ ▼ Move · L R Zoom · A Use This · Y More"
 	if ed.choice.mode == "whole" {
-		hint = "Whole picture · ◀ ▶ a square instead · A Use This"
+		hint = "Whole picture · ◀ ▶ or L R a square instead · A Use This"
 	}
 	hf := face(W500, 12)
 	hint = ellipsize(hf, hint, float64(W)-2*pad*DPR)

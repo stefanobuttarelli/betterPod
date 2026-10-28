@@ -1,8 +1,8 @@
 {
-  "version": "0.52.2",
-  "path": "release/knullipod-v0.52.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.52.2-knulli.zip",
-  "sha256": "231702a575bf0583e733138b35c95834ce2154bf5384697aa00d483a2ce08158",
-  "size": 15153269,
-  "notes": "- Fixed: a screen could stay half slid in until a key was pressed\n- YouTube: the cover screen opens at once, with moving stripes while the picture gets ready (0.52.1)\n- Settings → Library → Music Folder: move the music to another memory card, checked file by file (0.52)\n- YouTube: choose the square cover before downloading (0.51)"
+  "version": "0.53",
+  "path": "release/knullipod-v0.53-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.53-knulli.zip",
+  "sha256": "c6ca11e81839f70d8dbb135e6336b7bf9dc3c3c4a22c37111c34fd92012f9de9",
+  "size": 15154673,
+  "notes": "- YouTube cover: L and R zoom, the arrows move the square in all directions\n- Fixed: a screen could stay half slid in until a key was pressed (0.52.2)\n- YouTube: the cover screen opens at once, with moving stripes while the picture gets ready (0.52.1)\n- Settings → Library → Music Folder: move the music to another memory card (0.52)"
 }

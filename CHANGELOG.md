@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.53 (2026-10-28)
+
+### Added
+- **YouTube cover: zoom.** On the Cover screen **R** zooms in (a smaller square) and **L** zooms out, down to a sixth of the picture. Held, they keep zooming. The arrows now move the square in all four directions, so any part of the picture can become the cover. The keys under the picture say so: "◀ ▶ ▲ ▼ Move · L R Zoom · A Use This · Y More".
+
+### Fixed
+- **The square starting from Whole Picture began in the top-left corner,** not in the middle. A rectangle was built the wrong way round.
+
 ## v0.52.2 (2026-10-28)
 
 ### Fixed
