@@ -1,10 +1,10 @@
 package main
 
 // ij_hdrticker.go — the song in the header: when a song starts playing (a
-// new song, or play after a pause) on a screen without the Now Playing
-// block, the header's title slides up and the song comes in from below,
-// with its little cover, for a few seconds; then it slides up in turn and
-// the title comes back from below.
+// new song, or play after a pause) on any screen but Now Playing, the
+// header's title slides up and the song comes in from below, with its
+// little cover, for a few seconds; then it slides up in turn and the title
+// comes back from below.
 
 import (
 	"image"
@@ -25,14 +25,15 @@ var ticker struct {
 	next      *Track // a song that started while the last one slid out
 }
 
-// tickerAllowed: the screen on top has no Now Playing block (and isn't Now
-// Playing or Cover Flow).
+// tickerAllowed: anywhere but on Now Playing (where the song is the
+// screen): the menus, the lists with the mini player at the bottom too (a
+// change of song is seen at the top, where the eye is), Cover Flow, the
+// games.
 func (ui *IpodUI) tickerAllowed() bool {
-	if ui.cover != nil || ui.nowPlayingOnScreen() {
-		return false
+	if cf := ui.cover; cf != nil {
+		return !cf.exiting && !cf.playing
 	}
-	top := ui.topScreen()
-	return top != nil && !ui.miniReserve(top)
+	return ui.topScreen() != nil && !ui.nowPlayingOnScreen()
 }
 
 // followTicker starts the ticker when a song starts playing (called every

@@ -857,8 +857,9 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		} else {
 			l := newCanvasCached(&coverLayer, 640, 480)
 			fillRect(l, 0, 0, 640, 480, th.bg)
-			ui.hdrActive = false
+			ui.hdrActive = true // its header shows the song ticker too
 			ui.drawHeader(l, 0, 640, now)
+			ui.hdrActive = false
 			ui.renderCoverFlow(l, now)
 			if op >= 1 {
 				blitOpaque(fb, l, 0, 0)

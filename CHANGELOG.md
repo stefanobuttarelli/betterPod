@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.45.2 (2026-10-28)
+
+### Fixed
+- **The song in the header now shows on every screen but Now Playing.** When a song starts or changes, the header's title slides away for a few seconds and the song comes in with its little cover.
+  - **Cover Flow:** it shows there too, where there was no way to tell which song was playing. It doesn't show on Cover Flow's own Now Playing.
+  - **Lists with the mini player at the bottom** (an album's songs, Albums, Artists…): it shows there too, at the top where you're looking, even though the mini player already has the song.
+
 ## v0.45.1 (2026-10-28)
 
 ### Fixed
