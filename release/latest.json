@@ -1,8 +1,8 @@
 {
-  "version": "0.55.1",
-  "path": "release/knullipod-v0.55.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.55.1-knulli.zip",
-  "sha256": "fdbc7361d4927ff9756039758a02b60d74640a45ba430eba1805fb6e5bebd037",
-  "size": 15180766,
-  "notes": "- Screensaver: the volume shows in the bar when it changes\n- Screensaver: the song playing next to the clock (0.55)\n- Screensaver: no cover shown twice; covers ready in the background from the start (0.54.3)\n- Screensaver: a mosaic of album covers that turn over (Settings → Screensaver, or SELECT + Y) (0.54)"
+  "version": "0.55.2",
+  "path": "release/knullipod-v0.55.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.55.2-knulli.zip",
+  "sha256": "9c4599ea36f10861bdf87b29092b6cadcc608dada3e51fb1ad78256f66d0e8a9",
+  "size": 15180832,
+  "notes": "- Screensaver bar: paused, the song slides down out of it (and back up when it plays)\n- Screensaver: the volume shows in the bar when it changes (0.55.1)\n- Screensaver: the song playing next to the clock (0.55)\n- Screensaver: no cover shown twice; covers ready in the background from the start (0.54.3)"
 }

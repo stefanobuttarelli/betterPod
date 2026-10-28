@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.55.2 (2026-10-28)
+
+### Changed
+- **Screensaver bar: paused, the song goes away.** Its title and artist slide down out of the bar, and when it plays again they slide back up next to the clock.
+
 ## v0.55.1 (2026-10-28)
 
 ### Fixed

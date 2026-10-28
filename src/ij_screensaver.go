@@ -83,6 +83,8 @@ type screensaver struct {
 	ready   bool      // the first covers are ready: it shows
 	readyBy time.Time // (or at this time anyway)
 
+	songIn *Anim // the song in the bar: 1 playing, 0 paused (slid down out of it)
+
 	selImg *image.RGBA // the cursor's cover, grown
 	selFor *Album
 
@@ -105,11 +107,14 @@ func (ui *IpodUI) startSaver() {
 	}
 	now := animNow()
 	s := &screensaver{fade: newAnim(0), bigFlp: newAnim(1), bigOn: newAnim(0), fly: newAnim(1),
-		selR: -1, selC: -1, selGrow: newAnim(0), cardOpen: newAnim(0), cardHome: newAnim(0),
+		selR: -1, selC: -1, selGrow: newAnim(0), songIn: newAnim(0), cardOpen: newAnim(0), cardHome: newAnim(0),
 		rng: rand.New(rand.NewSource(now.UnixNano())), nextFlip: now.Add(3 * time.Second)}
 	s.big = ui.saverPlaying()
 	if s.big != nil {
 		s.bigOn.Set(1)
+	}
+	if ui.saverSongPlaying() {
+		s.songIn.Set(1)
 	}
 	ui.ssWarm()
 	for r := 0; r < ssRows; r++ {
@@ -225,6 +230,12 @@ func (ui *IpodUI) saverTick(now time.Time) {
 	if idle >= time.Duration(saverAfter)*time.Minute {
 		ui.startSaver()
 	}
+}
+
+// saverSongPlaying: a song is playing (not paused).
+func (ui *IpodUI) saverSongPlaying() bool {
+	p := ui.app.Playing
+	return p != nil && p.Track != nil && p.State == StatePlaying
 }
 
 // saverPlaying: the album of the song playing or paused (nil: none).
@@ -580,7 +591,7 @@ func (ui *IpodUI) saverCardDone(s *screensaver) {
 // ---- frames ----
 
 func (s *screensaver) animating(now time.Time) bool {
-	if s.fade.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
+	if s.fade.Running() || s.songIn.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
 		s.cardOpen.Running() || s.cardHome.Running() || now.Before(s.briShown) ||
 		s.card != nil && (s.cardMarq || s.cardBack != nil && s.cardBack.marqueeOn) {
 		return true
@@ -604,6 +615,15 @@ func (ui *IpodUI) saverFrame(now time.Time) {
 		return
 	}
 	s.follow(ui)
+	// the song in the bar goes down out of it while paused, back up when it plays
+	want := 0.0
+	if ui.saverSongPlaying() {
+		want = 1
+	}
+	if s.songIn.Target() != want {
+		s.songIn.To(want, 380*time.Millisecond, easeInOut, 0)
+		ui.dirty = true
+	}
 	if s.card != nil {
 		if s.cardPlay && !s.cardHome.Running() && s.cardHome.Get(now) >= 1 {
 			ui.saverCardDone(s)
@@ -967,25 +987,28 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 		// the volume, while it changes: the clock and the song slide up and
 		// the volume comes in from below, as in the header
 		up := -20 * easeInOut(va)
-		ui.ssClockSong(bar, left, up)
+		ui.ssClockSong(bar, s, left, up)
 		ssVolume(bar, ui.volume, 6, maxW, 20+up)
 		return
 	}
-	ui.ssClockSong(bar, left, 0)
+	ui.ssClockSong(bar, s, left, 0)
 }
 
 // ssClockSong: the clock and, next to it, the song playing (its title, and
 // the artist in grey), off CSS px down, up to left (the icons).
-func (ui *IpodUI) ssClockSong(dst *image.RGBA, left, off float64) {
+func (ui *IpodUI) ssClockSong(dst *image.RGBA, s *screensaver, left, off float64) {
 	f := face(W700, 13)
 	_, asc := lineBox(13)
 	base := (1.5 + asc + off) * DPR
 	clock := time.Now().Format("15:04")
 	drawText(dst, f, clock, 6*DPR, base, colWhite)
 	p := ui.app.Playing
-	if p == nil || p.Track == nil || p.State == StateStopped {
+	in := s.songIn.Get(animNow())
+	if p == nil || p.Track == nil || p.State == StateStopped || in <= 0.001 {
 		return
 	}
+	// paused: down out of the bar (it is clipped to it)
+	base += 20 * (1 - in) * DPR
 	x := 6 + textWidth(f, clock)/DPR + 12
 	room := left - 10 - x
 	if room < 40 {
