@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.57.1 (2026-10-28)
+
+### Fixed
+- **Screensaver ↔ Now Playing: one cover only.** While the cover flies, Now Playing's own is hidden and its screen drawn without it. Before, the old picture stayed under the flying one, so two covers showed. Playing, Now Playing's turned cover first turns flat, the flying cover takes over from it exactly where it is, and coming back it lands flat on it and then turns again. The flying cover's size and place are measured on the screen.
+- **Covers always there, quickly.**
+  - A cover the screen asks for now goes ahead of the background work (the thumbnails' prefetch, the screensaver's warm-up). That work waits while there is one, and takes at most one of the two decoding places. Before, a cover could wait seconds behind it.
+  - When a song starts, Now Playing's covers are got ready: its album's, and those of the songs before and after it. So are the ones of an album turned over in the screensaver.
+  - While Now Playing's cover is being made, the same cover at another size already in memory stands in, and is replaced by the real one.
+
+### Added
+- **Screensaver bar: the artist and the album take turns** after the title (6 s the artist, 4 s the album), the album coming in from below, so everything gets read.
+
 ## v0.57 (2026-10-28)
 
 ### Added

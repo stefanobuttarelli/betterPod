@@ -649,6 +649,7 @@ func (ui *IpodUI) onTrackChanged() {
 	if a := ui.saverPlaying(); a != nil {
 		ui.ssArtGet(a, 2*ssCell)
 	}
+	ui.preloadPlaying() // and Now Playing's (this song's and its neighbours')
 	// lists showing the speaker icon, the Now Playing item and the
 	// previews follow the current track
 	//

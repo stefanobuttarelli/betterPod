@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -159,7 +160,10 @@ func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA {
 	c.pending[k] = true
 	c.mu.Unlock()
 
+	// wanted on the screen now: ahead of the background work
+	atomic.AddInt32(&artFG, 1)
 	go func() {
+		defer atomic.AddInt32(&artFG, -1)
 		out := ui.loadArt(a, devSize)
 		c.mu.Lock()
 		c.put(k, out)
@@ -168,6 +172,72 @@ func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA {
 		ui.post(func() { ui.onArtLoaded() })
 	}()
 	return nil
+}
+
+// artFG: covers wanted on the screen being loaded. The background work
+// (prefetchArt, the screensaver's warm-up) waits while there are any, and
+// takes at most one of the two decoding places (artBG), so a cover asked
+// for by the screen never waits behind it.
+var (
+	artFG int32
+	artBG = make(chan struct{}, 1)
+)
+
+// loadArtBG is loadArt for the background work.
+func (ui *IpodUI) loadArtBG(a *Album, devSize int) *image.RGBA {
+	artBG <- struct{}{}
+	defer func() { <-artBG }()
+	for i := 0; atomic.LoadInt32(&artFG) > 0 && i < 500; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return ui.loadArt(a, devSize)
+}
+
+// artFallback: a cover to show while the one at devSize is being made:
+// the same album at another size already in memory, scaled (not kept).
+func (ui *IpodUI) artFallback(a *Album, devSize int) *image.RGBA {
+	c := ui.artc
+	var best *image.RGBA
+	c.mu.Lock()
+	for _, d := range []int{256, 2 * ssCell, 192, 96, ssCell, 512} {
+		if d == devSize {
+			continue
+		}
+		if img := c.get(artKey{a, d}); img != nil && (best == nil || img.Bounds().Dx() > best.Bounds().Dx()) {
+			best = img
+		}
+	}
+	c.mu.Unlock()
+	if best == nil || best.Bounds().Dx() < 2*ssCell {
+		ssArt.Lock()
+		for _, d := range []int{2 * ssCell, ssCell} {
+			if img := ssArt.img[artKey{a, d}]; img != nil && (best == nil || img.Bounds().Dx() > best.Bounds().Dx()) {
+				best = img
+			}
+		}
+		ssArt.Unlock()
+	}
+	if best == nil {
+		return nil
+	}
+	return scaleImage(best, devSize, devSize)
+}
+
+// preloadPlaying asks for the covers Now Playing will want: the song's
+// album, and those of the songs before and after it in the queue.
+func (ui *IpodUI) preloadPlaying() {
+	q := ui.app.Queue
+	if q == nil || len(q.Tracks) == 0 {
+		return
+	}
+	for _, d := range []int{0, 1, -1} {
+		i := q.CurrentIndex + d
+		if i >= 0 && i < len(q.Tracks) {
+			if al := ui.trackAlbum(q.Tracks[i]); al != nil {
+				ui.art(al, px(128))
+			}
+		}
+	}
 }
 
 // loadArt reads the scaled artwork from the disk cache, or decodes and
@@ -218,7 +288,7 @@ func (ui *IpodUI) prefetchArt(lib *Library) {
 		if have {
 			continue
 		}
-		img := ui.loadArt(a, 96)
+		img := ui.loadArtBG(a, 96)
 		c.mu.Lock()
 		c.put(k, img)
 		delete(c.pending, k)

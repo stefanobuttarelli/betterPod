@@ -1,8 +1,8 @@
 {
-  "version": "0.57",
-  "path": "release/knullipod-v0.57-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.57-knulli.zip",
-  "sha256": "a80b45ace49bb20a4b67a18c422484e9b23095dcb09508be082f5e5d7d7c37c8",
-  "size": 15185952,
-  "notes": "- Screensaver ↔ Now Playing: the cover flies between them; B goes back to Now Playing\n- Screensaver: Y opens the options (Play Next…); the song in the bar slides when it changes\n- A song found by Library search plays on with its album (next / previous)\n- Screensaver: the last column can be picked too (0.56.1)\n- L2 / R2 set the brightness anywhere (0.56)"
+  "version": "0.57.1",
+  "path": "release/knullipod-v0.57.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.57.1-knulli.zip",
+  "sha256": "dd81810e10ff8dd48f784045e6463144c5c874f5f12bb1dc0be836bc91ad7b0a",
+  "size": 15189395,
+  "notes": "- Screensaver ↔ Now Playing: one cover flying, no double picture\n- Covers come first: what the screen needs is loaded ahead of background work\n- Screensaver bar: artist and album take turns after the title\n- Screensaver ↔ Now Playing, Y options, search songs play on with their album (0.57)"
 }

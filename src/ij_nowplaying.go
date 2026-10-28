@@ -25,6 +25,9 @@ type NowPlayingView struct {
 	scrubX      *Anim // scrub row
 	H           float64
 	hideArt     bool
+	warpTemp    bool // the cover drawn is a stand-in (another size) until the real one is ready
+	flyHide     bool // the cover is flying to or from the screensaver: not drawn here (the rest is)
+	untilt      bool // held flat (the screensaver's cover flies from / lands on a flat one)
 	warpTrack   *Track
 	warpArt     *image.RGBA
 	warpReady   bool
@@ -230,12 +233,19 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 	cw := 128 + widen // the card's width now
 	hw := cw / 2
 	const srcW = 128 + npWiden
-	if np.warpSrcT != t || np.warpSrc == nil {
+	if np.warpSrcT != t || np.warpSrc == nil || np.warpTemp {
 		album := ui.trackAlbum(t)
 		art := ui.art(album, px(128))
+		temp := false
 		if art == nil {
-			return false
+			// not ready yet: the same cover at another size meanwhile
+			// (made again when the real one comes)
+			if art = ui.artFallback(album, px(128)); art == nil {
+				return false
+			}
+			temp = true
 		}
+		np.warpTemp = temp
 		// cover with a 1px border, at the widest (sampled narrower)
 		src := newCanvas(px(srcW), px(128))
 		fillRect(src, 0, 0, src.Bounds().Dx(), src.Bounds().Dy(), th.artBorder)
@@ -376,7 +386,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	if t != nil {
 		if !np.hideArt {
 			target := 0.0
-			if p.State == StatePlaying {
+			if p.State == StatePlaying && !np.untilt {
 				target = 1
 			}
 			// snap when the view was not drawn on the previous frame
@@ -392,7 +402,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 				// keep the old cover for the change animation
 				np.oldWarp = cloneRGBA(np.oldWarp, np.warpArt)
 			}
-			if np.warpTrack != t || np.warpArt == nil || np.warpTilt != tv {
+			if np.warpTrack != t || np.warpArt == nil || np.warpTilt != tv || np.warpTemp && ui.artCached(ui.trackAlbum(t), px(128)) != nil {
 				np.buildWarp(ui, t, tv)
 			}
 		}
@@ -417,7 +427,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		np.marqOn = false
 		np.barsOn = false
 		if k < 1 && np.oldT != nil {
-			if !np.hideArt {
+			if !np.hideArt && !np.flyHide {
 				// the cover cross-fades only when the album changes
 				sameArt := ui.trackAlbum(np.oldT) == ui.trackAlbum(t)
 				if np.oldWarp != nil && !sameArt {
@@ -434,7 +444,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 			ui.drawNPInfo(dst, np, np.oldT, npMetaH, -off*out, 1-out, false, now)
 			ui.drawNPInfo(dst, np, t, npMetaH, off*(1-in), in, false, now)
 		} else {
-			if !np.hideArt && np.warpArt != nil {
+			if !np.hideArt && !np.flyHide && np.warpArt != nil {
 				blit(dst, np.warpArt, 0, 0, 1)
 			}
 			ui.drawNPInfo(dst, np, t, npMetaH, 0, 1, !paused, now)

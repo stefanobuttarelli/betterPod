@@ -35,7 +35,7 @@ func (ui *IpodUI) ssArtGet(al *Album, size int) *image.RGBA {
 	img := ssArt.img[k]
 	if img == nil && !ssArt.pending[k] {
 		ssArt.pending[k] = true
-		go ui.ssArtLoad(k)
+		go ui.ssArtLoad(k, false)
 	}
 	ssArt.Unlock()
 	return img
@@ -48,12 +48,17 @@ func ssArtReady(al *Album, size int) bool {
 	return ssArt.img[artKey{al, size}] != nil
 }
 
-func (ui *IpodUI) ssArtLoad(k artKey) {
+func (ui *IpodUI) ssArtLoad(k artKey, bg bool) {
 	img := readArtDisk(k.a, k.dev)
 	if img == nil {
 		// from the Cover Flow size (on disk for every album shown once),
 		// kept on disk at this size for next time
-		src := ui.loadArt(k.a, 256)
+		var src *image.RGBA
+		if bg {
+			src = ui.loadArtBG(k.a, 256)
+		} else {
+			src = ui.loadArt(k.a, 256)
+		}
 		img = scaleImage(src, k.dev, k.dev)
 		writeArtDisk(k.a, k.dev, img)
 	}
@@ -107,7 +112,7 @@ func (ui *IpodUI) ssWarm() {
 			}
 			ssArt.Unlock()
 			if !skip {
-				ui.ssArtLoad(k)
+				ui.ssArtLoad(k, true)
 			}
 		}
 	}()
