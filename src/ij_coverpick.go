@@ -117,23 +117,18 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 	var run func(manual bool)
 	var pick func(h *coverHit)
 	v.Build = func() []Item {
-		editing := ui.keyboardEditing(&st.term)
-		label, sub := "Edit search", st.term
-		switch {
-		case editing:
-			label, sub = "Search MusicBrainz", ui.withCaret(&st.term)
-		case st.ran != "" && !st.busy:
-			sub = fmt.Sprintf("%s · %d %s", st.ran, len(st.hits), pluralize(len(st.hits), "result", "results"))
+		note := ""
+		if st.ran != "" && !st.busy && !ui.keyboardEditing(&st.term) {
+			note = fmt.Sprintf("%d %s", len(st.hits), pluralize(len(st.hits), "result", "results"))
 		}
 		edit := func() {
 			ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, func() { run(true) })
 			ui.refreshView(v)
 		}
-		items := []Item{{Label: label, Sublabel: sub, Icon: "search_icon", OnSelect: edit,
-			LongPress: []SheetOption{
-				{Label: "Clear search", OnSelect: func() { st.term = ""; edit() }},
-				{Label: "Search automatically again", OnSelect: func() { run(false) }},
-			}}}
+		items := []Item{ui.searchField(&st.term, "Search MusicBrainz", note, edit, []SheetOption{
+			{Label: "Clear search", OnSelect: func() { st.term = ""; edit() }},
+			{Label: "Search automatically again", OnSelect: func() { run(false) }},
+		})}
 		switch {
 		case st.busy:
 			items = append(items, Item{Label: "Searching MusicBrainz…", NoArrow: true})

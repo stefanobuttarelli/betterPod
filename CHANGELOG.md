@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.39 (2026-10-28)
+
+### Changed
+- **A real search field** on top of every search (Library, Internet Archive, YouTube, Weather, Missing Covers), like the first iPhone's search bar, instead of a list row.
+  - **Look:** a white rounded field with a magnifying glass on a light grey bar (dark in the dark theme).
+  - **Text:** what you typed, or a grey placeholder ("Search YouTube or paste a link") after the cursor while it's empty. A long text keeps its end in view while typing.
+  - **Note:** how many results, on the right.
+  - **Selected:** the field gets a blue ring.
+
+### Added
+- **Opening a YouTube video shows what's happening** instead of a still "Loading…".
+  - **The steps,** in words: asking YouTube, reading the page, getting YouTube's player, solving YouTube's challenge (the slow part), reading the formats.
+  - **The seconds** elapsed.
+  - **A bar** that moves on with each step and keeps creeping while one lasts.
+
 ## v0.38.2 (2026-10-28)
 
 ### Added

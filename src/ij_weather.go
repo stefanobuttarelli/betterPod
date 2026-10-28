@@ -298,23 +298,15 @@ func (ui *IpodUI) openWeather() {
 		ui.showView(ui.forecastView(p), "")
 	}
 	v.Build = func() []Item {
-		editing := ui.keyboardEditing(&s.term)
-		label, sub := "Search for a Place", "A city or a town"
-		switch {
-		case editing:
-			sub = ui.withCaret(&s.term)
-			if s.term == "" {
-				sub = "Type a place, then ✓ to search"
-			}
-		case s.ran != "" && !s.busy:
-			label = "Edit search"
-			sub = fmt.Sprintf("%s · %d %s", s.ran, len(s.res), pluralize(len(s.res), "place", "places"))
+		note := ""
+		if s.ran != "" && !s.busy && !ui.keyboardEditing(&s.term) {
+			note = fmt.Sprintf("%d %s", len(s.res), pluralize(len(s.res), "place", "places"))
 		}
 		edit := func() {
 			ui.showKeyboard(&s.term, func() { ui.refreshView(v) }, run)
 			ui.refreshView(v)
 		}
-		items := []Item{{Label: label, Sublabel: sub, Icon: "search_icon", OnSelect: edit}}
+		items := []Item{ui.searchField(&s.term, "Search for a city or town", note, edit, nil)}
 		switch {
 		case s.busy:
 			items = append(items, Item{Label: "Searching…", NoArrow: true})

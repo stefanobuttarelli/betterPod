@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -99,16 +100,50 @@ func (e ytEntry) link() string {
 
 // ytJSON runs yt-dlp -J and decodes its answer.
 func ytJSON(ctx context.Context, args ...string) (*ytInfo, error) {
-	cmd := ytCommand(ctx, append([]string{"-J"}, args...)...)
+	return ytJSONSteps(ctx, nil, args...)
+}
+
+// ytJSONSteps is ytJSON telling what yt-dlp is doing meanwhile: step gets
+// each of its status lines ("[youtube] abc: Downloading webpage"). With
+// --no-quiet they come on stdout before the JSON (a line starting "{").
+func ytJSONSteps(ctx context.Context, step func(string), args ...string) (*ytInfo, error) {
+	a := []string{"-J"}
+	if step != nil {
+		a = append(a, "--no-quiet")
+	}
+	cmd := ytCommand(ctx, append(a, args...)...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	var out []byte
+	r := bufio.NewReaderSize(stdout, 64<<10)
+	for {
+		line, rerr := r.ReadBytes('\n') // a playlist's JSON can be megabytes on one line
+		if t := strings.TrimSpace(string(line)); strings.HasPrefix(t, "{") {
+			out = line
+		} else if t != "" && step != nil {
+			step(t)
+		}
+		if rerr != nil {
+			break
+		}
+	}
+	err = cmd.Wait()
+	if err != nil || out == nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, errors.New("YouTube took too long to answer")
 		}
 		if ctx.Err() != nil {
 			return nil, errIACancelled
+		}
+		if err == nil {
+			err = errors.New("no answer from yt-dlp")
 		}
 		return nil, ytError(stderr.String(), err)
 	}
@@ -118,6 +153,63 @@ func ytJSON(ctx context.Context, args ...string) (*ytInfo, error) {
 	}
 	info.raw = out
 	return &info, nil
+}
+
+// ytStep turns a yt-dlp status line into a step in words and where it is
+// in the loading (0..1); ok false for lines that aren't a known step.
+func ytStep(line string) (string, float64, bool) {
+	l := strings.ToLower(line)
+	switch {
+	case strings.Contains(l, "extracting url"):
+		return "Asking YouTube", 0.12, true
+	case strings.Contains(l, "downloading webpage"), strings.Contains(l, "downloading playlist"):
+		return "Reading the page", 0.25, true
+	case strings.Contains(l, "client config"), strings.Contains(l, "downloading player"), strings.Contains(l, "player api"):
+		return "Getting YouTube's player", 0.42, true
+	case strings.Contains(l, "jsc"), strings.Contains(l, "challenge"), strings.Contains(l, "signature"), strings.Contains(l, "n function"):
+		return "Solving YouTube's challenge (the slow part)", 0.6, true
+	case strings.Contains(l, "m3u8"), strings.Contains(l, "formats"), strings.Contains(l, "format(s)"):
+		return "Reading the formats", 0.85, true
+	case strings.Contains(l, "downloading page"), strings.Contains(l, "api json"):
+		return "Reading the list", 0.6, true
+	}
+	return "", 0, false
+}
+
+// ytLoading: the loading of a page, shown as a bar that eases towards the
+// current step and creeps on while a step lasts (it never sits still).
+type ytLoading struct {
+	start     time.Time
+	stepAt    time.Time
+	from, to  float64
+	stepLabel string
+}
+
+func newYTLoading() *ytLoading {
+	now := time.Now()
+	return &ytLoading{start: now, stepAt: now, to: 0.05, stepLabel: "Starting yt-dlp"}
+}
+
+func (l *ytLoading) set(label string, at float64) {
+	if at <= l.to {
+		return // steps only go forward
+	}
+	l.from, l.to = l.value(), at
+	l.stepAt, l.stepLabel = time.Now(), label
+}
+
+// value: where the bar is now: quickly to the step, then creeping a
+// little further (at most halfway to the next likely step).
+func (l *ytLoading) value() float64 {
+	t := time.Since(l.stepAt).Seconds()
+	v := l.from + (l.to-l.from)*math.Min(1, t/0.4)
+	creep := (math.Min(0.95, l.to+0.15) - l.to) * 0.5 * (1 - math.Exp(-t/10))
+	return math.Min(0.97, v+creep)
+}
+
+func (l *ytLoading) item(what string) Item {
+	secs := int(time.Since(l.start).Seconds())
+	return Item{Label: what, Sublabel: fmt.Sprintf("%s · %d s", l.stepLabel, secs), Progress: math.Max(0.02, l.value()), NoArrow: true}
 }
 
 // ytError: yt-dlp's last error line, short.
@@ -171,23 +263,15 @@ func (ui *IpodUI) youtubeView() *View {
 	}
 	var run func()
 	v.Build = func() []Item {
-		editing := ui.keyboardEditing(&st.term)
-		label, sub := "Search YouTube", "Enter text or a link, then ✓"
-		switch {
-		case editing:
-			sub = ui.withCaret(&st.term)
-			if st.term == "" {
-				sub = "Type, then ✓ to search"
-			}
-		case st.ran != "" && !st.busy:
-			label = "Edit search"
-			sub = fmt.Sprintf("%s · %d %s", st.ran, len(st.res), pluralize(len(st.res), "result", "results"))
+		note := ""
+		if st.ran != "" && !st.busy && !ui.keyboardEditing(&st.term) {
+			note = fmt.Sprintf("%d %s", len(st.res), pluralize(len(st.res), "result", "results"))
 		}
 		edit := func() {
 			ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 			ui.refreshView(v)
 		}
-		items := []Item{{Label: label, Sublabel: sub, Icon: "search_icon", OnSelect: edit}}
+		items := []Item{ui.searchField(&st.term, "Search YouTube or paste a link", note, edit, nil)}
 		kind, other := "Videos", "Playlists & Albums"
 		if st.playlists {
 			kind, other = "Playlists & Albums", "Videos"
@@ -560,10 +644,7 @@ func albumFromPlaylist(i *ytInfo) ytAlbum {
 // ytItemView: a video (its chapters) or a playlist (its videos), and the
 // download buttons.
 func (ui *IpodUI) ytItemView(e ytEntry) *View {
-	st := &struct {
-		info *ytInfo
-		err  string
-	}{}
+	st := &ytItemState{}
 	v := &View{ID: "ytItem", Title: e.Title, Kind: KindFull}
 	var load func()
 	var cancel context.CancelFunc
@@ -581,6 +662,9 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 					ui.refreshView(v)
 					load()
 				}}}
+			}
+			if st.load != nil {
+				return []Item{st.load.item("Opening the video")}
 			}
 			return []Item{{Label: "Loading…", NoArrow: true}}
 		}
@@ -621,18 +705,45 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 	return v
 }
 
-func ytLoadItem(ui *IpodUI, v *View, st *struct {
+type ytItemState struct {
 	info *ytInfo
 	err  string
-}, e ytEntry, ctx context.Context, cancel context.CancelFunc) {
+	load *ytLoading // while loading
+}
+
+func ytLoadItem(ui *IpodUI, v *View, st *ytItemState, e ytEntry, ctx context.Context, cancel context.CancelFunc) {
+	// the loading bar: steps from yt-dlp, and a redraw a few times a second
+	load := newYTLoading()
+	ui.postSure(func() { st.load = load; ui.refreshView(v) })
+	tick := time.NewTicker(150 * time.Millisecond)
+	defer tick.Stop()
+	go func() {
+		for {
+			select {
+			case <-tick.C:
+				ui.post(func() {
+					if st.load == load && st.info == nil && st.err == "" && ui.topScreen() == v {
+						ui.refreshView(v)
+					}
+				})
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	step := func(line string) {
+		if label, at, ok := ytStep(line); ok {
+			ui.post(func() { load.set(label, at) })
+		}
+	}
 	func() {
 		defer cancel()
 		var info *ytInfo
 		var err error
 		if e.isPlaylist() {
-			info, err = ytJSON(ctx, "--flat-playlist", e.link())
+			info, err = ytJSONSteps(ctx, step, "--flat-playlist", e.link())
 		} else {
-			info, err = ytJSON(ctx, "--no-playlist", e.link())
+			info, err = ytJSONSteps(ctx, step, "--no-playlist", e.link())
 		}
 		ui.postSure(func() {
 			st.info = info

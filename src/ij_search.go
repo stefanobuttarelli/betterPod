@@ -27,15 +27,9 @@ func (ui *IpodUI) searchView() *View {
 	st := &searchState{}
 	v := &View{ID: "search", Title: "Search", Kind: KindFull, Empty: "No results"}
 	v.Build = func() []Item {
-		sub := "Enter text to search"
-		if ui.keyboardEditing(&st.term) {
-			sub = ui.withCaret(&st.term)
-		} else if st.term != "" {
-			sub = "Results for: " + st.term
-		}
-		items := []Item{{Label: "Search", Sublabel: sub, Icon: "search_icon", OnSelect: func() {
+		items := []Item{ui.searchField(&st.term, "Search your music", "", func() {
 			ui.showKeyboard(&st.term, func() { ui.searchChanged(v) }, nil)
-		}}}
+		}, nil)}
 		q := strings.ToLower(strings.TrimSpace(st.term))
 		if q == "" {
 			return items

@@ -34,6 +34,9 @@ type Item struct {
 	NoArrow        bool   // no chevron on the selected row
 	Duration       string // track length, right-aligned (Cover Flow track list)
 	QueueMark      string // queue icon before the title ("queue_next"/"queue_last"); songs look it up
+	SearchField    bool   // the search bar on top: Label is the text, Placeholder shows when empty, Value a note
+	Placeholder    string
+	Progress       float64 // > 0: a progress bar under the text (0..1), for a loading row
 }
 
 // How a row behaves when selected (centerClick):
@@ -121,6 +124,12 @@ func (v *View) hasImages() bool {
 
 // rowHeight returns the height of a row in CSS px.
 func rowHeight(it *Item) float64 {
+	if it.SearchField {
+		return searchBarH
+	}
+	if it.Progress > 0 {
+		return 68
+	}
 	lh, _ := lineBox(14)
 	h := 8 + lh
 	if it.Sublabel != "" {
@@ -203,6 +212,21 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 			continue
 		}
 		sel := i == v.Index
+		if it.SearchField {
+			drawSearchBar(dst, it, y, wCSS, sel)
+			continue
+		}
+		if it.Progress > 0 {
+			// a loading row: the text, and the bar under it
+			f := face(W700, 14)
+			_, a14 := lineBox(14)
+			_, a12 := lineBox(12)
+			drawText(dst, f, ellipsize(f, it.Label, (wCSS-24)*DPR), 12*DPR, (y+8+a14)*DPR, th.text)
+			sf := face(W400, 12)
+			drawText(dst, sf, ellipsize(sf, it.Sublabel, (wCSS-24)*DPR), 12*DPR, (y+27+a12)*DPR, th.sub)
+			ui.drawProgressBar(dst, 12, y+46, wCSS-24, it.Progress*100, false)
+			continue
+		}
 		if v.TrackList && i%2 == 1 && !sel {
 			// every other row on a very light grey, like the iPod
 			fillRect(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), th.stripe)
@@ -447,3 +471,79 @@ func (ui *IpodUI) renderEmpty(dst *image.RGBA, msg string) {
 // marqueeActive is set while a scrolling (marquee) title is on screen, so
 // the main loop keeps redrawing at 30 fps.
 var marqueeActive bool
+
+// ---- the search bar ----
+
+const searchBarH = 46.0
+
+// searchField: the search bar row for a search on *term: the text (with
+// the caret while typing), the placeholder when empty, a note on the right
+// (how many results).
+func (ui *IpodUI) searchField(term *string, placeholder, note string, edit func(), long []SheetOption) Item {
+	text := *term
+	if ui.keyboardEditing(term) {
+		text = ui.withCaret(term)
+		note = ""
+	}
+	return Item{SearchField: true, Label: text, Placeholder: placeholder, Value: note, OnSelect: edit, LongPress: long, NoArrow: true}
+}
+
+// drawSearchBar: a bar the width of the list, a little darker than it,
+// holding a white rounded field with a magnifying glass, like the search
+// bar of the first iPhone. Selected, the field gets a blue ring.
+func drawSearchBar(dst *image.RGBA, it *Item, y, wCSS float64, sel bool) {
+	d := DPR
+	h := searchBarH
+	top, bot, line := hex("#dde2e8"), hex("#c3cad3"), hex("#a5adb8")
+	field, edge, text, dim := colWhite, hex("#9aa3ae"), rgb(20, 22, 26), rgb(150, 155, 162)
+	if th.dark {
+		top, bot, line = hex("#33363c"), hex("#26282d"), hex("#141518")
+		field, edge, text, dim = hex("#1b1c20"), hex("#4a4e56"), rgb(236, 237, 240), rgb(120, 124, 130)
+	}
+	fillVGradient(dst, 0, px(y), px(wCSS), px(y+h)-px(y), []GradStop{{0, top}, {1, bot}})
+	fillRect(dst, 0, px(y+h)-1, px(wCSS), 1, line)
+	x0, x1 := 8.0, wCSS-8
+	fy0, fy1 := y+8, y+h-8
+	r := (fy1 - fy0) / 2
+	if sel {
+		// the focus ring
+		fillRoundedGradient(dst, (x0-2.5)*d, (fy0-2.5)*d, (x1+2.5)*d, (fy1+2.5)*d, (r+2.5)*d,
+			[]GradStop{{0, rgba(90, 170, 255, 0.9)}, {1, rgba(40, 120, 220, 0.9)}}, 1)
+	}
+	fillRoundedGradient(dst, x0*d, fy0*d, x1*d, fy1*d, r*d, []GradStop{{0, field}, {1, field}}, 1)
+	// a soft inner shadow along the top
+	fillRoundedGradient(dst, x0*d, fy0*d, x1*d, (fy0+5)*d, r*d, []GradStop{{0, rgba(0, 0, 0, 0.10)}, {1, rgba(0, 0, 0, 0)}}, 1)
+	strokeRounded(dst, x0*d, fy0*d, x1*d, fy1*d, r*d, 1.5, edge, 1)
+	cy := (fy0 + fy1) / 2
+	drawMagnifier(dst, x0+10, cy, 13, dim)
+	tx := x0 + 30
+	right := x1 - 12
+	f := face(W500, 14)
+	if it.Value != "" {
+		nf := face(W500, 12)
+		nw := textWidth(nf, it.Value) / d
+		drawText(dst, nf, it.Value, (right-nw)*d, (cy+lineCapHeight(12)/2)*d, dim)
+		right -= nw + 10
+	}
+	maxW := (right - tx) * d
+	if it.Label == "" || it.Label == "|" {
+		// empty: the placeholder (after the caret while typing)
+		px0 := tx
+		if it.Label == "|" {
+			drawText(dst, f, "|", tx*d, (cy+lineCapHeight(14)/2)*d, text)
+			px0 += textWidth(f, "|")/d + 2
+		}
+		drawText(dst, f, ellipsize(f, it.Placeholder, (right-px0)*d), px0*d, (cy+lineCapHeight(14)/2)*d, dim)
+		return
+	}
+	s := it.Label
+	// while typing a long text, its end (where the caret is) stays in view
+	for textWidth(f, s) > maxW && len([]rune(s)) > 1 {
+		s = string([]rune(s)[1:])
+		if textWidth(f, "…"+s) <= maxW {
+			s = "…" + s
+			break
+		}
+	}
+	drawText(dst, f, s, tx*d, (cy+lineCapHeight(14)/2)*d, text)
+}

@@ -317,30 +317,20 @@ func (ui *IpodUI) iaSearchView() *View {
 		// pressing it opens the keyboard again on the same text to change
 		// it (⌫ deletes, hold the centre button for Clear search)
 		editing := ui.keyboardEditing(&st.term)
-		label, sub := "Search archive.org", "Enter text, then ✓ to search"
-		switch {
-		case editing:
-			sub = ui.withCaret(&st.term)
-			if st.term == "" {
-				sub = "Type, then ✓ to search"
-			}
-		case st.total > 0:
-			label = "Edit search"
-			sub = fmt.Sprintf("%s · %d %s", st.ran, st.total, pluralize(st.total, "result", "results"))
-		case st.term != "":
-			label, sub = "Edit search", st.term
+		note := ""
+		if st.total > 0 && !editing {
+			note = fmt.Sprintf("%d %s", st.total, pluralize(st.total, "result", "results"))
 		}
 		edit := func() {
 			ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 			ui.refreshView(v)
 		}
-		items := []Item{{Label: label, Sublabel: sub, Icon: "search_icon", OnSelect: edit,
-			LongPress: []SheetOption{
-				{Label: "Clear search", OnSelect: func() {
-					st.term = ""
-					edit()
-				}},
-			}}}
+		items := []Item{ui.searchField(&st.term, "Search archive.org", note, edit, []SheetOption{
+			{Label: "Clear search", OnSelect: func() {
+				st.term = ""
+				edit()
+			}},
+		})}
 		// a term without spaces may be an item's identifier (the part of
 		// the link after /details/): open it directly, which also works for
 		// items left out of archive.org's search index

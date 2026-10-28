@@ -1,8 +1,8 @@
 {
-  "version": "0.38.2",
-  "path": "release/knullipod-v0.38.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.38.2-knulli.zip",
-  "sha256": "aaf5def0ec1e673165ef6b98582a44e90ef13fef60ba0db9764f1e2e27b9178b",
-  "size": 14516926,
-  "notes": "YouTube results with thumbnails"
+  "version": "0.39",
+  "path": "release/knullipod-v0.39-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.39-knulli.zip",
+  "sha256": "f6a80f07f8d054eb0b8e3b178544561e74986472016ebea75a3af2003ccedfef",
+  "size": 14521656,
+  "notes": "Search fields, YouTube loading progress"
 }
