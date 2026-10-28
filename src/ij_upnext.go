@@ -125,8 +125,8 @@ func (q *PlaybackQueue) moveNext(pos int) {
 
 func (np *NowPlayingView) OnLongPress(ui *IpodUI) {
 	// on the album's card: the song's options, as anywhere
-	if c := np.card; c != nil && !c.closed && len(c.back.Items) > 0 {
-		it := c.back.Items[c.back.Index]
+	if np.flipped && np.back != nil && len(np.back.Items) > 0 {
+		it := np.back.Items[np.back.Index]
 		ui.showSheetTitled(it.Label, ui.mediaOptions(it.Tracks[it.TrackIdx:it.TrackIdx+1]))
 		return
 	}

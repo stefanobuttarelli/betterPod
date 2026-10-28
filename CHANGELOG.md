@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.58.1 (2026-10-28)
+
+### Changed
+- **One Now Playing.** The Now Playing reached from the menus now draws its cover exactly as Cover Flow's Now Playing does: the same 3D cover, turned 35° while playing and flat and smaller when paused, with the same reflection. Both have the same keys.
+- **START turns the cover over like Cover Flow.** It turns straight from where it is (turned, while playing) to the back, half a turn, with the same card coming in, and back the same way to the turned pose. It is flat only when paused. The song's lines and the rows fade out while the card shows.
+- **Cover Flow's Now Playing:** START turns the cover over to its album's songs too, and START there goes back to Now Playing with the song going on. A, A shows the Shuffle / Repeat row there as well, and B closes it first.
+
 ## v0.58 (2026-10-28)
 
 ### Added

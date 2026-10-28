@@ -1,8 +1,8 @@
 {
-  "version": "0.58",
-  "path": "release/knullipod-v0.58-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.58-knulli.zip",
-  "sha256": "b37c53f694bdaa6096432d380398878313bb9870565fb74e8e1de1894363add7",
-  "size": 15198202,
-  "notes": "- Now Playing: START turns the cover over to the album's songs (like Cover Flow)\n- Now Playing: A, A again shows Shuffle and Repeat buttons\n- Screensaver ↔ Now Playing: one cover flying; covers load first (0.57.1)\n- Screensaver: Y options, B back to Now Playing (0.57)"
+  "version": "0.58.1",
+  "path": "release/knullipod-v0.58.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.58.1-knulli.zip",
+  "sha256": "cf5e6a7ed2e5e1941fa6ba4544d6d7ccd49a72763b8cf476fe107c7f79ba99a4",
+  "size": 15198056,
+  "notes": "- One Now Playing: the menu's draws its cover exactly like Cover Flow's\n- START turns the cover over straight from its tilt, like Cover Flow (also in Cover Flow's Now Playing)\n- Now Playing: START card and Shuffle/Repeat row (0.58)\n- Screensaver ↔ Now Playing: one cover flying; covers load first (0.57.1)"
 }

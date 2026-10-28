@@ -705,6 +705,14 @@ func (ui *IpodUI) HandleKey(ev int) {
 		}
 		return
 	}
+	// START on Cover Flow's Now Playing: the cover turns over (as on the
+	// other Now Playing)
+	if k == START && ui.activeSheet() == nil {
+		if cf := ui.coverUp(); cf != nil && cf.startKey(ui) {
+			ui.dirty = true
+			return
+		}
+	}
 	// a screen of its own that takes the d-pad and L/R itself (the cover's
 	// square: moving it in two directions and zooming)
 	if ui.customKey(k) {
@@ -748,7 +756,7 @@ func (ui *IpodUI) HandleKey(ev int) {
 // customKey offers a key to the screen on top when it takes keys itself
 // (OnKey), with nothing over it (a sheet, the keyboard) and not sliding.
 func (ui *IpodUI) customKey(k Key) bool {
-	if ui.keyboard != nil || len(ui.sheets) > 0 || len(ui.full) == 0 {
+	if ui.keyboard != nil || len(ui.sheets) > 0 || len(ui.full) == 0 || ui.coverUp() != nil {
 		return false
 	}
 	v := ui.topScreen()

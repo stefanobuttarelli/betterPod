@@ -27,21 +27,29 @@ type NowPlayingView struct {
 	opts        bool
 	optSel      int
 	optsAt      time.Time
-	card        *npCard // the cover turned over to the album's songs (START)
-	H           float64
-	hideArt     bool
-	warpTemp    bool // the cover drawn is a stand-in (another size) until the real one is ready
-	flyHide     bool // the cover is flying to or from the screensaver: not drawn here (the rest is)
-	untilt      bool // held flat (the screensaver's cover flies from / lands on a flat one)
-	warpTrack   *Track
-	warpArt     *image.RGBA
-	warpReady   bool
-	tilt        *Anim // 1 playing (cover tilted), 0 paused (flat)
-	tiltInit    bool
-	warpTilt    float64
-	warpSrc     *image.RGBA
-	warpSrcT    *Track
-	lastFrame   int
+	// the cover turned over to its album's songs (START), as in Cover Flow
+	flip      *Anim // the cover's turn: 0 Now Playing's pose, 1 Cover Flow's back pose
+	backA     *Anim // the card: 0 → 1 as it comes
+	back      *View
+	backAl    *Album
+	backSince time.Time
+	flipped   bool
+	backBuf   *image.RGBA
+	infoBuf   *image.RGBA
+	H         float64
+	hideArt   bool
+	warpTemp  bool // the cover drawn is a stand-in (another size) until the real one is ready
+	flyHide   bool // the cover is flying to or from the screensaver: not drawn here (the rest is)
+	untilt    bool // held flat (the screensaver's cover flies from / lands on a flat one)
+	warpTrack *Track
+	warpArt   *image.RGBA
+	warpReady bool
+	tilt      *Anim // 1 playing (cover tilted), 0 paused (flat)
+	tiltInit  bool
+	warpTilt  float64
+	warpSrc   *image.RGBA
+	warpSrcT  *Track
+	lastFrame int
 	// song change: the old song slides out while the new one comes in
 	shownT  *Track
 	oldT    *Track
@@ -68,6 +76,8 @@ func newNowPlayingView() *NowPlayingView {
 		volX:       newAnim(1.1),
 		scrubX:     newAnim(1.1),
 		optsX:      newAnim(1.1),
+		flip:       newAnim(0),
+		backA:      newAnim(0),
 		change:     newAnim(1),
 		dir:        1,
 		barsLive:   newAnim(0),
@@ -90,7 +100,10 @@ func (np *NowPlayingView) Animating(now time.Time) bool {
 	if np.mainX.Running() || np.volX.Running() || np.scrubX.Running() || np.optsX.Running() || np.tilt.Running() || np.change.Running() {
 		return true
 	}
-	if c := np.card; c != nil && (c.open.Running() || c.marq || c.back.marqueeOn || c.closed) {
+	if np.flip.Running() || np.backA.Running() {
+		return true
+	}
+	if np.back != nil && np.flipped && (marqSyncNeedsFrame(now) || np.back.marqueeOn) {
 		return true
 	}
 	// a scrolling line or the moving bars keep the view redrawing while it
@@ -131,7 +144,7 @@ func (np *NowPlayingView) updateControls() {
 }
 
 func (np *NowPlayingView) OnCenter(ui *IpodUI) {
-	if np.card != nil {
+	if np.flipped {
 		np.cardPlay(ui)
 		return
 	}
@@ -189,10 +202,8 @@ func (ui *IpodUI) nowPlayingTakesScroll() bool {
 }
 
 func (np *NowPlayingView) OnScroll(ui *IpodUI, dir int, velocity float64) {
-	if c := np.card; c != nil {
-		if !c.closed {
-			np.cardMove(ui, dir)
-		}
+	if np.flipped {
+		np.cardMove(ui, dir)
 		return
 	}
 	if np.opts {
@@ -406,7 +417,35 @@ func formatPlaybackTime(sec float64) string {
 	return fmt.Sprintf("%02d:%02d", s/60, s%60)
 }
 
+// Render: the cover is drawn as Cover Flow draws its Now Playing (the same
+// 3D cover, turning over to the same card: npStage), the song's lines and
+// the rows over it (renderBody), fading out while the card shows.
+// Cover Flow's own Now Playing (hideArt) is only the lines and the rows.
 func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
+	if np.hideArt {
+		np.renderBody(ui, v, dst, now)
+		return
+	}
+	W, H := dst.Bounds().Dx(), dst.Bounds().Dy()
+	fillRect(dst, 0, 0, W, H, th.bg)
+	ui.npStage(dst, np, now)
+	a := 1 - np.backA.Get(now)
+	np.hideArt = true
+	if a >= 0.999 {
+		np.renderBody(ui, v, dst, now)
+	} else if a > 0.002 {
+		tmp := newCanvasCached(&np.infoBuf, W, H)
+		clearRGBA(tmp)
+		np.renderBody(ui, v, tmp, now)
+		blit(dst, tmp, 0, 0, a)
+	} else {
+		np.drawnAt = ui.frameNo
+	}
+	np.hideArt = false
+	np.flipFrame(now)
+}
+
+func (np *NowPlayingView) renderBody(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	W := dst.Bounds().Dx()
 	if !np.hideArt {
 		fillRect(dst, 0, 0, W, dst.Bounds().Dy(), th.bg)
@@ -497,13 +536,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	sx := np.scrubX.Get(now) * ctrlW
 	ox := np.optsX.Get(now) * ctrlW
 	np.optsTick(now)
-	// (drawn after the rows below, in this order: the deferred calls run
-	// last first) the cover turned over to its songs, over everything,
-	np.cardFrame(now)
-	if np.card != nil {
-		defer ui.drawNPCard(dst, np, now)
-	}
-	// and the options row
+	// the options row (drawn after the rows below)
 	if ox < ctrlW {
 		defer ui.drawOptions(dst, np, ox+8, cy)
 	}

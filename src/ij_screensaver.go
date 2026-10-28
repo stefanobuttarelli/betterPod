@@ -330,10 +330,10 @@ func (ui *IpodUI) saverSongPlaying() bool {
 // square: 85% of 128 px about its centre when paused, a little bigger and
 // to the right when playing (turned).
 func npCoverRect(np *NowPlayingView, now time.Time) image.Rectangle {
-	// flat (it is held flat while a cover flies to or from it): 208 px,
+	// flat (it is held flat while a cover flies to or from it): 203 px,
 	// as measured on the screen
-	side := 208.0
-	cx, cy := 151.0, 194.0
+	side := 203.0
+	cx, cy := 152.5, 226.5
 	return image.Rect(int(cx-side/2), int(cy-side/2), int(cx+side/2), int(cy+side/2))
 }
 

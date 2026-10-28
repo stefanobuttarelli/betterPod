@@ -65,26 +65,27 @@ func (c *cfCover) set(to cfXform, dur time.Duration, now time.Time) {
 
 // CoverFlow is the Cover Flow screen.
 type CoverFlow struct {
-	fullBase  int // full-screen views when it opened: more are on top of it (Up Next)
-	albums    []*Album
-	active    int
-	selected  *Album // flipped to its back
-	playing   bool   // Now Playing shown over the flow
-	covers    map[int]*cfCover
-	back      *View // track list on the back of the selected cover
-	backAnim  *Anim
-	backAlbum *Album
-	infoFade  *Anim
-	npFade    *Anim
-	paused    bool
-	tilt      *Anim
-	backShown *Album
-	backSince time.Time
-	np        *NowPlayingView
-	fadeIn    *Anim
-	exiting   bool
-	layer     *image.RGBA
-	npBuf     *image.RGBA
+	fullBase   int // full-screen views when it opened: more are on top of it (Up Next)
+	albums     []*Album
+	active     int
+	selected   *Album // flipped to its back
+	playing    bool   // Now Playing shown over the flow
+	covers     map[int]*cfCover
+	back       *View // track list on the back of the selected cover
+	backAnim   *Anim
+	backAlbum  *Album
+	infoFade   *Anim
+	npFade     *Anim
+	paused     bool
+	tilt       *Anim
+	backShown  *Album
+	backSince  time.Time
+	np         *NowPlayingView
+	backFromNP bool // the back was reached from Now Playing (START goes back to it)
+	fadeIn     *Anim
+	exiting    bool
+	layer      *image.RGBA
+	npBuf      *image.RGBA
 }
 
 // The flow: the active cover faces the viewer in the middle; the others
@@ -259,6 +260,7 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 	if cf.playing {
 		cf.np.OnCenter(ui)
 	} else if cf.selected != nil {
+		cf.backFromNP = false
 		// on the back: play the track and turn to Now Playing
 		if cf.back != nil && len(cf.back.Items) > 0 {
 			it := cf.back.Items[cf.back.Index]
@@ -283,7 +285,44 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 	ui.dirty = true
 }
 
+// startKey: START on Cover Flow's Now Playing turns the cover over to its
+// album's songs (as B does), and START there turns it back to Now Playing
+// (the song goes on), as on the other Now Playing.
+func (cf *CoverFlow) startKey(ui *IpodUI) bool {
+	switch {
+	case cf.playing && cf.selected != nil:
+		cf.backFromNP = true
+		cf.menu(ui)
+		if cf.back != nil {
+			if p := ui.app.Playing; p != nil {
+				for i, it := range cf.back.Items {
+					if it.Tracks[it.TrackIdx] == p.Track {
+						cf.back.Index = i
+					}
+				}
+			}
+		}
+		return true
+	case !cf.playing && cf.selected != nil && cf.backFromNP:
+		cf.backFromNP = false
+		cf.playing = true
+		cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
+		cf.np = newNowPlayingView()
+		cf.np.hideArt = true
+		cf.npFade.To(1, 300*time.Millisecond, easeFramer, 0)
+		ui.headerTitle = "Now Playing"
+		ui.dirty = true
+		return true
+	}
+	return false
+}
+
 func (cf *CoverFlow) menu(ui *IpodUI) {
+	// the options row on Now Playing goes first
+	if cf.playing && cf.np != nil && cf.np.opts {
+		cf.np.OnMenu(ui)
+		return
+	}
 	// back out: Now Playing → track list → flow → menus
 	if cf.selected != nil && cf.playing {
 		// start the turn back from where the cover is now (Now Playing
@@ -713,8 +752,22 @@ func absInt(x int) int {
 // drawBackside draws the back of the flipped cover (album info, tracks).
 func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) {
 	cf := ui.cover
-	s := cf.backAnim.Get(now)
-	if s <= 0.001 || cf.back == nil {
+	if cf.back == nil {
+		return
+	}
+	if cf.backShown != cf.backAlbum {
+		cf.backShown, cf.backSince = cf.backAlbum, now
+	}
+	drawBacksideCard(layer, m, final, cf.backAnim.Get(now), func(w, h float64) *image.RGBA {
+		return ui.backsideTex(&backsideBuf, cf.backAlbum, cf.back, w, h, cf.backSince, now)
+	})
+}
+
+// drawBacksideCard draws an album's card on the back of a cover (Cover
+// Flow's, and Now Playing's turned over), s: 0 → 1 as it comes (bigger
+// and stronger). tex makes the card's picture at w×h (CSS px).
+func drawBacksideCard(layer *image.RGBA, m, final mat4, s float64, texFn func(w, h float64) *image.RGBA) {
+	if s <= 0.001 {
 		return
 	}
 	scale := 0.7 + 0.3*s
@@ -725,7 +778,7 @@ func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) 
 	// edge lands on the screen once the flip has finished
 	//
 	bh := backsideHeight(final, bu0, bv0, bw)
-	tex := ui.backsideTexture(bw, bh, now)
+	tex := texFn(bw, bh)
 	cxu, cyv := bu0+bw/2, bv0+bh/2
 	// mirrored horizontally (we see it from behind), scaled about its
 	// centre while it flips
@@ -879,7 +932,13 @@ func drawMarqueeSync(dst *image.RGBA, f font.Face, s string, x, baseline, maxW f
 
 func (ui *IpodUI) backsideTexture(w, h float64, now time.Time) *image.RGBA {
 	cf := ui.cover
-	img := newCanvasCached(&backsideBuf, px(w), px(h))
+	return ui.backsideTex(&backsideBuf, cf.backAlbum, cf.back, w, h, cf.backSince, now)
+}
+
+// backsideTex: an album's card: its name and artist on blue (scrolling
+// together when long, from since), then its songs (back).
+func (ui *IpodUI) backsideTex(buf **image.RGBA, al *Album, back *View, w, h float64, since, now time.Time) *image.RGBA {
+	img := newCanvasCached(buf, px(w), px(h))
 	fillRect(img, 0, 0, px(w), px(h), th.bg)
 	// album info on a blue gradient, then the track list
 	tf := face(W700, 16)
@@ -890,21 +949,18 @@ func (ui *IpodUI) backsideTexture(w, h float64, now time.Time) *image.RGBA {
 	infoH := backsideInfoH()
 	fillVGradient(img, px(1), px(1), px(inner), px(infoH-1), []GradStop{{0, hex("#6585ad")}, {1, hex("#789ab3")}})
 	fillRect(img, px(1), px(infoH), px(inner), px(1), hex("#6d87a3"))
-	if cf.backShown != cf.backAlbum {
-		cf.backShown, cf.backSince = cf.backAlbum, now
-	}
 	y := 5.0
 	// album and artist scroll on one cycle
-	cyc := math.Max(marqueeCycle(tf, cf.backAlbum.Name, inner-16), marqueeCycle(sf, cf.backAlbum.Artist, inner-16))
-	drawMarqueeSync(img, tf, cf.backAlbum.Name, 9, y+tasc, inner-16, colWhite, cf.backSince, now, cyc)
+	cyc := math.Max(marqueeCycle(tf, al.Name, inner-16), marqueeCycle(sf, al.Artist, inner-16))
+	drawMarqueeSync(img, tf, al.Name, 9, y+tasc, inner-16, colWhite, since, now, cyc)
 	y += tlh
-	drawMarqueeSync(img, sf, cf.backAlbum.Artist, 9, y+sasc, inner-16, colWhite, cf.backSince, now, cyc)
+	drawMarqueeSync(img, sf, al.Artist, 9, y+sasc, inner-16, colWhite, since, now, cyc)
 	//
 	lt := infoH + 1
 	listH := h - 1 - lt
 	if listH > 0 {
 		lst := image.NewRGBA(image.Rect(0, 0, px(inner), px(listH)))
-		ui.renderList(cf.back, lst)
+		ui.renderList(back, lst)
 		blit(img, lst, px(1), px(lt), 1)
 	}
 	// 1px border
