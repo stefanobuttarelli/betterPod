@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.47 (2026-10-28)
+
+### Added
+- **Clear Now Playing** (by Emanuele Macrì, PR #4). It stops the music and empties the queue, so Now Playing and Up Next leave the menus (and the session saved for the next start) until something is played again.
+  - **Where:** Y (or holding A) on the Now Playing row of the main menu or of Music. It's also the last row of Up Next, where it asks first.
+  - **Up Next:** when only the song playing is left, it shows "Nothing up next" above it.
+
+### Changed
+- **Up and right raise the volume on Now Playing; down and left lower it** (PR #4). Before, the arrows followed the click wheel, where down is clockwise and raised it. The same goes for moving through the song, and for Cover Flow's Now Playing. The lists are unchanged.
+
+### Fixed
+- **The preview on the right follows when a row goes away.** After Clear Now Playing, the cursor moves onto Settings, and the preview used to stay blank until you moved.
+
 ## v0.46 (2026-10-28)
 
 ### Added

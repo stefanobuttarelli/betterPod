@@ -477,5 +477,12 @@ func (ui *IpodUI) refreshBuilt() {
 			v.dirty = true
 		}
 	}
+	// a row that went (Now Playing after Clear Now Playing, Podcasts…) can
+	// move the cursor onto another one: its preview follows
+	if len(ui.full) == 0 && len(ui.split) > 0 {
+		if v := ui.split[len(ui.split)-1]; v.Index >= 0 && v.Index < len(v.Items) && v.Items[v.Index].Preview != ui.preview {
+			ui.previewForSplit()
+		}
+	}
 	ui.dirty = true
 }

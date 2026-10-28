@@ -1,8 +1,8 @@
 {
-  "version": "0.46",
-  "path": "release/knullipod-v0.46-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.46-knulli.zip",
-  "sha256": "5a185e3a0f99cef4df53fca024f9d24108356f55e0cc00c71e78b214805df651",
-  "size": 15018989,
-  "notes": "- Internet Archive results show each item's picture (its cover when it has one)\n- Recent Searches of the last 7 days in Internet Archive, YouTube and Podcasts\n- MENU + volume (brightness) no longer turns the screen off (0.45.3)\n- The song that starts playing shows in the header in Cover Flow too (0.45.2)"
+  "version": "0.47",
+  "path": "release/knullipod-v0.47-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.47-knulli.zip",
+  "sha256": "7841c8dd0dce48d7951ca46c0208a84565535a9908acd24831a533a70a500ff1",
+  "size": 15020595,
+  "notes": "- Clear Now Playing: Y on the Now Playing row stops the music and empties the queue (by Emanuele Macrì)\n- On Now Playing, up and right raise the volume, down and left lower it\n- Internet Archive results show each item's picture (0.46)\n- Recent Searches of the last 7 days in Internet Archive, YouTube and Podcasts (0.46)"
 }
