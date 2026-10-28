@@ -102,9 +102,9 @@ The first start scans the music folder. Later starts load the saved library inst
 | SELECT + START | | Quit |
 
 - **Now Playing:**
-  - Y (or holding A) opens **Up Next** (also in the Music menu), the songs that will play next: A plays one at once; Y on a song offers Play Next and Remove from Up Next; Clear Up Next empties it;
-  - up/down change the volume;
-  - the centre button switches to the scrubber, and then up/down seek.
+  - Y (or holding A) opens **Up Next** (also in the Music menu), the songs that will play next: A plays one at once; Y on a song offers Play Next and Remove from Up Next; Clear Up Next empties it; **Clear Now Playing**, at its end, stops the music and empties the queue (also: hold A on Now Playing in the menus);
+  - up/right raise the volume and down/left lower it (in Cover Flow's Now Playing too);
+  - the centre button switches to the scrubber, and then the same keys seek.
 - **Search keyboard:** a QWERTY grid. The keys with a shortcut show its button: X space, B delete, Y 123, START search (the magnifying glass).
   - the d-pad moves between the keys;
   - A types the selected key, B deletes, holding B closes the keyboard;
