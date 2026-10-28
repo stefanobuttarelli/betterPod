@@ -960,11 +960,28 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 		ssBrightness(dst, lvl)
 		return
 	}
+	// (drawn inside the bar only: the volume slides in from below it)
+	bar := dst.SubImage(image.Rect(0, 0, 640, ssBar)).(*image.RGBA)
+	maxW := left - 10 - 6
+	if va := volOSD.a.Get(now); va > 0.001 {
+		// the volume, while it changes: the clock and the song slide up and
+		// the volume comes in from below, as in the header
+		up := -20 * easeInOut(va)
+		ui.ssClockSong(bar, left, up)
+		ssVolume(bar, ui.volume, 6, maxW, 20+up)
+		return
+	}
+	ui.ssClockSong(bar, left, 0)
+}
+
+// ssClockSong: the clock and, next to it, the song playing (its title, and
+// the artist in grey), off CSS px down, up to left (the icons).
+func (ui *IpodUI) ssClockSong(dst *image.RGBA, left, off float64) {
 	f := face(W700, 13)
 	_, asc := lineBox(13)
+	base := (1.5 + asc + off) * DPR
 	clock := time.Now().Format("15:04")
-	drawText(dst, f, clock, 6*DPR, (1.5+asc)*DPR, colWhite)
-	// next to it, the song playing: its title, and the artist in grey
+	drawText(dst, f, clock, 6*DPR, base, colWhite)
 	p := ui.app.Playing
 	if p == nil || p.Track == nil || p.State == StateStopped {
 		return
@@ -977,17 +994,35 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	title := p.Track.Title
 	tw := textWidth(f, title) / DPR
 	if tw > room {
-		drawText(dst, f, ellipsize(f, title, room*DPR), x*DPR, (1.5+asc)*DPR, colWhite)
+		drawText(dst, f, ellipsize(f, title, room*DPR), x*DPR, base, colWhite)
 		return
 	}
-	drawText(dst, f, title, x*DPR, (1.5+asc)*DPR, colWhite)
+	drawText(dst, f, title, x*DPR, base, colWhite)
 	if p.Track.Artist == "" {
 		return
 	}
 	af := face(W500, 13)
 	art := "  " + p.Track.Artist
 	if rest := room - tw; rest > 30 {
-		drawText(dst, af, ellipsize(af, art, rest*DPR), (x+tw)*DPR, (1.5+asc)*DPR, Col{255, 255, 255, 0.55})
+		drawText(dst, af, ellipsize(af, art, rest*DPR), (x+tw)*DPR, base, Col{255, 255, 255, 0.55})
+	}
+}
+
+// ssVolume: the header's volume (speaker or headphones, and a bar), in
+// white, off CSS px down.
+func ssVolume(dst *image.RGBA, vol, tx, maxW, off float64) {
+	blit(dst, volIcon(headphonesOut(), colWhite), px(tx), px(3+off), 1)
+	bx := tx + 14 + 7
+	bw := math.Min(maxW-14-7-6, 150)
+	if bw < 30 {
+		return
+	}
+	y := 7.5 + off
+	fillRoundedGradient(dst, bx*DPR, y*DPR, (bx+bw)*DPR, (y+5)*DPR, 2.5*DPR,
+		[]GradStop{{0, Col{255, 255, 255, 0.28}}, {1, Col{255, 255, 255, 0.28}}}, 1)
+	if vol > 0.001 {
+		fw := math.Max(bw*vol, 5)
+		fillRoundedGradient(dst, bx*DPR, y*DPR, (bx+fw)*DPR, (y+5)*DPR, 2.5*DPR, []GradStop{{0, colWhite}, {1, colWhite}}, 1)
 	}
 }
 

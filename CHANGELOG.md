@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.55.1 (2026-10-28)
+
+### Fixed
+- **Screensaver: the volume shows in the bar again** when it changes (the console's keys, the headphones'), as in the header. The clock and the song slide up and the speaker (or headphones) and the bar come in from below, in white. It shows even when Now Playing is under the screensaver.
+
 ## v0.55 (2026-10-28)
 
 ### Added

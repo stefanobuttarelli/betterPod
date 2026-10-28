@@ -1349,7 +1349,7 @@ func (ui *IpodUI) Run() {
 				for _, npv := range ui.nowPlayingViews() {
 					npv.flashVolume(ui)
 				}
-				if !ui.nowPlayingOnScreen() {
+				if ui.saver != nil || !ui.nowPlayingOnScreen() {
 					ui.showVolumeOSD()
 				}
 			}
@@ -1361,7 +1361,7 @@ func (ui *IpodUI) Run() {
 			for _, npv := range ui.nowPlayingViews() {
 				npv.flashVolume(ui)
 			}
-			if !ui.nowPlayingOnScreen() {
+			if ui.saver != nil || !ui.nowPlayingOnScreen() {
 				ui.showVolumeOSD()
 			}
 		}
