@@ -51,7 +51,7 @@
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
 - **Missing covers found online.** Settings → Library → Missing Covers lists the albums without one: choose one to see what MusicBrainz, iTunes, Deezer and Wikipedia find (with thumbnails and the source) and pick, or search by hand; Search All Automatically fetches them from the Cover Art Archive (MusicBrainz), or else from iTunes, Deezer or Wikipedia, with the same checks. For a soundtrack ripped from a game, which has no album cover of its own, Wikipedia gives the game's box.
 - **Internet Archive.** Search archive.org, see each item's license, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
-- **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field.
+- **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field. Only the files KnulliPod downloaded count as downloaded and get deleted. The search goes to Apple; feeds and episodes come from each podcast's own servers, which see the console's IP address, like any podcast app.
 - **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
@@ -225,7 +225,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
 | `src/ij_archive.go` | Music → Internet Archive (search, item, download) |
 | `src/ij_podcasts.go` | Podcasts (Apple's directory, RSS feeds, episodes) |
-| `src/tagwrite.go` | Writes tags into MP3 (ID3v2), FLAC and Ogg Vorbis files |
+| `src/tagwrite.go` | Writes tags into MP3 (ID3v2), FLAC and Ogg Vorbis files (podcast episodes) |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
 | `src/ij_youtube.go`, `src/ij_ytdl.go` | YouTube: tools and settings; search, item page, download as albums |
 | `src/ij_m4a.go`, `src/ij_ytcover.go` | M4A cutting and tagging without ffmpeg; square covers from video pictures |

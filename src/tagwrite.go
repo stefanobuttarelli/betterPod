@@ -26,7 +26,7 @@ import (
 	"unicode/utf16"
 )
 
-// songTags: what Album Info writes. Empty strings and zero numbers remove
+// songTags: the tags written. Empty strings and zero numbers remove
 // the field.
 type songTags struct {
 	Title, Artist, Album, AlbumArtist, Genre string
@@ -46,7 +46,13 @@ func canWriteTags(path string) bool {
 
 // writeTags writes t into the file at path.
 func writeTags(path string, t songTags) error {
-	switch strings.ToLower(filepath.Ext(path)) {
+	return writeTagsAs(path, filepath.Ext(path), t)
+}
+
+// writeTagsAs writes t into the file at path as the format of ext (for a
+// file whose name doesn't say it yet, as a download's .part).
+func writeTagsAs(path, ext string, t songTags) error {
+	switch strings.ToLower(ext) {
 	case ".mp3":
 		return writeID3(path, t)
 	case ".flac":
@@ -180,6 +186,9 @@ func readID3(f *os.File) (int, []id3Frame, int64, error) {
 	if ver != 3 && ver != 4 {
 		return ver, nil, end, fmt.Errorf("ID3v2.%d tags can't be edited", ver)
 	}
+	if st, err := f.Stat(); err == nil && end > st.Size() {
+		return ver, nil, end, errors.New("the ID3 tag is longer than the file")
+	}
 	body := make([]byte, size)
 	if _, err := f.ReadAt(body, 10); err != nil {
 		return ver, nil, end, err
@@ -195,23 +204,38 @@ func readID3(f *os.File) (int, []id3Frame, int64, error) {
 			pos = syncsafe(body)
 		}
 	}
-	var frames []id3Frame
-	for pos+10 <= len(body) && body[pos] != 0 {
-		id := string(body[pos : pos+4])
-		n := int(binary.BigEndian.Uint32(body[pos+4:]))
-		if ver == 4 {
-			n = syncsafe(body[pos+4:])
+	// the frames; v2.4 sizes are syncsafe, but some taggers (older
+	// iTunes) wrote them plain: if the syncsafe reading runs into a
+	// damaged frame, the plain one is tried. A tag that can't be read to
+	// its end is not rewritten (the frames after the damage would be lost).
+	parse := func(plain bool) ([]id3Frame, bool) {
+		var frames []id3Frame
+		p := pos
+		for p+10 <= len(body) && body[p] != 0 {
+			id := string(body[p : p+4])
+			n := int(binary.BigEndian.Uint32(body[p+4:]))
+			if ver == 4 && !plain {
+				n = syncsafe(body[p+4:])
+			}
+			fl := [2]byte{body[p+8], body[p+9]}
+			if n < 0 || p+10+n > len(body) {
+				return nil, false
+			}
+			data := append([]byte(nil), body[p+10:p+10+n]...)
+			if ver == 4 && fl[1]&0x02 != 0 {
+				data, fl[1] = deunsync(data), fl[1]&^0x02
+			}
+			frames = append(frames, id3Frame{id, fl, data})
+			p += 10 + n
 		}
-		fl := [2]byte{body[pos+8], body[pos+9]}
-		if n < 0 || pos+10+n > len(body) {
-			break // a damaged frame: the rest is dropped
-		}
-		data := append([]byte(nil), body[pos+10:pos+10+n]...)
-		if ver == 4 && fl[1]&0x02 != 0 {
-			data, fl[1] = deunsync(data), fl[1]&^0x02
-		}
-		frames = append(frames, id3Frame{id, fl, data})
-		pos += 10 + n
+		return frames, true
+	}
+	frames, ok := parse(false)
+	if !ok && ver == 4 {
+		frames, ok = parse(true)
+	}
+	if !ok {
+		return ver, nil, end, errors.New("the ID3 tag is damaged")
 	}
 	return ver, frames, end, nil
 }
@@ -472,6 +496,11 @@ func writeFLACTags(path string, t songTags) error {
 		pad = room - size - 4
 	}
 	out = append(out, flacBlock{typ: 1, data: make([]byte, pad)})
+	for _, b := range out {
+		if len(b.data) > 0xFFFFFF {
+			return errors.New("a FLAC metadata block is too big")
+		}
+	}
 	var meta bytes.Buffer
 	meta.WriteString("fLaC")
 	for i, b := range out {

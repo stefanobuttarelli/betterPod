@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.41 (2026-10-28)
+
+### Added
+- **Podcasts** in the main menu, under Music, as on the iPod (by Emanuele Macrì, PR #2).
+  - **Finding one:** search Apple's podcast directory (no key or account). The podcasts you download from stay listed under the search field.
+  - **Episodes:** the newest 200 from the podcast's feed, newest first, with date, length and size. "Download the 3 Latest" gets the ones you don't have yet.
+  - **Downloading** uses the Internet Archive screen (progress, time left, Cancel, Try Again). Episodes go into `Music/Podcasts/<podcast>/`, tagged, with the podcast's artwork as `cover.jpg`, so each podcast is an album. A downloaded episode plays when chosen.
+  - **Deleting:** Y on an episode or on a podcast deletes what was downloaded, after asking.
+
+### Changed (on top of the PR, from its review)
+- **Only what KnulliPod downloaded counts.** Each podcast remembers the files it downloaded. Only those show as Downloaded, and only those are deleted. A `Music/Podcasts` folder of your own is left alone.
+- **Try Again skips the episodes already done** instead of downloading them again.
+- **A stopped episode is continued only if the server still has the same file.** It checks the file's ETag or date and its total size. Podcast hosts often put in different ads on each download, and joining two versions would break the file. Otherwise the episode starts over.
+- **Every episode gets its own file name.** Two episodes with the same title on the same day become "… (2)". The episode's real title is used, not the shorter iTunes one.
+- **The file decides its format, not the feed.** An M4A listed as MP3 is saved and tagged as M4A, and its cover goes inside. An error page or an Opus or raw AAC file is reported instead of being kept.
+- **Tagged before it gets its name.** An episode is tagged while it's still `.part`, so a finished name is always a whole, tagged file.
+- **Feeds listed oldest first** are sorted, so "Download the 3 Latest" really gets the latest.
+- **Safer tag writing:**
+  - A damaged ID3 tag is left as it is instead of being rewritten without its later frames (like the cover).
+  - Tags whose frame sizes older iTunes wrote the wrong way are read correctly.
+- **Smaller fixes:**
+  - HTML entities like `&rsquo;` and any charset in feeds are read properly.
+  - Made-up sizes and lengths are ignored.
+  - `http://` feeds are tried over `https://` first.
+  - The artwork is checked to be an image (a PNG is made JPEG).
+  - Thumbnails stop when you leave the screen.
+  - The episode list reads its folder once per refresh, not twice per episode.
+  - A failed episode shows its own error rather than a later retry's.
+- **Deleting in Browse Files and in Podcasts** now uses the same code.
+
 ## v0.40 (2026-10-28)
 
 ### Added

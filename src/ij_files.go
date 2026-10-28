@@ -272,30 +272,9 @@ func (ui *IpodUI) filesView(dir string) *View {
 			st.busy = "Deleting…"
 			ui.refreshView(v)
 			go func() {
-				var failed error
-				for _, p := range paths {
-					if !insideMusic(p) {
-						if failed == nil {
-							failed = fmt.Errorf("outside the music folder")
-						}
-						continue
-					}
-					if err := os.RemoveAll(p); err != nil && failed == nil {
-						failed = err
-					}
-					forgetDirInfo(p) // the folders above it change size
-				}
+				failed := removeMusicPaths(paths)
 				ui.postSure(func() {
-					// songs that were deleted leave the queue at once (the
-					// one playing goes on: the player has it open)
-					ui.app.remapQueueWith(func(t *Track) *Track {
-						for _, p := range paths {
-							if t.Path == p || strings.HasPrefix(t.Path, p+string(filepath.Separator)) {
-								return nil
-							}
-						}
-						return t
-					})
+					ui.dropDeletedFromQueue(paths)
 					st.busy = ""
 					st.selecting = false
 					st.picked = map[string]bool{}
@@ -433,4 +412,36 @@ func (ui *IpodUI) refreshAllFiles() {
 			v.refresh()
 		}
 	}
+}
+
+// removeMusicPaths deletes paths (files or folders), only inside the music
+// folder; off the UI goroutine. The first error is returned.
+func removeMusicPaths(paths []string) error {
+	var failed error
+	for _, p := range paths {
+		if !insideMusic(p) {
+			if failed == nil {
+				failed = fmt.Errorf("outside the music folder")
+			}
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil && failed == nil {
+			failed = err
+		}
+		forgetDirInfo(p) // the folders above it change size
+	}
+	return failed
+}
+
+// dropDeletedFromQueue: songs that were deleted leave the queue at once
+// (the one playing goes on: the player has it open). On the UI goroutine.
+func (ui *IpodUI) dropDeletedFromQueue(paths []string) {
+	ui.app.remapQueueWith(func(t *Track) *Track {
+		for _, p := range paths {
+			if t.Path == p || strings.HasPrefix(t.Path, p+string(filepath.Separator)) {
+				return nil
+			}
+		}
+		return t
+	})
 }

@@ -5,22 +5,32 @@ package main
 //
 //	Podcasts                     The Rest Is History
 //	  ⌕ Search podcasts             Download the 3 Latest
-//	  Your Podcasts                 Episode 512 · Oct 27 · 54 min · 48 MB
-//	  ▣ The Rest Is History         Episode 511 · Oct 24 · 1 h 2 min · Downloaded
-//	  ▣ In Our Time
+//	  ▣ The Rest Is History         Episode 512 · Oct 27 · 54 min · 48 MB
+//	  ▣ In Our Time                 Episode 511 · Oct 24 · 1 h 2 min · Downloaded
 //
 // The search is Apple's podcast directory (the iTunes Search API, no key);
 // a podcast's episodes come from its RSS feed. An episode is downloaded
 // with the Internet Archive screen (progress, time left, Cancel, Try
 // Again), continued where it stopped and tried again when the connection
 // drops, into Music/Podcasts/<podcast>/ as "<date> <title>.mp3" with its
-// tags (tagwrite.go) and the podcast's artwork as cover.jpg, so every
-// podcast is an album. A downloaded episode plays at once; Y (or holding
-// A) on it deletes it, and on a podcast deletes all its episodes, asking
-// first as Browse Files does. The podcasts you download from are kept
-// under Your Podcasts (podcasts.json in the data folder). Episodes in a
-// format the console can't play (supportedAudioExt) are shown but can't be
-// downloaded. MIYOOPOD_ITUNES_BASE points the search elsewhere (tests).
+// tags (tagwrite.go, ij_m4a.go) and the podcast's artwork as cover.jpg, so
+// every podcast is an album. A downloaded episode plays at once; Y (or
+// holding A) on it deletes it, and on a podcast deletes all its episodes,
+// asking first as Browse Files does. The podcasts you download from are
+// kept under Your Podcasts (podcasts.json in the data folder), with the
+// files each one downloaded: only those count as downloaded and only those
+// are deleted (a Music/Podcasts folder of your own is left alone).
+//
+// A download is checked before it is kept: the file's first bytes decide
+// its format (feeds often say the wrong type), and it is tagged while it
+// is still name.part, so a finished name is always a whole, tagged file.
+// A .part is continued only when the server shows it's the same file
+// (If-Range with its ETag or date, the same total size): with ads put in
+// at download time, the same link gives different files.
+//
+// Episodes in a format the console can't play (supportedAudioExt) are
+// shown but can't be downloaded. MIYOOPOD_ITUNES_BASE points the search
+// elsewhere (tests).
 
 import (
 	"bytes"
@@ -30,18 +40,21 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/htmlindex"
 )
 
 type podcast struct {
@@ -52,11 +65,18 @@ type podcast struct {
 	Art600 string `json:"art600"` // the artwork for cover.jpg
 	Genre  string `json:"genre,omitempty"`
 	Count  int    `json:"-"` // episodes, as the search says
+
+	// what KnulliPod downloaded into dir(): episode key → file name, and
+	// whether cover.jpg is its own. Never changed in place (copied on
+	// write), so a copy read on the UI goroutine stays as it was.
+	Files map[string]string `json:"files,omitempty"`
+	Cover bool              `json:"cover,omitempty"`
 }
 
 func (p podcast) dir() string { return filepath.Join(musicRoot(), "Podcasts", safeName(p.Name)) }
 
 type podEpisode struct {
+	GUID    string
 	Title   string
 	Date    time.Time
 	Secs    float64
@@ -88,12 +108,31 @@ func (e podEpisode) ext() string {
 
 func (e podEpisode) playable() bool { return supportedAudioExt(e.ext()) }
 
-func (e podEpisode) path(dir string) string {
+// key: what tells the episode apart in Files (its guid, else its link).
+func (e podEpisode) key() string {
+	if e.GUID != "" {
+		return e.GUID
+	}
+	return e.URL
+}
+
+// baseName: "<date> <title>", without extension.
+func (e podEpisode) baseName() string {
 	name := e.Title
 	if !e.Date.IsZero() {
 		name = e.Date.Format("2006-01-02") + " " + name
 	}
-	return filepath.Join(dir, safeName(name)+e.ext())
+	return safeName(name)
+}
+
+// freeName: base+ext, or "base (2)ext"… when taken (taken gets lower-case
+// names: the SD card doesn't tell case apart).
+func freeName(base, ext string, taken func(string) bool) string {
+	name := base + ext
+	for i := 2; taken(strings.ToLower(name)); i++ {
+		name = fmt.Sprintf("%s (%d)%s", base, i, ext)
+	}
+	return name
 }
 
 // ---- Apple's directory ----
@@ -129,9 +168,13 @@ func podcastSearch(term string) ([]podcast, error) {
 
 // ---- the feed ----
 
-// podMaxEpisodes: the newest episodes read from a feed (some list
-// thousands).
-const podMaxEpisodes = 200
+// podMaxEpisodes: the newest episodes kept from a feed (some list
+// thousands); podFeedItems: the most read (the feed's order isn't always
+// newest first, so they are sorted).
+const (
+	podMaxEpisodes = 200
+	podFeedItems   = 5000
+)
 
 var podDateLayouts = []string{time.RFC1123Z, time.RFC1123, "Mon, 2 Jan 2006 15:04:05 -0700", "Mon, 2 Jan 2006 15:04:05 MST",
 	"2 Jan 2006 15:04:05 -0700", "Mon, 2 Jan 2006 15:04 -0700", "Mon, 02 Jan 2006 15:04:05 Z", "2006-01-02T15:04:05Z07:00", "Mon, 2 Jan 2006"}
@@ -160,14 +203,23 @@ func podDuration(s string) float64 {
 		}
 		t = t*60 + v
 	}
+	if math.IsNaN(t) || math.IsInf(t, 0) || t < 0 || t > 100*3600 {
+		return 0
+	}
 	return t
 }
 
+type xmlText struct {
+	XMLName xml.Name
+	Text    string `xml:",chardata"`
+}
+
 type rssItem struct {
-	Title     string `xml:"title"`
-	PubDate   string `xml:"pubDate"`
-	Duration  string `xml:"duration"`
-	Episode   string `xml:"episode"`
+	Titles    []xmlText `xml:"title"` // <title> and <itunes:title>: the plain one wins
+	GUID      string    `xml:"guid"`
+	PubDate   string    `xml:"pubDate"`
+	Duration  string    `xml:"duration"`
+	Episode   string    `xml:"episode"`
 	Enclosure struct {
 		URL    string `xml:"url,attr"`
 		Length string `xml:"length,attr"`
@@ -182,17 +234,15 @@ func parseFeed(r io.Reader) (podcast, []podEpisode, error) {
 	var eps []podEpisode
 	d := xml.NewDecoder(r)
 	d.Strict = false
+	d.Entity = xml.HTMLEntity // &rsquo; and the like, common in feeds
 	d.CharsetReader = func(cs string, in io.Reader) (io.Reader, error) {
-		switch strings.ToLower(cs) {
-		case "iso-8859-1", "latin1", "latin-1":
-			return charmap.ISO8859_1.NewDecoder().Reader(in), nil
-		case "windows-1252", "cp1252":
-			return charmap.Windows1252.NewDecoder().Reader(in), nil
+		if enc, err := htmlindex.Get(cs); err == nil && enc != nil {
+			return enc.NewDecoder().Reader(in), nil
 		}
-		return in, nil // UTF-8 or something close enough
+		return in, nil // unknown: read as UTF-8
 	}
 	depth, inChannel := 0, false
-	for len(eps) < podMaxEpisodes {
+	for len(eps) < podFeedItems {
 		tok, err := d.Token()
 		if err == io.EOF {
 			break
@@ -212,16 +262,26 @@ func parseFeed(r io.Reader) (podcast, []podEpisode, error) {
 				inChannel = true
 			case name == "item" && inChannel:
 				var it rssItem
-				if err := d.DecodeElement(&it, &t); err != nil {
-					continue
-				}
+				err := d.DecodeElement(&it, &t)
 				depth--
-				if it.Enclosure.URL == "" {
+				if err != nil || it.Enclosure.URL == "" {
 					continue
 				}
-				e := podEpisode{Title: strings.TrimSpace(it.Title), Date: podDate(it.PubDate), Secs: podDuration(it.Duration),
-					URL: strings.TrimSpace(it.Enclosure.URL), Type: it.Enclosure.Type}
+				title := ""
+				for _, x := range it.Titles {
+					if x.XMLName.Space == "" || title == "" {
+						title = x.Text
+					}
+					if x.XMLName.Space == "" {
+						break
+					}
+				}
+				e := podEpisode{GUID: strings.TrimSpace(it.GUID), Title: strings.TrimSpace(title), Date: podDate(it.PubDate),
+					Secs: podDuration(it.Duration), URL: strings.TrimSpace(it.Enclosure.URL), Type: it.Enclosure.Type}
 				e.Size, _ = strconv.ParseInt(strings.TrimSpace(it.Enclosure.Length), 10, 64)
+				if e.Size < 0 || e.Size > 4<<30 {
+					e.Size = 0 // made up
+				}
 				e.Episode, _ = strconv.Atoi(strings.TrimSpace(it.Episode))
 				if e.Title == "" {
 					e.Title = "Episode"
@@ -256,19 +316,40 @@ func parseFeed(r io.Reader) (podcast, []podEpisode, error) {
 	if p.Name == "" && len(eps) == 0 {
 		return p, nil, errors.New("not a podcast feed")
 	}
+	// newest first (undated ones after, in the feed's order)
+	sort.SliceStable(eps, func(i, j int) bool {
+		a, b := eps[i].Date, eps[j].Date
+		if a.IsZero() || b.IsZero() {
+			return !a.IsZero() && b.IsZero()
+		}
+		return a.After(b)
+	})
+	if len(eps) > podMaxEpisodes {
+		eps = eps[:podMaxEpisodes]
+	}
 	return p, eps, nil
 }
 
+// fetchFeed reads a feed; an http:// one through https:// first (many
+// directory entries are old links of servers that have TLS now).
 func fetchFeed(feed string) (podcast, []podEpisode, error) {
-	resp, err := coverGetAccept(feed, "application/rss+xml, application/xml, text/xml, */*", 30*time.Second)
-	if err != nil {
-		return podcast{}, nil, err
+	get := func(u string) (podcast, []podEpisode, error) {
+		resp, err := coverGetAccept(u, "application/rss+xml, application/xml, text/xml, */*", 30*time.Second)
+		if err != nil {
+			return podcast{}, nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return podcast{}, nil, fmt.Errorf("the podcast's server answered %d", resp.StatusCode)
+		}
+		return parseFeed(io.LimitReader(resp.Body, 32<<20))
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return podcast{}, nil, fmt.Errorf("the podcast's server answered %d", resp.StatusCode)
+	if rest, ok := strings.CutPrefix(feed, "http://"); ok {
+		if p, eps, err := get("https://" + rest); err == nil {
+			return p, eps, nil
+		}
 	}
-	return parseFeed(io.LimitReader(resp.Body, 32<<20))
+	return get(feed)
 }
 
 // ---- Your Podcasts ----
@@ -304,16 +385,80 @@ func setSavedPodcasts(f func([]podcast) []podcast) {
 	}
 }
 
-func rememberPodcast(p podcast) {
+// podUpdate changes p's entry with f (Files already copied, so f can
+// change it); add: put p in the list if it isn't.
+func podUpdate(p podcast, add bool, f func(r *podcast)) {
 	setSavedPodcasts(func(l []podcast) []podcast {
-		for i, x := range l {
+		i := -1
+		for j, x := range l {
 			if x.Feed == p.Feed {
-				l[i] = p
-				return l
+				i = j
+				break
 			}
 		}
-		return append([]podcast{p}, l...)
+		if i < 0 {
+			if !add {
+				return l
+			}
+			r := p
+			r.Files, r.Cover = nil, false
+			l, i = append([]podcast{r}, l...), 0
+		}
+		r := l[i]
+		files := make(map[string]string, len(r.Files)+1)
+		for k, n := range r.Files {
+			files[k] = n
+		}
+		r.Files = files
+		f(&r)
+		l[i] = r
+		return l
 	})
+}
+
+// rememberPodcast puts p in Your Podcasts (or brings its name, artwork…
+// up to date), keeping what it downloaded.
+func rememberPodcast(p podcast) {
+	podUpdate(p, true, func(r *podcast) {
+		files, cover := r.Files, r.Cover
+		*r = p
+		r.Files, r.Cover = files, cover
+	})
+}
+
+// podRecord: p's entry in Your Podcasts (what it downloaded).
+func podRecord(feed string) podcast {
+	for _, x := range savedPodcasts() {
+		if x.Feed == feed {
+			return x
+		}
+	}
+	return podcast{}
+}
+
+// podForgetMissing drops from p's entry the files that are no longer
+// there (after deleting).
+func podForgetMissing(p podcast) {
+	podUpdate(p, false, func(r *podcast) {
+		for k, n := range r.Files {
+			if !fileExists(filepath.Join(p.dir(), n)) {
+				delete(r.Files, k)
+			}
+		}
+		if r.Cover && !fileExists(filepath.Join(p.dir(), "cover.jpg")) {
+			r.Cover = false
+		}
+	})
+}
+
+// dirSet: the names in dir.
+func dirSet(dir string) map[string]bool {
+	es, _ := os.ReadDir(dir)
+	set := make(map[string]bool, len(es))
+	for _, e := range es {
+		set[e.Name()] = true
+	}
+	return set
 }
 
 func forgetPodcast(feed string) {
@@ -375,7 +520,9 @@ func (ui *IpodUI) podcastsView() *View {
 		busy         bool
 		res          []podcast
 		searched     bool
-		gen          atomic.Int32
+		gen          atomic.Int32 // the search
+		thumbGen     atomic.Int32 // the thumbnails being loaded
+		recs         map[string]podcast
 	}{}
 	v := &View{ID: "podcasts", Title: "Podcasts", Kind: KindFull}
 	var run func()
@@ -401,7 +548,7 @@ func (ui *IpodUI) podcastsView() *View {
 		}
 		it := Item{Label: p.Name, Sublabel: strings.Join(parts, " · "), Album: stand(p),
 			OnSelect: func() { ui.showView(ui.podcastView(p), "") }}
-		if fileExists(p.dir()) {
+		if len(st.recs[p.Feed].Files) > 0 {
 			it.LongPress = []SheetOption{{Label: "Delete Downloaded Episodes", Danger: true, OnSelect: func() {
 				ui.deletePodcastEpisodes(p, func() { ui.refreshView(v) })
 			}}}
@@ -416,10 +563,20 @@ func (ui *IpodUI) podcastsView() *View {
 				as, us = append(as, a), append(us, p.Art)
 			}
 		}
-		ui.podThumbs(v, as, us, &st.gen)
+		st.thumbGen.Add(1) // the ones of the other list stop
+		ui.podThumbs(v, as, us, &st.thumbGen)
 	}
+	v.onClose = func() { st.gen.Add(1); st.thumbGen.Add(1) }
 	v.Build = func() []Item {
+		saved := savedPodcasts()
+		st.recs = make(map[string]podcast, len(saved))
+		for _, p := range saved {
+			st.recs[p.Feed] = p
+		}
 		note := ""
+		if !st.searched && len(saved) > 0 && !ui.keyboardEditing(&st.term) {
+			note = "Your Podcasts" // the list below
+		}
 		if st.searched && !st.busy && !ui.keyboardEditing(&st.term) {
 			note = fmt.Sprintf("%d %s", len(st.res), pluralize(len(st.res), "result", "results"))
 		}
@@ -443,15 +600,16 @@ func (ui *IpodUI) podcastsView() *View {
 			}
 			return items
 		}
-		saved := savedPodcasts()
 		if len(saved) == 0 {
 			return append(items, Item{Label: "Find a podcast", Sublabel: "Search above; the ones you download from are kept here", NoArrow: true})
 		}
-		items = append(items, Item{Label: "Your Podcasts", NoArrow: true})
 		for _, p := range saved {
 			it := row(p)
 			it.LongPress = append(it.LongPress, SheetOption{Label: "Remove from Your Podcasts", Danger: true, OnSelect: func() {
 				forgetPodcast(p.Feed)
+				if len(p.Files) > 0 {
+					ui.showToast("Its episodes stay in Music › Podcasts")
+				}
 				ui.refreshView(v)
 			}})
 			items = append(items, it)
@@ -461,8 +619,10 @@ func (ui *IpodUI) podcastsView() *View {
 	run = func() {
 		term := strings.TrimSpace(st.term)
 		if term == "" {
-			st.searched, st.res, st.status = false, nil, ""
+			st.gen.Add(1)
+			st.searched, st.res, st.status, st.busy = false, nil, "", false
 			ui.refreshView(v)
+			loadThumbs(savedPodcasts())
 			return
 		}
 		g := st.gen.Add(1)
@@ -504,19 +664,21 @@ func (ui *IpodUI) podcastView(p podcast) *View {
 		busy   bool
 	}{busy: true}
 	v := &View{ID: "podcast", Title: p.Name, Kind: KindFull}
-	download := func(eps []podEpisode) {
-		var todo []podEpisode
-		for _, e := range eps {
-			if e.playable() && !fileExists(e.path(p.dir())) {
-				todo = append(todo, e)
-			}
-		}
-		if len(todo) > 0 {
-			rememberPodcast(p)
-			ui.startPodDownload(p, todo)
-		}
-	}
+	download := func(eps []podEpisode) { ui.startPodDownload(p, eps) }
 	v.Build = func() []Item {
+		// what is downloaded: in the record and still there (one look at
+		// the folder per rebuild)
+		rec := podRecord(p.Feed)
+		var onDisk map[string]bool
+		if len(rec.Files) > 0 {
+			onDisk = dirSet(p.dir())
+		}
+		have := func(e podEpisode) string {
+			if n := rec.Files[e.key()]; n != "" && onDisk[n] {
+				return filepath.Join(p.dir(), n)
+			}
+			return ""
+		}
 		if st.busy {
 			return []Item{{Label: "Loading episodes…", NoArrow: true}}
 		}
@@ -527,7 +689,7 @@ func (ui *IpodUI) podcastView(p podcast) *View {
 		var items []Item
 		var latest []podEpisode
 		for _, e := range st.eps {
-			if len(latest) < 3 && e.playable() && !fileExists(e.path(p.dir())) {
+			if len(latest) < 3 && e.playable() && have(e) == "" {
 				latest = append(latest, e)
 			}
 		}
@@ -547,14 +709,14 @@ func (ui *IpodUI) podcastView(p podcast) *View {
 			if e.Secs > 0 {
 				parts = append(parts, podLength(e.Secs))
 			}
-			path := e.path(p.dir())
+			path := have(e)
 			it := Item{Label: e.Title}
 			switch {
-			case fileExists(path):
+			case path != "":
 				parts = append(parts, "Downloaded")
 				it.OnSelect = func() { ui.playPodEpisode(path) }
 				it.LongPress = []SheetOption{{Label: "Delete Download", Danger: true, OnSelect: func() {
-					ui.deletePodFiles([]string{path}, "“"+e.Title+"”", func() { ui.refreshView(v) })
+					ui.deletePodFiles(p, []string{path}, "“"+e.Title+"”", func() { ui.refreshView(v) })
 				}}}
 			case !e.playable():
 				parts = append(parts, strings.ToUpper(strings.TrimPrefix(e.ext(), "."))+" can't be played here")
@@ -616,75 +778,72 @@ func (ui *IpodUI) playPodEpisode(path string) {
 
 // ---- deleting ----
 
-// podDownloads: the episodes downloaded from p, and their size.
-func podDownloads(p podcast) (n int, size int64) {
-	es, _ := os.ReadDir(p.dir())
-	for _, e := range es {
-		switch strings.ToLower(filepath.Ext(e.Name())) {
-		case ".mp3", ".m4a", ".ogg", ".oga", ".flac", ".opus":
-			if !e.IsDir() {
-				n++
-				if fi, err := e.Info(); err == nil {
-					size += fi.Size()
-				}
-			}
-		}
-	}
-	return n, size
-}
-
-// deletePodcastEpisodes deletes the podcast's folder (its episodes, the
-// unfinished ones and the artwork), after asking.
+// deletePodcastEpisodes deletes what KnulliPod downloaded from p (its
+// episodes, the unfinished ones and its cover.jpg; nothing else in the
+// folder), after asking; the folder goes too if that leaves it empty.
 func (ui *IpodUI) deletePodcastEpisodes(p podcast, after func()) {
 	if d := iaCur; d != nil && !d.finished && d.dir == p.dir() {
 		ui.showToast("Wait for the download to end")
 		return
 	}
-	n, size := podDownloads(p)
+	rec := podRecord(p.Feed)
+	dir := p.dir()
+	var paths []string
+	n, size := 0, int64(0)
+	onDisk := dirSet(dir)
+	for _, name := range rec.Files {
+		if onDisk[name] {
+			paths = append(paths, filepath.Join(dir, name))
+			n++
+			if fi, err := os.Stat(filepath.Join(dir, name)); err == nil {
+				size += fi.Size()
+			}
+		}
+	}
+	for name := range onDisk {
+		if strings.HasSuffix(name, ".part") || strings.HasSuffix(name, ".part.info") {
+			paths = append(paths, filepath.Join(dir, name))
+		}
+	}
+	if rec.Cover && onDisk["cover.jpg"] {
+		paths = append(paths, filepath.Join(dir, "cover.jpg"))
+	}
+	if len(paths) == 0 {
+		ui.showToast("Nothing downloaded")
+		return
+	}
 	what := fmt.Sprintf("the %d %s of “%s” (%s)", n, pluralize(n, "episode", "episodes"), p.Name, formatBytes(size))
 	if n == 0 {
 		what = "what is left of “" + p.Name + "”"
 	}
-	ui.deletePodFiles([]string{p.dir()}, what, after)
+	ui.deletePodFiles(p, paths, what, func() {
+		os.Remove(dir) // only if empty
+		if after != nil {
+			after()
+		}
+	})
 }
 
-// deletePodFiles asks, then deletes paths (only inside the music folder,
-// as Browse Files), takes them out of the queue and scans the library
-// again.
-func (ui *IpodUI) deletePodFiles(paths []string, what string, after func()) {
+// deletePodFiles asks, then deletes paths (as Browse Files does: only
+// inside the music folder), forgets them in p's entry, takes them out of
+// the queue and scans the library again.
+func (ui *IpodUI) deletePodFiles(p podcast, paths []string, what string, after func()) {
 	ui.showSheetTitled("Delete "+what+"? This can't be undone.", []SheetOption{{Label: "Delete", Danger: true, OnSelect: func() {
 		go func() {
-			var failed error
-			for _, p := range paths {
-				if !insideMusic(p) {
-					failed = errors.New("outside the music folder")
-					continue
-				}
-				if err := os.RemoveAll(p); err != nil && failed == nil {
-					failed = err
-				}
-				forgetDirInfo(p)
-			}
+			failed := removeMusicPaths(paths)
+			podForgetMissing(p)
 			ui.postSure(func() {
-				// the one playing goes on: the player has it open
-				ui.app.remapQueueWith(func(t *Track) *Track {
-					for _, p := range paths {
-						if t.Path == p || strings.HasPrefix(t.Path, p+string(filepath.Separator)) {
-							return nil
-						}
-					}
-					return t
-				})
+				ui.dropDeletedFromQueue(paths)
 				if failed != nil {
 					ui.showToast("Couldn't delete: " + shortErr(failed))
 				} else {
 					ui.showToast("Deleted")
 				}
-				logMsg(fmt.Sprintf("Podcasts: deleted %s", strings.Join(paths, ", ")))
-				ui.rescanLibrary()
+				logMsg(fmt.Sprintf("Podcasts: deleted %d file(s) in %s", len(paths), p.dir()))
 				if after != nil {
 					after()
 				}
+				ui.rescanLibrary()
 			})
 		}()
 	}}})
@@ -692,20 +851,60 @@ func (ui *IpodUI) deletePodFiles(paths []string, what string, after func()) {
 
 // ---- downloading ----
 
+// podJob: an episode to download and the file name it gets.
+type podJob struct {
+	ep   podEpisode
+	name string
+}
+
+// startPodDownload downloads the episodes of eps that aren't downloaded
+// yet (Try Again calls it again: the finished ones are skipped). On the UI
+// goroutine.
 func (ui *IpodUI) startPodDownload(p podcast, eps []podEpisode) {
 	if iaCur != nil && !iaCur.finished {
 		ui.showView(ui.iaDownloadView(), "")
 		return
 	}
+	rec := podRecord(p.Feed)
+	dir := p.dir()
+	onDisk := dirSet(dir)
+	taken := map[string]bool{}
+	for n := range onDisk {
+		taken[strings.ToLower(n)] = true
+	}
+	for _, n := range rec.Files {
+		taken[strings.ToLower(n)] = true
+	}
+	var jobs []podJob
 	var files []iaFile
 	var total int64
+	kinds := map[string]bool{}
+	var kind []string
 	for _, e := range eps {
+		if !e.playable() {
+			continue
+		}
+		if n := rec.Files[e.key()]; n != "" && onDisk[n] {
+			continue // downloaded
+		}
+		name := freeName(e.baseName(), e.ext(), func(n string) bool { return taken[n] })
+		taken[strings.ToLower(name)] = true
+		jobs = append(jobs, podJob{e, name})
 		files = append(files, iaFile{Name: e.URL, Title: e.Title, Size: e.Size, Length: e.Secs})
 		total += e.Size
+		if k := strings.ToUpper(strings.TrimPrefix(e.ext(), ".")); !kinds[k] {
+			kinds[k] = true
+			kind = append(kind, k)
+		}
 	}
-	d := &iaDownload{item: &iaItem{Title: p.Name, Creator: p.Author}, files: files, format: "MP3", dir: p.dir(),
+	if len(jobs) == 0 {
+		ui.showToast("Already downloaded")
+		return
+	}
+	rememberPodcast(p)
+	d := &iaDownload{item: &iaItem{Title: p.Name, Creator: p.Author}, files: files, format: strings.Join(kind, ", "), dir: dir,
 		cancel: make(chan struct{}), state: "Starting…", source: "Podcasts", total: total}
-	ui.startDownloadJob(d, func() error { return podRun(d, p, eps) }, func() { ui.startPodDownload(p, eps) })
+	ui.startDownloadJob(d, func() error { return podRun(d, p, jobs) }, func() { ui.startPodDownload(p, eps) })
 }
 
 // podAttempts: how many times an episode is tried before it is skipped.
@@ -713,35 +912,46 @@ const podAttempts = 5
 
 var errPodRetry = errors.New("retry")
 
-// podRun downloads the episodes into the podcast's folder, tags them and
-// saves the artwork as cover.jpg.
-func podRun(d *iaDownload, p podcast, eps []podEpisode) error {
+// podRun downloads the episodes into the podcast's folder, checks and tags
+// them, and saves the artwork as cover.jpg.
+func podRun(d *iaDownload, p podcast, jobs []podJob) error {
 	if err := os.MkdirAll(d.dir, 0755); err != nil {
 		return err
 	}
-	var need int64
-	for _, e := range eps {
-		need += e.Size
+	// what a crash in the middle of tagging left
+	for name := range dirSet(d.dir) {
+		if strings.HasSuffix(name, ".tagtmp") || strings.HasSuffix(name, ".m4atmp") {
+			os.Remove(filepath.Join(d.dir, name))
+		}
 	}
-	if fb := freeBytes(d.dir); fb >= 0 && need > 0 && fb < need+50<<20 {
+	var need int64
+	for _, j := range jobs {
+		need += j.ep.Size
+	}
+	if fb := freeBytes(d.dir); fb >= 0 && fb < need+50<<20 {
 		return fmt.Errorf("Not enough space (%s free)", formatBytes(fb))
 	}
-	if c := filepath.Join(d.dir, "cover.jpg"); !fileExists(c) && p.Art600 != "" {
-		var none int64
-		_ = podGet(d, p.Art600, c, false, 0, &none) // best effort
+	cover := filepath.Join(d.dir, "cover.jpg")
+	if !fileExists(cover) && p.Art600 != "" {
+		if err := podSaveCover(p.Art600, cover); err == nil {
+			podUpdate(p, true, func(r *podcast) { r.Cover = true })
+		} else {
+			logMsg("Podcasts: the artwork: " + err.Error())
+		}
 	}
-	netFails := 0
-	for i, e := range eps {
+	netFails, failMsg := 0, ""
+	for i, j := range jobs {
+		e := j.ep
 		d.mu.Lock()
 		d.index, d.state = i, e.Title
 		base := d.done
 		d.mu.Unlock()
-		dst := e.path(d.dir)
+		part := filepath.Join(d.dir, j.name) + ".part"
 		size := e.Size // the feed's, until the server says
 		var err error
-		for try := 1; try <= podAttempts; try++ {
-			err = podGet(d, e.URL, dst, true, base, &size)
-			if !errors.Is(err, errPodRetry) {
+		for try := 1; ; try++ {
+			err = podGet(d, e.URL, part, base, &size)
+			if !errors.Is(err, errPodRetry) || try == podAttempts {
 				break
 			}
 			wait := time.Duration(3<<(try-1)) * time.Second // 3, 6, 12, 24 s
@@ -759,20 +969,16 @@ func podRun(d *iaDownload, p podcast, eps []podEpisode) error {
 		d.mu.Lock()
 		d.retry = ""
 		d.mu.Unlock()
+		if err == nil {
+			err = podFinish(p, e, part, j.name, cover)
+		}
 		switch {
 		case err == nil:
 			netFails = 0
-			t := songTags{Title: e.Title, Artist: p.Author, Album: p.Name, AlbumArtist: p.Name, Genre: "Podcast", Track: e.Episode}
-			if t.Artist == "" {
-				t.Artist = p.Name
-			}
-			if !e.Date.IsZero() {
-				t.Year = e.Date.Year()
-			}
-			if canWriteTags(dst) {
-				if err := writeTags(dst, t); err != nil {
-					logMsg("Podcasts: tagging " + dst + ": " + err.Error())
-				}
+			if failMsg != "" {
+				d.mu.Lock()
+				d.lastErr = failMsg // why the failed one failed (not a retry's error)
+				d.mu.Unlock()
 			}
 		case errors.Is(err, errIACancelled), isDiskErr(err):
 			return err
@@ -780,7 +986,8 @@ func podRun(d *iaDownload, p podcast, eps []podEpisode) error {
 			logMsg("Podcasts: " + e.URL + ": " + err.Error())
 			d.mu.Lock()
 			d.failed = append(d.failed, e.Title)
-			d.lastErr = strings.TrimPrefix(err.Error(), errPodRetry.Error()+": ")
+			failMsg = strings.TrimPrefix(err.Error(), errPodRetry.Error()+": ")
+			d.lastErr = failMsg
 			d.done = base + size
 			d.mu.Unlock()
 			if netFails++; netFails >= 2 {
@@ -794,15 +1001,204 @@ func podRun(d *iaDownload, p podcast, eps []podEpisode) error {
 	return nil
 }
 
-// podGet downloads u into dst through dst.part, continuing a .part left
-// by an earlier try; a busy server or a dropped connection is errPodRetry.
-// *size is the file's size as known (the feed's is often wrong): the
-// server's replaces it, in the total too.
-func podGet(d *iaDownload, u, dst string, count bool, base int64, size *int64) error {
-	part := dst + ".part"
+// podSaveCover saves the podcast's artwork as cover.jpg (checked to be an
+// image; a PNG or WebP one is made JPEG, at most 1000 px).
+func podSaveCover(u, path string) error {
+	data, err := coverImage("The podcast's server", u)
+	if err != nil {
+		return err
+	}
+	if data == nil {
+		return errors.New("no artwork")
+	}
+	if sniffImageExt(data) != "jpg" || len(data) > 2<<20 {
+		img, _, err := image.Decode(bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+		if b := img.Bounds(); b.Dx() > 1000 || b.Dy() > 1000 {
+			img = scaleImage(img, 1000, 1000*b.Dy()/max(b.Dx(), 1))
+		}
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
+			return err
+		}
+		data = buf.Bytes()
+	}
+	return writeFileAtomic(path, data)
+}
+
+// podFinish makes a downloaded .part an episode: its format from its first
+// bytes (the name's extension changes if the feed was wrong), its tags,
+// then its name, and it's noted in p's entry.
+func podFinish(p podcast, e podEpisode, part, name, cover string) error {
+	ext, ok := sniffAudio(part)
+	if !ok {
+		os.Remove(part)
+		if ext == "" {
+			return errors.New("the server didn't send an audio file")
+		}
+		return fmt.Errorf("the episode is %s, which can't be played here", strings.ToUpper(strings.TrimPrefix(ext, ".")))
+	}
+	dir := filepath.Dir(part)
+	if old := filepath.Ext(name); !strings.EqualFold(old, ext) {
+		rec := podRecord(p.Feed)
+		used := map[string]bool{}
+		for _, n := range rec.Files {
+			used[strings.ToLower(n)] = true
+		}
+		name = freeName(strings.TrimSuffix(name, old), ext, func(n string) bool {
+			return used[n] || fileExists(filepath.Join(dir, n)) || fileExists(filepath.Join(dir, n+".part"))
+		})
+	}
+	t := songTags{Title: e.Title, Artist: p.Author, Album: p.Name, AlbumArtist: p.Name, Genre: "Podcast", Track: e.Episode}
+	if t.Artist == "" {
+		t.Artist = p.Name
+	}
+	if !e.Date.IsZero() {
+		t.Year = e.Date.Year()
+	}
+	if err := tagPart(part, ext, t, cover); err != nil {
+		logMsg("Podcasts: tagging " + name + ": " + err.Error()) // kept untagged
+	}
+	dst := filepath.Join(dir, name)
+	if err := os.Rename(part, dst); err != nil {
+		return err
+	}
+	podUpdate(p, true, func(r *podcast) { r.Files[e.key()] = name })
+	return nil
+}
+
+// tagPart writes the tags into a downloaded file still named .part: in
+// place or through a new file for MP3, FLAC and Ogg (tagwrite.go), through
+// a new file for M4A (ij_m4a.go, with the cover inside).
+func tagPart(part, ext string, t songTags, cover string) error {
+	if ext != ".m4a" {
+		if !canWriteTags("x" + ext) {
+			return nil
+		}
+		return writeTagsAs(part, ext, t)
+	}
+	src, err := openM4A(part)
+	if err != nil {
+		return err
+	}
+	var art []byte
+	if fi, err := os.Stat(cover); err == nil && fi.Size() < 4<<20 {
+		art, _ = os.ReadFile(cover)
+	}
+	tmp := part + ".m4atmp"
+	err = src.WriteRange(tmp, 0, 0, m4aTags{Title: t.Title, Artist: t.Artist, AlbumArtist: t.AlbumArtist, Album: t.Album,
+		Year: itoaPos(t.Year), Track: t.Track, Cover: art})
+	src.Close()
+	if err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, part)
+}
+
+// sniffAudio: a file's format from its first bytes, as an extension, and
+// whether it plays here ("" when it isn't audio at all: an error page).
+func sniffAudio(path string) (string, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	b := make([]byte, 64)
+	n, _ := f.ReadAt(b, 0)
+	b = b[:n]
+	tagged := false
+	if n >= 10 && string(b[:3]) == "ID3" {
+		// what follows the ID3 tag
+		off := int64(10 + syncsafe(b[6:10]))
+		if b[5]&0x10 != 0 {
+			off += 10
+		}
+		b = b[:cap(b)]
+		n, _ = f.ReadAt(b, off)
+		b, tagged = b[:n], true
+	}
+	switch {
+	case len(b) >= 8 && string(b[4:8]) == "ftyp":
+		return ".m4a", true
+	case len(b) >= 4 && string(b[:4]) == "fLaC":
+		return ".flac", true
+	case len(b) >= 4 && string(b[:4]) == "OggS":
+		if bytes.Contains(b, []byte("OpusHead")) {
+			return ".opus", false
+		}
+		return ".ogg", true
+	case len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WAVE":
+		return ".wav", true
+	case len(b) >= 2 && b[0] == 0xFF && b[1]&0xE0 == 0xE0:
+		if (b[1]>>1)&3 == 0 {
+			return ".aac", false // ADTS (raw AAC)
+		}
+		return ".mp3", true
+	case tagged:
+		return ".mp3", true // an ID3 tag, then padding or junk before the frames
+	}
+	return "", false
+}
+
+// podPartInfo: what tells whether a .part can be continued (name.part.info).
+type podPartInfo struct {
+	URL   string `json:"url"`
+	ETag  string `json:"etag,omitempty"`
+	Mod   string `json:"modified,omitempty"`
+	Total int64  `json:"total,omitempty"`
+}
+
+// validator: the If-Range value (a weak ETag can't be one).
+func (m podPartInfo) validator() string {
+	if m.ETag != "" && !strings.HasPrefix(m.ETag, "W/") {
+		return m.ETag
+	}
+	return m.Mod
+}
+
+// contentRange reads "bytes 100-999/1000" ("/*": total -1).
+func contentRange(s string) (from, total int64, ok bool) {
+	rest, found := strings.CutPrefix(strings.TrimSpace(s), "bytes ")
+	if !found {
+		return 0, 0, false
+	}
+	rng, tot, found := strings.Cut(rest, "/")
+	a, _, found2 := strings.Cut(rng, "-")
+	if !found || !found2 {
+		return 0, 0, false
+	}
+	from, err := strconv.ParseInt(a, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	total = -1
+	if tot != "*" {
+		if total, err = strconv.ParseInt(tot, 10, 64); err != nil {
+			return 0, 0, false
+		}
+	}
+	return from, total, true
+}
+
+// podGet downloads u into part, continuing it when the server shows it's
+// the same file (else it starts again); a busy server or a dropped
+// connection is errPodRetry. *size is the file's size as known (the feed's
+// is often wrong): the server's replaces it, in the total too.
+func podGet(d *iaDownload, u, part string, base int64, size *int64) error {
+	infoPath := part + ".info"
 	var have int64
+	var info podPartInfo
 	if st, err := os.Stat(part); err == nil {
 		have = st.Size()
+	}
+	if have > 0 {
+		b, err := os.ReadFile(infoPath)
+		if err != nil || json.Unmarshal(b, &info) != nil || info.URL != u || info.validator() == "" {
+			have = 0 // nothing tells it's the same file: from the start
+		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -822,10 +1218,16 @@ func podGet(d *iaDownload, u, dst string, count bool, base int64, size *int64) e
 		d.mu.Unlock()
 		return fmt.Errorf("%w: %s", errPodRetry, msg)
 	}
+	restart := func(msg string) error {
+		os.Remove(part)
+		os.Remove(infoPath)
+		return retry(msg)
+	}
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
 	if have > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
+		req.Header.Set("If-Range", info.validator())
 	}
 	resp, err := updateClient(0).Do(req)
 	if err != nil {
@@ -834,24 +1236,39 @@ func podGet(d *iaDownload, u, dst string, count bool, base int64, size *int64) e
 			return errIACancelled
 		default:
 		}
+		if stalled.Load() {
+			return retry("Connection stalled")
+		}
 		return retry(iaErrText(err))
 	}
 	defer resp.Body.Close()
 	flags := os.O_WRONLY | os.O_CREATE
 	switch {
-	case resp.StatusCode == 206 && have > 0 && strings.HasPrefix(resp.Header.Get("Content-Range"), fmt.Sprintf("bytes %d-", have)):
+	case resp.StatusCode == 206 && have > 0:
+		from, total, ok := contentRange(resp.Header.Get("Content-Range"))
+		if !ok || from != have || (info.Total > 0 && total > 0 && total != info.Total) {
+			return restart("The episode changed on the server: starting again")
+		}
 		flags |= os.O_APPEND
 	case resp.StatusCode == 200:
 		flags |= os.O_TRUNC
 		have = 0
+		info = podPartInfo{URL: u, ETag: resp.Header.Get("ETag"), Mod: resp.Header.Get("Last-Modified"), Total: resp.ContentLength}
+		if b, err := json.Marshal(info); err == nil {
+			_ = os.WriteFile(infoPath, b, 0644)
+		}
 	case resp.StatusCode == 416 && have > 0:
-		return os.Rename(part, dst) // nothing after the .part's end
+		if info.Total > 0 && have == info.Total {
+			os.Remove(infoPath)
+			return nil // it was all there
+		}
+		return restart("The episode changed on the server: starting again")
 	case resp.StatusCode == 429 || resp.StatusCode >= 500:
 		return retry(fmt.Sprintf("the server answered %d", resp.StatusCode))
 	default:
 		return fmt.Errorf("the server answered %d (%s)", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
-	if count && resp.ContentLength > 0 {
+	if resp.ContentLength > 0 {
 		// the feed's size is often wrong: the server's counts
 		if real := have + resp.ContentLength; real != *size {
 			d.mu.Lock()
@@ -875,11 +1292,9 @@ func podGet(d *iaDownload, u, dst string, count bool, base int64, size *int64) e
 				return err
 			}
 			got += int64(n)
-			if count {
-				d.mu.Lock()
-				d.done = base + got
-				d.mu.Unlock()
-			}
+			d.mu.Lock()
+			d.done = base + got
+			d.mu.Unlock()
 		}
 		if rerr == io.EOF {
 			break
@@ -900,5 +1315,6 @@ func podGet(d *iaDownload, u, dst string, count bool, base int64, size *int64) e
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return os.Rename(part, dst)
+	os.Remove(infoPath)
+	return nil
 }
