@@ -316,6 +316,9 @@ func (ui *IpodUI) hideView() {
 			b.Items = b.Build()
 		}
 	}
+	if v.onClose != nil {
+		v.onClose()
+	}
 	if v.firstIn {
 		// the first full-screen view leaves with the panel
 		v.enter.Set(0)

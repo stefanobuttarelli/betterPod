@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.38.1 (2026-10-28)
+
+A review of the YouTube code.
+
+### Fixed
+- **The tools are checked before they're used.**
+  - yt-dlp is checked against the SHA-256 published with its release (SHA2-256SUMS), and Deno against its .sha256sum.
+  - Every tool must be a program for this console's CPU and must run.
+  - An update is put in place only once checked, so a failed update leaves the old tools working.
+- **yt-dlp starts faster:** the unpacked build is used (the one-file build unpacked itself on every start). The one-file build stays as a fallback.
+- **Cancel stops everything at once:** yt-dlp, the Python it starts and the JavaScript runtime. Leaving a search or a video page stops its yt-dlp too.
+- **The progress bar moves with the real yt-dlp** (it printed no progress without --progress).
+- **Downloads:**
+  - a playlist is downloaded by one yt-dlp, not one per video, and a video uses the information already loaded;
+  - Try Again continues the partial download and keeps the tracks already made;
+  - private and deleted videos in a playlist are left out, and a video that fails no longer stops the others;
+  - free space is checked first.
+- **Clearer messages:**
+  - "No connection to YouTube" when offline;
+  - "YouTube took too long to answer" on a timeout;
+  - YouTube's request to confirm you're not a bot is named as such;
+  - a video page that fails to load can be retried.
+- **Links typed without https://** open, and a video link from a playlist or a mix opens the video.
+- **Chapters without an end** end where the next one starts.
+- **Covers:** a square picture is used as it is (never cropped), and the bars around a cover are found faster.
+- **Cutting M4A:**
+  - a damaged or unusual file gives an error instead of a crash;
+  - only the sound track is taken from files that also have video;
+  - a file cut short is reported;
+  - the copy goes in large blocks (thousands of times fewer disk operations on long videos).
+- **File names** are kept short enough in bytes for the card.
+
 ## v0.38 (2026-10-28)
 
 ### Added

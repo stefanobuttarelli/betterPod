@@ -61,6 +61,7 @@ type CustomView interface {
 
 type View struct {
 	refresh          func() // reload its data (views that read it in the background)
+	onClose          func() // when it leaves the stack (stop its background work)
 	ID               string
 	Title            string
 	Kind             ViewKind

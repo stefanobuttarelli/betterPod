@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,7 @@ type ytEntry struct {
 	Duration   float64   `json:"duration"`
 	Count      int       `json:"playlist_count"`
 	Thumbnails []ytThumb `json:"thumbnails"`
+	Avail      string    `json:"availability"`
 }
 
 type ytInfo struct {
@@ -65,10 +67,16 @@ type ytInfo struct {
 	Thumbnail   string      `json:"thumbnail"`
 	WebURL      string      `json:"webpage_url"`
 	Entries     []ytEntry   `json:"entries"`
+
+	raw []byte // yt-dlp's answer, given back to it for the download
 }
 
 func (e ytEntry) isPlaylist() bool {
-	return e.Type == "playlist" || e.IEKey == "YoutubeTab" || strings.Contains(e.URL, "list=")
+	if e.Type == "playlist" || e.IEKey == "YoutubeTab" {
+		return true
+	}
+	// a playlist link (not a video played from a playlist or a mix)
+	return strings.Contains(e.URL, "list=") && !strings.Contains(e.URL, "v=") && !strings.Contains(e.URL, "youtu.be/")
 }
 
 func (e ytEntry) who() string {
@@ -96,6 +104,9 @@ func ytJSON(ctx context.Context, args ...string) (*ytInfo, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, errors.New("YouTube took too long to answer")
+		}
 		if ctx.Err() != nil {
 			return nil, errIACancelled
 		}
@@ -105,6 +116,7 @@ func ytJSON(ctx context.Context, args ...string) (*ytInfo, error) {
 	if err := json.Unmarshal(out, &info); err != nil {
 		return nil, fmt.Errorf("unexpected answer from yt-dlp")
 	}
+	info.raw = out
 	return &info, nil
 }
 
@@ -118,7 +130,7 @@ func ytError(stderr string, err error) error {
 			if i := strings.Index(l, "] "); strings.HasPrefix(l, "[") && i > 0 {
 				l = l[i+2:] // "[youtube] abc: …"
 			}
-			return errors.New(l)
+			return ytErrText(l)
 		}
 	}
 	return err
@@ -151,6 +163,11 @@ func (ui *IpodUI) youtubeView() *View {
 		cancel            context.CancelFunc
 	}{}
 	v := &View{ID: "youtube", Title: "YouTube", Kind: KindFull}
+	v.onClose = func() {
+		if st.cancel != nil {
+			st.cancel() // a search still running stops with the view
+		}
+	}
 	var run func()
 	v.Build = func() []Item {
 		editing := ui.keyboardEditing(&st.term)
@@ -219,12 +236,11 @@ func (ui *IpodUI) youtubeView() *View {
 			return
 		}
 		if ytURLRe.MatchString(q) {
-			// a link: open it
-			e := ytEntry{URL: q, Title: q}
-			if strings.Contains(q, "list=") && !strings.Contains(q, "watch") {
-				e.Type = "playlist"
+			// a link (typed without https:// too): open it
+			if !strings.HasPrefix(strings.ToLower(q), "http") {
+				q = "https://" + q
 			}
-			ui.showView(ui.ytItemView(e), "")
+			ui.showView(ui.ytItemView(ytEntry{URL: q, Title: q}), "")
 			return
 		}
 		if st.cancel != nil {
@@ -365,7 +381,18 @@ func albumFromVideo(i *ytInfo, asAlbum bool) ytAlbum {
 		a.Artist = "Unknown Artist"
 	}
 	if asAlbum && len(i.Chapters) >= 2 {
-		for _, c := range i.Chapters {
+		chs := append([]ytChapter(nil), i.Chapters...)
+		sort.SliceStable(chs, func(x, y int) bool { return chs[x].Start < chs[y].Start })
+		for k := range chs {
+			// a missing end: the next chapter's start (or the end of the video)
+			if chs[k].End <= chs[k].Start {
+				chs[k].End = 0
+				if k+1 < len(chs) {
+					chs[k].End = chs[k+1].Start
+				}
+			}
+		}
+		for _, c := range chs {
 			t := strings.TrimSpace(ytNumberRe.ReplaceAllString(c.Title, ""))
 			if ar, ti, ok := splitArtist(t); ok && strings.EqualFold(ar, a.Artist) {
 				t = ti
@@ -373,7 +400,11 @@ func albumFromVideo(i *ytInfo, asAlbum bool) ytAlbum {
 			if t == "" {
 				t = c.Title
 			}
-			a.Tracks = append(a.Tracks, ytTrack{Title: t, Start: c.Start, End: c.End, Duration: c.End - c.Start})
+			dur := c.End - c.Start
+			if c.End <= 0 {
+				dur = i.Duration - c.Start
+			}
+			a.Tracks = append(a.Tracks, ytTrack{Title: t, Start: c.Start, End: c.End, Duration: dur})
 		}
 		return a
 	}
@@ -405,8 +436,9 @@ func albumFromPlaylist(i *ytInfo) ytAlbum {
 		a.Artist = "Various Artists"
 	}
 	for _, e := range i.Entries {
-		if e.ID == "" {
-			continue
+		if e.ID == "" || e.Avail == "private" || e.Avail == "needs_auth" ||
+			e.Title == "[Deleted video]" || e.Title == "[Private video]" {
+			continue // gone from YouTube
 		}
 		t := ytClean(e.Title)
 		if ar, ti, ok := splitArtist(t); ok && strings.EqualFold(ar, a.Artist) {
@@ -428,11 +460,22 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 		err  string
 	}{}
 	v := &View{ID: "ytItem", Title: e.Title, Kind: KindFull}
+	var load func()
+	var cancel context.CancelFunc
+	v.onClose = func() {
+		if cancel != nil {
+			cancel()
+		}
+	}
 	v.Build = func() []Item {
 		if st.info == nil {
 			if st.err != "" {
 				l, sub, _ := strings.Cut(st.err, " · ")
-				return []Item{{Label: l, Sublabel: sub, NoArrow: true}}
+				return []Item{{Label: l, Sublabel: sub + " · press to try again", NoArrow: true, OnSelect: func() {
+					st.err = ""
+					ui.refreshView(v)
+					load()
+				}}}
 			}
 			return []Item{{Label: "Loading…", NoArrow: true}}
 		}
@@ -464,8 +507,20 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 		return items
 	}
 	v.Items = v.Build()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	load = func() {
+		var ctx context.Context
+		ctx, cancel = context.WithTimeout(context.Background(), 120*time.Second)
+		go ytLoadItem(ui, v, st, e, ctx, cancel)
+	}
+	load()
+	return v
+}
+
+func ytLoadItem(ui *IpodUI, v *View, st *struct {
+	info *ytInfo
+	err  string
+}, e ytEntry, ctx context.Context, cancel context.CancelFunc) {
+	func() {
 		defer cancel()
 		var info *ytInfo
 		var err error
@@ -487,7 +542,6 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 			ui.refreshView(v)
 		})
 	}()
-	return v
 }
 
 func lengthOrEmpty(sec float64) string {
@@ -523,50 +577,87 @@ func (ui *IpodUI) startYTDownload(info *ytInfo, a ytAlbum) {
 	ui.startDownloadJob(d, func() error { return ytRun(d, info, a) }, func() { ui.startYTDownload(info, a) })
 }
 
-// ytFetchAudio downloads a video's AAC audio into dir, following yt-dlp's
-// progress (done(bytes, total)); it returns the file.
-func ytFetchAudio(ctx context.Context, link, dir string, done func(int64, int64)) (string, error) {
-	cmd := ytCommand(ctx, "-f", "140/bestaudio[ext=m4a]", "--no-playlist", "--fixup", "never",
-		"--newline", "--progress-template", "download:KP %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s",
-		"-o", filepath.Join(dir, "%(id)s.%(ext)s"), "--print", "after_move:filepath", link)
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.StdoutPipe()
+// ytFetch downloads the AAC audio of the targets (video links, or none
+// with infoJSON: a video's info from ytItemView, which saves yt-dlp a new
+// extraction) into dir with one yt-dlp: progress(id, bytes, total) while
+// it goes, done(id, path) as each file is complete. A video that fails
+// doesn't stop the others; their errors come back by id. Partial files
+// stay in dir, and a later call continues them.
+func ytFetch(ctx context.Context, targets []string, infoJSON, dir string,
+	progress func(id string, got, total int64), done func(id, path string)) (map[string]error, error) {
+	args := []string{"-f", "140/bestaudio[ext=m4a]", "--no-playlist", "--fixup", "never", "--ignore-errors",
+		"--progress", "--newline",
+		"--progress-template", "download:KP %(info.id)s %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s",
+		"-o", filepath.Join(dir, "%(id)s.%(ext)s"), "--print", "after_move:KPDONE %(id)s %(filepath)s"}
+	if infoJSON != "" {
+		args = append(args, "--load-info-json", infoJSON)
+	} else {
+		args = append(args, targets...)
+	}
+	cmd := ytCommand(ctx, args...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return "", err
+		return nil, err
 	}
-	path := ""
-	sc := bufio.NewScanner(out)
-	for sc.Scan() {
-		l := strings.TrimSpace(sc.Text())
-		if strings.HasPrefix(l, "KP ") {
-			f := strings.Fields(l)
-			if len(f) >= 4 {
-				got, _ := strconv.ParseFloat(f[1], 64)
-				total, _ := strconv.ParseFloat(f[2], 64)
-				if total <= 0 {
-					total, _ = strconv.ParseFloat(f[3], 64)
-				}
-				done(int64(got), int64(total))
+	// errors by video ("ERROR: [youtube] ID: why"), read beside stdout so
+	// neither pipe fills up
+	errs := map[string]error{}
+	var lastErr string
+	errDone := make(chan struct{})
+	go func() {
+		defer close(errDone)
+		sc := bufio.NewScanner(stderr)
+		sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+		for sc.Scan() {
+			l := strings.TrimSpace(sc.Text())
+			if !strings.HasPrefix(l, "ERROR:") {
+				continue
 			}
-		} else if l != "" && (filepath.IsAbs(l) || strings.HasPrefix(l, dir)) {
-			path = l
+			lastErr = l
+			rest := strings.TrimSpace(strings.TrimPrefix(l, "ERROR:"))
+			if strings.HasPrefix(rest, "[") {
+				if i := strings.Index(rest, "] "); i > 0 {
+					rest = rest[i+2:]
+				}
+			}
+			if id, why, ok := strings.Cut(rest, ": "); ok && !strings.ContainsAny(id, " /") {
+				errs[id] = ytErrText(why)
+			}
+		}
+	}()
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		switch {
+		case len(f) >= 5 && f[0] == "KP":
+			got, _ := strconv.ParseFloat(f[2], 64)
+			total, _ := strconv.ParseFloat(f[3], 64)
+			if total <= 0 {
+				total, _ = strconv.ParseFloat(f[4], 64)
+			}
+			progress(f[1], int64(got), int64(total))
+		case len(f) >= 3 && f[0] == "KPDONE":
+			done(f[1], strings.TrimSpace(strings.SplitN(sc.Text(), " ", 3)[2]))
 		}
 	}
-	err = cmd.Wait()
+	io.Copy(io.Discard, stdout)
+	werr := cmd.Wait()
+	<-errDone
 	if ctx.Err() != nil {
-		return "", errIACancelled
+		return errs, errIACancelled
 	}
-	if err != nil {
-		return "", ytError(stderr.String(), err)
+	if werr != nil && len(errs) == 0 && lastErr != "" {
+		return errs, ytError(lastErr, werr)
 	}
-	if path == "" {
-		return "", errors.New("yt-dlp didn't say where the file is")
-	}
-	return path, nil
+	return errs, nil
 }
 
 // ytCover: the first thumbnail that loads, made square (JPEG).
@@ -593,7 +684,9 @@ func ytCover(ctx context.Context, urls []string) []byte {
 	return nil
 }
 
-// ytRun: the download (in the background).
+// ytRun: the download (in the background). The work folder (per video or
+// playlist) keeps partial files, so Try Again continues; it is removed
+// once the album is complete. Tracks already made are kept.
 func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -607,12 +700,38 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 	if err := os.MkdirAll(d.dir, 0755); err != nil {
 		return err
 	}
-	tmp := filepath.Join(ytToolsDir(), "work")
-	os.RemoveAll(tmp)
-	if err := os.MkdirAll(tmp, 0755); err != nil {
+	key := info.ID
+	if key == "" {
+		key = safeName(a.Album)
+	}
+	work := filepath.Join(ytToolsDir(), "work", safeName(key))
+	if err := os.MkdirAll(work, 0755); err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
+	n := len(a.Tracks)
+	trackPath := func(i int) string {
+		return filepath.Join(d.dir, fmt.Sprintf("%02d %s.m4a", i+1, safeName(a.Tracks[i].Title)))
+	}
+	missing := 0
+	for i := range a.Tracks {
+		if !fileExists(trackPath(i)) {
+			missing++
+		}
+	}
+	if missing == 0 {
+		os.RemoveAll(work)
+		return nil // all there already
+	}
+	// room for the audio (twice over for a video cut into chapters)
+	d.mu.Lock()
+	need := d.total
+	d.mu.Unlock()
+	if a.Tracks[0].VideoID == "" {
+		need *= 2
+	}
+	if fb := freeBytes(d.dir); fb >= 0 && fb < need+50<<20 {
+		return fmt.Errorf("Not enough space (%s free)", formatBytes(fb))
+	}
 	setState := func(s string) {
 		d.mu.Lock()
 		d.state = s
@@ -620,35 +739,58 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 	}
 	// the cover first, so the album shows with it
 	setState("Making the cover…")
-	cover := ytCover(ctx, a.CoverURLs)
-	if cover != nil {
-		_ = writeFileAtomic(filepath.Join(d.dir, "cover.jpg"), cover)
+	coverPath := filepath.Join(d.dir, "cover.jpg")
+	cover, _ := os.ReadFile(coverPath)
+	if cover == nil {
+		if cover = ytCover(ctx, a.CoverURLs); cover != nil {
+			_ = writeFileAtomic(coverPath, cover)
+		}
 	}
-	n := len(a.Tracks)
 	tags := func(i int) m4aTags {
 		return m4aTags{Title: a.Tracks[i].Title, Artist: a.Artist, AlbumArtist: a.Artist, Album: a.Album,
 			Year: a.Year, Track: i + 1, Tracks: n, Cover: cover}
 	}
-	trackPath := func(i int) string {
-		return filepath.Join(d.dir, fmt.Sprintf("%02d %s.m4a", i+1, safeName(a.Tracks[i].Title)))
-	}
-	progress := func(base int64) func(int64, int64) {
-		return func(got, total int64) {
-			d.mu.Lock()
-			if a.Tracks[0].VideoID == "" && total > 0 {
-				d.total = total // one download (a video): its real size
-			}
-			d.done = base + got
-			d.mu.Unlock()
-		}
+	fail := func(i int, err error) {
+		d.mu.Lock()
+		d.failed = append(d.failed, a.Tracks[i].Title)
+		d.lastErr = err.Error()
+		d.mu.Unlock()
 	}
 
 	if a.Tracks[0].VideoID == "" {
 		// one video: download once, then cut at the chapters
 		setState("Getting the audio")
-		src, err := ytFetchAudio(ctx, info.link(), tmp, progress(0))
+		var src string
+		var info2 string
+		if len(info.raw) > 0 {
+			info2 = filepath.Join(work, "info.json")
+			_ = os.WriteFile(info2, info.raw, 0644)
+		}
+		fetch := func(infoJSON string) (map[string]error, error) {
+			return ytFetch(ctx, []string{info.link()}, infoJSON, work,
+				func(_ string, got, total int64) {
+					d.mu.Lock()
+					if total > 0 {
+						d.total = total
+					}
+					d.done = got
+					d.mu.Unlock()
+				},
+				func(_, path string) { src = path })
+		}
+		errs, err := fetch(info2)
+		if err == nil && src == "" && info2 != "" && !errors.Is(err, errIACancelled) {
+			// the saved info may have expired (its links last some hours)
+			errs, err = fetch("")
+		}
 		if err != nil {
 			return err
+		}
+		if src == "" {
+			for _, e := range errs {
+				return e
+			}
+			return errors.New("yt-dlp didn't download the audio")
 		}
 		m, err := openM4A(src)
 		if err != nil {
@@ -656,9 +798,15 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 		}
 		defer m.Close()
 		for i, t := range a.Tracks {
+			if ctx.Err() != nil {
+				return errIACancelled
+			}
 			d.mu.Lock()
 			d.index, d.state = i, "Making the tracks"
 			d.mu.Unlock()
+			if fileExists(trackPath(i)) {
+				continue
+			}
 			end := t.End
 			if i == n-1 {
 				end = 0 // to the very end
@@ -667,57 +815,103 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 				if isDiskErr(err) {
 					return err
 				}
-				d.mu.Lock()
-				d.failed = append(d.failed, t.Title)
-				d.lastErr = err.Error()
-				d.mu.Unlock()
+				fail(i, err)
 			}
 		}
+		m.Close()
 		d.mu.Lock()
 		d.index, d.done = n, d.total
 		d.mu.Unlock()
+		os.RemoveAll(work)
 		return nil
 	}
 
-	// a playlist: a download per video
-	netFails := 0
+	// a playlist: one yt-dlp for all its videos; each is tagged as it lands
+	byID := map[string]int{}
+	var targets []string
 	for i, t := range a.Tracks {
-		d.mu.Lock()
-		d.index, d.state = i, t.Title
-		base := d.done
-		d.mu.Unlock()
-		if fileExists(trackPath(i)) {
-			continue // already there (Try Again)
+		if !fileExists(trackPath(i)) {
+			byID[t.VideoID] = i
+			targets = append(targets, "https://www.youtube.com/watch?v="+t.VideoID)
 		}
-		src, err := ytFetchAudio(ctx, "https://www.youtube.com/watch?v="+t.VideoID, tmp, progress(base))
-		if err == nil {
-			var m *m4aSource
-			if m, err = openM4A(src); err == nil {
+	}
+	var finished int64 // bytes of the videos done
+	made := 0
+	errs, err := ytFetch(ctx, targets, "", work,
+		func(id string, got, _ int64) {
+			d.mu.Lock()
+			if i, ok := byID[id]; ok {
+				d.index, d.state = i, a.Tracks[i].Title
+			}
+			d.done = finished + got
+			d.mu.Unlock()
+		},
+		func(id, path string) {
+			i, ok := byID[id]
+			if !ok {
+				return
+			}
+			if st, err := os.Stat(path); err == nil {
+				finished += st.Size()
+			}
+			m, err := openM4A(path)
+			if err == nil {
 				err = m.WriteRange(trackPath(i), 0, 0, tags(i))
 				m.Close()
 			}
-			os.Remove(src)
-		}
-		switch {
-		case err == nil:
-			netFails = 0
-		case errors.Is(err, errIACancelled), isDiskErr(err):
-			return err
-		default:
-			logMsg("YouTube: " + t.Title + ": " + err.Error())
-			d.mu.Lock()
-			d.failed = append(d.failed, t.Title)
-			d.lastErr = err.Error()
-			d.mu.Unlock()
-			if netFails++; netFails >= 3 {
-				return fmt.Errorf("%s (stopped: three videos in a row failed)", iaErrText(err))
+			os.Remove(path)
+			if err != nil {
+				fail(i, err)
+				return
 			}
+			made++
+			delete(byID, id)
+		})
+	if errors.Is(err, errIACancelled) {
+		return err
+	}
+	// the videos that didn't come
+	for id, i := range byID {
+		e := errs[id]
+		if e == nil {
+			e = errors.New("not downloaded")
 		}
+		fail(i, e)
+	}
+	if made == 0 && len(targets) > 0 {
+		if err != nil {
+			return err
+		}
+		for _, e := range errs {
+			return e
+		}
+		return errors.New("no video could be downloaded")
 	}
 	d.mu.Lock()
 	d.index = n
 	d.mu.Unlock()
+	if len(byID) == 0 {
+		os.RemoveAll(work)
+	}
 	return nil
+}
+
+// ytErrText: yt-dlp's reasons in a few words (the network ones as "No
+// connection to YouTube").
+func ytErrText(why string) error {
+	low := strings.ToLower(why)
+	for _, k := range []string{"name resolution", "network is unreachable", "timed out", "connection refused", "unable to download webpage", "connection reset", "no route to host"} {
+		if strings.Contains(low, k) {
+			return errors.New("No connection to YouTube")
+		}
+	}
+	if strings.Contains(low, "sign in to confirm") {
+		return errors.New("YouTube asks to confirm you're not a bot (try later)")
+	}
+	if r := []rune(why); len(r) > 90 {
+		why = string(r[:90]) + "…"
+	}
+	return errors.New(why)
 }
 
 // ---- Music → Search ----

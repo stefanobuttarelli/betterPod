@@ -12,12 +12,14 @@ package main
 // chunk, tags in udta/meta/ilst) + mdat.
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sort"
 )
 
 type m4aSample struct {
@@ -31,7 +33,9 @@ type m4aSource struct {
 	f         *os.File
 	timescale uint32
 	stsd      []byte // the sample description box, as it is
+	trackID   uint32 // the sound track (fragments of other tracks are skipped)
 	samples   []m4aSample
+	ends      []uint64 // the end time of each sample (timescale units), for cutting
 }
 
 type mp4Box struct {
@@ -60,7 +64,7 @@ func mp4Boxes(r io.ReaderAt, off, end int64) ([]mp4Box, error) {
 		} else if size == 0 {
 			size = end - off
 		}
-		if size < hdr || off+size > end {
+		if size < hdr || size > end-off {
 			return out, fmt.Errorf("bad box %q", typ)
 		}
 		out = append(out, mp4Box{typ, off, off + size, off + hdr})
@@ -101,8 +105,14 @@ func findBox(bs []mp4Box, typ string) (mp4Box, bool) {
 
 func be32(b []byte, i int) uint32 { return binary.BigEndian.Uint32(b[i:]) }
 
-// openM4A reads the audio track's samples of an M4A file.
-func openM4A(path string) (*m4aSource, error) {
+// openM4A reads the audio track's samples of an M4A file. A malformed
+// file is an error, never a crash.
+func openM4A(path string) (src *m4aSource, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			src, err = nil, fmt.Errorf("unreadable audio file (%v)", r)
+		}
+	}()
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -112,7 +122,7 @@ func openM4A(path string) (*m4aSource, error) {
 		f.Close()
 		return nil, err
 	}
-	src := &m4aSource{f: f}
+	src = &m4aSource{f: f}
 	if err := src.parse(st.Size()); err != nil {
 		f.Close()
 		return nil, err
@@ -131,7 +141,8 @@ func (s *m4aSource) parse(size int64) error {
 	if err != nil && len(top) == 0 {
 		return err
 	}
-	var trexDur, trexSize uint32
+	var trex []byte
+	var moofs []mp4Box
 	for _, b := range top {
 		switch b.typ {
 		case "moov":
@@ -149,21 +160,40 @@ func (s *m4aSource) parse(size int64) error {
 					}
 				case "mvex":
 					ks, _ := mp4Boxes(r, k.body, k.end)
-					if t, ok := findBox(ks, "trex"); ok {
-						d := r.slice(t)
-						if len(d) >= 24 {
-							trexDur, trexSize = be32(d, 12), be32(d, 16)
+					for _, t := range ks {
+						if t.typ == "trex" {
+							trex = append(trex, r.slice(t)...)
 						}
 					}
 				}
 			}
 		case "moof":
-			buf := make([]byte, b.end-b.start)
-			if _, err := s.f.ReadAt(buf, b.start); err != nil {
-				return err
-			}
-			s.parseMoof(bytesAt{buf, b.start}, b, trexDur, trexSize)
+			moofs = append(moofs, b)
 		}
+	}
+	// the defaults of the sound track's fragments
+	var trexDur, trexSize uint32
+	for i := 0; i+24 <= len(trex); i += 24 {
+		if be32(trex, i+4) == s.trackID || s.trackID == 0 {
+			trexDur, trexSize = be32(trex, i+12), be32(trex, i+16)
+		}
+	}
+	for _, b := range moofs {
+		if b.end-b.start > 64<<20 {
+			return errors.New("fragment too big")
+		}
+		buf := make([]byte, b.end-b.start)
+		if _, err := s.f.ReadAt(buf, b.start); err != nil {
+			return err
+		}
+		s.parseMoof(bytesAt{buf, b.start}, b, trexDur, trexSize)
+	}
+	// end times, for finding where to cut
+	s.ends = make([]uint64, len(s.samples))
+	var t uint64
+	for i, x := range s.samples {
+		t += uint64(x.dur)
+		s.ends[i] = t
 	}
 	return nil
 }
@@ -180,9 +210,17 @@ func (s *m4aSource) parseTrak(r bytesAt, trak mp4Box) {
 	if h, ok := findBox(mk, "hdlr"); !ok || len(r.slice(h)) < 12 || string(r.slice(h)[8:12]) != "soun" {
 		return
 	}
+	if h, ok := findBox(kids, "tkhd"); ok {
+		d := r.slice(h)
+		if len(d) >= 24 && d[0] == 1 {
+			s.trackID = be32(d, 20)
+		} else if len(d) >= 16 {
+			s.trackID = be32(d, 12)
+		}
+	}
 	if m, ok := findBox(mk, "mdhd"); ok {
 		d := r.slice(m)
-		if d[0] == 1 && len(d) >= 24 {
+		if len(d) >= 24 && d[0] == 1 {
 			s.timescale = be32(d, 20)
 		} else if len(d) >= 16 {
 			s.timescale = be32(d, 12)
@@ -210,12 +248,20 @@ func (s *m4aSource) parseTrak(r bytesAt, trak mp4Box) {
 	if !ok1 || !ok2 || !ok3 || !(ok4 || ok5) {
 		return
 	}
-	z := r.slice(stsz)
+	z, t, sc := r.slice(stsz), r.slice(stts), r.slice(stsc)
+	if len(z) < 12 || len(t) < 8 || len(sc) < 8 {
+		return
+	}
 	n := int(be32(z, 8))
+	fixed := be32(z, 4)
+	if fixed == 0 {
+		n = min(n, (len(z)-12)/4) // no more sizes than the box holds
+	} else {
+		n = min(n, 1<<24)
+	}
 	if n == 0 {
 		return
 	}
-	fixed := be32(z, 4)
 	sizes := make([]uint32, n)
 	for i := range sizes {
 		if fixed != 0 {
@@ -225,7 +271,6 @@ func (s *m4aSource) parseTrak(r bytesAt, trak mp4Box) {
 		}
 	}
 	durs := make([]uint32, 0, n)
-	t := r.slice(stts)
 	for i, e := 0, int(be32(t, 4)); i < e && 8+8*i+8 <= len(t); i++ {
 		cnt, d := be32(t, 8+8*i), be32(t, 12+8*i)
 		for j := uint32(0); j < cnt && len(durs) < n; j++ {
@@ -235,16 +280,21 @@ func (s *m4aSource) parseTrak(r bytesAt, trak mp4Box) {
 	var chunks []int64
 	if ok4 {
 		c := r.slice(stco)
+		if len(c) < 8 {
+			return
+		}
 		for i, e := 0, int(be32(c, 4)); i < e && 8+4*i+4 <= len(c); i++ {
 			chunks = append(chunks, int64(be32(c, 8+4*i)))
 		}
 	} else {
 		c := r.slice(co64)
+		if len(c) < 8 {
+			return
+		}
 		for i, e := 0, int(be32(c, 4)); i < e && 8+8*i+8 <= len(c); i++ {
 			chunks = append(chunks, int64(binary.BigEndian.Uint64(c[8+8*i:])))
 		}
 	}
-	sc := r.slice(stsc)
 	type run struct{ first, per uint32 }
 	var runs []run
 	for i, e := 0, int(be32(sc, 4)); i < e && 8+12*i+12 <= len(sc); i++ {
@@ -270,7 +320,8 @@ func (s *m4aSource) parseTrak(r bytesAt, trak mp4Box) {
 	}
 }
 
-// parseMoof adds a fragment's samples (fragmented MP4).
+// parseMoof adds a fragment's samples (fragmented MP4): only the sound
+// track's, every read checked against the box's size.
 func (s *m4aSource) parseMoof(r bytesAt, moof mp4Box, defDur, defSize uint32) {
 	kids, _ := mp4Boxes(r, moof.body, moof.end)
 	for _, traf := range kids {
@@ -280,40 +331,70 @@ func (s *m4aSource) parseMoof(r bytesAt, moof mp4Box, defDur, defSize uint32) {
 		tk, _ := mp4Boxes(r, traf.body, traf.end)
 		base := moof.start
 		dDur, dSize := defDur, defSize
-		if h, ok := findBox(tk, "tfhd"); ok {
-			d := r.slice(h)
-			flags := be32(d, 0) & 0xffffff
-			i := 8
-			if flags&0x1 != 0 {
-				base = int64(binary.BigEndian.Uint64(d[i:]))
-				i += 8
-			}
-			if flags&0x2 != 0 {
-				i += 4
-			}
-			if flags&0x8 != 0 {
-				dDur = be32(d, i)
-				i += 4
-			}
-			if flags&0x10 != 0 {
-				dSize = be32(d, i)
-			}
+		h, ok := findBox(tk, "tfhd")
+		if !ok {
+			continue
 		}
+		d := r.slice(h)
+		if len(d) < 8 {
+			continue
+		}
+		if id := be32(d, 4); s.trackID != 0 && id != s.trackID {
+			continue // another track (video)
+		}
+		flags := be32(d, 0) & 0xffffff
+		i := 8
+		need := func(n int) bool { return i+n <= len(d) }
+		if flags&0x1 != 0 && need(8) {
+			base = int64(binary.BigEndian.Uint64(d[i:]))
+			i += 8
+		}
+		if flags&0x2 != 0 {
+			i += 4
+		}
+		if flags&0x8 != 0 && need(4) {
+			dDur = be32(d, i)
+			i += 4
+		}
+		if flags&0x10 != 0 && need(4) {
+			dSize = be32(d, i)
+		}
+		if dDur == 0 {
+			dDur = 1024 // AAC's usual frame
+		}
+		next := base // a trun without its own offset follows the previous one
 		for _, b := range tk {
 			if b.typ != "trun" {
 				continue
 			}
 			d := r.slice(b)
+			if len(d) < 8 {
+				continue
+			}
 			flags := be32(d, 0) & 0xffffff
 			n := int(be32(d, 4))
 			i := 8
-			off := base
+			off := next
 			if flags&0x1 != 0 {
+				if i+4 > len(d) {
+					continue
+				}
 				off = base + int64(int32(be32(d, i)))
 				i += 4
 			}
 			if flags&0x4 != 0 {
 				i += 4
+			}
+			per := 0
+			for _, f := range []uint32{0x100, 0x200, 0x400, 0x800} {
+				if flags&f != 0 {
+					per += 4
+				}
+			}
+			if per > 0 {
+				n = min(n, (len(d)-i)/per)
+			} else {
+				n = min(n, 1<<20)
 			}
 			for k := 0; k < n; k++ {
 				dur, size := dDur, dSize
@@ -331,12 +412,10 @@ func (s *m4aSource) parseMoof(r bytesAt, moof mp4Box, defDur, defSize uint32) {
 				if flags&0x800 != 0 {
 					i += 4
 				}
-				if i > len(d) {
-					return
-				}
 				s.samples = append(s.samples, m4aSample{off, size, dur})
 				off += int64(size)
 			}
+			next = off
 		}
 	}
 }
@@ -351,21 +430,21 @@ func (s *m4aSource) Duration() float64 {
 }
 
 // sampleRange: the samples from start to end seconds (end <= 0: to the
-// end of the track).
+// end of the track): those starting at or after start, before end.
 func (s *m4aSource) sampleRange(start, end float64) (int, int) {
 	ts := float64(s.timescale)
-	var t uint64
-	from, to := len(s.samples), len(s.samples)
-	for i, x := range s.samples {
-		sec := float64(t) / ts
-		if from == len(s.samples) && sec >= start-0.0001 {
-			from = i
+	n := len(s.samples)
+	// sample i starts at ends[i-1] (0 for the first)
+	startAt := func(i int) float64 {
+		if i == 0 {
+			return 0
 		}
-		if end > 0 && sec >= end-0.0001 {
-			to = i
-			break
-		}
-		t += uint64(x.dur)
+		return float64(s.ends[i-1]) / ts
+	}
+	from := sort.Search(n, func(i int) bool { return startAt(i) >= start-0.0001 })
+	to := n
+	if end > 0 {
+		to = sort.Search(n, func(i int) bool { return startAt(i) >= end-0.0001 })
 	}
 	if from > to {
 		from = to
@@ -382,7 +461,12 @@ type m4aTags struct {
 
 // WriteRange writes the samples from start to end seconds (end <= 0: to
 // the end) as a tagged M4A at path.
-func (s *m4aSource) WriteRange(path string, start, end float64, tags m4aTags) error {
+func (s *m4aSource) WriteRange(path string, start, end float64, tags m4aTags) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("couldn't write the track (%v)", r)
+		}
+	}()
 	from, to := s.sampleRange(start, end)
 	if to <= from {
 		return errors.New("nothing in that part of the audio")
@@ -408,45 +492,39 @@ func (s *m4aSource) WriteRange(path string, start, end float64, tags m4aTags) er
 	if err != nil {
 		return err
 	}
-	w := &errWriter{w: out}
-	w.write(ftyp)
-	w.write(moov)
-	w.write(u32(uint32(8 + data)))
-	w.write([]byte("mdat"))
-	buf := make([]byte, 0, 64<<10)
-	for _, x := range smp {
-		if w.err != nil {
-			break
+	bw := bufio.NewWriterSize(out, 256<<10)
+	err = func() error {
+		for _, b := range [][]byte{ftyp, moov, u32(uint32(8 + data)), []byte("mdat")} {
+			if _, err := bw.Write(b); err != nil {
+				return err
+			}
 		}
-		if cap(buf) < int(x.size) {
-			buf = make([]byte, 0, x.size)
+		// samples next to each other in the source are copied in one go
+		for i := 0; i < len(smp); {
+			start, n, j := smp[i].off, int64(smp[i].size), i+1
+			for j < len(smp) && smp[j].off == start+n && n < 4<<20 {
+				n += int64(smp[j].size)
+				j++
+			}
+			c, err := io.CopyN(bw, io.NewSectionReader(s.f, start, n), n)
+			if err != nil || c != n {
+				if err == nil || errors.Is(err, io.EOF) {
+					err = io.ErrUnexpectedEOF // the file ends before its samples do
+				}
+				return err
+			}
+			i = j
 		}
-		b := buf[:x.size]
-		if _, err := s.f.ReadAt(b, x.off); err != nil && !errors.Is(err, io.EOF) {
-			w.err = err
-			break
-		}
-		w.write(b)
+		return bw.Flush()
+	}()
+	if cerr := out.Close(); err == nil {
+		err = cerr
 	}
-	if err := out.Close(); w.err == nil {
-		w.err = err
-	}
-	if w.err != nil {
+	if err != nil {
 		os.Remove(tmp)
-		return w.err
+		return err
 	}
 	return os.Rename(tmp, path)
-}
-
-type errWriter struct {
-	w   io.Writer
-	err error
-}
-
-func (e *errWriter) write(b []byte) {
-	if e.err == nil {
-		_, e.err = e.w.Write(b)
-	}
 }
 
 func u32(v uint32) []byte { b := make([]byte, 4); binary.BigEndian.PutUint32(b, v); return b }
@@ -487,25 +565,25 @@ func (s *m4aSource) moov(smp []m4aSample, dur uint64, chunkOff uint32, tags m4aT
 	smhd := mp4Make("smhd", u32(0), u16(0), u16(0))
 	dinf := mp4Make("dinf", mp4Make("dref", u32(0), u32(1), mp4Make("url ", u32(1))))
 	// durations, run-length coded
-	var stts bytes.Buffer
+	var stts []byte
 	entries := 0
 	for i := 0; i < len(smp); {
 		j := i
 		for j < len(smp) && smp[j].dur == smp[i].dur {
 			j++
 		}
-		stts.Write(u32(uint32(j - i)))
-		stts.Write(u32(smp[i].dur))
+		stts = binary.BigEndian.AppendUint32(stts, uint32(j-i))
+		stts = binary.BigEndian.AppendUint32(stts, smp[i].dur)
 		entries++
 		i = j
 	}
-	sttsB := mp4Make("stts", u32(0), u32(uint32(entries)), stts.Bytes())
+	sttsB := mp4Make("stts", u32(0), u32(uint32(entries)), stts)
 	stsc := mp4Make("stsc", u32(0), u32(1), u32(1), u32(uint32(len(smp))), u32(1))
-	var sz bytes.Buffer
+	sz := make([]byte, 0, 4*len(smp))
 	for _, x := range smp {
-		sz.Write(u32(x.size))
+		sz = binary.BigEndian.AppendUint32(sz, x.size)
 	}
-	stsz := mp4Make("stsz", u32(0), u32(0), u32(uint32(len(smp))), sz.Bytes())
+	stsz := mp4Make("stsz", u32(0), u32(0), u32(uint32(len(smp))), sz)
 	stco := mp4Make("stco", u32(0), u32(1), u32(chunkOff))
 	stbl := mp4Make("stbl", s.stsd, sttsB, stsc, stsz, stco)
 	minf := mp4Make("minf", smhd, dinf, stbl)

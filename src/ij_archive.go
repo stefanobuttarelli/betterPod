@@ -616,6 +616,11 @@ func safeName(s string) string {
 	if len([]rune(s)) > 80 {
 		s = string([]rune(s)[:80])
 	}
+	// and short enough in bytes for the card's file system (255)
+	for len(s) > 200 {
+		r := []rune(s)
+		s = string(r[:len(r)-1])
+	}
 	if s == "" {
 		s = "Unknown"
 	}

@@ -26,10 +26,10 @@ const ytCoverSize = 800
 func squareCover(src image.Image) ([]byte, error) {
 	var out image.Image
 	b := src.Bounds()
-	if r, ok := framedCover(src); ok {
+	if math.Abs(float64(b.Dx())/float64(b.Dy())-1) < 0.04 {
+		out = scaleImage(src, ytCoverSize, ytCoverSize) // already square: as it is
+	} else if r, ok := framedCover(src); ok {
 		out = scaleImage(cropTo(src, r), ytCoverSize, ytCoverSize)
-	} else if math.Abs(float64(b.Dx())/float64(b.Dy())-1) < 0.04 {
-		out = scaleImage(src, ytCoverSize, ytCoverSize) // already square
 	} else {
 		out = blurFillSquare(src, ytCoverSize)
 	}
@@ -48,15 +48,19 @@ func cropTo(src image.Image, r image.Rectangle) image.Image {
 
 // framedCover finds a roughly square picture on a plain background (the
 // colour of the edges): its rectangle, made exactly square.
-func framedCover(src image.Image) (image.Rectangle, bool) {
-	b := src.Bounds()
-	w, h := b.Dx(), b.Dy()
-	if w < 64 || h < 64 {
+func framedCover(full image.Image) (image.Rectangle, bool) {
+	fb := full.Bounds()
+	if fb.Dx() < 64 || fb.Dy() < 64 {
 		return image.Rectangle{}, false
 	}
+	// looked at on a small copy (fast pixel access), mapped back after
+	const aw = 320
+	ah := aw * fb.Dy() / fb.Dx()
+	src := scaleImage(full, aw, ah)
+	w, h := aw, ah
 	at := func(x, y int) (int, int, int) {
-		r, g, bb, _ := src.At(b.Min.X+x, b.Min.Y+y).RGBA()
-		return int(r >> 8), int(g >> 8), int(bb >> 8)
+		i := src.PixOffset(x, y)
+		return int(src.Pix[i]), int(src.Pix[i+1]), int(src.Pix[i+2])
 	}
 	// the background: the average of the left and right edge columns,
 	// which must be plain
@@ -125,11 +129,12 @@ func framedCover(src image.Image) (image.Rectangle, bool) {
 	if ratio < 0.9 || ratio > 1.12 || float64(cw) > 0.85*float64(w) {
 		return image.Rectangle{}, false
 	}
-	// exactly square, centred on the found picture
-	s := min(cw, ch)
-	cx, cy := x0+cw/2, y0+ch/2
-	r := image.Rect(cx-s/2, cy-s/2, cx-s/2+s, cy-s/2+s).Add(b.Min)
-	return r.Intersect(b), true
+	// exactly square, centred on the found picture, in the full image
+	k := float64(fb.Dx()) / aw
+	s := int(float64(min(cw, ch)) * k)
+	cx, cy := int(float64(x0)*k+float64(cw)*k/2), int(float64(y0)*k+float64(ch)*k/2)
+	r := image.Rect(cx-s/2, cy-s/2, cx-s/2+s, cy-s/2+s).Add(fb.Min)
+	return r.Intersect(fb), true
 }
 
 func abs(v int) int {

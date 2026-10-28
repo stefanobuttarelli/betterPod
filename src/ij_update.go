@@ -53,7 +53,7 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.38"
+	KNULLIPOD_VERSION  = "0.38.1"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 	// GitHub's API serves the current files at once; raw.githubusercontent
