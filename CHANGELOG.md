@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.52.1 (2026-10-28)
+
+### Fixed
+- **YouTube cover:** choosing the Cover row opens its screen at once. While the picture is got ready (scaling it and finding the cover take a moment on the console), the whole screen shows the old iPod's moving 45° stripes, with "Getting the picture ready…", instead of the screen freezing. Choosing Whole Picture shows the stripes in the cover's square while the blurred cover is made. The automatic cover is now worked out once per picture, not each time the page is drawn.
+
 ## v0.52 (2026-10-28)
 
 ### Added

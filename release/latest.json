@@ -1,8 +1,8 @@
 {
-  "version": "0.52",
-  "path": "release/knullipod-v0.52-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.52-knulli.zip",
-  "sha256": "a2bbe81873d8b3b72820747cd77b5d27013d1f75163ccaa3c257149e89709253",
-  "size": 15150874,
-  "notes": "- Settings → Library → Music Folder: move the music to another memory card, checked file by file\n- YouTube: choose the square cover before downloading (0.51)\n- Clear Now Playing asks inside the Now Playing block (0.50)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)"
+  "version": "0.52.1",
+  "path": "release/knullipod-v0.52.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.52.1-knulli.zip",
+  "sha256": "711763d20500232c1129c15581f8abde0b2702f250921cbfbd95ddcc732606cc",
+  "size": 15152834,
+  "notes": "- YouTube: the cover screen opens at once, with moving stripes while the picture gets ready\n- Settings → Library → Music Folder: move the music to another memory card, checked file by file (0.52)\n- YouTube: choose the square cover before downloading (0.51)\n- Clear Now Playing asks inside the Now Playing block (0.50)"
 }
