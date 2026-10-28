@@ -287,12 +287,12 @@ func (ui *IpodUI) hideView() {
 		ui.hideKeyboard()
 		return
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
-		cf.menu(ui)
-		return
-	}
 	if ui.activeSheet() != nil {
 		ui.hideSheet()
+		return
+	}
+	if cf := ui.cover; cf != nil && !cf.exiting {
+		cf.menu(ui)
 		return
 	}
 	if len(ui.split)+len(ui.full) <= 1 {
@@ -445,12 +445,13 @@ func (ui *IpodUI) scroll(dir int, velocity float64) {
 		ui.dirty = true
 		return
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
-		cf.scroll(ui, dir, velocity)
-		return
-	}
+	// a sheet goes first, also over Cover Flow (its album's options)
 	if sh := ui.activeSheet(); sh != nil {
 		sh.scroll(ui, dir, velocity)
+		return
+	}
+	if cf := ui.cover; cf != nil && !cf.exiting {
+		cf.scroll(ui, dir, velocity)
 		return
 	}
 	v := ui.topScreen()
@@ -486,12 +487,12 @@ func (ui *IpodUI) centerClick() {
 		ui.dirty = true
 		return
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
-		cf.center(ui)
-		return
-	}
 	if sh := ui.activeSheet(); sh != nil {
 		sh.selectCurrent(ui)
+		return
+	}
+	if cf := ui.cover; cf != nil && !cf.exiting {
+		cf.center(ui)
 		return
 	}
 	v := ui.topScreen()

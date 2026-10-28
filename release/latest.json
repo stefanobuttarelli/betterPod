@@ -1,8 +1,8 @@
 {
-  "version": "0.48.1",
-  "path": "release/knullipod-v0.48.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.48.1-knulli.zip",
-  "sha256": "a01068a52634a7f8c03dab2680a6b5fc5800e4a409bc9434d2ccabb56ff3c62c",
-  "size": 15072741,
-  "notes": "- Wired earphones' button: 1 click play/pause, 2 next song, 3 previous, as on the iPod\n- Wired earphones' volume buttons change the volume\n- Album Info: Y on an album → Edit Album Info (0.48)\n- Clear Now Playing; up/right raise the volume on Now Playing (0.47)"
+  "version": "0.48.2",
+  "path": "release/knullipod-v0.48.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.48.2-knulli.zip",
+  "sha256": "25d0f659d6cfb17030572ecf38e65222c7ba8a95ba9e0d72f09bfe7c6653de15",
+  "size": 15072452,
+  "notes": "- The options over Cover Flow (Play Next…) take the arrows and A, instead of Cover Flow underneath\n- The song in the header no longer shows where the Now Playing block already shows it\n- Wired earphones' button: 1 click play/pause, 2 next, 3 previous (0.48.1)\n- Album Info: Y on an album → Edit Album Info (0.48)"
 }

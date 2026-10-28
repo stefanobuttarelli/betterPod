@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.48.2 (2026-10-28)
+
+### Fixed
+- **The options over Cover Flow work.** Y on an album in Cover Flow opened Play Next / Add to End of Queue / Edit Album Info. But the arrows and A still moved and opened Cover Flow underneath, and B closed Cover Flow's album instead of the sheet. Now a sheet takes the keys first, over Cover Flow too.
+- **The song in the header shows only where the song isn't shown already.** It no longer shows on the menus with the Now Playing block at the bottom (the main menu, Music, an album's songs…), or while the preview on the right is Now Playing. It shows on the other screens, and in Cover Flow.
+
 ## v0.48.1 (2026-10-28)
 
 ### Fixed
