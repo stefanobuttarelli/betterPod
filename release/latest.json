@@ -1,8 +1,8 @@
 {
-  "version": "0.32.3",
-  "path": "release/knullipod-v0.32.3-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32.3-knulli.zip",
-  "sha256": "7805fbd4606518ad36893ef62966bd3a9aa00bf12fe232230bf6912b60754023",
-  "size": 14343398,
-  "notes": "Internet Archive: retries, resume, skipped tracks"
+  "version": "0.33",
+  "path": "release/knullipod-v0.33-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.33-knulli.zip",
+  "sha256": "fc705f7c4a6b058c95c3318ec771d2fe6faf4b6c723f01e9df3e4b596f2f969a",
+  "size": 14388607,
+  "notes": "New: Weather, in Games"
 }

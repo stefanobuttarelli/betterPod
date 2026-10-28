@@ -236,13 +236,14 @@ func (ui *IpodUI) enqueue(tracks []*Track, next bool) {
 	q.Tracks = append(q.Tracks[:pos], append(append([]*Track{}, tracks...), q.Tracks[pos:]...)...)
 }
 
-// gamesView: Brick and Solitaire.
+// gamesView: Brick, Solitaire and Weather.
 // The preview on the right is the Games icon.
 func (ui *IpodUI) gamesView() *View {
 	v := &View{ID: "games", Title: "Games", Kind: KindSplit}
 	v.Items = []Item{
 		{Label: "Brick", Preview: PrevGames, OnSelect: func() { ui.openBrick() }},
 		{Label: "Solitaire", Preview: PrevGames, OnSelect: func() { ui.openSolitaire() }},
+		{Label: "Weather", Preview: PrevGames, OnSelect: func() { ui.openWeather() }},
 	}
 	return v
 }

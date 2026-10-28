@@ -33,7 +33,7 @@
 - **Now Playing.** The tilted 3D cover, a scrubber for seeking and a volume bar. Small icons show shuffle and repeat. Lossless files get a LOSSLESS badge with a small animated level meter.<br><img src="docs/images/lossless.gif" width="240" alt="Lossless badge">
 - **Japanese titles too.** Latin, Greek and Cyrillic come from Inter, kana and kanji from Noto Sans JP.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
-- **Games:** Brick and Solitaire, the classic iPod games. Solitaire saves your game.
+- **Games:** Brick and Solitaire, the classic iPod games (Solitaire saves your game), and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
 - **Audio quality:**
   - every track plays at its own sample rate (44.1, 48, 96, 192 kHz…), with 32-bit float mixing;
   - 24-bit FLAC and ALAC reach the system mixer untouched;
@@ -63,6 +63,7 @@
 |:-:|:-:|:-:|
 | <img src="docs/images/albums.png" width="260" alt="Albums"><br>Albums | <img src="docs/images/coverflow-back.png" width="260" alt="Cover Flow, flipped"><br>Cover Flow track list | <img src="docs/images/np-volume.png" width="260" alt="Now Playing volume"><br>Now Playing, volume |
 | <img src="docs/images/search.png" width="260" alt="Search"><br>Search | <img src="docs/images/brick.png" width="260" alt="Brick"><br>Brick | <img src="docs/images/solitaire.png" width="260" alt="Solitaire"><br>Solitaire |
+| <img src="docs/images/weather.png" width="260" alt="Weather"><br>Weather | | |
 | <img src="docs/images/albums-dark.png" width="260" alt="Albums, dark theme"><br>Dark theme | <img src="docs/images/coverflow-dark.png" width="260" alt="Cover Flow, dark theme"><br>Cover Flow, dark | <img src="docs/images/database.png" width="260" alt="Settings, Database"><br>Settings → Database |
 
 <sub>Screenshots are real frames from the app. The albums, artists and covers are made up for the demo.</sub>
@@ -113,6 +114,10 @@ The first start scans the music folder. Later starts load the saved library inst
   - the wheel moves the hand, and A picks up or drops cards;
   - holding A undoes a move, and B opens the pause menu.
 - **Brick:** left/right move the paddle, and A launches the ball.
+- **Weather:**
+  - in the list, Search for a Place opens the keyboard; choosing a result saves the place;
+  - in a forecast, the wheel or d-pad picks the day, A updates the forecast and B goes back;
+  - holding A on a place removes it; Units switches between °C and °F.
 
 ## Settings
 
