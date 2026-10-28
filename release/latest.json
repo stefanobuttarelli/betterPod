@@ -1,8 +1,8 @@
 {
-  "version": "0.44",
-  "path": "release/knullipod-v0.44-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.44-knulli.zip",
-  "sha256": "a31a6e774985410f719b18e28d1dc877d0346ddfba0d8dcd64ac35ac7f07052e",
-  "size": 15008907,
-  "notes": "- Cancel is grey and Done is blue on the download screens: blue means it's over\n- Software Update shows every note whole, and they scroll when they don't fit\n- YouTube: the header says YouTube, the video is the first row (0.43)\n- Settings → Podcasts takes Podcasts out of the main menu (0.42)\n- Podcasts in the main menu, by Emanuele Macrì (0.41)"
+  "version": "0.45",
+  "path": "release/knullipod-v0.45-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.45-knulli.zip",
+  "sha256": "9c41b70c7ee0410a624332c2d00b10118c8f76d66c9dfe2791332e0680ec94d4",
+  "size": 15007916,
+  "notes": "- The Solitaire icon shows whole (the queen was cut off)\n- Cancel is grey and Done is blue on the download screens (0.44)\n- Software Update shows every note whole, and they scroll (0.44)\n- YouTube: the header says YouTube, the video is the first row (0.43)\n- Settings → Podcasts takes Podcasts out of the main menu (0.42)"
 }

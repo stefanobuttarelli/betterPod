@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45 (2026-10-28)
+
+### Fixed
+- **The Solitaire icon is no longer cut off.** The tilted queen on the left went past the edge of its square. The fan of three cards is a little smaller now, so it shows whole.
+
 ## v0.44 (2026-10-28)
 
 ### Changed

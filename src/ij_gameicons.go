@@ -101,6 +101,9 @@ func (ui *IpodUI) solitaireIcon() *image.RGBA {
 		angle      float64
 	}{{"Q", "sol_diamond", true, -18}, {"K", "sol_heart", true, 0}, {"A", "sol_spade", false, 18}}
 	cw, ch := 46.0, 64.0
+	// the fan, a little smaller than the square: the tilted outer cards'
+	// corners would go past its edges (and be cut)
+	dc.ScaleAbout(0.84, 0.84, 50*u, 53*u)
 	for i, c := range cards {
 		dc.Push()
 		cx, cy := 50.0+float64(i-1)*14, 54.0+math.Abs(float64(i-1))*3
