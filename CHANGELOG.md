@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.49 (2026-10-28)
+
+### Added
+- **Settings → Bluetooth:** connect the headphones without leaving KnulliPod.
+  - **Your devices:** the paired devices, with Connected (and the battery, when they tell it) or Not Connected. A on one connects or disconnects it. Y on one: Connect / Disconnect, Forget This Device (asks first).
+  - **Find New Devices** searches for 12 seconds, with a bar. New devices show as they're found; A on one pairs it, trusts it (so it reconnects by itself) and connects it.
+  - **Bluetooth On/Off.**
+  - **The sound** goes to the headphones once they're connected (PipeWire's default output).
+  - **The list** is read again every 4 seconds while the screen is open, so a change made elsewhere shows. Errors are in words ("not found · is it on and close by?").
+  - **A picture for each device:** over-ear headphones, earbuds, speaker, game controller or Bluetooth, from what the device says it is and its name.
+  - **The Settings row** shows the device connected.
+  - It uses Knulli's `bluetoothctl`. Without it, the screen says so.
+- **The volume shows in the header,** on every screen but Now Playing (which has its own bar). When it changes from the console's keys, the headphones or the wheel, the title slides up and the volume comes in: an icon and a bar, shorter on the half-width menus and longer on full screens. It goes again after 1.5 s.
+  - **The icon** is a speaker for the console's speaker and headphones for wired or Bluetooth headphones (the jack's state is followed).
+  - It replaces the box in the middle of the screen.
+
 ## v0.48.2 (2026-10-28)
 
 ### Fixed

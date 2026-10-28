@@ -277,6 +277,7 @@ func (ui *IpodUI) settingsView() *View {
 			{Label: "Library", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.libraryInfoView(), "") }},
 			{Label: "Database", Preview: PrevSettings, Value: dbLabel(dataDir()), OnSelect: func() { ui.showView(ui.databaseView(), "") }},
 			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
+			{Label: "Bluetooth", Preview: PrevSettings, Value: btSettingsValue(), OnSelect: func() { ui.showView(ui.bluetoothView(), "") }},
 			{Label: "Podcasts", Preview: PrevSettings, Value: onOff(podsInMenu), OnSelect: func() {
 				podsInMenu = !podsInMenu // in the main menu or not (downloaded episodes stay in Music)
 				ui.savePrefs()

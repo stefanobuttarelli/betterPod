@@ -2,6 +2,7 @@ package main
 
 /*
 int disp_brightness(int value);
+int headphone_jack(void);
 */
 import "C"
 
@@ -339,3 +340,6 @@ func init() {
 		backlightAtStart = getBacklightPercent() // remember the starting level before anything dims it
 	}
 }
+
+// headphoneJack: wired headphones in the jack (1), not (0), unknown (-1).
+func headphoneJack() int { return int(C.headphone_jack()) }

@@ -265,6 +265,11 @@ void input_init(void) {
 //
 //
 static struct { int fd; int bt; int jack; int logged; char name[24]; } media_dev[16];
+
+// headphone_jack: wired headphones in the jack (1), not (0), or no jack
+// device seen (-1). Read when the jack device is opened, then followed.
+static int hp_jack = -1;
+int headphone_jack(void) { return hp_jack; }
 static int media_n;
 static Uint32 media_last_scan;
 static int media_disabled = -1;
@@ -338,6 +343,11 @@ static void media_scan(void) {
         media_dev[media_n].fd = fd;
         media_dev[media_n].bt = id.bustype == BUS_BLUETOOTH;
         media_dev[media_n].jack = (sw[0] & (1UL << SW_HEADPHONE_INSERT)) != 0;
+        if (media_dev[media_n].jack) {
+            unsigned long now_sw[1] = {0};
+            if (ioctl(fd, EVIOCGSW(sizeof(now_sw)), now_sw) >= 0)
+                hp_jack = (now_sw[0] & (1UL << SW_HEADPHONE_INSERT)) != 0;
+        }
         media_dev[media_n].logged = 0;
         snprintf(media_dev[media_n].name, sizeof(media_dev[media_n].name), "%s", e->d_name);
         {
@@ -396,8 +406,9 @@ static void media_poll(void) {
                     last_g = g; last_t = now;
                     push_key(k, 1);
                     push_key(k, 0);
-                } else if (ev[j].type == EV_SW && ev[j].code == SW_HEADPHONE_INSERT && ev[j].value == 0) {
-                    push_key(KEY_HP_UNPLUG, 1); push_key(KEY_HP_UNPLUG, 0);
+                } else if (ev[j].type == EV_SW && ev[j].code == SW_HEADPHONE_INSERT) {
+                    hp_jack = ev[j].value != 0;
+                    if (ev[j].value == 0) { push_key(KEY_HP_UNPLUG, 1); push_key(KEY_HP_UNPLUG, 0); }
                 }
             }
         }

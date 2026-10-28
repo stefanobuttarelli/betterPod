@@ -53,6 +53,7 @@
 - **Internet Archive.** Search archive.org, see each item's license, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
 - **Album Info.** Hold A (or press Y) on an album, in the lists or in Cover Flow, and choose Edit Album Info; Settings → Library → **Missing Info** lists the albums without an artist or track numbers. **Find Info Online** asks MusicBrainz, iTunes, Deezer and Wikipedia; choosing a result fills in album, album artist, year and genre and pairs its songs with yours (titles, artists, numbers). For a game rip, Wikipedia gives the composer or the game's developer. Every field can also be typed. **Save Changes** writes the tags into the MP3, FLAC and Ogg Vorbis files and scans the library again.
 - **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field. Only the files KnulliPod downloaded count as downloaded and get deleted. The search goes to Apple; feeds and episodes come from each podcast's own servers, which see the console's IP address, like any podcast app.
+- **Bluetooth headphones** connect from Settings → Bluetooth (paired ones with A, new ones with Find New Devices), without going back to Knulli.
 - **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
@@ -229,6 +230,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/tagwrite.go` | Writes tags into MP3 (ID3v2), FLAC and Ogg Vorbis files (podcast episodes, Album Info) |
 | `src/ij_albuminfo.go` | Album Info and Missing Info: an album's tags, filled in online or by hand |
 | `src/ij_infosources.go` | Album Info's sources: MusicBrainz releases, iTunes and Deezer albums with their songs, Wikipedia's infobox |
+| `src/ij_bluetooth.go` | Settings → Bluetooth (bluetoothctl): paired and new devices, their pictures |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
 | `src/ij_youtube.go`, `src/ij_ytdl.go` | YouTube: tools and settings; search, item page, download as albums |
 | `src/ij_m4a.go`, `src/ij_ytcover.go` | M4A cutting and tagging without ffmpeg; square covers from video pictures |

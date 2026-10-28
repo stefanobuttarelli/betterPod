@@ -126,6 +126,14 @@ func (ui *IpodUI) drawHeaderTitle(sub *image.RGBA, title string, tx, maxW float6
 	f := face(W700, 13)
 	_, asc := lineBox(13)
 	base := 1.5 + asc
+	// the volume, while it changes: the title (or the song) slides up and
+	// the volume comes in from below, as the song does
+	if va := volOSD.a.Get(now); va > 0.001 && active && !ui.nowPlayingOnScreen() {
+		up := -20 * easeInOut(va)
+		drawText(sub, f, ellipsize(f, title, maxW*DPR), tx*DPR, (base+up)*DPR, th.headerText)
+		ui.drawHeaderVolume(sub, tx, maxW, 20+up)
+		return
+	}
 	toff, soff, ok := tickerOffsets(now)
 	if !ok || !active || !ui.tickerAllowed() {
 		drawText(sub, f, ellipsize(f, title, maxW*DPR), tx*DPR, base*DPR, th.headerText)

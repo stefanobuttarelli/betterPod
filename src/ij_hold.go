@@ -10,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/fogleman/gg"
 )
 
 // Hold: SELECT pressed and released on its own toggles it; while on, the
@@ -209,31 +211,83 @@ var volOSD = struct {
 func (ui *IpodUI) showVolumeOSD() {
 	now := animNow()
 	if volOSD.a.Target() != 1 {
-		volOSD.a.To(1, 150*time.Millisecond, easeCSS, 0)
+		volOSD.a.To(1, 220*time.Millisecond, easeCSS, 0)
 	}
 	volOSD.until = now.Add(1500 * time.Millisecond)
 	ui.dirty = true
 }
 
-func (ui *IpodUI) drawVolumeOSD(dst *image.RGBA, now time.Time) {
-	a := volOSD.a.Get(now)
-	if a <= 0.001 || hold.badge.Get(now) > 0.5 {
+// drawVolumeOSD: the volume shows in the header now (drawHeaderVolume).
+func (ui *IpodUI) drawVolumeOSD(dst *image.RGBA, now time.Time) {}
+
+// headphonesOut: the sound goes to headphones (Bluetooth, or wired ones in
+// the jack), not the console's speaker.
+func headphonesOut() bool {
+	return btConnected() || headphoneJack() == 1 || os.Getenv("MIYOOPOD_HEADPHONES") == "1" // (the last for tests)
+}
+
+// volIcons: the header's little speaker and headphones, in the header's
+// text colour (made once per colour).
+var volIcons = map[string]*image.RGBA{}
+
+func volIcon(headphones bool, c Col) *image.RGBA {
+	key := fmt.Sprintf("%v%v", headphones, c)
+	if img := volIcons[key]; img != nil {
+		return img
+	}
+	S := px(14)
+	img := image.NewRGBA(image.Rect(0, 0, S, S))
+	p := pen{gg.NewContextForRGBA(img), float64(S) / 14}
+	dc := p.dc
+	dc.SetFillStyle(p.solid(c))
+	dc.SetStrokeStyle(p.solid(c))
+	dc.SetLineCap(gg.LineCapRound)
+	if headphones {
+		dc.SetLineWidth(p.u(1.6))
+		dc.DrawArc(p.u(7), p.u(8), p.u(5.2), gg.Radians(180), gg.Radians(360))
+		dc.Stroke()
+		dc.DrawRoundedRectangle(p.u(1.1), p.u(7.4), p.u(3.2), p.u(5.4), p.u(1.2))
+		dc.Fill()
+		dc.DrawRoundedRectangle(p.u(9.7), p.u(7.4), p.u(3.2), p.u(5.4), p.u(1.2))
+		dc.Fill()
+	} else {
+		// the speaker: box and cone, and two waves
+		dc.MoveTo(p.u(1.2), p.u(5))
+		dc.LineTo(p.u(3.6), p.u(5))
+		dc.LineTo(p.u(7), p.u(2.2))
+		dc.LineTo(p.u(7), p.u(11.8))
+		dc.LineTo(p.u(3.6), p.u(9))
+		dc.LineTo(p.u(1.2), p.u(9))
+		dc.ClosePath()
+		dc.Fill()
+		dc.SetLineWidth(p.u(1.3))
+		dc.DrawArc(p.u(7.5), p.u(7), p.u(2.6), gg.Radians(-50), gg.Radians(50))
+		dc.Stroke()
+		dc.DrawArc(p.u(7.5), p.u(7), p.u(5), gg.Radians(-50), gg.Radians(50))
+		dc.Stroke()
+	}
+	volIcons[key] = img
+	return img
+}
+
+// drawHeaderVolume draws the volume in a header (tx: the left edge of the
+// title's room, maxW: its width, off: how far it is moved down, CSS px):
+// the speaker (or headphones) and a bar as wide as the room allows, so it
+// is shorter on the half-width menus and longer on full screens.
+func (ui *IpodUI) drawHeaderVolume(sub *image.RGBA, tx, maxW, off float64) {
+	ic := volIcon(headphonesOut(), th.headerText)
+	blit(sub, ic, px(tx), px(3+off), 1)
+	bx := tx + 14 + 7
+	bw := math.Min(maxW-14-7-6, 240)
+	if bw < 30 {
 		return
 	}
-	// a 120x112 CSS px dark rounded box in the middle of the screen with
-	// the speaker icon and a level bar
-	//
-	fillRoundedGradient(dst, 100*DPR, 64*DPR, 220*DPR, 176*DPR, 14*DPR,
-		[]GradStop{{0, Col{30, 30, 30, 0.82}}, {1, Col{0, 0, 0, 0.82}}}, a)
-	ic := ui.asset("osd_volume")
-	blit(dst, ic, px(160)-ic.Bounds().Dx()/2, px(80), a)
-	bx, bwid := 116.0, 88.0
-	fillRoundedGradient(dst, bx*DPR, 150*DPR, (bx+bwid)*DPR, 158*DPR, 4*DPR,
-		[]GradStop{{0, rgb(90, 90, 90)}, {1, rgb(60, 60, 60)}}, a)
-	if ui.volume > 0.001 {
-		fw := math.Max(bwid*ui.volume, 8)
-		fillRoundedGradient(dst, bx*DPR, 150*DPR, (bx+fw)*DPR, 158*DPR, 4*DPR,
-			[]GradStop{{0, rgb(255, 255, 255)}, {1, rgb(200, 205, 210)}}, a)
+	y := 7.5 + off
+	fillRoundedGradient(sub, bx*DPR, y*DPR, (bx+bw)*DPR, (y+5)*DPR, 2.5*DPR,
+		[]GradStop{{0, Col{0, 0, 0, 0.22}}, {1, Col{0, 0, 0, 0.12}}}, 1)
+	if v := ui.volume; v > 0.001 {
+		fw := math.Max(bw*v, 5)
+		fillRoundedGradient(sub, bx*DPR, y*DPR, (bx+fw)*DPR, (y+5)*DPR, 2.5*DPR, selGrad, 1)
 	}
 }
 
