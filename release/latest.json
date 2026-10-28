@@ -1,8 +1,8 @@
 {
-  "version": "0.57.1",
-  "path": "release/knullipod-v0.57.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.57.1-knulli.zip",
-  "sha256": "dd81810e10ff8dd48f784045e6463144c5c874f5f12bb1dc0be836bc91ad7b0a",
-  "size": 15189395,
-  "notes": "- Screensaver ↔ Now Playing: one cover flying, no double picture\n- Covers come first: what the screen needs is loaded ahead of background work\n- Screensaver bar: artist and album take turns after the title\n- Screensaver ↔ Now Playing, Y options, search songs play on with their album (0.57)"
+  "version": "0.58",
+  "path": "release/knullipod-v0.58-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.58-knulli.zip",
+  "sha256": "b37c53f694bdaa6096432d380398878313bb9870565fb74e8e1de1894363add7",
+  "size": 15198202,
+  "notes": "- Now Playing: START turns the cover over to the album's songs (like Cover Flow)\n- Now Playing: A, A again shows Shuffle and Repeat buttons\n- Screensaver ↔ Now Playing: one cover flying; covers load first (0.57.1)\n- Screensaver: Y options, B back to Now Playing (0.57)"
 }

@@ -23,6 +23,11 @@ type NowPlayingView struct {
 	mainX       *Anim // progress row (0 shown, -1.1 out to the left)
 	volX        *Anim // volume row (0 shown, 1.1 out to the right)
 	scrubX      *Anim // scrub row
+	optsX       *Anim // options row (Shuffle, Repeat: ij_npextra.go)
+	opts        bool
+	optSel      int
+	optsAt      time.Time
+	card        *npCard // the cover turned over to the album's songs (START)
 	H           float64
 	hideArt     bool
 	warpTemp    bool // the cover drawn is a stand-in (another size) until the real one is ready
@@ -62,6 +67,7 @@ func newNowPlayingView() *NowPlayingView {
 		mainX:      newAnim(0),
 		volX:       newAnim(1.1),
 		scrubX:     newAnim(1.1),
+		optsX:      newAnim(1.1),
 		change:     newAnim(1),
 		dir:        1,
 		barsLive:   newAnim(0),
@@ -81,7 +87,10 @@ func (ui *IpodUI) showNowPlaying() {
 
 // Animating: a control row is sliding or the cover is tilting.
 func (np *NowPlayingView) Animating(now time.Time) bool {
-	if np.mainX.Running() || np.volX.Running() || np.scrubX.Running() || np.tilt.Running() || np.change.Running() {
+	if np.mainX.Running() || np.volX.Running() || np.scrubX.Running() || np.optsX.Running() || np.tilt.Running() || np.change.Running() {
+		return true
+	}
+	if c := np.card; c != nil && (c.open.Running() || c.marq || c.back.marqueeOn || c.closed) {
 		return true
 	}
 	// a scrolling line or the moving bars keep the view redrawing while it
@@ -97,27 +106,43 @@ func (np *NowPlayingView) Animating(now time.Time) bool {
 // updateControls slides the control rows for the current mode.
 func (np *NowPlayingView) updateControls() {
 	// progress row unless the volume or scrub row is up
-	if np.scrubbing || np.volActive {
+	if np.scrubbing || np.volActive || np.opts {
 		np.mainX.To(-1.1, durSlide, easeCSS, 0)
 	} else {
 		np.mainX.To(0, durSlide, easeCSS, 0)
 	}
-	if np.scrubbing || !np.volActive {
+	if np.scrubbing || np.opts || !np.volActive {
 		np.volX.To(1.1, durSlide, easeCSS, 0)
 	} else {
 		np.volX.To(0, durSlide, easeCSS, 0)
 	}
 	if np.scrubbing {
 		np.scrubX.To(0, durSlide, easeCSS, 0)
+	} else if np.opts {
+		np.scrubX.To(-1.1, durSlide, easeCSS, 0) // (out to the left, the options coming in)
 	} else {
 		np.scrubX.To(1.1, durSlide, easeCSS, 0)
+	}
+	if np.opts {
+		np.optsX.To(0, durSlide, easeCSS, 0)
+	} else {
+		np.optsX.To(1.1, durSlide, easeCSS, 0)
 	}
 }
 
 func (np *NowPlayingView) OnCenter(ui *IpodUI) {
+	if np.card != nil {
+		np.cardPlay(ui)
+		return
+	}
+	if np.opts {
+		np.optPress(ui)
+		return
+	}
 	if np.scrubbing {
-		np.volEnabled = true
+		// after the scrubber: the options (Shuffle, Repeat)
 		np.scrubbing, np.volActive = false, false
+		np.opts, np.optsAt = true, animNow()
 	} else {
 		// centre: scrub mode (the wheel seeks)
 		np.volEnabled = false
@@ -164,6 +189,16 @@ func (ui *IpodUI) nowPlayingTakesScroll() bool {
 }
 
 func (np *NowPlayingView) OnScroll(ui *IpodUI, dir int, velocity float64) {
+	if c := np.card; c != nil {
+		if !c.closed {
+			np.cardMove(ui, dir)
+		}
+		return
+	}
+	if np.opts {
+		np.optMove(ui, dir)
+		return
+	}
 	p := ui.app.Playing
 	if np.scrubbing {
 		if p == nil || p.Track == nil {
@@ -460,6 +495,18 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	mx := np.mainX.Get(now) * ctrlW
 	vx := np.volX.Get(now) * ctrlW
 	sx := np.scrubX.Get(now) * ctrlW
+	ox := np.optsX.Get(now) * ctrlW
+	np.optsTick(now)
+	// (drawn after the rows below, in this order: the deferred calls run
+	// last first) the cover turned over to its songs, over everything,
+	np.cardFrame(now)
+	if np.card != nil {
+		defer ui.drawNPCard(dst, np, now)
+	}
+	// and the options row
+	if ox < ctrlW {
+		defer ui.drawOptions(dst, np, ox+8, cy)
+	}
 	//
 	//
 	if vx < ctrlW {
@@ -468,7 +515,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	if mx > -ctrlW {
 		ui.drawTrackProgress(dst, mx+8, cy, p)
 	}
-	if sx < ctrlW {
+	if sx < ctrlW && sx > -ctrlW {
 		cur := 0.0
 		dur := 0.0
 		if p != nil {

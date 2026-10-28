@@ -123,7 +123,15 @@ func (q *PlaybackQueue) moveNext(pos int) {
 
 // ---- the screen ----
 
-func (np *NowPlayingView) OnLongPress(ui *IpodUI) { ui.showView(ui.upNextView(), "") }
+func (np *NowPlayingView) OnLongPress(ui *IpodUI) {
+	// on the album's card: the song's options, as anywhere
+	if c := np.card; c != nil && !c.closed && len(c.back.Items) > 0 {
+		it := c.back.Items[c.back.Index]
+		ui.showSheetTitled(it.Label, ui.mediaOptions(it.Tracks[it.TrackIdx:it.TrackIdx+1]))
+		return
+	}
+	ui.showView(ui.upNextView(), "")
+}
 
 func (ui *IpodUI) upNextView() *View {
 	v := &View{ID: "upNext", Title: "Up Next", Kind: KindFull, Empty: "Nothing up next"}

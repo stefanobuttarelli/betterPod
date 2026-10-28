@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.58 (2026-10-28)
+
+### Added
+- **Now Playing: START turns the cover over** to the back of the album, the same card as Cover Flow's (its size and place, the album and artist on blue scrolling when long, the songs).
+  - **UP / DOWN** pick a song, **A** plays it and the card turns back to the cover.
+  - **START** or **B** turn it back, and **Y** opens the song's options.
+  - Playing, the turned cover first turns flat, then over.
+  - START no longer pauses on Now Playing; X does.
+- **Now Playing: the options row.** **A** goes from the progress to the scrubber (as before), and a second **A** brings in a row of two buttons as wide as the bar, **Shuffle** and **Repeat**, each with its icon and value.
+  - **LEFT / RIGHT** (or the wheel) pick one, and **A** changes it: Shuffle goes Off → Songs → Albums, Repeat goes Off → All → One.
+  - **B** goes back to the progress, as does 8 s without a key.
+
 ## v0.57.1 (2026-10-28)
 
 ### Fixed
