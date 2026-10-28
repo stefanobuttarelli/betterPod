@@ -992,7 +992,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	ui.drawKeyboard(fb, now)
 	ui.drawToast(fb, now)
 	// the screensaver fading in or out
-	if s := ui.saver; s != nil {
+	if s := ui.saver; s != nil && s.fade.Get(now) > 0 {
 		l := newCanvasCached(&saverLayer, 640, 480)
 		ui.renderSaver(l, now)
 		blit(fb, l, 0, 0, s.fade.Get(now))

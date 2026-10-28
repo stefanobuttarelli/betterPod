@@ -80,6 +80,15 @@ type screensaver struct {
 	cardHome *Anim // after a song is chosen: flying to the big square
 	cardPlay bool
 
+	ready   bool      // the first covers are ready: it shows
+	readyBy time.Time // (or at this time anyway)
+
+	selImg *image.RGBA // the cursor's cover, grown
+	selFor *Album
+
+	cardSince time.Time // the card's titles scroll from here
+	cardMarq  bool      // a title on the card is scrolling
+
 	nextFlip  time.Time
 	lastClock string
 	dimmed    bool
@@ -102,27 +111,27 @@ func (ui *IpodUI) startSaver() {
 	if s.big != nil {
 		s.bigOn.Set(1)
 	}
-	// the covers come in as a wave from the top-left corner
+	ui.ssWarm()
 	for r := 0; r < ssRows; r++ {
 		for c := 0; c < ssCols; c++ {
-			t := &ssTile{flip: newAnim(1), in: newAnim(0)}
-			s.tiles[r*ssCols+c] = t
-			t.in.To(1, 380*time.Millisecond, easeCSS, time.Duration(r+c)*45*time.Millisecond)
+			s.tiles[r*ssCols+c] = &ssTile{flip: newAnim(1), in: newAnim(0)}
 		}
 	}
 	for i := range s.tiles {
 		s.tiles[i].al = s.pick(ui, i)
 	}
-	// from Now Playing: its cover flies into the big square
+	// from Now Playing: its cover will fly into the big square
 	if s.big != nil && ui.nowPlayingOnScreen() && ui.coverUp() == nil {
 		if np, ok := ui.topScreen().Custom.(*NowPlayingView); ok {
 			cx, cy, side := 84.0, 20+np.H*0.35, 118.0
 			s.flyFrom = image.Rect(px(cx-side/2), px(cy-side/2), px(cx+side/2), px(cy+side/2))
 			s.fly.Set(0)
-			s.fly.To(1, 600*time.Millisecond, easeInOut, 60*time.Millisecond)
 		}
 	}
-	s.fade.To(1, 300*time.Millisecond, easeCSS, 0)
+	// it shows when its covers are ready (asked for now), so the mosaic
+	// appears whole
+	s.readyBy = now.Add(1500 * time.Millisecond)
+	s.covers(ui)
 	ui.saver = s
 	ui.sheets = nil
 	if saverDim && !hold.on {
@@ -139,6 +148,37 @@ func (ui *IpodUI) startSaver() {
 	}
 	logMsg("Screensaver on")
 	ui.dirty = true
+}
+
+// covers asks for the covers on the screen and reports whether all are
+// ready.
+func (s *screensaver) covers(ui *IpodUI) bool {
+	ok := true
+	for i, t := range s.tiles {
+		if t.al != nil && !s.covered(i/ssCols, i%ssCols) && ui.ssArtGet(t.al, ssCell) == nil {
+			ok = false
+		}
+	}
+	if s.big != nil && ui.ssArtGet(s.big, 2*ssCell) == nil {
+		ok = false
+	}
+	return ok
+}
+
+// begin: the covers are ready: the wave from the top-left corner, Now
+// Playing's cover flying in.
+func (s *screensaver) begin(now time.Time) {
+	s.ready = true
+	for r := 0; r < ssRows; r++ {
+		for c := 0; c < ssCols; c++ {
+			s.tiles[r*ssCols+c].in.To(1, 380*time.Millisecond, easeCSS, time.Duration(r+c)*45*time.Millisecond)
+		}
+	}
+	if s.fly.Get(now) < 1 {
+		s.fly.To(1, 600*time.Millisecond, easeInOut, 60*time.Millisecond)
+	}
+	s.fade.To(1, 300*time.Millisecond, easeCSS, 0)
+	s.nextFlip = now.Add(3 * time.Second)
 }
 
 func (ui *IpodUI) stopSaver() {
@@ -178,7 +218,11 @@ func (ui *IpodUI) saverTick(now time.Time) {
 	if saverAfter <= 0 || ui.app.Locked || ui.keyboard != nil {
 		return
 	}
-	if time.Since(ui.app.LastActivityTime) >= time.Duration(saverAfter)*time.Minute {
+	idle := time.Since(ui.app.LastActivityTime)
+	if idle >= time.Duration(saverAfter)*time.Minute-20*time.Second {
+		ui.ssWarm() // the covers get ready a little before (once per library)
+	}
+	if idle >= time.Duration(saverAfter)*time.Minute {
 		ui.startSaver()
 	}
 }
@@ -200,6 +244,10 @@ func (s *screensaver) pick(ui *IpodUI, i int) *Album {
 	all := ui.library().Albums
 	if len(all) == 0 {
 		return nil
+	}
+	// the albums whose covers are ready, when there are enough of them
+	if w := ssWarmAlbums(all); len(w) >= min(len(all), 12) {
+		all = w
 	}
 	r, c := i/ssCols, i%ssCols
 	near := map[*Album]bool{s.big: true}
@@ -250,6 +298,9 @@ func (s *screensaver) turn(ui *IpodUI, i int, to *Album, delay time.Duration) {
 	}
 	if to == nil || to == t.al {
 		return
+	}
+	if ui.ssArtGet(to, ssCell) == nil {
+		return // not ready yet: another time
 	}
 	t.next = to
 	t.flip.Set(0)
@@ -307,6 +358,10 @@ func (ui *IpodUI) saverKey(ev int) bool {
 	}
 	now := animNow()
 	k := Key(ev)
+	if !s.ready {
+		ui.saver = nil // not shown yet: a key leaves it
+		return true
+	}
 	if s.card != nil {
 		return ui.saverCardKey(s, k, now)
 	}
@@ -341,6 +396,7 @@ func (ui *IpodUI) saverKey(ev int) bool {
 		skipDir = 1
 		go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
 	case L2, R2:
+		logMsg("Screensaver: L2 / R2")
 		ui.saverBrightness(k == R2)
 		ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
 	}
@@ -411,8 +467,8 @@ func (s *screensaver) moveSel(k Key, now time.Time) {
 
 func (ui *IpodUI) saverBrightness(up bool) {
 	s := ui.saver
-	if hold.on || !s.dimmed && !saverDim {
-		return
+	if hold.on {
+		return // (Hold has its own, with UP / DOWN)
 	}
 	cur := getBacklightPercent()
 	if !s.dimmed {
@@ -463,6 +519,7 @@ func (ui *IpodUI) saverOpenCard(s *screensaver, now time.Time) {
 		}
 	}
 	s.cardPlay = false
+	s.cardSince = now.Add(600 * time.Millisecond)
 	s.cardHome.Set(0)
 	s.cardOpen.Set(0)
 	s.cardOpen.To(1, 550*time.Millisecond, easeInOut, 0)
@@ -535,7 +592,8 @@ func (ui *IpodUI) saverCardDone(s *screensaver) {
 
 func (s *screensaver) animating(now time.Time) bool {
 	if s.fade.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
-		s.cardOpen.Running() || s.cardHome.Running() || now.Before(s.briShown) {
+		s.cardOpen.Running() || s.cardHome.Running() || now.Before(s.briShown) ||
+		s.card != nil && (s.cardMarq || s.cardBack != nil && s.cardBack.marqueeOn) {
 		return true
 	}
 	for _, t := range s.tiles {
@@ -549,6 +607,13 @@ func (s *screensaver) animating(now time.Time) bool {
 // saverFrame: the timers (flips, the cursor fading, the clock).
 func (ui *IpodUI) saverFrame(now time.Time) {
 	s := ui.saver
+	if !s.ready {
+		if s.covers(ui) || now.After(s.readyBy) {
+			s.begin(now)
+			ui.dirty = true
+		}
+		return
+	}
 	s.follow(ui)
 	if s.card != nil {
 		if s.cardPlay && !s.cardHome.Running() && s.cardHome.Get(now) >= 1 {
@@ -595,10 +660,11 @@ func cellRect(r, c, span int) image.Rectangle {
 	return image.Rect(x, y, x+span*ssCell, y+span*ssCell)
 }
 
-// drawCover draws al into r, turned by t (0 flat, 0.5 edge-on: drawn
-// narrower about its centre, darker as it turns).
+// ssCover draws al into r, turned by turn (0 flat, 0.5 edge-on: drawn
+// narrower about its centre, darker as it turns). Covers at their own size
+// are copied; growing, flying or turning ones are scaled on the fly.
 func (ui *IpodUI) ssCover(dst *image.RGBA, al *Album, r image.Rectangle, turn, op float64) {
-	if r.Dx() <= 0 || r.Dy() <= 0 {
+	if r.Dx() <= 0 || r.Dy() <= 0 || al == nil {
 		return
 	}
 	k := math.Abs(math.Cos(turn * math.Pi))
@@ -606,31 +672,27 @@ func (ui *IpodUI) ssCover(dst *image.RGBA, al *Album, r image.Rectangle, turn, o
 	if w < 1 {
 		return
 	}
-	x := r.Min.X + (r.Dx()-w)/2
-	var img *image.RGBA
-	if al != nil {
-		// read at a few sizes only (a cover growing or flying would ask
-		// for a new size each frame), scaled to the size wanted
-		size := ssCell
-		if r.Dy() > ssCell*5/4 {
-			size = 2 * ssCell
-		}
-		if r.Dy() > ssCell*5/2 {
-			size = 4 * ssCell
-		}
-		img = ui.art(al, size)
+	size := ssCell
+	if r.Dy() > ssCell*5/4 {
+		size = 2 * ssCell
+	}
+	img := ui.ssArtGet(al, size)
+	if img == nil && size > ssCell {
+		img = ui.ssArtGet(al, ssCell) // the small one, until the big is ready
 	}
 	if img == nil {
-		fillRect(dst, x, r.Min.Y, w, r.Dy(), Col{40, 42, 46, op})
 		return
 	}
-	if w != img.Bounds().Dx() || r.Dy() != img.Bounds().Dy() {
-		img = scaleImage(img, w, r.Dy())
+	x := r.Min.X + (r.Dx()-w)/2
+	if w == img.Bounds().Dx() && r.Dy() == img.Bounds().Dy() {
+		if op >= 1 {
+			blitOpaque(dst, img, x, r.Min.Y)
+		} else {
+			blit(dst, img, x, r.Min.Y, op)
+		}
+		return
 	}
-	blit(dst, img, x, r.Min.Y, op)
-	if k < 1 {
-		fillRect(dst, x, r.Min.Y, w, r.Dy(), Col{0, 0, 0, (1 - k) * 0.55 * op})
-	}
+	drawNN(dst, img, image.Rect(x, r.Min.Y, x+w, r.Max.Y), (1-k)*0.55, op)
 }
 
 // faceOf: during a flip the old album shows the first half, the new one
@@ -686,7 +748,7 @@ func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 			}
 		}
 	}
-	// the cursor's cover: a little bigger, with a border and a shadow
+	// the cursor's cover: a little bigger, with a white border
 	if s.selR >= 0 && s.card == nil {
 		g := s.selGrow.Get(now)
 		var r image.Rectangle
@@ -705,10 +767,27 @@ func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 		if r.Min.X < 0 {
 			r = r.Add(image.Pt(-r.Min.X, 0))
 		}
-		for j := 1; j <= 6; j++ {
-			fillRect(dst, r.Min.X-j+4, r.Min.Y-j+6, r.Dx()+2*j, r.Dy()+2*j, Col{0, 0, 0, 0.09})
+		var al *Album
+		if t == nil {
+			al = s.big
+		} else if t.next == nil {
+			al = t.al
 		}
-		if t != nil {
+		if al != nil && g >= 1 {
+			// grown: scaled properly once
+			if s.selImg == nil || s.selFor != al || s.selImg.Bounds().Dx() != r.Dx() {
+				src := ui.ssArtGet(al, 2*ssCell)
+				if src == nil {
+					src = ui.ssArtGet(al, ssCell)
+				}
+				if src != nil {
+					s.selImg, s.selFor = scaleImage(src, r.Dx(), r.Dy()), al
+				}
+			}
+			if s.selImg != nil && s.selFor == al {
+				blitOpaque(dst, s.selImg, r.Min.X, r.Min.Y)
+			}
+		} else if t != nil {
 			ui.ssTileDraw(dst, t, r, now, 1)
 		} else {
 			ui.ssCover(dst, s.big, r, 0, 1)
@@ -750,7 +829,7 @@ func (ui *IpodUI) ssCardDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	if s.cardR >= 0 {
 		from = cellRect(s.cardR/ssCols, s.cardR%ssCols, 1)
 	}
-	mid := image.Rect(150, 56, 490, 472) // the card turned over
+	mid := ssCardRect // the card turned over
 	// the screen darkens behind it
 	dim := o
 	if s.cardPlay {
@@ -784,20 +863,22 @@ func (ui *IpodUI) ssCardDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 		return
 	}
 	tex := ui.ssCardTexture(s, mid.Dx(), mid.Dy(), now)
-	if w != tex.Bounds().Dx() || r.Dy() != tex.Bounds().Dy() {
-		tex = scaleImage(tex, w, r.Dy())
-	}
 	x := r.Min.X + (r.Dx()-w)/2
-	blitOpaque(dst, tex, x, r.Min.Y)
-	if k < 1 {
-		fillRect(dst, x, r.Min.Y, w, r.Dy(), Col{0, 0, 0, (1 - k) * 0.5})
+	if w == tex.Bounds().Dx() && r.Dy() == tex.Bounds().Dy() {
+		blitOpaque(dst, tex, x, r.Min.Y)
+		return
 	}
+	drawNN(dst, tex, image.Rect(x, r.Min.Y, x+w, r.Max.Y), (1-k)*0.5, 1)
 }
 
 var ssCardBuf *image.RGBA
 
+// ssCardRect: the card turned over, as wide as Cover Flow's (256 px) and
+// down past the bottom of the screen like it.
+var ssCardRect = image.Rect(64, 82, 64+px(256), 482)
+
 // ssCardTexture: the back of the card, like Cover Flow's: album and
-// artist on blue, then the songs.
+// artist on blue (scrolling when long), then the songs.
 func (ui *IpodUI) ssCardTexture(s *screensaver, W, H int, now time.Time) *image.RGBA {
 	img := newCanvasCached(&ssCardBuf, W, H)
 	fillRect(img, 0, 0, W, H, th.bg)
@@ -806,85 +887,124 @@ func (ui *IpodUI) ssCardTexture(s *screensaver, W, H int, now time.Time) *image.
 	sf := face(W700, 14)
 	tlh, tasc := lineBox(16)
 	_, sasc := lineBox(14)
-	infoH := px(backsideInfoH())
-	fillVGradient(img, 0, 0, W, infoH, []GradStop{{0, hex("#6585ad")}, {1, hex("#789ab3")}})
-	fillRect(img, 0, infoH, W, px(1), hex("#6d87a3"))
-	inner := float64(W)/DPR - 16
-	drawText(img, tf, ellipsize(tf, al.Name, inner*DPR), 9*DPR, (5+tasc)*DPR, colWhite)
-	drawText(img, sf, ellipsize(sf, al.Artist, inner*DPR), 9*DPR, (5+tlh+sasc)*DPR, colWhite)
-	lt := infoH + px(1)
-	if H-lt > 0 {
-		lst := image.NewRGBA(image.Rect(0, 0, W, H-lt))
+	w := float64(W) / DPR
+	inner := w - 2
+	infoH := backsideInfoH()
+	fillVGradient(img, px(1), px(1), px(inner), px(infoH-1), []GradStop{{0, hex("#6585ad")}, {1, hex("#789ab3")}})
+	fillRect(img, px(1), px(infoH), px(inner), px(1), hex("#6d87a3"))
+	// album and artist scroll on one cycle
+	cyc := math.Max(marqueeCycle(tf, al.Name, inner-16), marqueeCycle(sf, al.Artist, inner-16))
+	s.cardMarq = cyc > 0
+	y := 5.0
+	drawMarqueeSync(img, tf, al.Name, 9, y+tasc, inner-16, colWhite, s.cardSince, now, cyc)
+	y += tlh
+	drawMarqueeSync(img, sf, al.Artist, 9, y+sasc, inner-16, colWhite, s.cardSince, now, cyc)
+	lt := infoH + 1
+	if lh := float64(H)/DPR - 1 - lt; lh > 0 {
+		lst := newCanvasCached(&ssListBuf, px(inner), px(lh))
 		ui.renderList(s.cardBack, lst)
-		blit(img, lst, 0, lt, 1)
+		blitOpaque(img, lst, px(1), px(lt))
 	}
+	// 1px border
+	fillRect(img, 0, 0, W, px(1), th.cardBorder)
+	fillRect(img, 0, H-px(1), W, px(1), th.cardBorder)
+	fillRect(img, 0, 0, px(1), H, th.cardBorder)
+	fillRect(img, W-px(1), 0, px(1), H, th.cardBorder)
 	return img
 }
 
+var ssListBuf *image.RGBA
+
 // ---- the bar ----
 
+// ssBarDraw: the header's own layout, white on black: the clock on the
+// left (or the brightness while it changes), on the right the battery, the
+// padlock in Hold and play / pause, where the header has them.
 func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	fillRect(dst, 0, 0, 640, ssBar, colBlack)
-	white := colWhite
-	cy := float64(ssBar) / 2
-	// left: play / pause
-	if p := ui.app.Playing; p != nil && p.Track != nil && p.State != StateStopped {
-		if p.State == StatePaused {
-			fillRect(dst, 16, int(cy)-8, 5, 16, white)
-			fillRect(dst, 26, int(cy)-8, 5, 16, white)
-		} else {
-			fillTriangle(dst, 16, cy-9, 16, cy+9, 31, cy, white)
-		}
-	}
-	// right: the battery (and the padlock in Hold)
-	bx := 640.0 - 16 - 40
+	const gap = 4.0
+	batX := 320.0 - 6 - 26
+	// the battery: an outline, the tip, and the level inside
+	shell := ui.asset("battery_shell").Bounds()
+	bw, bh := float64(shell.Dx()), float64(shell.Dy())
+	x0, y0 := batX*DPR, 3.5*DPR
+	strokeRounded(dst, x0, y0, x0+bw-5, y0+bh, 4, 2, colWhite, 1)
+	fillRect(dst, int(x0+bw-4), int(y0+bh/2-4), 3, 8, colWhite)
 	pct, charging := batteryInfo()
 	if pct < 0 {
 		pct = 100
 	}
-	strokeRounded(dst, bx, cy-9, bx+36, cy+9, 4, 2, white, 1)
-	fillRect(dst, int(bx)+37, int(cy)-4, 3, 8, white)
-	fw := int(30 * math.Min(1, math.Max(0.08, float64(pct)/100)))
-	fillRect(dst, int(bx)+3, int(cy)-6, fw, 12, white)
+	pct = max(pct, 8)
+	inW := bw - 5 - 8
+	fillRect(dst, int(x0)+4, int(y0)+4, int(inW*math.Min(1, float64(pct)/85)+0.5), int(bh)-8, colWhite)
 	if charging {
-		fillTriangle(dst, bx+22, cy-6, bx+14, cy+1, bx+19, cy+1, colBlack)
-		fillTriangle(dst, bx+14, cy+6, bx+22, cy-1, bx+17, cy-1, colBlack)
+		fillTriangle(dst, x0+bw/2+3, y0+3, x0+bw/2-6, y0+bh/2+1, x0+bw/2, y0+bh/2+1, colBlack)
+		fillTriangle(dst, x0+bw/2-3, y0+bh-3, x0+bw/2+6, y0+bh/2-1, x0+bw/2, y0+bh/2-1, colBlack)
 	}
+	left := batX - gap
 	if hold.on {
-		drawPadlock(dst, (bx-26)/DPR, (cy-11)/DPR, 1, []GradStop{{0, white}, {1, white}}, white, 1)
+		drawPadlock(dst, left-8, 3.5, 1, []GradStop{{0, colWhite}, {1, colWhite}}, colWhite, 1)
+		left -= 16
 	}
-	// middle: the clock, or the brightness for a moment after it changes
-	bri := now.Before(s.briShown) || hold.on && now.Before(hold.levelShown)
-	if bri {
+	if btConnected() {
+		ic := whiteIcon(ui, "bluetooth")
+		iw := float64(ic.Bounds().Dx()) / DPR
+		blit(dst, ic, px(left-iw), px(3.5), 1)
+		left -= iw + gap
+	}
+	if p := ui.app.Playing; p != nil && p.Track != nil && p.State != StateStopped {
+		name := "play"
+		if p.State == StatePaused {
+			name = "pause"
+		}
+		ic := whiteIcon(ui, name)
+		iw := float64(ic.Bounds().Dx()) / DPR
+		blit(dst, ic, px(left-iw), px(3.5), 1)
+	}
+	// left: the clock, or the brightness for a moment after it changes
+	if now.Before(s.briShown) || hold.on && now.Before(hold.levelShown) {
 		lvl := getBacklightPercent()
 		if hold.on {
 			lvl = hold.cur
 		}
-		ui.ssBrightness(dst, 320, cy, lvl)
+		ssBrightness(dst, lvl)
 		return
 	}
-	f := face(W600, 13)
-	clock := time.Now().Format("15:04")
+	f := face(W700, 13)
 	_, asc := lineBox(13)
-	drawText(dst, f, clock, 320-textWidth(f, clock)/2, cy+asc*DPR/2-1, white)
+	drawText(dst, f, time.Now().Format("15:04"), 6*DPR, (1.5+asc)*DPR, colWhite)
 }
 
-// ssBrightness: a small sun and a bar, centred on cx.
-func (ui *IpodUI) ssBrightness(dst *image.RGBA, cx, cy float64, lvl int) {
-	const bw = 200.0
-	x0 := cx - (bw+30)/2
-	// the sun
-	// (fillCircle is in CSS px)
-	sx, sy := (x0+9)/DPR, cy/DPR
-	fillCircle(dst, sx, sy, 2.4, colWhite)
+// ssBrightness: a sun and a bar where the clock is (as in the header).
+func ssBrightness(dst *image.RGBA, lvl int) {
+	sx, sy := 13.0, 10.0 // (fillCircle is in CSS px)
+	fillCircle(dst, sx, sy, 2.6, colWhite)
 	for i := 0; i < 8; i++ {
 		a := float64(i) * math.Pi / 4
-		fillCircle(dst, sx+math.Cos(a)*4.2, sy+math.Sin(a)*4.2, 0.75, colWhite)
+		fillCircle(dst, sx+math.Cos(a)*4.6, sy+math.Sin(a)*4.6, 0.75, colWhite)
 	}
-	bx := x0 + 30
-	fillRoundedGradient(dst, bx, cy-4, bx+bw, cy+4, 4, []GradStop{{0, Col{255, 255, 255, 0.28}}, {1, Col{255, 255, 255, 0.28}}}, 1)
-	w := math.Max(8, bw*float64(lvl)/100)
-	fillRoundedGradient(dst, bx, cy-4, bx+w, cy+4, 4, []GradStop{{0, colWhite}, {1, colWhite}}, 1)
+	bx, bw, y := 27.0, 150.0, 7.5
+	fillRoundedGradient(dst, bx*DPR, y*DPR, (bx+bw)*DPR, (y+5)*DPR, 2.5*DPR,
+		[]GradStop{{0, Col{255, 255, 255, 0.28}}, {1, Col{255, 255, 255, 0.28}}}, 1)
+	w := math.Max(5, bw*float64(lvl)/100)
+	fillRoundedGradient(dst, bx*DPR, y*DPR, (bx+w)*DPR, (y+5)*DPR, 2.5*DPR, []GradStop{{0, colWhite}, {1, colWhite}}, 1)
+}
+
+// whiteIcon: a header icon in white (its shape, made once).
+var whiteIcons = map[string]*image.RGBA{}
+
+func whiteIcon(ui *IpodUI, name string) *image.RGBA {
+	if w := whiteIcons[name]; w != nil {
+		return w
+	}
+	src := ui.asset(name)
+	w := image.NewRGBA(src.Bounds())
+	for i := 0; i+3 < len(src.Pix); i += 4 {
+		a := src.Pix[i+3]
+		w.Pix[i], w.Pix[i+1], w.Pix[i+2], w.Pix[i+3] = a, a, a, a
+	}
+	whiteIcons[name] = w
+	return w
 }
 
 // ---- Settings → Screensaver ----
@@ -913,7 +1033,7 @@ func (ui *IpodUI) saverSettingsView() *View {
 			}})
 		}
 		items = append(items,
-			Item{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "L2 / R2 change it while it shows", NoArrow: true, Preview: PrevSettings, OnSelect: func() {
+			Item{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "L2 / R2 set the brightness while it shows", NoArrow: true, Preview: PrevSettings, OnSelect: func() {
 				saverDim = !saverDim
 				ui.savePrefs()
 				ui.refreshBuilt()

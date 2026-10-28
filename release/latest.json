@@ -1,8 +1,8 @@
 {
-  "version": "0.54",
-  "path": "release/knullipod-v0.54-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.54-knulli.zip",
-  "sha256": "c44e4df1c7aaacf35af156076c115dd96bd53b7eff0fb4de2c1b4090e57caa1a",
-  "size": 15173788,
-  "notes": "- Screensaver: a mosaic of album covers that turn over (Settings → Screensaver, or SELECT + Y)\n- Hold's brightness shows in the header\n- YouTube cover: L and R zoom, the arrows move the square in all directions (0.53)\n- Fixed: a screen could stay half slid in until a key was pressed (0.52.2)"
+  "version": "0.54.1",
+  "path": "release/knullipod-v0.54.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.54.1-knulli.zip",
+  "sha256": "4e011dbfe1fdb1d1fd7d1b69db89ca5c85c93a10df3c66dbc8ba8791ac216cfe",
+  "size": 15179918,
+  "notes": "- Screensaver: covers ready before it shows, smoother flips, bar like the header, Cover Flow-wide card with scrolling titles, L2 / R2 brightness\n- Screensaver: a mosaic of album covers that turn over (Settings → Screensaver, or SELECT + Y) (0.54)\n- Hold's brightness shows in the header (0.54)\n- YouTube cover: L and R zoom (0.53)"
 }

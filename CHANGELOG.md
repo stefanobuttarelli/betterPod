@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.54.1 (2026-10-28)
+
+### Fixed
+- **Screensaver: the covers no longer load in bits.** They are got ready at the screensaver's two sizes in their own memory, a little before it starts and in the background after (made once from the Cover Flow size and kept on disk). The mosaic appears when its covers are ready, and a cover turns over only to an album that is ready.
+- **Smoother:** covers growing, flying or turning are scaled straight onto the screen, without a new picture each frame. Between flips nothing is drawn.
+- **L2 / R2 set the brightness** in the screensaver whether or not Dim the Screen is on. It goes back as it was when the screensaver closes.
+- **The bar is laid out like the header:** the clock on the left, and play / pause, the padlock and the battery where the header has them. The battery is drawn as a white outline.
+- **The turned-over cover is as wide as Cover Flow's,** going down past the bottom of the screen like it. The album and artist scroll when they are long, and so does the selected song.
+- **The picked cover has only its white border,** no shadow.
+
 ## v0.54 (2026-10-28)
 
 ### Added
