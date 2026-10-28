@@ -167,13 +167,25 @@ func (ui *IpodUI) playlistView(pl *Playlist) *View {
 func (ui *IpodUI) songsView(tracks []*Track) *View {
 	v := &View{ID: "songs", Title: "Songs", Kind: KindFull, Empty: "No songs to show"}
 	for _, t := range tracks {
-		//
+		// played from its album (found by a search, it plays on with the
+		// album's next and previous songs)
+		queue, idx := []*Track{t}, 0
+		if al := ui.trackAlbum(t); al != nil {
+			if at := albumTracks(al); len(at) > 0 {
+				for i, x := range at {
+					if x == t {
+						queue, idx = at, i
+						break
+					}
+				}
+			}
+		}
 		v.Items = append(v.Items, Item{
 			Label:          t.Title,
 			Sublabel:       t.Artist + " • " + t.Album,
 			Album:          ui.trackAlbum(t),
-			Tracks:         []*Track{t},
-			TrackIdx:       0,
+			Tracks:         queue,
+			TrackIdx:       idx,
 			ShowNowPlaying: true,
 			LongPress:      ui.mediaOptions([]*Track{t}),
 		})

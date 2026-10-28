@@ -83,7 +83,13 @@ type screensaver struct {
 	ready   bool      // the first covers are ready: it shows
 	readyBy time.Time // (or at this time anyway)
 
-	songIn *Anim // the song in the bar: 1 playing, 0 paused (slid down out of it)
+	songIn  *Anim // the song in the bar: 1 playing, 0 paused (slid down out of it)
+	songChg *Anim // a new song coming in (0 → 1)
+	songOld *Track
+	songNow *Track
+	songDir int // 1 next (from below), -1 back (from above)
+
+	npView *NowPlayingView // Now Playing under it while its cover flies (its own hidden)
 
 	selImg *image.RGBA // the cursor's cover, grown
 	selFor *Album
@@ -107,7 +113,7 @@ func (ui *IpodUI) startSaver() {
 	}
 	now := animNow()
 	s := &screensaver{fade: newAnim(0), bigFlp: newAnim(1), bigOn: newAnim(0), fly: newAnim(1),
-		selR: -1, selC: -1, selGrow: newAnim(0), songIn: newAnim(0), cardOpen: newAnim(0), cardHome: newAnim(0),
+		selR: -1, selC: -1, selGrow: newAnim(0), songIn: newAnim(0), songChg: newAnim(1), cardOpen: newAnim(0), cardHome: newAnim(0),
 		rng: rand.New(rand.NewSource(now.UnixNano())), nextFlip: now.Add(3 * time.Second)}
 	s.big = ui.saverPlaying()
 	if s.big != nil {
@@ -115,6 +121,9 @@ func (ui *IpodUI) startSaver() {
 	}
 	if ui.saverSongPlaying() {
 		s.songIn.Set(1)
+	}
+	if p := ui.app.Playing; p != nil {
+		s.songNow = p.Track
 	}
 	ui.ssWarm()
 	for r := 0; r < ssRows; r++ {
@@ -128,9 +137,9 @@ func (ui *IpodUI) startSaver() {
 	// from Now Playing: its cover will fly into the big square
 	if s.big != nil && ui.nowPlayingOnScreen() && ui.coverUp() == nil {
 		if np, ok := ui.topScreen().Custom.(*NowPlayingView); ok {
-			cx, cy, side := 84.0, 20+np.H*0.35, 118.0
-			s.flyFrom = image.Rect(px(cx-side/2), px(cy-side/2), px(cx+side/2), px(cy+side/2))
+			s.flyFrom = npCoverRect(np, now)
 			s.fly.Set(0)
+			s.npView = np
 		}
 	}
 	// it shows when its covers are ready (asked for now), so the mosaic
@@ -139,6 +148,9 @@ func (ui *IpodUI) startSaver() {
 	s.covers(ui)
 	ui.saver = s
 	ui.sheets = nil
+	for k := range ui.pressStart {
+		delete(ui.pressStart, k) // keys down now count no more (no long press under it)
+	}
 	if saverDim && !hold.on {
 		s.savedBri = getBacklightPercent()
 		lvl := saverLevel
@@ -180,10 +192,64 @@ func (s *screensaver) begin(now time.Time) {
 		}
 	}
 	if s.fly.Get(now) < 1 {
-		s.fly.To(1, 600*time.Millisecond, easeInOut, 60*time.Millisecond)
+		// Now Playing's cover becomes the big one: it flies there while the
+		// mosaic fades in around it (its own is hidden meanwhile)
+		s.fly.To(1, 650*time.Millisecond, easeInOut, 0)
+		if s.npView != nil {
+			s.npView.hideArt = true
+		}
+		s.fade.To(1, 450*time.Millisecond, easeCSS, 0)
+	} else {
+		s.fade.To(1, 300*time.Millisecond, easeCSS, 0)
 	}
-	s.fade.To(1, 300*time.Millisecond, easeCSS, 0)
 	s.nextFlip = now.Add(3 * time.Second)
+}
+
+// flyTop: Now Playing's cover is flying in or out while the mosaic fades:
+// it is drawn over everything at full strength (ssFlyDraw), not in the
+// fading mosaic.
+func (s *screensaver) flyTop(now time.Time) bool {
+	return s.npView != nil && s.fly.Get(now) < 1 && (s.exiting || s.fade.Get(now) < 1)
+}
+
+// ssFlyDraw: the flying cover, over the screen; arriving at Now Playing it
+// hands over to Now Playing's own cover (which fades in under it).
+func (ui *IpodUI) ssFlyDraw(dst *image.RGBA, s *screensaver, now time.Time) {
+	f := s.fly.Get(now)
+	op := 1.0
+	if s.exiting && f < 0.15 {
+		if s.npView != nil {
+			s.npView.hideArt = false
+		}
+		op = f / 0.15
+	}
+	r := lerpRect(s.flyFrom, cellRect(0, 0, 2), f)
+	img := ui.ssArtGet(s.big, 2*ssCell)
+	if img == nil {
+		img = ui.ssArtGet(s.big, ssCell)
+	}
+	drawNN(dst, img, r, 0, op)
+}
+
+// saverToNowPlaying: B with a song on: back to Now Playing, the big cover
+// flying to its place there while the mosaic fades out.
+func (ui *IpodUI) saverToNowPlaying() {
+	s := ui.saver
+	ui.goNowPlaying()
+	ui.finishSlides()
+	np, ok := ui.topScreen().Custom.(*NowPlayingView)
+	if !ok {
+		ui.stopSaver()
+		return
+	}
+	now := animNow()
+	np.hideArt = true
+	s.npView = np
+	s.flyFrom = npCoverRect(np, now)
+	s.fly.Set(1)
+	s.fly.To(0, 650*time.Millisecond, easeInOut, 0)
+	ui.stopSaver()
+	s.fade.To(0, 450*time.Millisecond, easeCSS, 0)
 }
 
 func (ui *IpodUI) stopSaver() {
@@ -214,9 +280,17 @@ func (ui *IpodUI) saverOnHold() int {
 // saverTick (each frame): starts it after the time without a key.
 func (ui *IpodUI) saverTick(now time.Time) {
 	if s := ui.saver; s != nil {
-		if s.exiting && !s.fade.Running() {
+		if s.exiting && !s.fade.Running() && !s.fly.Running() {
 			ui.saver = nil
 			ui.dirty = true
+		}
+		// Now Playing's cover shows again once the flying one is there
+		if np := s.npView; np != nil && !s.fly.Running() {
+			if s.exiting || s.fly.Get(now) >= 1 {
+				np.hideArt = false
+				s.npView = nil
+				ui.dirty = true
+			}
 		}
 		return
 	}
@@ -236,6 +310,16 @@ func (ui *IpodUI) saverTick(now time.Time) {
 func (ui *IpodUI) saverSongPlaying() bool {
 	p := ui.app.Playing
 	return p != nil && p.Track != nil && p.State == StatePlaying
+}
+
+// npCoverRect: where Now Playing's cover is on the screen (px), as a
+// square: 85% of 128 px about its centre when paused, a little bigger and
+// to the right when playing (turned).
+func npCoverRect(np *NowPlayingView, now time.Time) image.Rectangle {
+	t := np.tilt.Get(now)
+	side := 2 * 128 * (0.85 + 0.1*t)
+	cx, cy := 151+6*t, 199.0
+	return image.Rect(int(cx-side/2), int(cy-side/2), int(cx+side/2), int(cy+side/2))
 }
 
 // saverPlaying: the album of the song playing or paused (nil: none).
@@ -350,10 +434,18 @@ func (ui *IpodUI) saverKey(ev int) bool {
 	if s == nil || s.exiting {
 		return false
 	}
+	if len(ui.sheets) > 0 {
+		return false // an options sheet over it takes the keys
+	}
 	if ev < 0 {
-		if k := Key(-ev - 1); ui.repeatKey == k {
+		k := Key(-ev - 1)
+		if ui.repeatKey == k {
 			ui.repeatKey = NONE // released: stops repeating
 		}
+		// (a key pressed before it started: not held any more, so it
+		// doesn't count as a long press)
+		delete(ui.pressStart, k)
+		delete(ui.longFired, k)
 		return true // presses only
 	}
 	now := animNow()
@@ -384,8 +476,17 @@ func (ui *IpodUI) saverKey(ev int) bool {
 		if s.selR >= 0 {
 			s.selR, s.selC = -1, -1
 			s.selGrow.Set(0)
+		} else if ui.saverPlaying() != nil && s.big != nil && ui.coverUp() == nil {
+			ui.saverToNowPlaying()
 		} else {
 			ui.stopSaver()
+		}
+	case Y:
+		// the picked album's options (Play Next…), as anywhere
+		if s.selR < 0 {
+			s.moveSel(NONE, now)
+		} else if al := s.selAlbum(); al != nil {
+			ui.showSheetTitled(al.Name, ui.albumOptions(al))
 		}
 	case X, START:
 		ui.app.togglePlayPause()
@@ -500,6 +601,21 @@ func (ui *IpodUI) saverBrightness(up bool) {
 
 // ---- the cover turned over ----
 
+// selAlbum: the album of the picked cover.
+func (s *screensaver) selAlbum() *Album {
+	if s.selR < 0 {
+		return nil
+	}
+	if s.covered(s.selR, s.selC) {
+		return s.big
+	}
+	t := s.tiles[s.selR*ssCols+s.selC]
+	if t.next != nil && t.flip.Running() {
+		return t.next
+	}
+	return t.al
+}
+
 func (ui *IpodUI) saverOpenCard(s *screensaver, now time.Time) {
 	var al *Album
 	idx := -1
@@ -562,6 +678,12 @@ func (ui *IpodUI) saverCardKey(s *screensaver, k Key, now time.Time) bool {
 		s.cardPlay = true
 		s.cardHome.Set(0)
 		s.cardHome.To(1, 650*time.Millisecond, easeInOut, 0)
+	case Y:
+		// the song's options (Play Next…), as anywhere
+		if s.cardOpen.Target() == 1 && len(v.Items) > 0 {
+			it := v.Items[v.Index]
+			ui.showSheetTitled(it.Label, ui.mediaOptions(it.Tracks[it.TrackIdx:it.TrackIdx+1]))
+		}
 	case B, MENU:
 		s.cardOpen.To(0, 450*time.Millisecond, easeInOut, 0)
 	case X, START:
@@ -599,7 +721,7 @@ func (ui *IpodUI) saverCardDone(s *screensaver) {
 // ---- frames ----
 
 func (s *screensaver) animating(now time.Time) bool {
-	if s.fade.Running() || s.songIn.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
+	if s.fade.Running() || s.songIn.Running() || s.songChg.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
 		s.cardOpen.Running() || s.cardHome.Running() || now.Before(s.briShown) ||
 		s.card != nil && (s.cardMarq || s.cardBack != nil && s.cardBack.marqueeOn) {
 		return true
@@ -630,6 +752,18 @@ func (ui *IpodUI) saverFrame(now time.Time) {
 	}
 	if s.songIn.Target() != want {
 		s.songIn.To(want, 380*time.Millisecond, easeInOut, 0)
+		ui.dirty = true
+	}
+	if p := ui.app.Playing; p != nil && p.Track != s.songNow {
+		if s.songNow != nil && p.Track != nil {
+			s.songOld, s.songDir = s.songNow, 1
+			if skipDir < 0 {
+				s.songDir = -1
+			}
+			s.songChg.Set(0)
+			s.songChg.To(1, 420*time.Millisecond, easeInOut, 0)
+		}
+		s.songNow = p.Track
 		ui.dirty = true
 	}
 	if s.card != nil {
@@ -752,7 +886,7 @@ func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 	// the big cover
 	if bigAl != nil && bigOn > 0 {
 		br := cellRect(0, 0, 2)
-		hide := s.card != nil && s.cardR < 0
+		hide := s.card != nil && s.cardR < 0 || s.flyTop(now)
 		if f := s.fly.Get(now); f < 1 {
 			br = lerpRect(s.flyFrom, br, f)
 		}
@@ -1021,7 +1155,8 @@ func (ui *IpodUI) ssClockSong(dst *image.RGBA, s *screensaver, left, off float64
 	clock := time.Now().Format("15:04")
 	drawText(dst, f, clock, 6*DPR, base, colWhite)
 	p := ui.app.Playing
-	in := s.songIn.Get(animNow())
+	now := animNow()
+	in := s.songIn.Get(now)
 	if p == nil || p.Track == nil || p.State == StateStopped || in <= 0.001 {
 		return
 	}
@@ -1032,20 +1167,33 @@ func (ui *IpodUI) ssClockSong(dst *image.RGBA, s *screensaver, left, off float64
 	if room < 40 {
 		return
 	}
-	title := p.Track.Title
-	tw := textWidth(f, title) / DPR
-	if tw > room {
-		drawText(dst, f, ellipsize(f, title, room*DPR), x*DPR, base, colWhite)
+	// a new song: next comes in from below (the old one goes up), back
+	// comes down from above
+	if k := s.songChg.Get(now); k < 1 && s.songOld != nil {
+		d := float64(s.songDir)
+		ssSong(dst, s.songOld, x, base-20*d*k*DPR, room)
+		ssSong(dst, p.Track, x, base+20*d*(1-k)*DPR, room)
 		return
 	}
-	drawText(dst, f, title, x*DPR, base, colWhite)
-	if p.Track.Artist == "" {
+	ssSong(dst, p.Track, x, base, room)
+}
+
+// ssSong: a song's title, and its artist in grey, from x (CSS px) on the
+// baseline base (px), within room.
+func ssSong(dst *image.RGBA, t *Track, x, base, room float64) {
+	f := face(W700, 13)
+	tw := textWidth(f, t.Title) / DPR
+	if tw > room {
+		drawText(dst, f, ellipsize(f, t.Title, room*DPR), x*DPR, base, colWhite)
+		return
+	}
+	drawText(dst, f, t.Title, x*DPR, base, colWhite)
+	if t.Artist == "" {
 		return
 	}
 	af := face(W500, 13)
-	art := "  " + p.Track.Artist
 	if rest := room - tw; rest > 30 {
-		drawText(dst, af, ellipsize(af, art, rest*DPR), (x+tw)*DPR, base, Col{255, 255, 255, 0.55})
+		drawText(dst, af, ellipsize(af, "  "+t.Artist, rest*DPR), (x+tw)*DPR, base, Col{255, 255, 255, 0.55})
 	}
 }
 

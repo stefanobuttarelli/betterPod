@@ -1,8 +1,8 @@
 {
-  "version": "0.56.1",
-  "path": "release/knullipod-v0.56.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.56.1-knulli.zip",
-  "sha256": "f1626e4b1e76e2e8c5f506fe2e845109031284c1712666a3094c1be80645b566",
-  "size": 15183017,
-  "notes": "- Screensaver: the last column can be picked too (its cover comes in whole)\n- L2 / R2 set the brightness anywhere, shown in the header (0.56)\n- Screensaver bar: paused, the song slides down out of it (0.55.2)\n- Screensaver: the volume shows in the bar when it changes (0.55.1)"
+  "version": "0.57",
+  "path": "release/knullipod-v0.57-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.57-knulli.zip",
+  "sha256": "a80b45ace49bb20a4b67a18c422484e9b23095dcb09508be082f5e5d7d7c37c8",
+  "size": 15185952,
+  "notes": "- Screensaver ↔ Now Playing: the cover flies between them; B goes back to Now Playing\n- Screensaver: Y opens the options (Play Next…); the song in the bar slides when it changes\n- A song found by Library search plays on with its album (next / previous)\n- Screensaver: the last column can be picked too (0.56.1)\n- L2 / R2 set the brightness anywhere (0.56)"
 }

@@ -253,6 +253,10 @@ func (ui *IpodUI) topScreen() *View {
 }
 
 func (ui *IpodUI) showView(v *View, headerTitle string) {
+	// a screen opened from the screensaver (Edit Album Info…) shows: it goes
+	if s := ui.saver; s != nil && !s.exiting && s.ready && v.ID != "nowPlaying" {
+		ui.stopSaver()
+	}
 	if v.Build != nil {
 		v.Items = v.Build()
 	}
@@ -281,6 +285,28 @@ func (ui *IpodUI) showView(v *View, headerTitle string) {
 		ui.headerTitle = v.Title
 	}
 	ui.updatePanels()
+	ui.dirty = true
+}
+
+// finishSlides ends the views' slides at once (Now Playing put under the
+// screensaver before it fades out shows straight away, without sliding).
+func (ui *IpodUI) finishSlides() {
+	for _, a := range []*Anim{ui.leftX, ui.fullX, ui.previewHide, ui.musicPrev} {
+		if a != nil {
+			a.Set(a.Target())
+		}
+	}
+	for _, st := range [][]*View{ui.split, ui.full} {
+		for _, v := range st {
+			if v.enter != nil {
+				v.enter.Set(v.enter.Target())
+			}
+			if v.hide != nil {
+				v.hide.Set(v.hide.Target())
+			}
+		}
+	}
+	ui.gone = nil
 	ui.dirty = true
 }
 
@@ -746,7 +772,7 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 		return
 	}
 	ui.repeatLast = now
-	if s := ui.saver; s != nil && !s.exiting {
+	if s := ui.saver; s != nil && !s.exiting && len(ui.sheets) == 0 {
 		ui.saverRepeat(ui.repeatKey)
 		ui.dirty = true
 		return
@@ -802,7 +828,12 @@ var saverLayer *image.RGBA
 // Idle screens are not redrawn at all: input or a timer marks them dirty.
 func (ui *IpodUI) animating(now time.Time) bool {
 	if s := ui.saver; s != nil {
-		return s.animating(now) || ui.holdAnimating(now)
+		for _, sh := range ui.sheets {
+			if sh.anim.Running() {
+				return true
+			}
+		}
+		return s.animating(now) || ui.holdAnimating(now) || toastAnimating()
 	}
 	if ui.leftX.Running() || ui.fullX.Running() || ui.previewHide.Running() || ui.musicPrev.Running() {
 		return true
@@ -936,6 +967,8 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// the screensaver covering the screen: nothing under it is drawn
 	if s := ui.saver; s != nil && !s.exiting && s.fade.Get(now) >= 1 {
 		ui.renderSaver(fb, now)
+		ui.drawSheets(fb, now) // (options, from Y)
+		ui.drawToast(fb, now)
 		return
 	}
 	fillRect(fb, 0, 0, 640, 480, th.bg)
@@ -1004,10 +1037,15 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	ui.drawKeyboard(fb, now)
 	ui.drawToast(fb, now)
 	// the screensaver fading in or out
-	if s := ui.saver; s != nil && s.fade.Get(now) > 0 {
-		l := newCanvasCached(&saverLayer, 640, 480)
-		ui.renderSaver(l, now)
-		blit(fb, l, 0, 0, s.fade.Get(now))
+	if s := ui.saver; s != nil {
+		if s.fade.Get(now) > 0 {
+			l := newCanvasCached(&saverLayer, 640, 480)
+			ui.renderSaver(l, now)
+			blit(fb, l, 0, 0, s.fade.Get(now))
+		}
+		if s.flyTop(now) {
+			ui.ssFlyDraw(fb, s, now)
+		}
 	}
 
 	// hold badge and volume overlay

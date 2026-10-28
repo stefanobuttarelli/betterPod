@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.57 (2026-10-28)
+
+### Added
+- **Screensaver ↔ Now Playing, one cover.** From Now Playing, its cover flies smoothly into the big square while the mosaic fades in around it. With a song on, **B** leaves the screensaver to Now Playing: the big cover flies back to its place there while the mosaic fades out, and hands over to Now Playing's own cover. Without a song, B just closes it.
+- **Screensaver: Y as anywhere.** On a picked cover, Y opens the album's options (Play Next, Add to End of Queue, Edit Album Info). On the turned-over card it opens the song's. A screen opened from there closes the screensaver.
+- **Screensaver bar: the song changes with a slide.** The next song comes in from below as the old one goes up; going back, it comes down from above.
+
+### Fixed
+- **A song found by Library search plays on with its album.** Next and previous now move to the album's next and previous songs, instead of finding nothing.
+- **A key held when the screensaver started no longer counts as a long press** (B held could take you back to the main menu under it).
+
 ## v0.56.1 (2026-10-28)
 
 ### Fixed
