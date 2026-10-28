@@ -1,8 +1,8 @@
 {
-  "version": "0.45.2",
-  "path": "release/knullipod-v0.45.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.45.2-knulli.zip",
-  "sha256": "84a6cb5ae0ac2e3295adc2bbc018029a38cee0420e889f0ee6792491a1c6e28b",
-  "size": 15011239,
-  "notes": "- The song that starts playing shows in the header in Cover Flow and in the lists with the mini player too\n- Weather: a rainy day no longer says \"Rain 0%\" (0.45.1)\n- The Solitaire icon shows whole (0.45)\n- Cancel is grey and Done is blue on the download screens (0.44)"
+  "version": "0.45.3",
+  "path": "release/knullipod-v0.45.3-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.45.3-knulli.zip",
+  "sha256": "91127eb4b8b3364b54513d82ebb65c371bfbf419e684d00159db405e2fe10234",
+  "size": 15011660,
+  "notes": "- MENU + volume (brightness) no longer turns the screen off when you let go of MENU\n- Waking the console from sleep turns the screen back on\n- The song that starts playing shows in the header in Cover Flow and in the lists too (0.45.2)\n- Weather: a rainy day no longer says \"Rain 0%\" (0.45.1)"
 }

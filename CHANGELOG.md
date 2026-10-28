@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.45.3 (2026-10-28)
+
+### Fixed
+- **MENU + volume (brightness) no longer turns the screen off.** MENU on its own locks the screen. But Knulli also uses it with the volume keys to change the brightness, and it does that itself, so the app never saw those keys. Letting go of MENU then counted as a press on its own and locked the screen (backlight off, music still playing).
+  - Now a MENU press is the lock only if nothing else happened while it was down: no other key, and no change of brightness. The brightness is checked a few times a second while MENU is held, and again when it's let go.
+  - Holding MENU for a while to change the brightness no longer shows the exit warning or quits the app after 5 seconds.
+- **Waking the console from sleep turns the screen on.** If the app was locked when the console went to sleep, it's unlocked on waking. Before, the screen stayed black while the music went on. A backlight left at 0 is also put back.
+
 ## v0.45.2 (2026-10-28)
 
 ### Fixed

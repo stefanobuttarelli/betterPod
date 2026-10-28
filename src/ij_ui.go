@@ -1155,6 +1155,7 @@ func (ui *IpodUI) Run() {
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
 	lastBT := false
+	var lastWall time.Time
 	var prefetched *Library
 	for app.Running {
 		// thumbnails of a newly loaded library are prefetched
@@ -1169,11 +1170,14 @@ func (ui *IpodUI) Run() {
 				break
 			}
 			if ev == int(LOCK) {
-				app.handlePowerButtonPress()
+				ui.lockKeyDown()
 				continue
 			} else if ev == -(int(LOCK) + 1) {
-				app.handlePowerButtonRelease()
+				ui.lockKeyUp()
 				continue
+			}
+			if ev >= 0 && menuKey.down {
+				ui.lockKeyCombo("another key") // MENU + a key: not the lock
 			}
 			if app.Locked {
 				continue
@@ -1204,6 +1208,13 @@ func (ui *IpodUI) Run() {
 			}
 		}
 		now := animNow()
+		ui.lockKeyPoll(now)
+		// back from sleep: the wall clock jumped, the monotonic one didn't
+		wall := time.Now()
+		if !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
+			ui.onResume()
+		}
+		lastWall = wall
 		if bt := btConnected(); bt != lastBT {
 			lastBT = bt
 			ui.dirty = true
@@ -1333,4 +1344,94 @@ func (ui *IpodUI) Run() {
 			time.Sleep(frame - el)
 		}
 	}
+}
+
+// ---- the MENU (Function) button: the screen lock ----
+//
+// MENU pressed and released on its own locks or unlocks the screen. But
+// the console also uses it with the volume keys for the brightness (Knulli
+// does that itself: the app never sees those volume keys), so releasing
+// MENU after changing the brightness used to lock the screen. A press is
+// the lock only if nothing else happened while MENU was down: no other
+// key, and no change of the backlight (checked a few times a second while
+// it is held, and on release). The 2 s exit warning and the 5 s exit are
+// cancelled too when it was a combo.
+
+var menuKey struct {
+	down     bool
+	combo    bool
+	bright   int // the backlight when MENU went down
+	lastPoll time.Time
+}
+
+func (ui *IpodUI) lockKeyDown() {
+	if menuKey.down {
+		return
+	}
+	menuKey.down, menuKey.combo = true, false
+	menuKey.bright = getBrightness()
+	menuKey.lastPoll = time.Now()
+	ui.app.handlePowerButtonPress()
+}
+
+func (ui *IpodUI) lockKeyUp() {
+	if !menuKey.down {
+		return
+	}
+	menuKey.down = false
+	if !menuKey.combo && getBrightness() != menuKey.bright {
+		menuKey.combo = true
+		logMsg("MENU: the brightness changed while it was held: not the lock")
+	}
+	if menuKey.combo {
+		ui.app.PowerButtonPressed = false
+		ui.app.stopPowerTimers()
+		ui.app.hidePowerExitWarning()
+		return
+	}
+	ui.app.handlePowerButtonRelease()
+}
+
+// lockKeyCombo: MENU is being used for something else.
+func (ui *IpodUI) lockKeyCombo(why string) {
+	if !menuKey.down || menuKey.combo {
+		return
+	}
+	menuKey.combo = true
+	ui.app.stopPowerTimers()
+	ui.app.hidePowerExitWarning()
+	logMsg("MENU: used with " + why + ": not the lock")
+}
+
+// lockKeyPoll: while MENU is held, a change of the backlight (MENU + volume)
+// makes it a combo, before the exit warning can show.
+func (ui *IpodUI) lockKeyPoll(now time.Time) {
+	if !menuKey.down || menuKey.combo || now.Sub(menuKey.lastPoll) < 200*time.Millisecond {
+		return
+	}
+	menuKey.lastPoll = now
+	if getBrightness() != menuKey.bright {
+		ui.lockKeyCombo("the volume keys (brightness)")
+	}
+}
+
+// onResume: the console woke up from sleep. Waking it means wanting to
+// see the screen: a lock left on is taken off (it kept the backlight at
+// 0, so the screen stayed black while the music went on), and a backlight
+// left at 0 is put back.
+func (ui *IpodUI) onResume() {
+	logMsg("Back from sleep")
+	app := ui.app
+	switch {
+	case app.Locked:
+		app.toggleLock()
+	case !hold.on && getBrightness() == 0:
+		lvl := backlightAtStart
+		if lvl <= 0 {
+			lvl = 50
+		}
+		setBrightness(lvl)
+	}
+	menuKey.down = false
+	ui.dirty = true
 }
