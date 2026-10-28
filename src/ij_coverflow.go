@@ -14,11 +14,12 @@ import (
 
 type cfXform struct {
 	X, Y, Z, S1, Z2, A, TY, S2 float64
+	W                          float64 // wider by this fraction, to the right (Now Playing's tilted cover)
 }
 
 func lerpX(a, b cfXform, t float64) cfXform {
 	l := func(x, y float64) float64 { return x + (y-x)*t }
-	return cfXform{l(a.X, b.X), l(a.Y, b.Y), l(a.Z, b.Z), l(a.S1, b.S1), l(a.Z2, b.Z2), l(a.A, b.A), l(a.TY, b.TY), l(a.S2, b.S2)}
+	return cfXform{l(a.X, b.X), l(a.Y, b.Y), l(a.Z, b.Z), l(a.S1, b.S1), l(a.Z2, b.Z2), l(a.A, b.A), l(a.TY, b.TY), l(a.S2, b.S2), l(a.W, b.W)}
 }
 
 type cfCover struct {
@@ -411,6 +412,10 @@ func coverMatrix(x cfXform) mat4 {
 	// around the cover's centre, then the perspective about the screen's
 	o := 0.0
 	full := mMul(mTrans(64, 84, o), mMul(m, mTrans(-64, -64, o)))
+	if x.W != 0 {
+		// wider from the left edge (which stays where it is)
+		full = mMul(full, mat4{1 + x.W, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1})
+	}
 	proj := mMul(mTrans(160, 110, o), mMul(mPersp(500), mTrans(-160, -110, o)))
 	return mMul(proj, full)
 }
@@ -924,7 +929,11 @@ func npCoverPose(t float64) cfXform {
 		Y: 8,
 		Z: -64*math.Sin(th0) + 64*math.Sin(th),
 		// paused (t = 0) the cover also shrinks to 85%
-		S1: 1, A: 35 * t, S2: 0.85 + 0.15*t}
+		S1: 1, A: 35 * t, S2: 0.85 + 0.15*t,
+		// tilted, wider so it looks square, as in Now Playing (npWiden): 9 px
+		// here, where the perspective is milder (measured: 247×247 on
+		// screen, as Now Playing's)
+		W: cfNPWiden / 128 * t}
 }
 
 // backsideBuf is the reused canvas of the flipped cover's track list.
@@ -959,3 +968,7 @@ func coverBackFace() *image.RGBA {
 	}
 	return coverBack
 }
+
+// cfNPWiden: how much wider Cover Flow's Now Playing cover is when tilted
+// (CSS px).
+const cfNPWiden = 9.0

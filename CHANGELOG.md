@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.4 (2026-10-28)
+
+### Fixed
+- **Cover Flow's Now Playing cover looks square too.** It's drawn by Cover Flow, not as in Now Playing, so 0.49.3 didn't change it. Tilted, it's now 9 px wider; its perspective is milder, so 9 px are enough. Measured on screen it's 248×247, as in Now Playing; before it was 234×247. Paused, it's still square.
+
 ## v0.49.3 (2026-10-28)
 
 ### Fixed
