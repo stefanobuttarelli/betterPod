@@ -1,8 +1,8 @@
 {
-  "version": "0.42",
-  "path": "release/knullipod-v0.42-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.42-knulli.zip",
-  "sha256": "3ad7f46a002c026337906a1ac43cd68f263b8d14891884609b306baea91bb7ce",
-  "size": 15005403,
-  "notes": "Settings → Podcasts takes Podcasts out of the main menu; clearer button hints"
+  "version": "0.43",
+  "path": "release/knullipod-v0.43-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.43-knulli.zip",
+  "sha256": "6ee109cad41c3fa97d7b0f5cf73b0ca3925a377efc7096d8c455812766999dc3",
+  "size": 15007082,
+  "notes": "YouTube video screen: YouTube in the header, the video as the first row"
 }

@@ -316,7 +316,7 @@ func (ui *IpodUI) youtubeView() *View {
 				st.thumbs[e.ID+e.URL] = th
 			}
 			items = append(items, Item{Label: e.Title, Sublabel: strings.Join(parts, " · "), Album: th,
-				OnSelect: func() { ui.showView(ui.ytItemView(e), "") }})
+				OnSelect: func() { ui.showView(ui.ytItemView(e, th), "") }})
 		}
 		return items
 	}
@@ -330,7 +330,7 @@ func (ui *IpodUI) youtubeView() *View {
 			if !strings.HasPrefix(strings.ToLower(q), "http") {
 				q = "https://" + q
 			}
-			ui.showView(ui.ytItemView(ytEntry{URL: q, Title: q}), "")
+			ui.showView(ui.ytItemView(ytEntry{URL: q, Title: q}, nil), "")
 			return
 		}
 		if st.cancel != nil {
@@ -642,10 +642,15 @@ func albumFromPlaylist(i *ytInfo) ytAlbum {
 }
 
 // ytItemView: a video (its chapters) or a playlist (its videos), and the
-// download buttons.
-func (ui *IpodUI) ytItemView(e ytEntry) *View {
+// download buttons. The header says YouTube; the first row is the video
+// itself, its thumbnail (th: the search row's, or loaded here) and title.
+func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 	st := &ytItemState{}
-	v := &View{ID: "ytItem", Title: e.Title, Kind: KindFull}
+	if th == nil {
+		th = &Album{Name: e.Title}
+	}
+	st.thumb = th
+	v := &View{ID: "ytItem", Title: "YouTube", Kind: KindFull, Index: 1}
 	var load func()
 	var cancel context.CancelFunc
 	v.onClose = func() {
@@ -653,23 +658,54 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 			cancel()
 		}
 	}
+	head := func() Item {
+		title, who, dur, count := e.Title, e.who(), e.Duration, e.Count
+		if i := st.info; i != nil {
+			if i.Title != "" {
+				title = i.Title
+			}
+			if w := i.who(); w != "" {
+				who = w
+			}
+			if i.Duration > 0 {
+				dur = i.Duration
+			}
+			if n := len(i.Entries); n > 0 {
+				count = n
+			}
+		}
+		var parts []string
+		if who != "" {
+			parts = append(parts, who)
+		}
+		if e.isPlaylist() {
+			if count > 0 {
+				parts = append(parts, fmt.Sprintf("%d videos", count))
+			} else {
+				parts = append(parts, "Playlist")
+			}
+		} else if dur > 0 {
+			parts = append(parts, formatTrackLength(dur))
+		}
+		return Item{Label: title, Sublabel: strings.Join(parts, " · "), Album: th, NoArrow: true}
+	}
 	v.Build = func() []Item {
+		items := []Item{head()}
 		if st.info == nil {
 			if st.err != "" {
 				l, sub, _ := strings.Cut(st.err, " · ")
-				return []Item{{Label: l, Sublabel: sub + " · press A to try again", NoArrow: true, OnSelect: func() {
+				return append(items, Item{Label: l, Sublabel: sub + " · press A to try again", NoArrow: true, OnSelect: func() {
 					st.err = ""
 					ui.refreshView(v)
 					load()
-				}}}
+				}})
 			}
 			if st.load != nil {
-				return []Item{st.load.item("Opening the video")}
+				return append(items, st.load.item("Opening the video"))
 			}
-			return []Item{{Label: "Loading…", NoArrow: true}}
+			return append(items, Item{Label: "Loading…", NoArrow: true})
 		}
 		i := st.info
-		var items []Item
 		if e.isPlaylist() || len(i.Entries) > 0 {
 			a := albumFromPlaylist(i)
 			n := len(a.Tracks)
@@ -706,9 +742,10 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 }
 
 type ytItemState struct {
-	info *ytInfo
-	err  string
-	load *ytLoading // while loading
+	thumb *Album // the first row's picture
+	info  *ytInfo
+	err   string
+	load  *ytLoading // while loading
 }
 
 func ytLoadItem(ui *IpodUI, v *View, st *ytItemState, e ytEntry, ctx context.Context, cancel context.CancelFunc) {
@@ -749,12 +786,30 @@ func ytLoadItem(ui *IpodUI, v *View, st *ytItemState, e ytEntry, ctx context.Con
 			st.info = info
 			if err != nil {
 				st.err = "Couldn't open it · " + iaErrText(err)
-			} else if info.Title != "" {
-				v.Title = info.Title
-				if ui.topScreen() == v {
-					ui.headerTitle = info.Title
+			} else if st.thumb.ArtImg == nil {
+				// opened from a link: its thumbnail now
+				var urls []string
+				if info.ID != "" && !e.isPlaylist() {
+					urls = append(urls, "https://i.ytimg.com/vi/"+info.ID+"/mqdefault.jpg")
 				}
+				if info.Thumbnail != "" {
+					urls = append(urls, info.Thumbnail)
+				}
+				urls = append(urls, ytThumbs(info.Thumbnails, "")...)
+				th := st.thumb
+				go func() {
+					tctx, done := context.WithTimeout(context.Background(), 20*time.Second)
+					defer done()
+					if img := ytThumbImage(tctx, urls); img != nil {
+						ui.postSure(func() {
+							th.ArtImg = img
+							ui.artc.dropAlbum(th)
+							ui.refreshView(v)
+						})
+					}
+				}()
 			}
+			v.Index = 1 // the first row is the video itself
 			ui.refreshView(v)
 		})
 	}()

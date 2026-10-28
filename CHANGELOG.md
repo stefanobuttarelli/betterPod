@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.43 (2026-10-28)
+
+### Changed
+- **A YouTube video's screen keeps "YouTube" in the header.** The video itself is the first row: its thumbnail, title, channel and length (or the number of videos for a playlist). The loading bar, the download buttons and the chapters come below it. A video opened from a link gets its thumbnail once it's loaded.
+
 ## v0.42 (2026-10-28)
 
 ### Added
