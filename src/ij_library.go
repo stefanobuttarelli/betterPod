@@ -38,9 +38,8 @@ func (ui *IpodUI) musicView() *View {
 			{Label: "Playlists", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.playlistsView(), "") }},
 			{Label: "Artists", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.artistsView(), "") }},
 			{Label: "Albums", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.albumsView(nil), "") }},
-			{Label: "Search", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchView(), "") }},
+			{Label: "Search", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchHubView(), "") }},
 		}
-		items = append(items, Item{Label: "Internet Archive", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.iaSearchView(), "") }})
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying})
 			items = append(items, Item{Label: "Up Next", Preview: PrevNowPlaying, OnSelect: func() { ui.showView(ui.upNextView(), "") }})
@@ -271,6 +270,7 @@ func (ui *IpodUI) settingsView() *View {
 			{Label: "Theme", Preview: PrevSettings, Value: themeLabel(themeMode), OnSelect: func() { ui.showView(ui.themeView(), "") }},
 			{Label: "Library", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.libraryInfoView(), "") }},
 			{Label: "Database", Preview: PrevSettings, Value: dbLabel(dataDir()), OnSelect: func() { ui.showView(ui.databaseView(), "") }},
+			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
 			{Label: "Software Update", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.updateView(), "") }},
 		}
 	}

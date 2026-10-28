@@ -13,6 +13,7 @@ type ipodPrefs struct {
 	RepeatMode  string  `json:"repeatMode"`
 	HoldBright  int     `json:"holdBrightness,omitempty"`
 	Theme       string  `json:"theme,omitempty"`
+	YouTube     bool    `json:"youtube,omitempty"`
 }
 
 func ipodPrefsPath() string { return dataPath("ipodjs_settings.json") }
@@ -30,6 +31,7 @@ func (ui *IpodUI) loadPrefs() {
 	case "light", "dark", "auto":
 		themeMode = p.Theme
 	}
+	ytEnabled = p.YouTube
 	if p.HoldBright >= 1 && p.HoldBright <= 100 {
 		hold.level = p.HoldBright
 	}
@@ -62,6 +64,6 @@ func (ui *IpodUI) savePrefs() {
 			rep = "all"
 		}
 	}
-	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode})
+	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled})
 	_ = os.WriteFile(ipodPrefsPath(), data, 0644)
 }

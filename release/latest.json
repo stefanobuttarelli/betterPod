@@ -1,8 +1,8 @@
 {
-  "version": "0.37",
-  "path": "release/knullipod-v0.37-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.37-knulli.zip",
-  "sha256": "1f1cb587710f9b05f906995ca0016ef2496ab53c9719a36d3d8e59f2aa9cf9a2",
-  "size": 14436690,
-  "notes": "Quality pass: fixes, speed, battery"
+  "version": "0.38",
+  "path": "release/knullipod-v0.38-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.38-knulli.zip",
+  "sha256": "ec9341d1405a89e51a05647d1b9d6bbfcc5a2866981542221b5375f7abd2f445",
+  "size": 14498045,
+  "notes": "YouTube (optional): download videos and playlists as albums"
 }

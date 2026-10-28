@@ -590,6 +590,8 @@ type iaDownload struct {
 	retry    string   // while waiting to try again: why, and which try
 	failed   []string // tracks skipped after every try failed
 	lastErr  string
+	again    func() // Try Again
+	source   string // the header ("YouTube"; empty: Internet Archive)
 }
 
 var iaCur *iaDownload
@@ -656,15 +658,21 @@ func (ui *IpodUI) startIADownload(it *iaItem, format string, files []iaFile) {
 		ui.showView(ui.iaDownloadView(), "")
 		return
 	}
-	dir := iaDir(it)
-	d := &iaDownload{item: it, files: files, format: format, dir: dir, cancel: make(chan struct{}), state: "Starting…"}
+	d := &iaDownload{item: it, files: files, format: format, dir: iaDir(it), cancel: make(chan struct{}), state: "Starting…"}
 	for _, f := range files {
 		d.total += f.Size
 	}
+	ui.startDownloadJob(d, func() error { return d.run(ui) }, func() { ui.startIADownload(it, format, files) })
+}
+
+// startDownloadJob shows the download screen for d and runs run in the
+// background (Internet Archive, YouTube); again restarts it (Try Again).
+func (ui *IpodUI) startDownloadJob(d *iaDownload, run func() error, again func()) {
+	d.again = again
 	iaCur = d
 	ui.showView(ui.iaDownloadView(), "")
 	go func() {
-		err := d.run(ui)
+		err := run()
 		ui.postSure(func() {
 			d.mu.Lock()
 			d.finished = true
@@ -673,8 +681,6 @@ func (ui *IpodUI) startIADownload(it *iaItem, format string, files []iaFile) {
 				d.err, d.state = "Cancelled", "Download stopped"
 			case err != nil:
 				d.err, d.state = err.Error(), "Download stopped"
-			case len(d.failed) > 0:
-				d.state = "Added to your library"
 			default:
 				d.state = "Added to your library"
 			}
@@ -1000,7 +1006,11 @@ func formatSpeed(bps float64) string {
 }
 
 func (ui *IpodUI) iaDownloadView() *View {
-	return &View{ID: "iaDownload", Title: "Internet Archive", Kind: KindFull, Custom: &IADownloadView{}}
+	title := "Internet Archive"
+	if iaCur != nil && iaCur.source != "" {
+		title = iaCur.source
+	}
+	return &View{ID: "iaDownload", Title: title, Kind: KindFull, Custom: &IADownloadView{}}
 }
 
 func (dv *IADownloadView) progress() float64 {
@@ -1068,12 +1078,11 @@ func (dv *IADownloadView) OnCenter(ui *IpodUI) {
 		if dv.canRetry() {
 			// again: the tracks already there are skipped, a .part is
 			// continued
-			d.mu.Lock()
-			it, format, files := d.item, d.format, d.files
-			d.mu.Unlock()
 			iaCur = nil
 			ui.hideView()
-			ui.startIADownload(it, format, files) // a fresh download view
+			if d.again != nil {
+				d.again() // a fresh download view
+			}
 			return
 		}
 		ui.hideView()

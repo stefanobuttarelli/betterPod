@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.38 (2026-10-28)
+
+### Added
+- **YouTube** (off by default: Settings → YouTube). Search videos or playlists and download them as albums.
+  - **Turning it on** downloads the tools from GitHub the first time: yt-dlp for ARM64 and a JavaScript runtime (QuickJS-ng, or Deno if that fails), about 40 MB, kept in the data folder. The same page shows their version, updates them (YouTube changes often: update when downloads fail) and removes them.
+  - **Searching:** Music → Search → YouTube. The keyboard opens; Videos or Playlists & Albums; a YouTube link opens that video or playlist.
+  - **A video with chapters** downloads as an album with a track per chapter ("01." numbering removed from the titles), or as one song. **A playlist** downloads as an album with a track per video.
+  - **The tracks:** M4A, YouTube's AAC audio as it is (not re-encoded), with title, artist, album, track number, year and cover inside. They go in Music/YouTube/Artist/Album.
+  - **Cutting at the chapters** is done by KnulliPod itself (no ffmpeg): one download, then the audio is split at the AAC frames.
+  - **Names:** "Artist - Album" titles are split, and "(Full Album)", "(Official Video)" and the like are removed. YouTube Music's own artist and album are used when the video has them.
+  - **A square cover** from the video's 16:9 picture:
+    - the album cover inside the bars, cut out exactly, when the video is a still cover on a plain background;
+    - the square picture, for YouTube Music tracks;
+    - otherwise the whole picture, sharp, on a blurred and darkened version of itself.
+  - **The download screen** is the same as Internet Archive's (progress, time left, cancel, Try Again).
+  - **Only download what you may:** YouTube's terms don't allow downloading. Use it for your own or freely licensed videos.
+
+### Changed
+- **Music → Search** is a menu: Library (the search in your music), Internet Archive (moved here from the Music menu) and YouTube when it's on.
+
 ## v0.37 (2026-10-28)
 
 A quality pass over the code of the last versions: bugs, speed and battery, smoother animations.
