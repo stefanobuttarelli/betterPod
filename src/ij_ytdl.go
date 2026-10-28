@@ -488,6 +488,10 @@ type ytAlbum struct {
 	Artist, Album, Year string
 	Tracks              []ytTrack
 	CoverURLs           []string // best first
+	// the picture and the square chosen on the video's page (Cover row,
+	// ij_ytcoverpick.go); nil: the automatic cover from CoverURLs
+	CoverSrc    image.Image
+	CoverChoice ytCoverChoice
 }
 
 type ytTrack struct {
@@ -717,11 +721,30 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			return append(items, Item{Label: "Loading…", NoArrow: true})
 		}
 		i := st.info
+		// the cover it will get (choosing it opens the square)
+		switch {
+		case st.coverSrc != nil:
+			items = append(items, Item{Label: "Cover", Sublabel: ytCoverText(st.coverSrc, st.coverChoice), Album: st.coverPrev,
+				OnSelect: func() {
+					ui.showView(ui.ytCoverEditorView(st.coverSrc, st.coverChoice, func(c ytCoverChoice) {
+						st.coverChoice = c
+						st.coverPrev.ArtImg = ytCoverPreview(st.coverSrc, c, px(48))
+						ui.artc.dropAlbum(st.coverPrev)
+						ui.refreshView(v)
+					}), "")
+				}})
+		case !st.coverTried:
+			items = append(items, Item{Label: "Cover", Sublabel: "Loading the picture…", NoArrow: true})
+		}
+		withCover := func(a ytAlbum) ytAlbum {
+			a.CoverSrc, a.CoverChoice = st.coverSrc, st.coverChoice
+			return a
+		}
 		if e.isPlaylist() || len(i.Entries) > 0 {
 			a := albumFromPlaylist(i)
 			n := len(a.Tracks)
 			items = append(items, Item{Label: fmt.Sprintf("Download as Album · %d %s", n, pluralize(n, "song", "songs")),
-				Sublabel: a.Artist + " — " + a.Album, OnSelect: func() { ui.startYTDownload(i, a) }})
+				Sublabel: a.Artist + " — " + a.Album, OnSelect: func() { ui.startYTDownload(i, withCover(a)) }})
 			for _, t := range a.Tracks {
 				items = append(items, Item{Label: t.Title, Value: lengthOrEmpty(t.Duration), NoArrow: true})
 			}
@@ -730,11 +753,11 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 		if len(i.Chapters) >= 2 {
 			a := albumFromVideo(i, true)
 			items = append(items, Item{Label: fmt.Sprintf("Download as Album · %d tracks", len(a.Tracks)),
-				Sublabel: "A track per chapter · " + a.Artist + " — " + a.Album, OnSelect: func() { ui.startYTDownload(i, a) }})
+				Sublabel: "A track per chapter · " + a.Artist + " — " + a.Album, OnSelect: func() { ui.startYTDownload(i, withCover(a)) }})
 		}
 		one := albumFromVideo(i, false)
 		items = append(items, Item{Label: "Download as One Song", Sublabel: one.Artist + " — " + one.Tracks[0].Title + " · " + lengthOrEmpty(i.Duration),
-			OnSelect: func() { ui.startYTDownload(i, one) }})
+			OnSelect: func() { ui.startYTDownload(i, withCover(one)) }})
 		if len(i.Chapters) >= 2 {
 			for _, t := range albumFromVideo(i, true).Tracks {
 				items = append(items, Item{Label: t.Title, Value: lengthOrEmpty(t.Duration), NoArrow: true})
@@ -754,9 +777,15 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 
 type ytItemState struct {
 	thumb *Album // the first row's picture
-	info  *ytInfo
-	err   string
-	load  *ytLoading // while loading
+	// the cover: the picture it's made from (loaded after the info), the
+	// choice, and its preview for the Cover row
+	coverSrc    image.Image
+	coverChoice ytCoverChoice
+	coverPrev   *Album
+	coverTried  bool
+	info        *ytInfo
+	err         string
+	load        *ytLoading // while loading
 }
 
 func ytLoadItem(ui *IpodUI, v *View, st *ytItemState, e ytEntry, ctx context.Context, cancel context.CancelFunc) {
@@ -821,6 +850,33 @@ func ytLoadItem(ui *IpodUI, v *View, st *ytItemState, e ytEntry, ctx context.Con
 				}()
 			}
 			v.Index = 1 // the first row is the video itself
+			if err == nil {
+				// the picture the cover is made from, for the Cover row
+				urls := ytThumbs(info.Thumbnails, info.ID)
+				if e.isPlaylist() || len(info.Entries) > 0 {
+					urls = ytThumbs(info.Thumbnails, "")
+					if len(info.Entries) > 0 {
+						urls = append(urls, ytThumbs(info.Entries[0].Thumbnails, info.Entries[0].ID)...)
+					}
+				}
+				go func() {
+					cctx, done := context.WithTimeout(context.Background(), 40*time.Second)
+					defer done()
+					img := ytCoverSource(cctx, urls)
+					var prev *image.RGBA
+					if img != nil {
+						prev = ytCoverPreview(img, ytCoverChoice{}, px(48))
+					}
+					ui.postSure(func() {
+						st.coverTried = true
+						if img != nil {
+							st.coverSrc = img
+							st.coverPrev = &Album{Name: "Cover", ArtImg: prev}
+						}
+						ui.refreshView(v)
+					})
+				}()
+			}
 			ui.refreshView(v)
 		})
 	}()
@@ -1023,6 +1079,13 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 	setState("Making the cover…")
 	coverPath := filepath.Join(d.dir, "cover.jpg")
 	cover, _ := os.ReadFile(coverPath)
+	if a.CoverSrc != nil {
+		// the one chosen on the video's page (it replaces an earlier one)
+		if b, err := ytCoverMake(a.CoverSrc, a.CoverChoice); err == nil {
+			cover = b
+			_ = writeFileAtomic(coverPath, cover)
+		}
+	}
 	if cover == nil {
 		if cover = ytCover(ctx, a.CoverURLs); cover != nil {
 			_ = writeFileAtomic(coverPath, cover)

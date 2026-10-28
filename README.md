@@ -233,6 +233,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/ij_bluetooth.go` | Settings → Bluetooth (bluetoothctl): paired and new devices, their pictures |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
 | `src/ij_youtube.go`, `src/ij_ytdl.go` | YouTube: tools and settings; search, item page, download as albums |
+| `src/ij_ytcoverpick.go` | YouTube: choosing the square cover before a download |
 | `src/ij_m4a.go`, `src/ij_ytcover.go` | M4A cutting and tagging without ffmpeg; square covers from video pictures |
 | `src/ij_covers.go` | Cover search (MusicBrainz, Cover Art Archive), Search All Automatically |
 | `src/ij_coversources.go` | The other cover sources: iTunes, Deezer, Wikipedia |

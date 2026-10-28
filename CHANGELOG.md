@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.51 (2026-10-28)
+
+### Added
+- **Choose the square cover before a YouTube download.** A video's or playlist's page has a **Cover** row: the cover it will get, with what the automatic cover does ("the cover found in the picture", "whole picture, blurred sides"…).
+  - **Choosing it** shows the whole picture with the square on it, darker outside, and the cover as it will be beside it.
+  - **Keys:** left / right move the square (up / down on a tall picture; held, they keep moving). A uses it, B goes back as it was.
+  - **Y** offers Whole Picture (nothing cut off, blurred sides) and Automatic.
+  - The cover is made from the choice when the download runs, and replaces an earlier one.
+
 ## v0.50 (2026-10-28)
 
 ### Changed

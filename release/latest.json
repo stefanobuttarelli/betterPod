@@ -1,8 +1,8 @@
 {
-  "version": "0.50",
-  "path": "release/knullipod-v0.50-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.50-knulli.zip",
-  "sha256": "37898c54a3da2bb438431cc6a8ef2d49415e6663be2bb98c8eaee61a12bc65b7",
-  "size": 15106574,
-  "notes": "- Clear Now Playing asks inside the Now Playing block: Keep or Clear, no sheet over the screen\n- The header's icons are closer together\n- Cover Flow's Now Playing cover looks square too (0.49.4)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)"
+  "version": "0.51",
+  "path": "release/knullipod-v0.51-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.51-knulli.zip",
+  "sha256": "ddc16b2e98273fd576f3c251f059537c6cc981479875603faff541a76ac597a5",
+  "size": 15115400,
+  "notes": "- YouTube: a Cover row on the video's page shows the square cover; move the square on the picture before downloading\n- Clear Now Playing asks inside the Now Playing block (0.50)\n- The header's icons are closer together (0.50)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)"
 }
