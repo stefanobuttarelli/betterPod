@@ -3,7 +3,7 @@ package main
 // tagwrite.go — writes a song's tags into its file: ID3v2 for MP3, Vorbis
 // comments for FLAC and Ogg Vorbis (the formats the library reads tags
 // from with dhowden/tag). Used by Podcasts (ij_podcasts.go) for the
-// episodes it downloads.
+// episodes it downloads, and by Album Info (ij_albuminfo.go).
 //
 // Only the fields of songTags are written; every other tag and the cover
 // art are kept as they are. When the new tags fit in the room the file

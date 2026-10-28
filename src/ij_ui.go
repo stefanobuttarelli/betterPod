@@ -544,7 +544,7 @@ func (ui *IpodUI) centerLongPress() {
 			ui.showSheetTitled(it.Label, ui.mediaOptions(it.Tracks[it.TrackIdx:it.TrackIdx+1]))
 		} else if cf.selected == nil {
 			al := cf.albums[cf.active]
-			ui.showSheetTitled(al.Name, ui.mediaOptions(albumTracks(al)))
+			ui.showSheetTitled(al.Name, ui.albumOptions(al))
 		}
 		return
 	}

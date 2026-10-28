@@ -51,6 +51,7 @@
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
 - **Missing covers found online.** Settings → Library → Missing Covers lists the albums without one: choose one to see what MusicBrainz, iTunes, Deezer and Wikipedia find (with thumbnails and the source) and pick, or search by hand; Search All Automatically fetches them from the Cover Art Archive (MusicBrainz), or else from iTunes, Deezer or Wikipedia, with the same checks. For a soundtrack ripped from a game, which has no album cover of its own, Wikipedia gives the game's box.
 - **Internet Archive.** Search archive.org, see each item's license, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
+- **Album Info.** Hold A (or press Y) on an album, in the lists or in Cover Flow, and choose Edit Album Info; Settings → Library → **Missing Info** lists the albums without an artist or track numbers. **Find Info Online** asks MusicBrainz, iTunes, Deezer and Wikipedia; choosing a result fills in album, album artist, year and genre and pairs its songs with yours (titles, artists, numbers). For a game rip, Wikipedia gives the composer or the game's developer. Every field can also be typed. **Save Changes** writes the tags into the MP3, FLAC and Ogg Vorbis files and scans the library again.
 - **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field.
 - **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
@@ -226,6 +227,8 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/ij_archive.go` | Music → Internet Archive (search, item, download) |
 | `src/ij_podcasts.go` | Podcasts (Apple's directory, RSS feeds, episodes) |
 | `src/tagwrite.go` | Writes tags into MP3 (ID3v2), FLAC and Ogg Vorbis files |
+| `src/ij_albuminfo.go` | Album Info and Missing Info: an album's tags, filled in online or by hand |
+| `src/ij_infosources.go` | Album Info's sources: MusicBrainz releases, iTunes and Deezer albums with their songs, Wikipedia's infobox |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
 | `src/ij_youtube.go`, `src/ij_ytdl.go` | YouTube: tools and settings; search, item page, download as albums |
 | `src/ij_m4a.go`, `src/ij_ytcover.go` | M4A cutting and tagging without ffmpeg; square covers from video pictures |

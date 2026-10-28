@@ -83,6 +83,7 @@ func coverGetAccept(u, accept string, timeout time.Duration) (*http.Response, er
 	}
 	req.Header.Set("User-Agent", coverUA)
 	req.Header.Set("Accept", accept)
+	req.Header.Set("Accept-Language", "en") // Deezer answers in the language of the address
 	return updateClient(timeout).Do(req)
 }
 
