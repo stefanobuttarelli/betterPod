@@ -1,11 +1,16 @@
 # Changelog
 
+## v0.33.1 (2026-10-28)
+
+### Changed
+- **Weather:** the high and low next to the big temperature are plain text with arrows ("↑ 21°", "↓ 13°") instead of the red and blue pills.
+
 ## v0.33 (2026-10-28)
 
 ### Added
 - **Weather** (Games → Weather): the forecast for the places you choose, as if Apple had made it for the iPod in 2006, with a nod to the Wii's Forecast Channel.
   - **Places:** there's no location, so Search for a Place opens the keyboard and lists what matches (city, region, country). Choosing one saves it. The list shows each place with an icon, its weather and temperature; holding A removes one.
-  - **The forecast:** a sky that follows the weather and the time of day (deep blue when clear, grey with rain, dark and starry at night). It shows the place and its local time, the temperature now in big type, the condition, the high and low on red and blue pills, and feels-like, humidity and wind.
+  - **The forecast:** a sky that follows the weather and the time of day (deep blue when clear, grey with rain, dark and starry at night). It shows the place and its local time, the temperature now in big type, the condition, the high and low, and feels-like, humidity and wind.
   - **10 days:** glossy glass tiles (5 at a time) with the day, an icon, the high in red, the low in blue and the chance of rain. The wheel or d-pad picks a day and the top shows it, with its rain chance, sunrise and sunset.
   - **The icons:** drawn for the app, glossy and puffy, with a shine and a soft shadow: sun, moon and stars, clouds, fog, drizzle, rain, sleet, snow and thunderstorms. The big one is animated: the rays turn, the clouds drift, rain and snow fall, lightning flashes.
   - **Data:** from Open-Meteo (open-meteo.com: free, no key). The last forecast of each place is kept, so it shows at once and offline. It updates when older than 30 minutes, or with A.

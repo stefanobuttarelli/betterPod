@@ -1,8 +1,8 @@
 {
-  "version": "0.33",
-  "path": "release/knullipod-v0.33-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.33-knulli.zip",
-  "sha256": "fc705f7c4a6b058c95c3318ec771d2fe6faf4b6c723f01e9df3e4b596f2f969a",
-  "size": 14388607,
-  "notes": "New: Weather, in Games"
+  "version": "0.33.1",
+  "path": "release/knullipod-v0.33.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.33.1-knulli.zip",
+  "sha256": "6a56e54644f888d845412c63c1c99df6b00d3c9d49ffcb2b0382ae2adc00c4e6",
+  "size": 14388191,
+  "notes": "Weather: high and low as text with arrows"
 }

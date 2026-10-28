@@ -274,21 +274,13 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 		}
 		line = strings.Join(parts, " · ")
 	}
-	hi, lo = "H "+wxTemp(f.Daily.Max[i]), "L "+wxTemp(f.Daily.Min[i])
+	hi, lo = "↑ "+wxTemp(f.Daily.Max[i]), "↓ "+wxTemp(f.Daily.Min[i])
 	shadowText(dst, bigF, big, x*d, 82*d, colWhite)
 	bw := textWidth(bigF, big) / d
-	// high and low: the Forecast Channel's red and blue, on little pills
-	pill := func(s string, y float64, top, bot Col) {
-		pf := face(W700, 12)
-		w := textWidth(pf, s)/d + 14
-		px0 := x + bw + 10
-		fillRoundedGradient(dst, px0*d, y*d, (px0+w)*d, (y+17)*d, 8.5*d, []GradStop{{0, top}, {1, bot}}, 1)
-		fillRoundedGradient(dst, (px0+1)*d, (y+1)*d, (px0+w-1)*d, (y+8)*d, 7*d, []GradStop{{0, rgba(255, 255, 255, 0.55)}, {1, rgba(255, 255, 255, 0.05)}}, 1)
-		strokeRounded(dst, px0*d, y*d, (px0+w)*d, (y+17)*d, 8.5*d, 1.5, rgba(255, 255, 255, 0.7), 1)
-		drawText(dst, pf, s, (px0+7)*d, (y+8.5+lineCapHeight(12)/2)*d, colWhite)
-	}
-	pill(hi, 45, hex("#ff6a55"), hex("#d42a1e"))
-	pill(lo, 65, hex("#5aa8ff"), hex("#1f63d0"))
+	// high and low: plain text with arrows, next to the big temperature
+	hlF := face(W600, 15)
+	shadowText(dst, hlF, hi, (x+bw+10)*d, 59*d, colWhite)
+	shadowText(dst, hlF, lo, (x+bw+10)*d, 79*d, rgba(255, 255, 255, 0.85))
 	condF := face(W700, 14)
 	shadowText(dst, condF, ellipsize(condF, cond, float64(W)-(x+8)*d), x*d, 103*d, colWhite)
 	lineF := face(W500, 10)
