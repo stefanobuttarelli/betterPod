@@ -1176,6 +1176,7 @@ func (ui *IpodUI) Run() {
 	lastSecond := -1
 	lastBT := false
 	var lastWall time.Time
+	wasAnim := false // an animation was running at the last frame
 	var prefetched *Library
 	for app.Running {
 		// thumbnails of a newly loaded library are prefetched
@@ -1305,8 +1306,13 @@ func (ui *IpodUI) Run() {
 		}
 		// locked (screen off): nothing moves, so nothing is animated
 		anim := !app.Locked && ui.animating(now)
+		// the frame after an animation ends is drawn too: its last frame
+		// may have been drawn well before the end (a slow frame), and the
+		// screen would stay half-way (a view half slid in) until a key
+		ended := wasAnim && !anim
+		wasAnim = anim
 		presentBlocked := false
-		if ui.dirty || anim {
+		if ui.dirty || anim || ended {
 			ui.dirty = false
 			t0 := time.Now()
 			if app.Locked {

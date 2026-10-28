@@ -1,8 +1,8 @@
 {
-  "version": "0.52.1",
-  "path": "release/knullipod-v0.52.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.52.1-knulli.zip",
-  "sha256": "711763d20500232c1129c15581f8abde0b2702f250921cbfbd95ddcc732606cc",
-  "size": 15152834,
-  "notes": "- YouTube: the cover screen opens at once, with moving stripes while the picture gets ready\n- Settings → Library → Music Folder: move the music to another memory card, checked file by file (0.52)\n- YouTube: choose the square cover before downloading (0.51)\n- Clear Now Playing asks inside the Now Playing block (0.50)"
+  "version": "0.52.2",
+  "path": "release/knullipod-v0.52.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.52.2-knulli.zip",
+  "sha256": "231702a575bf0583e733138b35c95834ce2154bf5384697aa00d483a2ce08158",
+  "size": 15153269,
+  "notes": "- Fixed: a screen could stay half slid in until a key was pressed\n- YouTube: the cover screen opens at once, with moving stripes while the picture gets ready (0.52.1)\n- Settings → Library → Music Folder: move the music to another memory card, checked file by file (0.52)\n- YouTube: choose the square cover before downloading (0.51)"
 }

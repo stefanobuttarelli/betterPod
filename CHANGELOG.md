@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.52.2 (2026-10-28)
+
+### Fixed
+- **A screen could stay half slid in** (seen opening the YouTube Cover screen) until a key was pressed. When a frame took a while to draw (a big picture being got ready), the slide's time ran out before its last frame, and with nothing else moving the screen wasn't drawn again. Now the frame after any animation ends is always drawn, so a slide, a sheet or a fade always finishes where it should.
+
 ## v0.52.1 (2026-10-28)
 
 ### Fixed
