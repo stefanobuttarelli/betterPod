@@ -39,7 +39,7 @@ const (
 	ssCell = 110 // a cover (px)
 	ssRows = 4
 	ssCols = 6 // the last runs off the screen
-	ssNav  = 5 // columns the arrows reach (the 6th is cut)
+	ssNav  = 6 // columns the arrows reach (the 6th, cut by the edge, comes in whole when picked)
 )
 
 // settings (prefs)
@@ -783,6 +783,13 @@ func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 		}
 		if r.Min.X < 0 {
 			r = r.Add(image.Pt(-r.Min.X, 0))
+		}
+		// the last column runs off the screen: picked, it comes in whole
+		if r.Max.X > 640 {
+			r = r.Add(image.Pt(640-r.Max.X, 0))
+		}
+		if r.Max.Y > 480 {
+			r = r.Add(image.Pt(0, 480-r.Max.Y))
 		}
 		var al *Album
 		if t == nil {

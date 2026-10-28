@@ -1,8 +1,8 @@
 {
-  "version": "0.56",
-  "path": "release/knullipod-v0.56-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.56-knulli.zip",
-  "sha256": "8efbf596d96b0b65f561707774e439a85f3310eacd0c5223f2140fc47b7a2662",
-  "size": 15183151,
-  "notes": "- L2 / R2 set the brightness anywhere, shown in the header\n- Screensaver bar: paused, the song slides down out of it (0.55.2)\n- Screensaver: the volume shows in the bar when it changes (0.55.1)\n- Screensaver: the song playing next to the clock (0.55)"
+  "version": "0.56.1",
+  "path": "release/knullipod-v0.56.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.56.1-knulli.zip",
+  "sha256": "f1626e4b1e76e2e8c5f506fe2e845109031284c1712666a3094c1be80645b566",
+  "size": 15183017,
+  "notes": "- Screensaver: the last column can be picked too (its cover comes in whole)\n- L2 / R2 set the brightness anywhere, shown in the header (0.56)\n- Screensaver bar: paused, the song slides down out of it (0.55.2)\n- Screensaver: the volume shows in the bar when it changes (0.55.1)"
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.56.1 (2026-10-28)
+
+### Fixed
+- **Screensaver: the last column can be picked too.** Its covers are cut by the edge of the screen; picked, the cover comes in whole (moved left, inside the screen) and A turns it over like the others.
+
 ## v0.56 (2026-10-28)
 
 ### Added
