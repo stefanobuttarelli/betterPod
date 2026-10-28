@@ -30,8 +30,8 @@ var ticker struct {
 // (the mini player), not while the preview on the right is Now Playing.
 // Cover Flow has it (it shows no song), except on its own Now Playing.
 func (ui *IpodUI) tickerAllowed() bool {
-	if cf := ui.cover; cf != nil {
-		return !cf.exiting && !cf.playing
+	if cf := ui.coverUp(); cf != nil {
+		return !cf.playing
 	}
 	top := ui.topScreen()
 	if top == nil || ui.nowPlayingOnScreen() || ui.miniReserve(top) {

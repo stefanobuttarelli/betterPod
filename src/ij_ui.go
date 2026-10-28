@@ -291,7 +291,7 @@ func (ui *IpodUI) hideView() {
 		ui.hideSheet()
 		return
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
+	if cf := ui.coverUp(); cf != nil {
 		cf.menu(ui)
 		return
 	}
@@ -335,6 +335,13 @@ func (ui *IpodUI) hideView() {
 	if t, ok := top.titleOverride(); ok {
 		ui.headerTitle = t
 	}
+	if cf := ui.coverUp(); cf != nil {
+		// back on Cover Flow (from Up Next over its Now Playing)
+		ui.headerTitle = "Cover Flow"
+		if cf.playing {
+			ui.headerTitle = "Now Playing"
+		}
+	}
 	ui.previewForSplit()
 	ui.updatePanels()
 	ui.dirty = true
@@ -370,6 +377,12 @@ func (ui *IpodUI) resetViews() {
 
 func (ui *IpodUI) updatePanels() {
 	hasFull := len(ui.full) > 0
+	if cf := ui.cover; cf != nil && !cf.exiting && !hasFull {
+		// the menus stay away under Cover Flow
+		ui.leftX.To(-1, durPanel, easeCSS, 0)
+		ui.fullX.To(1, durPanel, easeCSS, 0)
+		return
+	}
 	if hasFull {
 		ui.leftX.To(-1, durPanel, easeCSS, delayMenuHide)
 		ui.fullX.To(0, durPanel, easeCSS, 0)
@@ -450,7 +463,7 @@ func (ui *IpodUI) scroll(dir int, velocity float64) {
 		sh.scroll(ui, dir, velocity)
 		return
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
+	if cf := ui.coverUp(); cf != nil {
 		cf.scroll(ui, dir, velocity)
 		return
 	}
@@ -491,7 +504,7 @@ func (ui *IpodUI) centerClick() {
 		sh.selectCurrent(ui)
 		return
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
+	if cf := ui.coverUp(); cf != nil {
 		cf.center(ui)
 		return
 	}
@@ -521,7 +534,7 @@ func (ui *IpodUI) menuClick() {
 		ui.dirty = true
 		return
 	}
-	if ui.keyboard == nil && ui.cover == nil && ui.activeSheet() == nil {
+	if ui.keyboard == nil && ui.coverUp() == nil && ui.activeSheet() == nil {
 		if mh, ok := ui.topScreen().Custom.(interface{ OnMenu(*IpodUI) }); ok {
 			mh.OnMenu(ui)
 			ui.dirty = true
@@ -535,9 +548,14 @@ func (ui *IpodUI) centerLongPress() {
 	if ui.activeSheet() != nil {
 		return
 	}
-	// Cover Flow: the album in front, or the song on its back
-	if cf := ui.cover; cf != nil {
-		if cf.exiting || cf.playing || len(cf.albums) == 0 {
+	// Cover Flow: the album in front, or the song on its back; on its Now
+	// Playing, Up Next (as on the other Now Playing)
+	if cf := ui.coverUp(); cf != nil {
+		if cf.playing {
+			ui.showView(ui.upNextView(), "")
+			return
+		}
+		if len(cf.albums) == 0 {
 			return
 		}
 		if cf.selected != nil && cf.back != nil && len(cf.back.Items) > 0 {
@@ -698,7 +716,7 @@ func (ui *IpodUI) checkLongPress(now time.Time) {
 		case B:
 			if kb := ui.keyboard; kb != nil && !kb.exiting {
 				ui.hideKeyboard() // held on the keyboard: close it
-			} else if top := ui.topScreen(); !top.DisableLongPress || ui.cover != nil {
+			} else if top := ui.topScreen(); !top.DisableLongPress || ui.coverUp() != nil {
 				ui.resetViews()
 			}
 		}

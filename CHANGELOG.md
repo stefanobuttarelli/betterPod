@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.2 (2026-10-28)
+
+### Fixed
+- **Y on Cover Flow's Now Playing opens Up Next,** as on the other Now Playing. B goes back to Cover Flow's Now Playing, and B again to the album's songs. The keys go to Up Next while it's open, and the menus no longer slide in under Cover Flow when it closes.
+
 ## v0.49.1 (2026-10-28)
 
 ### Fixed

@@ -150,7 +150,7 @@ func (ui *IpodUI) nowPlayingTakesScroll() bool {
 	if kb := ui.keyboard; kb != nil && !kb.exiting {
 		return false
 	}
-	if cf := ui.cover; cf != nil && !cf.exiting {
+	if cf := ui.coverUp(); cf != nil {
 		return cf.playing
 	}
 	if len(ui.sheets) > 0 {
@@ -760,7 +760,7 @@ func (ui *IpodUI) nowPlayingViews() []*NowPlayingView {
 
 //go:noinline
 func (ui *IpodUI) nowPlayingOnScreen() bool { // Now Playing is the visible screen
-	if cf := ui.cover; cf != nil && !cf.exiting && cf.np != nil && cf.npFade.Target() > 0 {
+	if cf := ui.coverUp(); cf != nil && cf.np != nil && cf.npFade.Target() > 0 {
 		return true
 	}
 	if len(ui.full) > 0 {

@@ -64,6 +64,7 @@ func (c *cfCover) set(to cfXform, dur time.Duration, now time.Time) {
 
 // CoverFlow is the Cover Flow screen.
 type CoverFlow struct {
+	fullBase  int // full-screen views when it opened: more are on top of it (Up Next)
 	albums    []*Album
 	active    int
 	selected  *Album // flipped to its back
@@ -113,12 +114,22 @@ func (ui *IpodUI) openCoverFlow() {
 		fadeIn:   newAnim(0),
 	}
 	cf.fadeIn.To(1, 300*time.Millisecond, easeFramer, 0)
+	cf.fullBase = len(ui.full)
 	ui.cover = cf
 	ui.headerTitle = "Cover Flow"
 	// the menus slide away and the preview hides
 	ui.leftX.To(-1, durPanel, easeCSS, delayMenuHide)
 	ui.previewHide.To(1, durPanel, easeCSS, 0)
 	ui.dirty = true
+}
+
+// coverUp: Cover Flow, when it is open and on top (not under Up Next,
+// opened from its Now Playing).
+func (ui *IpodUI) coverUp() *CoverFlow {
+	if cf := ui.cover; cf != nil && !cf.exiting && len(ui.full) <= cf.fullBase {
+		return cf
+	}
+	return nil
 }
 
 func (ui *IpodUI) closeCoverFlow() {
