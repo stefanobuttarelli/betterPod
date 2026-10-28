@@ -161,7 +161,8 @@ func (ui *IpodUI) youtubeView() *View {
 		res               []ytEntry
 		gen               int
 		cancel            context.CancelFunc
-	}{}
+		thumbs            map[string]*Album // video thumbnails, by result
+	}{thumbs: map[string]*Album{}}
 	v := &View{ID: "youtube", Title: "YouTube", Kind: KindFull}
 	v.onClose = func() {
 		if st.cancel != nil {
@@ -225,7 +226,12 @@ func (ui *IpodUI) youtubeView() *View {
 			} else if e.Duration > 0 {
 				parts = append(parts, formatTrackLength(e.Duration))
 			}
-			items = append(items, Item{Label: e.Title, Sublabel: strings.Join(parts, " · "),
+			th := st.thumbs[e.ID+e.URL]
+			if th == nil {
+				th = &Album{Name: e.Title} // the default art until the thumbnail comes
+				st.thumbs[e.ID+e.URL] = th
+			}
+			items = append(items, Item{Label: e.Title, Sublabel: strings.Join(parts, " · "), Album: th,
 				OnSelect: func() { ui.showView(ui.ytItemView(e), "") }})
 		}
 		return items
@@ -254,9 +260,12 @@ func (ui *IpodUI) youtubeView() *View {
 		v.Index = 0
 		ui.refreshView(v)
 		playlists := st.playlists
+		// the thumbnails load after the results, until the view is left or
+		// searches again
+		ctx2, cancel2 := context.WithCancel(context.Background())
+		st.cancel = func() { cancel(); cancel2() }
 		go func() {
 			res, err := ytSearch(ctx, q, playlists)
-			cancel()
 			ui.postSure(func() {
 				if gen != st.gen {
 					return
@@ -272,6 +281,7 @@ func (ui *IpodUI) youtubeView() *View {
 				ui.refreshView(v)
 				if len(res) > 0 {
 					v.Index = 2
+					ytLoadThumbs(ui, v, res, st.thumbs, ctx2, func() bool { return gen == st.gen })
 				}
 			})
 		}()
@@ -279,6 +289,101 @@ func (ui *IpodUI) youtubeView() *View {
 	v.Items = v.Build()
 	ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 	return v
+}
+
+// ytLoadThumbs fetches the results' thumbnails (three at a time), crops
+// each to a square from its middle and gives it to the row's album.
+func ytLoadThumbs(ui *IpodUI, v *View, res []ytEntry, thumbs map[string]*Album, ctx context.Context, current func() bool) {
+	type job struct {
+		th   *Album
+		urls []string
+	}
+	var jobs []job
+	for _, e := range res {
+		th := thumbs[e.ID+e.URL]
+		if th == nil || th.ArtImg != nil {
+			continue
+		}
+		id := e.ID
+		if e.isPlaylist() {
+			id = "" // a playlist's id isn't a video's
+		}
+		// small ones first (a 48 px row needs little)
+		var urls []string
+		if id != "" {
+			urls = append(urls, "https://i.ytimg.com/vi/"+id+"/mqdefault.jpg")
+		}
+		ts := ytThumbs(e.Thumbnails, "")
+		for i := len(ts) - 1; i >= 0; i-- {
+			urls = append(urls, ts[i]) // smallest first
+		}
+		if len(urls) > 0 {
+			jobs = append(jobs, job{th, urls})
+		}
+	}
+	work := make(chan job)
+	for w := 0; w < 3; w++ {
+		go func() {
+			for j := range work {
+				img := ytThumbImage(ctx, j.urls)
+				if img == nil {
+					continue
+				}
+				th := j.th
+				ui.postSure(func() {
+					if !current() {
+						return
+					}
+					th.ArtImg = img
+					ui.artc.dropAlbum(th)
+					v.dirty = true
+					ui.dirty = true
+				})
+			}
+		}()
+	}
+	go func() {
+		defer close(work)
+		for _, j := range jobs {
+			select {
+			case work <- j:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// ytThumbImage: the first thumbnail that loads, cut to a square from its
+// middle (small: it is for a list row).
+func ytThumbImage(ctx context.Context, urls []string) image.Image {
+	for _, u := range urls {
+		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		if err != nil {
+			return nil
+		}
+		resp, err := updateClient(20 * time.Second).Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			continue
+		}
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			continue
+		}
+		img, _, err := image.Decode(io.LimitReader(resp.Body, 4<<20))
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		b := img.Bounds()
+		s := min(b.Dx(), b.Dy())
+		sq := image.Rect(b.Min.X+(b.Dx()-s)/2, b.Min.Y+(b.Dy()-s)/2, b.Min.X+(b.Dx()-s)/2+s, b.Min.Y+(b.Dy()-s)/2+s)
+		return scaleImage(cropTo(img, sq), 96, 96)
+	}
+	return nil
 }
 
 // ---- a video or a playlist ----

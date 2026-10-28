@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.38.2 (2026-10-28)
+
+### Added
+- **YouTube search results show the video's thumbnail** on the left of each row (a square from its middle), so you can tell which video it is. They load three at a time after the results, small ones first, and stop when you leave or search again.
+
 ## v0.38.1 (2026-10-28)
 
 A review of the YouTube code.
