@@ -53,7 +53,7 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.43"
+	KNULLIPOD_VERSION  = "0.44"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 	// GitHub's API serves the current files at once; raw.githubusercontent
@@ -112,6 +112,10 @@ type UpdateView struct {
 	sel   int
 	shown float64 // the bar's fill as drawn, easing towards the download
 	last  time.Time
+
+	// the release notes, wrapped (all of them, no "…"): the first line
+	// shown, and how many there are and fit (from the last Render)
+	noteTop, noteTotal, noteFit int
 }
 
 type updButton struct {
@@ -151,14 +155,24 @@ func (u *UpdateView) target() float64 {
 	return 0
 }
 
+// OnScroll: when the notes don't all fit, down scrolls them to their end
+// before it moves to the next button, and up goes back to the first button
+// before it scrolls them back up (one list: the notes, then the buttons).
 func (u *UpdateView) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	n := len(u.buttons())
 	if n == 0 {
 		return
 	}
-	u.sel = (u.sel + dir + n) % n
-	if u.sel < 0 {
-		u.sel = 0
+	more := u.noteTotal > u.noteFit
+	switch {
+	case dir > 0 && more && u.sel == 0 && u.noteTop+u.noteFit < u.noteTotal:
+		u.noteTop++
+	case dir < 0 && more && u.sel == 0 && u.noteTop > 0:
+		u.noteTop--
+	case more && ((dir > 0 && u.sel == n-1) || (dir < 0 && u.sel == 0)):
+		// the ends: no wrapping around past the notes
+	default:
+		u.sel = (u.sel + dir + n) % n
 	}
 	ui.dirty = true
 }
@@ -240,17 +254,47 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	// middle: the release notes when a version is found, else the bar
 	mid := 122.0
 	if upd.state == updAvailable {
-		// what's new: up to three lines between the state and the
-		// buttons, aligned with the buttons
-		notes := noteLines(m.Notes, 3)
+		// what's new, between the state and the buttons, aligned with
+		// the buttons: every note whole, wrapped under its bullet; when
+		// they don't fit, they scroll (OnScroll) with a thin bar
 		f := face(W500, 12)
 		lh, asc := lineBox(12)
 		lh += 1
+		bullet := textWidth(f, "• ")
+		maxW := (wCSS-84)*DPR - bullet
+		type noteLine struct {
+			first bool
+			text  string
+		}
+		var lines []noteLine
+		for _, l := range noteLines(m.Notes, 100) {
+			for i, w := range wrapLines(f, l, maxW, 100) {
+				lines = append(lines, noteLine{i == 0, w})
+			}
+		}
 		ny := y + 22
-		for _, l := range notes {
-			s := ellipsize(f, "• "+l, (wCSS-84)*DPR)
-			drawText(dst, f, s, 42*DPR, (ny+asc)*DPR, th.sub)
+		nb := len(u.buttons())
+		bottom := 220 - 8 - float64(nb)*(28+6) + 6 - 4 // above the buttons
+		fit := max(1, int((bottom-ny)/lh))
+		u.noteTotal, u.noteFit = len(lines), fit
+		u.noteTop = max(0, min(u.noteTop, len(lines)-fit))
+		for i := u.noteTop; i < len(lines) && i < u.noteTop+fit; i++ {
+			l := lines[i]
+			if l.first {
+				drawText(dst, f, "•", 42*DPR, (ny+asc)*DPR, th.sub)
+			}
+			drawText(dst, f, l.text, 42*DPR+bullet, (ny+asc)*DPR, th.sub)
 			ny += lh
+		}
+		if len(lines) > fit {
+			// the scroll bar, at the right of the notes
+			top, h := y+22, float64(fit)*lh
+			bx := (wCSS - 36) * DPR
+			solid := []GradStop{{0, th.sub}, {1, th.sub}}
+			fillRoundedGradient(dst, bx, top*DPR, bx+3*DPR, (top+h)*DPR, 1.5*DPR, solid, 0.18)
+			ty := top + h*float64(u.noteTop)/float64(len(lines))
+			th2 := math.Max(h*float64(fit)/float64(len(lines)), 10)
+			fillRoundedGradient(dst, bx, ty*DPR, bx+3*DPR, math.Min(ty+th2, top+h)*DPR, 1.5*DPR, solid, 0.7)
 		}
 	} else {
 		bw := math.Min(240, wCSS-80)

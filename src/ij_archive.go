@@ -1172,12 +1172,26 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 			center(face(W500, 12), "Tracks already downloaded are kept · B to close", iaHintY+a12, th.sub)
 		}
 	}
+	drawJobButton(dst, th, label, fin)
+}
+
+// drawJobButton: the one button at the bottom of a job's screen (a
+// download, the cover search). Blue when it ends something that finished
+// (Done, Try Again); grey, as the action sheet's Cancel, while it would
+// stop work still going (Cancel), so blue always means "it's over".
+func drawJobButton(dst *image.RGBA, th *UITheme, label string, primary bool) {
+	W := dst.Bounds().Dx()
+	wCSS := float64(W) / DPR
 	f := face(W700, 14)
 	bh := 28.0
 	by := 220 - 8 - bh
 	bx0, bx1 := 40.0, wCSS-40
-	fillRoundedGradient(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, selGrad, 1)
-	strokeRounded(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, 2, hex("#3a78ad"), 1)
+	grad, border, tc := th.sheetOpt, th.sheetBorder, th.sheetText
+	if primary {
+		grad, border, tc = selGrad, hex("#3a78ad"), colWhite
+	}
+	fillRoundedGradient(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, grad, 1)
+	strokeRounded(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, 2, border, 1)
 	tw := textWidth(f, label)
-	drawText(dst, f, label, (float64(W)-tw)/2, (by+bh/2+lineCapHeight(14)/2)*DPR, colWhite)
+	drawText(dst, f, label, (float64(W)-tw)/2, (by+bh/2+lineCapHeight(14)/2)*DPR, tc)
 }

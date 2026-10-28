@@ -817,12 +817,5 @@ func (cv *CoverView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	if j != nil {
 		center(face(W700, 12), fmt.Sprintf("%d%%", int(cv.shown*100+0.5)), mid+22+a12, th.sub)
 	}
-	f := face(W700, 14)
-	bh := 28.0
-	by := 220 - 8 - bh
-	bx0, bx1 := 40.0, wCSS-40
-	fillRoundedGradient(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, selGrad, 1)
-	strokeRounded(dst, bx0*DPR, by*DPR, bx1*DPR, (by+bh)*DPR, 9*DPR, 2, hex("#3a78ad"), 1)
-	tw := textWidth(f, button)
-	drawText(dst, f, button, (float64(W)-tw)/2, (by+bh/2+lineCapHeight(14)/2)*DPR, colWhite)
+	drawJobButton(dst, th, button, button != "Cancel")
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.44 (2026-10-28)
+
+### Changed
+- **Cancel is grey and Done is blue** on the download screens (Internet Archive, YouTube, Podcasts) and on Search All Automatically. A button looks blue only when the work is over (Done, Try Again), so it's clear when it has finished.
+- **Software Update shows every note whole.** A long note wraps under its bullet instead of ending in "…", and all the notes are listed, not only the first three. When they don't fit, Down scrolls them to the end before it moves to Not Now, Up scrolls them back, and a thin bar shows where you are.
+
 ## v0.43 (2026-10-28)
 
 ### Changed
