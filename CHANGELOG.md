@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.54 (2026-10-28)
+
+### Added
+- **Screensaver: a mosaic of album covers.** Settings → **Screensaver** starts it after 1, 2, 5 or 10 minutes without a key (or **Never**). **SELECT + Y** starts it by hand, anywhere.
+  - **The layout:** 110 px covers in 4 rows, under a black bar with the clock, play / pause, the battery and, in Hold, the padlock, all white. The album playing is the big cover in the top left (2×2); with nothing playing all are the same size.
+  - **Movement:** from Now Playing, its cover flies into the big square. Every 5 s one to three covers turn over and show another album, never the same as a neighbour. When the song changes to another album, the big cover turns over to it.
+  - **The arrows** pick a cover: it grows a little, with a white border. **A** turns it over in the middle of the screen with its songs, like Cover Flow. Choosing a song plays it, and the cover flies back into the big square. **B** turns it back, or leaves the screensaver. **X / START** play and pause, **L / R** change song.
+  - **Dim the Screen** (Settings → Screensaver) lowers the brightness while it shows. **L2 / R2** change it, shown for a moment in the bar.
+  - **With Hold on:** Now Playing after 5 s, then the screensaver after its time. The keys do nothing; UP / DOWN still set Hold's brightness, shown in the bar.
+
+### Changed
+- **Hold's brightness shows in the header** (a sun and a bar, like the volume), no more in the middle of the screen.
+
 ## v0.53 (2026-10-28)
 
 ### Added

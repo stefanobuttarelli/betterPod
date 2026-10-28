@@ -26,6 +26,8 @@ type IpodUI struct {
 	app *MiyooPod
 	fb  *image.RGBA
 
+	saver *screensaver // the screensaver, over everything (ij_screensaver.go)
+
 	split    []*View // menu stack (left half)
 	full     []*View // full-screen stack
 	gone     []*View // views sliding out
@@ -627,6 +629,18 @@ func (ui *IpodUI) onTrackChanged() {
 func (ui *IpodUI) HandleKey(ev int) {
 	now := animNow()
 	ui.app.LastActivityTime = now
+	// SELECT + Y: the screensaver
+	if ev >= 0 && Key(ev) == Y && hold.selDown {
+		if ui.saver != nil && !ui.saver.exiting {
+			ui.stopSaver()
+		} else {
+			ui.startSaver()
+		}
+		return
+	}
+	if ui.saverKey(ev) {
+		return
+	}
 	if ui.miniConfirmKey(ev) {
 		return // the Now Playing block is asking (ij_clearnp.go)
 	}
@@ -724,6 +738,11 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 		return
 	}
 	ui.repeatLast = now
+	if s := ui.saver; s != nil && !s.exiting {
+		ui.saverRepeat(ui.repeatKey)
+		ui.dirty = true
+		return
+	}
 	if ui.keyboardKey(ui.repeatKey) {
 		return
 	}
@@ -765,9 +784,14 @@ func (ui *IpodUI) checkLongPress(now time.Time) {
 // lastWxFree: when the unused weather animations were last freed.
 var lastWxFree = -1
 
+var saverLayer *image.RGBA
+
 // animating reports whether another frame must be drawn now.
 // Idle screens are not redrawn at all: input or a timer marks them dirty.
 func (ui *IpodUI) animating(now time.Time) bool {
+	if s := ui.saver; s != nil {
+		return s.animating(now) || ui.holdAnimating(now)
+	}
 	if ui.leftX.Running() || ui.fullX.Running() || ui.previewHide.Running() || ui.musicPrev.Running() {
 		return true
 	}
@@ -897,6 +921,11 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	mini.marqOn = false
 	artSyncLeft = artSyncBudget
 	fb := ui.fb
+	// the screensaver covering the screen: nothing under it is drawn
+	if s := ui.saver; s != nil && !s.exiting && s.fade.Get(now) >= 1 {
+		ui.renderSaver(fb, now)
+		return
+	}
 	fillRect(fb, 0, 0, 640, 480, th.bg)
 
 	// Cover Flow is a separate full screen, fading in and out
@@ -962,6 +991,12 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// search keyboard
 	ui.drawKeyboard(fb, now)
 	ui.drawToast(fb, now)
+	// the screensaver fading in or out
+	if s := ui.saver; s != nil {
+		l := newCanvasCached(&saverLayer, 640, 480)
+		ui.renderSaver(l, now)
+		blit(fb, l, 0, 0, s.fade.Get(now))
+	}
 
 	// hold badge and volume overlay
 	ui.drawHoldBadge(fb, now)
@@ -1083,7 +1118,34 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		}
 		drawText(sub, f, clock, cx*DPR, (1.5+asc)*DPR, th.headerText)
 	}
+	if hold.on && now.Before(hold.levelShown) {
+		ui.drawHeaderBrightness(sub, tx, maxW) // Hold's brightness, while it changes
+		return
+	}
 	ui.drawHeaderTitle(sub, ui.headerTitle, tx, maxW, ui.hdrActive, now)
+}
+
+// drawHeaderBrightness: a sun and a bar in the title's room (like the
+// volume, drawHeaderVolume), for Hold's brightness.
+func (ui *IpodUI) drawHeaderBrightness(sub *image.RGBA, tx, maxW float64) {
+	c := th.headerText
+	// (fillCircle is in CSS px)
+	sx, sy := tx+7, 10.0
+	fillCircle(sub, sx, sy, 2.6, c)
+	for i := 0; i < 8; i++ {
+		a := float64(i) * math.Pi / 4
+		fillCircle(sub, sx+math.Cos(a)*4.6, sy+math.Sin(a)*4.6, 0.75, c)
+	}
+	bx := tx + 14 + 7
+	bw := math.Min(maxW-14-7-6, 150)
+	if bw < 30 {
+		return
+	}
+	y := 7.5
+	fillRoundedGradient(sub, bx*DPR, y*DPR, (bx+bw)*DPR, (y+5)*DPR, 2.5*DPR,
+		[]GradStop{{0, Col{0, 0, 0, 0.22}}, {1, Col{0, 0, 0, 0.12}}}, 1)
+	fw := math.Max(bw*float64(hold.cur)/100, 5)
+	fillRoundedGradient(sub, bx*DPR, y*DPR, (bx+fw)*DPR, (y+5)*DPR, 2.5*DPR, selGrad, 1)
 }
 
 // drawBattery: ipod.js battery (shell, fill by level, bolt/plug when charging).
@@ -1308,6 +1370,10 @@ func (ui *IpodUI) Run() {
 			wxFreeLoops(now)
 		}
 		ui.tickOverlays(now)
+		ui.saverTick(now)
+		if ui.saver != nil && !ui.saver.exiting {
+			ui.saverFrame(now)
+		}
 		ui.checkLongPress(now)
 		ui.checkRepeat(now)
 		if app.TrackEndPending {

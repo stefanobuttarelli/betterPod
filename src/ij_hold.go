@@ -52,6 +52,9 @@ func (ui *IpodUI) setHold(on bool) {
 	ui.repeatKey = NONE
 	if on {
 		hold.savedLevel = getBacklightPercent()
+		if b := ui.saverOnHold(); b > 0 {
+			hold.savedLevel = b // the screensaver had lowered it
+		}
 		lvl := hold.level
 		if lvl <= 0 {
 			lvl = holdDimPercent()
@@ -110,9 +113,12 @@ func (ui *IpodUI) holdFilter(ev int) bool {
 	if hold.on {
 		if ev >= 0 {
 			if hold.adjust && (Key(ev) == UP || Key(ev) == DOWN) {
+				// the brightness shows in the header (no badge)
 				ui.holdBrightness(Key(ev) == UP)
 				now := animNow()
 				hold.repKey, hold.repStart, hold.repLast = Key(ev), now, now
+				ui.dirty = true
+				return true
 			}
 			ui.showHoldBadge()
 		} else if k := Key(-1 - ev); k == hold.repKey {
@@ -136,7 +142,7 @@ func (ui *IpodUI) holdRepeat(now time.Time) {
 	}
 	hold.repLast = now
 	ui.holdBrightness(hold.repKey == UP)
-	ui.showHoldBadge()
+	ui.dirty = true
 }
 
 // holdBrightness steps the Hold brightness up or down.
@@ -187,8 +193,8 @@ func (ui *IpodUI) tickOverlays(now time.Time) bool {
 	if hold.badge.Target() == 1 && now.After(hold.badgeUntil) {
 		hold.badge.To(0, 300*time.Millisecond, easeCSS, 0)
 	}
-	if hold.badge.Running() || hold.badge.Target() == 1 {
-		vis = true
+	if hold.badge.Running() || hold.badge.Target() == 1 || hold.on && now.Before(hold.levelShown.Add(50*time.Millisecond)) {
+		vis = true // (the brightness in the header, until it goes)
 	}
 	if volOSD.a.Target() == 1 && now.After(volOSD.until) {
 		volOSD.a.To(0, 300*time.Millisecond, easeCSS, 0)
@@ -321,22 +327,6 @@ func (ui *IpodUI) drawHoldBadge(dst *image.RGBA, now time.Time) {
 	hint := "SELECT to unlock"
 	if !hold.on {
 		label, hint = "Unlocked", ""
-	}
-	if hold.on && now.Before(hold.levelShown) {
-		// brightness bar instead of the hint
-		f := face(W700, 16)
-		tw := textWidth(f, label)
-		drawText(dst, f, label, 320-tw/2, 284, Col{255, 255, 255, a})
-		bx, bwid := x0+16, 88.0
-		fillRoundedGradient(dst, bx*DPR, 152*DPR, (bx+bwid)*DPR, 160*DPR, 4*DPR,
-			[]GradStop{{0, rgb(90, 90, 90)}, {1, rgb(60, 60, 60)}}, a)
-		fw := bwid * float64(hold.cur) / 100
-		if fw < 8 {
-			fw = 8
-		}
-		fillRoundedGradient(dst, bx*DPR, 152*DPR, (bx+fw)*DPR, 160*DPR, 4*DPR,
-			[]GradStop{{0, rgb(255, 255, 255)}, {1, rgb(200, 205, 210)}}, a)
-		return
 	}
 	f := face(W700, 16)
 	tw := textWidth(f, label)

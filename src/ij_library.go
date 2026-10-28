@@ -293,6 +293,7 @@ func (ui *IpodUI) settingsView() *View {
 				}
 				ui.refreshBuilt()
 			}},
+			{Label: "Screensaver", Preview: PrevSettings, Value: saverLabel(), OnSelect: func() { ui.showView(ui.saverSettingsView(), "") }},
 			{Label: "Software Update", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.updateView(), "") }},
 		}
 	}
