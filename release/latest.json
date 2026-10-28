@@ -1,8 +1,8 @@
 {
-  "version": "0.58.1",
-  "path": "release/knullipod-v0.58.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.58.1-knulli.zip",
-  "sha256": "cf5e6a7ed2e5e1941fa6ba4544d6d7ccd49a72763b8cf476fe107c7f79ba99a4",
-  "size": 15198056,
-  "notes": "- One Now Playing: the menu's draws its cover exactly like Cover Flow's\n- START turns the cover over straight from its tilt, like Cover Flow (also in Cover Flow's Now Playing)\n- Now Playing: START card and Shuffle/Repeat row (0.58)\n- Screensaver ↔ Now Playing: one cover flying; covers load first (0.57.1)"
+  "version": "0.58.2",
+  "path": "release/knullipod-v0.58.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.58.2-knulli.zip",
+  "sha256": "50d550533b984ea9fa267012cf09e29e31a202b1d569e054a2fc3fa177900135",
+  "size": 15198112,
+  "notes": "- Screensaver: B goes to Now Playing only while a song plays (paused: back where it was)\n- One Now Playing: the menu's draws its cover exactly like Cover Flow's (0.58.1)\n- START turns the cover over straight from its tilt, like Cover Flow (0.58.1)\n- Now Playing: START card and Shuffle/Repeat row (0.58)"
 }

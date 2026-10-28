@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.58.2 (2026-10-28)
+
+### Fixed
+- **Screensaver: B goes to Now Playing only while a song plays.** With the song paused (or none), B goes back to the screen it started over (a YouTube download, a list…), as it was.
+
 ## v0.58.1 (2026-10-28)
 
 ### Changed

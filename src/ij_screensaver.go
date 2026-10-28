@@ -501,7 +501,9 @@ func (ui *IpodUI) saverKey(ev int) bool {
 		if s.selR >= 0 {
 			s.selR, s.selC = -1, -1
 			s.selGrow.Set(0)
-		} else if ui.saverPlaying() != nil && s.big != nil && ui.coverUp() == nil {
+		} else if ui.saverSongPlaying() && s.big != nil && ui.coverUp() == nil {
+			// to Now Playing only while a song plays (paused: back to where
+			// it was)
 			ui.saverToNowPlaying()
 		} else {
 			ui.stopSaver()
