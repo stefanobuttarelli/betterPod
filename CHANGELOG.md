@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.1 (2026-10-28)
+
+### Fixed
+- **The volume bar in the header is shorter on full screens.** At most 150 px instead of 240, so it no longer runs across the whole screen (Cover Flow, full lists). It's unchanged on the half-width menus.
+
 ## v0.49 (2026-10-28)
 
 ### Added

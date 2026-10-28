@@ -273,12 +273,13 @@ func volIcon(headphones bool, c Col) *image.RGBA {
 // drawHeaderVolume draws the volume in a header (tx: the left edge of the
 // title's room, maxW: its width, off: how far it is moved down, CSS px):
 // the speaker (or headphones) and a bar as wide as the room allows, so it
-// is shorter on the half-width menus and longer on full screens.
+// is shorter on the half-width menus and a little longer (at most 150 px)
+// on full screens.
 func (ui *IpodUI) drawHeaderVolume(sub *image.RGBA, tx, maxW, off float64) {
 	ic := volIcon(headphonesOut(), th.headerText)
 	blit(sub, ic, px(tx), px(3+off), 1)
 	bx := tx + 14 + 7
-	bw := math.Min(maxW-14-7-6, 240)
+	bw := math.Min(maxW-14-7-6, 150) // at most 150 px: long enough to read, not across a whole screen
 	if bw < 30 {
 		return
 	}
