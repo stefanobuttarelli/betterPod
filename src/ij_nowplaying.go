@@ -213,22 +213,33 @@ func (ui *IpodUI) applyVolume() {
 // rotated tilt×35° about its vertical axis like the iPod's Now Playing,
 // with a fading reflection below; the result is kept in np.warpArt.
 //
-// The card is 128 CSS px wide, its centre 84 px from the left edge; the
+// The card is 128 CSS px wide (+18 at full tilt, see npWiden), its centre
+// 84 px from the left edge; the
 // view is a 1000 px perspective from x = 160 at the height of the text
 // block's centre. Each output pixel is mapped back onto the card plane and
 // sampled bilinearly.
 // The warp is cached per (track, tilt) and rebuilt only when either changes.
+// npWiden: how much wider the card is when tilted (CSS px, growing to the
+// right): in perspective its far side shrinks, so a square card looked
+// taller than wide; 18 px more makes it look square. Flat (paused) it is
+// square.
+const npWiden = 18.0
+
 func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
+	widen := npWiden * tilt
+	cw := 128 + widen // the card's width now
+	hw := cw / 2
+	const srcW = 128 + npWiden
 	if np.warpSrcT != t || np.warpSrc == nil {
 		album := ui.trackAlbum(t)
 		art := ui.art(album, px(128))
 		if art == nil {
 			return false
 		}
-		// cover with a 1px border
-		src := newCanvas(px(128), px(128))
+		// cover with a 1px border, at the widest (sampled narrower)
+		src := newCanvas(px(srcW), px(128))
 		fillRect(src, 0, 0, src.Bounds().Dx(), src.Bounds().Dy(), th.artBorder)
-		inner := scaleImage(art, px(126), px(126))
+		inner := scaleImage(art, px(srcW-2), px(126))
 		blit(src, inner, px(1), px(1), 1)
 		np.warpSrc, np.warpSrcT = src, t
 	}
@@ -238,8 +249,9 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 	npMetaH := np.H * 0.7
 	H := px(np.H)
 	out := newCanvasCached(&np.warpArt, W, H)
+	lim := px(170 + npWiden)
 	for y := 0; y < H; y++ {
-		row := out.Pix[y*out.Stride : y*out.Stride+px(170)*4]
+		row := out.Pix[y*out.Stride : y*out.Stride+lim*4]
 		clear(row)
 	}
 	//
@@ -251,18 +263,18 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 	sinT, cosT := math.Sin(th), math.Cos(th)
 	const pv = 1000.0
 	ox, oy := 160.0, npMetaH/2
-	cx, cy := 84.0, npMetaH/2
+	cx, cy := 84.0+widen/2, npMetaH/2
 	// the card's left edge (x, z) at the resting angle th0, then rotated
 	// by th about it
 	//
 	//
-	xr, zr := cx+64*math.Cos(th0), -64*math.Sin(th0)
-	ax := xr - 64*cosT
-	bz := zr + 64*sinT
+	xr, zr := cx+hw*math.Cos(th0), -hw*math.Sin(th0)
+	ax := xr - hw*cosT
+	bz := zr + hw*sinT
 	parallelRows(0, H, func(r0, r1 int) {
 		for dy := r0; dy < r1; dy++ {
 			py := float64(dy) + 0.5
-			for dx := 0; dx < px(170); dx++ {
+			for dx := 0; dx < lim; dx++ {
 				fx := float64(dx) + 0.5
 				A := fx/DPR - ox
 				den := pv*cosT - A*sinT
@@ -274,9 +286,9 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 				Y := oy + (py/DPR-oy)/k - cy
 				// paused (tilt 0) the cover is 85% of its size, about
 				// its centre
-				u := X/scl + 64
+				u := X/scl + hw
 				v := Y/scl + 64
-				if u < 0 || u >= 128 || v < 0 || v >= 256 {
+				if u < 0 || u >= cw || v < 0 || v >= 256 {
 					continue
 				}
 				alpha := 1.0
@@ -291,7 +303,7 @@ func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
 					}
 					alpha = (vv/128 - 0.7) * 0.2 / 0.3
 				}
-				c := sampleBilinear(src, u*DPR-0.5, vv*DPR-0.5)
+				c := sampleBilinear(src, u*srcW/cw*DPR-0.5, vv*DPR-0.5)
 				o := out.PixOffset(dx, dy)
 				a := float64(c[3]) / 255 * alpha
 				out.Pix[o] = uint8(float64(c[0]) * alpha)

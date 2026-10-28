@@ -1,8 +1,8 @@
 {
-  "version": "0.49.2",
-  "path": "release/knullipod-v0.49.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.49.2-knulli.zip",
-  "sha256": "468b3682a0ae8d73a734c5bdc606245601f9c34a161dcfe35b08f8361efa6cfe",
-  "size": 15101571,
-  "notes": "- Y on Cover Flow's Now Playing opens Up Next\n- The volume bar in the header is shorter on full screens (0.49.1)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)\n- The volume shows in the header with a speaker or headphones icon (0.49)"
+  "version": "0.49.3",
+  "path": "release/knullipod-v0.49.3-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.49.3-knulli.zip",
+  "sha256": "35bc05e44a11f20c79c2f732f670ec0c197117679714bb3fe624c7c78481890f",
+  "size": 15101365,
+  "notes": "- Now Playing's tilted cover looks square (it was taller than wide in perspective)\n- Y on Cover Flow's Now Playing opens Up Next (0.49.2)\n- Settings → Bluetooth: connect your headphones without leaving KnulliPod (0.49)\n- The volume shows in the header with a speaker or headphones icon (0.49)"
 }

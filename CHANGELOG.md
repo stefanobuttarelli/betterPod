@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.3 (2026-10-28)
+
+### Fixed
+- **Now Playing's tilted cover looks square.** In perspective its far side shrinks, so a square cover looked taller than wide (218×246 px on screen). Tilted, it's now 18 px wider, growing to the right, and looks square (247×247). It widens with the tilt, so paused (flat) it is still square.
+
 ## v0.49.2 (2026-10-28)
 
 ### Fixed
