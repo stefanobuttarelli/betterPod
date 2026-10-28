@@ -238,53 +238,35 @@ func (ui *IpodUI) saverPlaying() *Album {
 
 // ---- the covers ----
 
-// pick: an album for cell i, not the same as its neighbours or the big
-// one (and, while there are enough albums, not one already showing).
+// pick: an album for cell i that is nowhere on the screen (no cover is
+// ever shown twice), one whose cover is ready if there is one; nil when
+// every album is showing (that cell stays dark).
 func (s *screensaver) pick(ui *IpodUI, i int) *Album {
 	all := ui.library().Albums
-	if len(all) == 0 {
-		return nil
-	}
-	// the albums whose covers are ready, when there are enough of them
-	if w := ssWarmAlbums(all); len(w) >= min(len(all), 12) {
-		all = w
-	}
-	r, c := i/ssCols, i%ssCols
-	near := map[*Album]bool{s.big: true}
-	for dr := -1; dr <= 1; dr++ {
-		for dc := -1; dc <= 1; dc++ {
-			rr, cc := r+dr, c+dc
-			if rr < 0 || rr >= ssRows || cc < 0 || cc >= ssCols || (dr == 0 && dc == 0) {
-				continue
-			}
-			if t := s.tiles[rr*ssCols+cc]; t != nil {
-				near[t.al], near[t.next] = true, true
-			}
-		}
-	}
-	shown := map[*Album]bool{}
+	shown := map[*Album]bool{s.big: true, s.bigOld: true, s.cardAl: true}
 	for _, t := range s.tiles {
 		if t != nil {
 			shown[t.al], shown[t.next] = true, true
 		}
 	}
-	var fresh, ok []*Album
+	var ready, other []*Album
 	for _, a := range all {
-		if near[a] {
+		if shown[a] {
 			continue
 		}
-		ok = append(ok, a)
-		if !shown[a] {
-			fresh = append(fresh, a)
+		if ssArtReady(a, ssCell) {
+			ready = append(ready, a)
+		} else {
+			other = append(other, a)
 		}
 	}
 	switch {
-	case len(fresh) > 0:
-		return fresh[s.rng.Intn(len(fresh))]
-	case len(ok) > 0:
-		return ok[s.rng.Intn(len(ok))]
+	case len(ready) > 0:
+		return ready[s.rng.Intn(len(ready))]
+	case len(other) > 0:
+		return other[s.rng.Intn(len(other))]
 	}
-	return all[s.rng.Intn(len(all))]
+	return nil
 }
 
 // covered: cell (r, c) is under the big cover.
@@ -293,13 +275,14 @@ func (s *screensaver) covered(r, c int) bool { return s.big != nil && r < 2 && c
 // turn over a cover to another album
 func (s *screensaver) turn(ui *IpodUI, i int, to *Album, delay time.Duration) {
 	t := s.tiles[i]
-	if to == nil {
+	given := to != nil
+	if !given {
 		to = s.pick(ui, i)
 	}
 	if to == nil || to == t.al {
 		return
 	}
-	if ui.ssArtGet(to, ssCell) == nil {
+	if ui.ssArtGet(to, ssCell) == nil && !given {
 		return // not ready yet: another time
 	}
 	t.next = to
@@ -323,6 +306,12 @@ func (s *screensaver) follow(ui *IpodUI) {
 		s.bigOld = nil
 		s.bigFlp.Set(1)
 		s.bigOn.To(1, 350*time.Millisecond, easeCSS, 0)
+		for i, t := range s.tiles {
+			if (t.al == al || t.next == al) && !s.covered(i/ssCols, i%ssCols) {
+				t.al, t.next = nil, nil // (never twice)
+				s.turn(ui, i, nil, 0)
+			}
+		}
 	default:
 		// the big cover turns over to the new album; a small one showing
 		// it turns over to the old one

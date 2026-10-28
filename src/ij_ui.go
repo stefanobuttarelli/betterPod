@@ -619,6 +619,10 @@ func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) {
 }
 
 func (ui *IpodUI) onTrackChanged() {
+	// the screensaver's big cover of the new album, ready before it shows
+	if a := ui.saverPlaying(); a != nil {
+		ui.ssArtGet(a, 2*ssCell)
+	}
 	// lists showing the speaker icon, the Now Playing item and the
 	// previews follow the current track
 	//

@@ -195,7 +195,8 @@ func (ui *IpodUI) loadArt(a *Album, devSize int) *image.RGBA {
 }
 
 // prefetchSizes: list thumbnails (48 CSS px) and Cover Flow covers (128).
-var prefetchSizes = []int{96, 256}
+// The screensaver's two (ssCell, 2*ssCell) are made too.
+var prefetchSizes = []int{96, 256, ssCell, 2 * ssCell}
 
 // prefetchArt loads every album's list thumbnail into memory in the
 // background, one at a time, and prepares the scaled files on disk for the
@@ -225,6 +226,8 @@ func (ui *IpodUI) prefetchArt(lib *Library) {
 		time.Sleep(3 * time.Millisecond) // stay out of the way of the UI
 	}
 	ui.post(func() { ui.onArtLoaded() })
+	// then the screensaver's covers, so it never waits for them
+	ui.post(ui.ssWarm)
 }
 
 // artOrDefault: the artwork, or the default cover while it loads.

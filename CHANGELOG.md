@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.54.3 (2026-10-28)
+
+### Fixed
+- **Screensaver: no cover is ever shown twice.** A cover only turns over to an album that isn't on the screen. When the big cover changes to an album already showing, that small cover turns over to another. With fewer albums than cells, the last cells stay dark.
+- **Covers ready from the start:** the screensaver's covers are got ready in the background right after the library's thumbnails, not just before it starts. They are kept on disk at its two sizes (made too whenever a cover is first decoded), so later starts only read them. The big cover of each new song's album is got ready when the song changes.
+
 ## v0.54.2 (2026-10-28)
 
 ### Fixed
