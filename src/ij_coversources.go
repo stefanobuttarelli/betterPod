@@ -36,7 +36,7 @@ import (
 // coverCand is one result of a cover search, from any source.
 type coverCand struct {
 	Source     string // "MusicBrainz", "iTunes", "Deezer", "Wikipedia"
-	ID         string // MusicBrainz: the release group (its covers come from the Cover Art Archive)
+	ID         string // MusicBrainz: the release group (its covers come from the Cover Art Archive); Wikipedia: the article
 	Title      string
 	Artist     string
 	Year       string
@@ -301,7 +301,7 @@ func wikiSearch(term string, limit int) ([]coverCand, error) {
 			}
 			full = p.Thumb.Source // a drawing: its rendering
 		}
-		c := coverCand{Source: "Wikipedia", Title: reWikiDisamb.ReplaceAllString(p.Title, ""), Kind: kind, Full: full}
+		c := coverCand{Source: "Wikipedia", ID: p.Title, Title: reWikiDisamb.ReplaceAllString(p.Title, ""), Kind: kind, Full: full}
 		if p.Thumb != nil {
 			c.Thumb = p.Thumb.Source
 		}

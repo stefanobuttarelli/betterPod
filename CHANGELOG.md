@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.48 (2026-10-28)
+
+### Added
+- **Album Info** (by Emanuele Macrì, PR #3): an album's tags, filled in online or by hand, and written into its files.
+  - **Where:** Y (or holding A) on an album, in the lists or in Cover Flow → Edit Album Info. Settings → Library → **Missing Info** lists the albums without an artist or track numbers.
+  - **Find Info Online** asks MusicBrainz, iTunes, Deezer and Wikipedia. Choosing a result fills in album, album artist, year and genre, and pairs its songs with yours (titles, artists, numbers). For a game rip, Wikipedia gives the composer or the game's developer.
+  - **By hand:** every field can be typed, for the whole album or for one song.
+  - **Save Changes** writes the tags into the MP3, FLAC and Ogg Vorbis files and scans the library again.
+
+### Changed (on top of the PR, from its review)
+- **Only the fields you changed are written.** Everything else in each file stays exactly as it was: dates with a month, totals, discs as "1/2", other spellings like "ALBUM ARTIST", several values. Before, saving one field rewrote them all from what the library had read, so some were lost.
+- **Songs are paired only when it's sure:**
+  - First by the same title.
+  - Then by the same number, if the lengths agree.
+  - Then by the same length.
+  - Never by position: songs without numbers are listed alphabetically, so that gave the wrong titles. An edition with an extra intro no longer shifts every title by one.
+- **The confirmation says what changes** ("Write into 12 files? Titles of 9 · Numbers · Year. It can't be undone."), in red. The old values of each file go into the log first.
+- **One save at a time:** tag writes (Album Info and Podcasts) can't overlap. An album can't be opened again while it's being saved.
+- **Safer screens and data:**
+  - After a save, only its own screens close.
+  - A field that differs on each song opens empty, so pressing START by mistake no longer gives every song the first one's value.
+  - Results that load after you leave are dropped.
+  - A read-only card stops at the first file with a short message.
+  - Values from the internet are cleaned (no control characters, at most 200 characters).
+  - Deezer's errors are reported.
+  - Compilations ("Various Artists") no longer count as missing an artist.
+  - M4A is named among the files that can't take tags.
+
 ## v0.47 (2026-10-28)
 
 ### Added

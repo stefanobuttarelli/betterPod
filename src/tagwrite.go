@@ -3,7 +3,7 @@ package main
 // tagwrite.go — writes a song's tags into its file: ID3v2 for MP3, Vorbis
 // comments for FLAC and Ogg Vorbis (the formats the library reads tags
 // from with dhowden/tag). Used by Podcasts (ij_podcasts.go) for the
-// episodes it downloads.
+// episodes it downloads, and by Album Info (ij_albuminfo.go).
 //
 // Only the fields of songTags are written; every other tag and the cover
 // art are kept as they are. When the new tags fit in the room the file
@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf16"
 )
 
@@ -44,6 +45,48 @@ func canWriteTags(path string) bool {
 	return false
 }
 
+// tagMask: which of songTags' fields are written; the file's own values
+// of the others are kept exactly as they are (other spellings, dates with
+// a month, totals, several values…).
+type tagMask uint16
+
+const (
+	tagTitle tagMask = 1 << iota
+	tagArtist
+	tagAlbumArtist
+	tagAlbum
+	tagGenre
+	tagTrack // the track number (TRCK holds the total too)
+	tagTrackTotal
+	tagDisc
+	tagYear
+	tagAll tagMask = 1<<iota - 1
+)
+
+// changedTags: the fields where b differs from a.
+func changedTags(a, b songTags) tagMask {
+	var m tagMask
+	set := func(bit tagMask, diff bool) {
+		if diff {
+			m |= bit
+		}
+	}
+	set(tagTitle, a.Title != b.Title)
+	set(tagArtist, a.Artist != b.Artist)
+	set(tagAlbumArtist, a.AlbumArtist != b.AlbumArtist)
+	set(tagAlbum, a.Album != b.Album)
+	set(tagGenre, a.Genre != b.Genre)
+	set(tagTrack, a.Track != b.Track)
+	set(tagTrackTotal, a.TrackTotal != b.TrackTotal)
+	set(tagDisc, a.Disc != b.Disc)
+	set(tagYear, a.Year != b.Year)
+	return m
+}
+
+// tagWriteMu: one tag write at a time (Album Info and Podcasts can't
+// rewrite the same file, or share its .tagtmp, at once).
+var tagWriteMu sync.Mutex
+
 // writeTags writes t into the file at path.
 func writeTags(path string, t songTags) error {
 	return writeTagsAs(path, filepath.Ext(path), t)
@@ -52,15 +95,74 @@ func writeTags(path string, t songTags) error {
 // writeTagsAs writes t into the file at path as the format of ext (for a
 // file whose name doesn't say it yet, as a download's .part).
 func writeTagsAs(path, ext string, t songTags) error {
+	return writeTagsMasked(path, ext, t, tagAll)
+}
+
+// writeTagsMasked writes only the fields of mask (nothing: no write).
+func writeTagsMasked(path, ext string, t songTags, mask tagMask) error {
+	if mask == 0 {
+		return nil
+	}
+	tagWriteMu.Lock()
+	defer tagWriteMu.Unlock()
 	switch strings.ToLower(ext) {
 	case ".mp3":
-		return writeID3(path, t)
+		return writeID3(path, t, mask)
 	case ".flac":
-		return writeFLACTags(path, t)
+		return writeFLACTags(path, t, mask)
 	case ".ogg", ".oga":
-		return writeOggTags(path, t)
+		return writeOggTags(path, t, mask)
 	}
 	return errNoTags
+}
+
+// id3Frames: the frames of a field (all of them are replaced when it is
+// written).
+func id3Frames(bit tagMask) []string {
+	switch bit {
+	case tagTitle:
+		return []string{"TIT2"}
+	case tagArtist:
+		return []string{"TPE1"}
+	case tagAlbumArtist:
+		return []string{"TPE2"}
+	case tagAlbum:
+		return []string{"TALB"}
+	case tagGenre:
+		return []string{"TCON"}
+	case tagTrack, tagTrackTotal:
+		return []string{"TRCK"}
+	case tagDisc:
+		return []string{"TPOS"}
+	case tagYear:
+		return []string{"TYER", "TDRC"}
+	}
+	return nil
+}
+
+// vorbisKeys: the same for Vorbis comments.
+func vorbisKeys(bit tagMask) []string {
+	switch bit {
+	case tagTitle:
+		return []string{"TITLE"}
+	case tagArtist:
+		return []string{"ARTIST"}
+	case tagAlbumArtist:
+		return []string{"ALBUMARTIST", "ALBUM ARTIST"}
+	case tagAlbum:
+		return []string{"ALBUM"}
+	case tagGenre:
+		return []string{"GENRE"}
+	case tagTrack:
+		return []string{"TRACKNUMBER"}
+	case tagTrackTotal:
+		return []string{"TRACKTOTAL", "TOTALTRACKS"}
+	case tagDisc:
+		return []string{"DISCNUMBER"}
+	case tagYear:
+		return []string{"DATE", "YEAR"}
+	}
+	return nil
 }
 
 func (t songTags) trackText() string {
@@ -132,10 +234,6 @@ func writeAt(path string, b []byte, off int64) error {
 }
 
 // ---- ID3v2 (MP3) ----
-
-// The frames songTags owns; the others are kept.
-var id3Owned = map[string]bool{"TIT2": true, "TPE1": true, "TPE2": true, "TALB": true, "TCON": true,
-	"TRCK": true, "TPOS": true, "TYER": true, "TDRC": true}
 
 const id3Padding = 2048
 
@@ -266,7 +364,7 @@ func id3Text(ver int, s string) []byte {
 	return b
 }
 
-func writeID3(path string, t songTags) error {
+func writeID3(path string, t songTags, mask tagMask) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -296,14 +394,30 @@ func writeID3(path string, t songTags) error {
 		body.Write(h[:])
 		body.Write(data)
 	}
-	for _, kv := range [][2]string{{"TIT2", t.Title}, {"TPE1", t.Artist}, {"TPE2", t.AlbumArtist}, {"TALB", t.Album},
-		{"TCON", t.Genre}, {"TRCK", t.trackText()}, {"TPOS", itoaPos(t.Disc)}, {year, itoaPos(t.Year)}} {
-		if kv[1] != "" {
-			frame(kv[0], [2]byte{}, id3Text(ver, kv[1]))
+	drop := map[string]bool{}
+	for _, f := range []struct {
+		bit tagMask
+		id  string
+		val string
+	}{{tagTitle, "TIT2", t.Title}, {tagArtist, "TPE1", t.Artist}, {tagAlbumArtist, "TPE2", t.AlbumArtist},
+		{tagAlbum, "TALB", t.Album}, {tagGenre, "TCON", t.Genre}, {tagTrack | tagTrackTotal, "TRCK", t.trackText()},
+		{tagDisc, "TPOS", itoaPos(t.Disc)}, {tagYear, year, itoaPos(t.Year)}} {
+		if mask&f.bit == 0 {
+			continue
+		}
+		for b := tagMask(1); b <= f.bit; b <<= 1 {
+			if f.bit&b != 0 {
+				for _, id := range id3Frames(b) {
+					drop[id] = true
+				}
+			}
+		}
+		if f.val != "" {
+			frame(f.id, [2]byte{}, id3Text(ver, f.val))
 		}
 	}
 	for _, fr := range frames {
-		if !id3Owned[fr.id] {
+		if !drop[fr.id] {
 			frame(fr.id, fr.flags, fr.data)
 		}
 	}
@@ -326,11 +440,6 @@ func writeID3(path string, t songTags) error {
 }
 
 // ---- Vorbis comments (FLAC, Ogg Vorbis) ----
-
-// The comment fields songTags owns (upper case); the others are kept.
-var vorbisOwned = map[string]bool{"TITLE": true, "ARTIST": true, "ALBUM": true, "ALBUMARTIST": true,
-	"ALBUM ARTIST": true, "TRACKNUMBER": true, "TRACKTOTAL": true, "TOTALTRACKS": true, "DISCNUMBER": true,
-	"DATE": true, "YEAR": true, "GENRE": true}
 
 type vorbisComment struct {
 	vendor string
@@ -365,21 +474,34 @@ func parseVorbisComment(b []byte) (vorbisComment, error) {
 	return vc, nil
 }
 
-// set replaces the owned fields with t's.
-func (vc *vorbisComment) set(t songTags) {
+// set replaces the fields of mask with t's (every spelling of them); the
+// others stay as they are.
+func (vc *vorbisComment) set(t songTags, mask tagMask) {
+	drop := map[string]bool{}
+	for b := tagMask(1); b <= tagYear; b <<= 1 {
+		if mask&b != 0 {
+			for _, k := range vorbisKeys(b) {
+				drop[k] = true
+			}
+		}
+	}
 	keep := vc.fields[:0]
 	for _, f := range vc.fields {
 		k, _, _ := strings.Cut(f, "=")
-		if !vorbisOwned[strings.ToUpper(k)] {
+		if !drop[strings.ToUpper(k)] {
 			keep = append(keep, f)
 		}
 	}
 	vc.fields = keep
-	for _, kv := range [][2]string{{"TITLE", t.Title}, {"ARTIST", t.Artist}, {"ALBUM", t.Album},
-		{"ALBUMARTIST", t.AlbumArtist}, {"TRACKNUMBER", itoaPos(t.Track)}, {"TRACKTOTAL", itoaPos(t.TrackTotal)},
-		{"DISCNUMBER", itoaPos(t.Disc)}, {"DATE", itoaPos(t.Year)}, {"GENRE", t.Genre}} {
-		if kv[1] != "" {
-			vc.fields = append(vc.fields, kv[0]+"="+kv[1])
+	for _, kv := range []struct {
+		bit      tagMask
+		key, val string
+	}{{tagTitle, "TITLE", t.Title}, {tagArtist, "ARTIST", t.Artist}, {tagAlbum, "ALBUM", t.Album},
+		{tagAlbumArtist, "ALBUMARTIST", t.AlbumArtist}, {tagTrack, "TRACKNUMBER", itoaPos(t.Track)},
+		{tagTrackTotal, "TRACKTOTAL", itoaPos(t.TrackTotal)}, {tagDisc, "DISCNUMBER", itoaPos(t.Disc)},
+		{tagYear, "DATE", itoaPos(t.Year)}, {tagGenre, "GENRE", t.Genre}} {
+		if mask&kv.bit != 0 && kv.val != "" {
+			vc.fields = append(vc.fields, kv.key+"="+kv.val)
 		}
 	}
 	if vc.vendor == "" {
@@ -413,7 +535,7 @@ type flacBlock struct {
 	data []byte
 }
 
-func writeFLACTags(path string, t songTags) error {
+func writeFLACTags(path string, t songTags, mask tagMask) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -476,7 +598,7 @@ func writeFLACTags(path string, t songTags) error {
 		}
 		out = append(out, b)
 	}
-	vc.set(t)
+	vc.set(t, mask)
 	if !found {
 		out = append(out[:1], append([]flacBlock{{typ: 4}}, out[1:]...)...)
 	}
@@ -652,7 +774,7 @@ func pagePacketEnds(p *oggPage) bool {
 	return false
 }
 
-func writeOggTags(path string, t songTags) error {
+func writeOggTags(path string, t songTags, mask tagMask) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -701,7 +823,7 @@ func writeOggTags(path string, t songTags) error {
 	if err != nil {
 		return err
 	}
-	vc.set(t)
+	vc.set(t, mask)
 	comment := append([]byte("\x03vorbis"), vc.bytes()...)
 	comment = append(comment, 1) // framing bit
 	pages := oggPaginate([][]byte{comment, packets[1]}, first.serial, 1)
