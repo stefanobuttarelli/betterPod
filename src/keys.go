@@ -46,4 +46,7 @@ const (
 	MEDIA_PREV      Key = 0x4000100E
 	MEDIA_STOP      Key = 0x4000100F
 	HP_UNPLUG       Key = 0x40001010
+	MEDIA_HOOK      Key = 0x40001011 // a wired headset's one button: 1, 2 or 3 clicks
+	MEDIA_VOLUP     Key = 0x40001012
+	MEDIA_VOLDN     Key = 0x40001013
 )

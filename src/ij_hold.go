@@ -301,7 +301,7 @@ func (ui *IpodUI) mediaKey(ev int) bool {
 		k = Key(-1 - ev)
 	}
 	if k < MEDIA_PLAYPAUSE ||
-		k > HP_UNPLUG {
+		k > MEDIA_VOLDN {
 		// not a media key
 		return false
 	}
@@ -324,6 +324,17 @@ func (ui *IpodUI) mediaKey(ev int) bool {
 		}
 	case HP_UNPLUG:
 		ui.pauseIfPlaying("Headphones unplugged")
+	case MEDIA_HOOK:
+		ui.hookClick()
+	case MEDIA_VOLUP, MEDIA_VOLDN:
+		step := 0.04
+		if k == MEDIA_VOLDN {
+			step = -step
+		}
+		ui.volume = math.Min(math.Max(ui.volume+step, 0.01), 1)
+		ui.applyVolume()
+		ui.savePrefs()
+		ui.showVolumeOSD()
 	case MEDIA_NEXT:
 		skipDir = 1
 		go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
@@ -373,4 +384,39 @@ func (ui *IpodUI) goNowPlaying() {
 		ui.showNowPlaying()
 	}
 	ui.dirty = true
+}
+
+// The button of wired earphones, as on the iPod's: one click plays or
+// pauses, two go to the next song, three to the previous one. The clicks
+// are counted until 450 ms pass without another.
+var hook struct {
+	clicks int
+	gen    int
+}
+
+func (ui *IpodUI) hookClick() {
+	hook.clicks++
+	hook.gen++
+	gen := hook.gen
+	time.AfterFunc(450*time.Millisecond, func() {
+		ui.post(func() {
+			if gen != hook.gen {
+				return // another click came
+			}
+			n := hook.clicks
+			hook.clicks = 0
+			logMsg(fmt.Sprintf("Headset button: %d %s", n, pluralize(n, "click", "clicks")))
+			switch {
+			case n == 1:
+				ui.app.togglePlayPause()
+			case n == 2:
+				skipDir = 1
+				go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
+			default:
+				skipDir = -1
+				go func() { ui.app.prevTrack(); ui.post(ui.onTrackChanged) }()
+			}
+			ui.dirty = true
+		})
+	})
 }

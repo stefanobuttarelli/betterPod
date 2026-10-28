@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.48.1 (2026-10-28)
+
+### Fixed
+- **Wired earphones' button works, as on the iPod.**
+  - **What it does:** one click plays or pauses, two clicks go to the next song, three to the previous one.
+  - **Why it didn't work:** the button comes from the headphone jack as KEY_MEDIA, KEY_PHONE or (with drivers that give no key types) BTN_0. KEY_MEDIA was taken as a play/pause key, but its repeats within 400 ms were dropped, and the other codes were ignored.
+- **The volume buttons of wired earphones change the volume** (BTN_2/BTN_3, or the volume keys of the jack device; the console's own volume keys stay Knulli's).
+- **Diagnostics:** the log now names the headphone-jack device, and the first 20 key codes each media device sends, so a button that still does nothing shows its code.
+
 ## v0.48 (2026-10-28)
 
 ### Added

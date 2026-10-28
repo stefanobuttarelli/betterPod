@@ -67,6 +67,9 @@ void c_logd(const char *fmt, int val) {
 #define KEY_MEDIA_PREV   KP_KEY(0x0e)
 #define KEY_MEDIA_STOP   KP_KEY(0x0f)
 #define KEY_HP_UNPLUG    KP_KEY(0x10)   // headphones unplugged / BT gone
+#define KEY_MEDIA_HOOK   KP_KEY(0x11)   // a wired headset's one button (clicks counted in Go)
+#define KEY_MEDIA_VOLUP  KP_KEY(0x12)   // a wired headset's volume buttons
+#define KEY_MEDIA_VOLDN  KP_KEY(0x13)
 #define KEY_A            SDLK_SPACE
 #define KEY_B            SDLK_LCTRL
 #define KEY_X            SDLK_LSHIFT
@@ -261,7 +264,7 @@ void input_init(void) {
 // from elsewhere). MIYOOPOD_MEDIA_KEYS=0 turns all of this off.
 //
 //
-static struct { int fd; int bt; char name[24]; } media_dev[16];
+static struct { int fd; int bt; int jack; int logged; char name[24]; } media_dev[16];
 static int media_n;
 static Uint32 media_last_scan;
 static int media_disabled = -1;
@@ -269,9 +272,22 @@ static int media_disabled = -1;
 // The key a media key code becomes (0 = not a media key). Fast forward and
 // rewind act as next / previous.
 //
-static int media_key_for(int code) {
+// A wired headset's buttons come from the audio codec's jack device: the
+// one button as KEY_MEDIA (the "hook"), KEY_PHONE or, with drivers that
+// give no key types, BTN_0; the volume buttons as BTN_2/BTN_3 or
+// KEY_VOLUMEUP/DOWN (those only from the jack device: the console's own
+// volume keys are another device, left to Knulli).
+static int media_key_for(int code, int jack) {
     switch (code) {
-    case KEY_PLAYPAUSE: case KEY_MEDIA:     return KEY_MEDIA_PP;
+    case KEY_MEDIA: case KEY_PHONE: case BTN_0: case KEY_VOICECOMMAND:
+        return KEY_MEDIA_HOOK;
+    case BTN_2: return KEY_MEDIA_VOLUP;
+    case BTN_3: return KEY_MEDIA_VOLDN;
+    case KEY_VOLUMEUP:   return jack ? KEY_MEDIA_VOLUP : 0;
+    case KEY_VOLUMEDOWN: return jack ? KEY_MEDIA_VOLDN : 0;
+    }
+    switch (code) {
+    case KEY_PLAYPAUSE:                     return KEY_MEDIA_PP;
     case KEY_PLAYCD: case KEY_PLAY:         return KEY_MEDIA_PLAY;
     case KEY_PAUSECD:                       return KEY_MEDIA_PAUSE;
     case KEY_NEXTSONG: case KEY_FASTFORWARD: return KEY_MEDIA_NEXT;
@@ -311,8 +327,9 @@ static void media_scan(void) {
         ioctl(fd, EVIOCGBIT(EV_SW, sizeof(sw)), sw);
         {
             const int codes[] = { KEY_PLAYPAUSE, KEY_PLAYCD, KEY_PAUSECD, KEY_PLAY, KEY_NEXTSONG,
-                                  KEY_PREVIOUSSONG, KEY_STOPCD, KEY_FASTFORWARD, KEY_REWIND, KEY_MEDIA };
-            for (i = 0; i < 10; i++)
+                                  KEY_PREVIOUSSONG, KEY_STOPCD, KEY_FASTFORWARD, KEY_REWIND, KEY_MEDIA,
+                                  KEY_PHONE, BTN_0, KEY_VOICECOMMAND };
+            for (i = 0; i < (int)(sizeof(codes) / sizeof(codes[0])); i++)
                 if (keys[codes[i] / (8 * sizeof(long))] & (1UL << (codes[i] % (8 * sizeof(long))))) have = 1;
         }
         if (!have && !(sw[0] & (1UL << SW_HEADPHONE_INSERT))) { close(fd); continue; }
@@ -320,11 +337,14 @@ static void media_scan(void) {
         ioctl(fd, EVIOCGID, &id);
         media_dev[media_n].fd = fd;
         media_dev[media_n].bt = id.bustype == BUS_BLUETOOTH;
+        media_dev[media_n].jack = (sw[0] & (1UL << SW_HEADPHONE_INSERT)) != 0;
+        media_dev[media_n].logged = 0;
         snprintf(media_dev[media_n].name, sizeof(media_dev[media_n].name), "%s", e->d_name);
         {
             char nm[128] = "?", msg[200];
             ioctl(fd, EVIOCGNAME(sizeof(nm)), nm);
-            snprintf(msg, sizeof(msg), "media input: %s (%s)%s", e->d_name, nm, media_dev[media_n].bt ? " [bluetooth]" : "");
+            snprintf(msg, sizeof(msg), "media input: %s (%s)%s%s", e->d_name, nm, media_dev[media_n].bt ? " [bluetooth]" : "",
+                     media_dev[media_n].jack ? " [headphone jack]" : "");
             c_log(msg);
         }
         media_n++;
@@ -351,8 +371,21 @@ static void media_poll(void) {
             int n = r / sizeof(struct input_event), j;
             for (j = 0; j < n; j++) {
                 if (ev[j].type == EV_KEY && ev[j].value == 1) {
-                    int k = media_key_for(ev[j].code);
+                    int k = media_key_for(ev[j].code, media_dev[i].jack);
+                    if (media_dev[i].logged < 20) {
+                        // what the headset sends, for the log (a button that
+                        // does nothing shows its code here)
+                        char msg[120];
+                        media_dev[i].logged++;
+                        snprintf(msg, sizeof(msg), "media key from %s: code %d%s", media_dev[i].name, ev[j].code, k ? "" : " (not used)");
+                        c_log(msg);
+                    }
                     if (!k) continue;
+                    if (k == KEY_MEDIA_HOOK || k == KEY_MEDIA_VOLUP || k == KEY_MEDIA_VOLDN) {
+                        push_key(k, 1); // clicks are counted in Go, no de-duplication
+                        push_key(k, 0);
+                        continue;
+                    }
                     // The same press often arrives twice (from the headset
                     // and from the phone-style AVRCP device): ignore a
                     // repeat of the same kind within 400 ms.

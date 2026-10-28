@@ -1,8 +1,8 @@
 {
-  "version": "0.48",
-  "path": "release/knullipod-v0.48-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.48-knulli.zip",
-  "sha256": "807bf60d4ae9b17b3be8665b14e8e7a91a511f267006d40f4600b07dc744540f",
-  "size": 15071361,
-  "notes": "- Album Info: Y on an album → Edit Album Info fills in its tags from MusicBrainz, iTunes, Deezer, Wikipedia or by hand (by Emanuele Macrì)\n- Settings → Library → Missing Info lists the albums without an artist or track numbers\n- Saving writes only the fields you changed, and asks first\n- Clear Now Playing; up/right raise the volume on Now Playing (0.47)"
+  "version": "0.48.1",
+  "path": "release/knullipod-v0.48.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.48.1-knulli.zip",
+  "sha256": "a01068a52634a7f8c03dab2680a6b5fc5800e4a409bc9434d2ccabb56ff3c62c",
+  "size": 15072741,
+  "notes": "- Wired earphones' button: 1 click play/pause, 2 next song, 3 previous, as on the iPod\n- Wired earphones' volume buttons change the volume\n- Album Info: Y on an album → Edit Album Info (0.48)\n- Clear Now Playing; up/right raise the volume on Now Playing (0.47)"
 }
