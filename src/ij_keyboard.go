@@ -24,6 +24,8 @@ package main
 import (
 	"image"
 	"math"
+
+	"github.com/fogleman/gg"
 	"time"
 	"unicode/utf8"
 )
@@ -72,7 +74,7 @@ func kbBottomRow(layer int) []kbDef {
 	if layer == 1 {
 		lab = "ABC"
 	}
-	return []kbDef{{lab, kbLayer, 48}, {"space", kbSpace, 132}, {"⌫", kbDelete, 46}, {"Search", kbEnter, 72}}
+	return []kbDef{{lab, kbLayer, 48}, {"space", kbSpace, 140}, {"⌫", kbDelete, 46}, {"Search", kbEnter, 64}}
 }
 
 // Keyboard is the on-screen keyboard and the text it edits.
@@ -341,7 +343,13 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 			if k.act == kbDelete {
 				f = lf
 			}
+			if k.act == kbEnter {
+				label = "" // a magnifying glass instead of the word
+			}
 			tw := textWidth(f, label) / DPR
+			if k.act == kbEnter {
+				tw = 13
+			}
 			size := 14.0
 			if f == sf {
 				size = 11
@@ -353,7 +361,11 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 				bw = kbBadgeW(btn) + 4
 			}
 			lx := x + (k.w-tw-bw)/2
-			drawText(p, f, label, lx*d, (y+kbKeyH/2+lineCapHeight(size)/2)*d, tc)
+			if k.act == kbEnter {
+				drawMagnifier(p, lx, y+kbKeyH/2, 13, tc)
+			} else {
+				drawText(p, f, label, lx*d, (y+kbKeyH/2+lineCapHeight(size)/2)*d, tc)
+			}
 			if btn != "" {
 				kbBadge(p, btn, lx+tw+4, y+kbKeyH/2, sel)
 			}
@@ -424,4 +436,22 @@ func kbBadge(p *image.RGBA, btn string, x, cy float64, sel bool) {
 	f := face(W700, size)
 	tw := textWidth(f, btn) / d
 	drawText(p, f, btn, (x+(w-tw)/2)*d, (cy+lineCapHeight(size)/2)*d, fg)
+}
+
+// drawMagnifier: a magnifying glass s CSS px wide, from x, centred on cy.
+func drawMagnifier(dst *image.RGBA, x, cy, s float64, c Col) {
+	d := DPR
+	dc := gg.NewContextForRGBA(dst)
+	r := s * 0.34
+	cx, ccy := x+r+1, cy-s*0.12
+	dc.SetColor(c8(c))
+	dc.SetLineWidth(1.9 * d)
+	dc.DrawCircle(cx*d, ccy*d, r*d)
+	dc.Stroke()
+	dc.SetLineCapRound()
+	dc.SetLineWidth(2.4 * d)
+	a := math.Pi / 4
+	dc.MoveTo((cx+r*math.Cos(a)+0.6)*d, (ccy+r*math.Sin(a)+0.6)*d)
+	dc.LineTo((x+s-1)*d, (cy+s*0.5-1)*d)
+	dc.Stroke()
 }

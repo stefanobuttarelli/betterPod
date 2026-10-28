@@ -1,8 +1,8 @@
 {
-  "version": "0.34",
-  "path": "release/knullipod-v0.34-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.34-knulli.zip",
-  "sha256": "a3b3bbb12b31f7c06dc6222aefddac6e97415b990624492665108d38fc5337b6",
-  "size": 14393775,
-  "notes": "Song in the header, Y to queue, smaller sheets, keyboard hints"
+  "version": "0.35",
+  "path": "release/knullipod-v0.35-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.35-knulli.zip",
+  "sha256": "b2180d8342bfe1c0f307fa9c47d0777873d334db65779d5d54980a31a2814bc6",
+  "size": 14399017,
+  "notes": "Up Next, queue icons, search key icon"
 }

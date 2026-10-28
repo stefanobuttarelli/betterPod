@@ -527,6 +527,10 @@ func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) {
 		return
 	}
 	skipDir = 1
+	// a new list: the songs queued by hand are gone with the old one
+	for t := range queuedMarks {
+		delete(queuedMarks, t)
+	}
 	go func() {
 		app.Queue.Shuffle = ui.shuffleMode != "off"
 		app.playTrackFromList(tracks, idx)

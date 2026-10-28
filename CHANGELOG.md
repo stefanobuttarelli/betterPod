@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.35 (2026-10-28)
+
+### Added
+- **Up Next** (Now Playing → Y, or hold A): the songs that will play after the current one, in play order (shuffle included), with their covers.
+  - **A** plays a song at once and goes back to Now Playing.
+  - **Y** on a song: Play Next (moves it right after the current one) or Remove from Up Next.
+  - **Clear Up Next**, at the bottom, empties it (after asking).
+- **Queued songs are marked:** a song added with Play Next or Add to End of Queue shows the queue icon before its title in the lists and in Up Next, until it plays.
+- **Queue icons** in the options: three lines with an arrow. For Play Next the first line is bold and the arrow points up; for Add to End of Queue the last line is bold and the arrow points down.
+
+### Changed
+- **Keyboard:** the Search key is a magnifying glass (with its START badge).
+
 ## v0.34 (2026-10-28)
 
 ### Added

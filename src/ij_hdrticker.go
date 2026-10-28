@@ -52,6 +52,11 @@ func (ui *IpodUI) followTicker(now time.Time) {
 		ticker.track = tr
 		ui.dirty = true
 	}
+	if tr != ticker.lastTrack && tr != nil && queuedMarks[tr] != "" {
+		// a queued song is playing: no longer "queued"
+		delete(queuedMarks, tr)
+		ui.dirtyAllViews()
+	}
 	ticker.lastTrack, ticker.lastState = tr, st
 }
 

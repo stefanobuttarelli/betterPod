@@ -7,11 +7,14 @@ import (
 	"image"
 	"time"
 
+	"github.com/fogleman/gg"
+
 	"golang.org/x/image/font"
 )
 
 type SheetOption struct {
 	Label    string
+	Icon     string // "queue_next", "queue_last": drawn before the label
 	Selected bool
 	OnSelect func()
 }
@@ -141,7 +144,7 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 	if s.title != "" {
 		cardH += sheetTitleH
 	}
-	row := func(i int, ry float64, label string, lf font.Face, first, last bool) {
+	row := func(i int, ry float64, label string, icon string, lf font.Face, first, last bool) {
 		tc := th.text
 		if i == s.index {
 			// the selected option: the list's blue, inset in the card
@@ -150,7 +153,14 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 		}
 		label = ellipsize(lf, label, (x1-x0-24)*d)
 		tw := textWidth(lf, label)
-		drawText(img, lf, label, 320-tw/2, (ry+sheetRowH/2+lineCapHeight(15)/2)*d, tc)
+		lx := 320 - tw/2
+		if icon != "" {
+			const iw, gap = 18.0, 8.0
+			lx = 320 - (tw+(iw+gap)*d)/2
+			drawQueueIcon(img, lx/d, ry+sheetRowH/2, icon == "queue_next", tc)
+			lx += (iw + gap) * d
+		}
+		drawText(img, lf, label, lx, (ry+sheetRowH/2+lineCapHeight(15)/2)*d, tc)
 		if !last && i != s.index && i+1 != s.index {
 			fillRect(img, px(x0+12), px(ry+sheetRowH)-1, px(x1-x0-24), 1, sep)
 		}
@@ -166,13 +176,13 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 			ry += sheetTitleH
 		}
 		for i := 0; i < n; i++ {
-			row(i, ry, s.opts[i].Label, f, i == 0, i == n-1)
+			row(i, ry, s.opts[i].Label, s.opts[i].Icon, f, i == 0, i == n-1)
 			ry += sheetRowH
 		}
 		y += cardH + sheetGap
 	}
 	sheetCard(img, x0, y, x1, y+sheetRowH)
-	row(n, y, s.opts[n].Label, fc, true, true)
+	row(n, y, s.opts[n].Label, "", fc, true, true)
 	s.cache = img
 	s.cacheIx = s.index
 	return img
@@ -240,4 +250,46 @@ func (ui *IpodUI) drawToast(dst *image.RGBA, now time.Time) {
 	fillRoundedGradient(dst, x0*d, y0*d, (x0+w)*d, (y0+28)*d, 14*d, []GradStop{{0, Col{48, 50, 54, 0.9}}, {1, Col{12, 13, 15, 0.9}}}, a)
 	strokeRounded(dst, x0*d, y0*d, (x0+w)*d, (y0+28)*d, 14*d, 1.5, rgba(255, 255, 255, 0.18*a), 1)
 	drawText(dst, f, toast.text, (x0+14)*d, (y0+14+lineCapHeight(13)/2)*d, Col{255, 255, 255, a})
+}
+
+// drawQueueIcon: three lines with an arrow on their left, 18 × 14 CSS px
+// from x, centred on cy. Play Next: the first line is the bold one and the
+// arrow points up; End of Queue: the last one, the arrow down.
+func drawQueueIcon(dst *image.RGBA, x, cy float64, next bool, c Col) {
+	d := DPR
+	dc := gg.NewContextForRGBA(dst)
+	dc.SetColor(c8(c))
+	dc.SetLineCapRound()
+	top := cy - 5.5
+	for i := 0; i < 3; i++ {
+		y := top + float64(i)*5.5
+		bold := (next && i == 0) || (!next && i == 2)
+		w := 1.4
+		if bold {
+			w = 2.8
+		}
+		dc.SetLineWidth(w * d)
+		dc.MoveTo((x+8)*d, y*d)
+		dc.LineTo((x+18)*d, y*d)
+		dc.Stroke()
+	}
+	// the arrow
+	ax := x + 2.5
+	y0, y1 := cy+5.5, cy-5.5 // from, to (up)
+	if !next {
+		y0, y1 = y1, y0
+	}
+	dc.SetLineWidth(1.6 * d)
+	dc.MoveTo(ax*d, y0*d)
+	dc.LineTo(ax*d, y1*d)
+	dc.Stroke()
+	dir := 1.0
+	if !next {
+		dir = -1
+	}
+	dc.SetLineJoinRound()
+	dc.MoveTo((ax-2.4)*d, (y1+2.6*dir)*d)
+	dc.LineTo(ax*d, y1*d)
+	dc.LineTo((ax+2.4)*d, (y1+2.6*dir)*d)
+	dc.Stroke()
 }

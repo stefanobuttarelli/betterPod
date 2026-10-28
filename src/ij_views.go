@@ -33,6 +33,7 @@ type Item struct {
 	Checked        bool   // checkmark (submenus)
 	NoArrow        bool   // no chevron on the selected row
 	Duration       string // track length, right-aligned (Cover Flow track list)
+	QueueMark      string // queue icon before the title ("queue_next"/"queue_last"); songs look it up
 }
 
 // How a row behaves when selected (centerClick):
@@ -261,6 +262,14 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		if playing {
 			right -= 24
 		}
+		// a song added to the queue by hand: its icon before the title
+		qmark, qx := it.QueueMark, x
+		if qmark == "" && it.isSong() {
+			qmark = queuedMarks[it.Tracks[it.TrackIdx]]
+		}
+		if qmark != "" {
+			x += 28
+		}
 		padRight := 16.0
 		if showArrow || it.Value != "" || it.Checked || durW > 0 {
 			padRight = 0
@@ -279,6 +288,9 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		sc := th.sub
 		if sel {
 			tc, sc = colWhite, colWhite
+		}
+		if qmark != "" {
+			drawQueueMark(dst, qmark, qx+6, ty+4+lasc*0.62, tc)
 		}
 		if sel && textWidth(lfont, it.Label)/DPR > textW {
 			// selected and too long: scroll the title
