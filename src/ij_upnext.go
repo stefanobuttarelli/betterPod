@@ -131,7 +131,7 @@ func (ui *IpodUI) upNextView() *View {
 							ui.showToast("Playing Next")
 						}
 					}},
-					{Label: "Remove from Up Next", OnSelect: func() {
+					{Label: "Remove from Up Next", Danger: true, OnSelect: func() {
 						if q.trackAt(pos) == t {
 							q.removeAt(pos)
 							delete(queuedMarks, t)
@@ -144,7 +144,7 @@ func (ui *IpodUI) upNextView() *View {
 		if len(items) > 1 {
 			items = append(items, Item{Label: "Clear Up Next", Sublabel: fmt.Sprintf("%d songs", len(items)), NoArrow: true,
 				OnSelect: func() {
-					ui.showSheetTitled("Clear the songs up next?", []SheetOption{{Label: "Clear Up Next", OnSelect: func() {
+					ui.showSheetTitled("Clear the songs up next?", []SheetOption{{Label: "Clear Up Next", Danger: true, OnSelect: func() {
 						for p := q.length() - 1; p > q.CurrentIndex; p-- {
 							if t := q.trackAt(p); t != nil {
 								delete(queuedMarks, t)

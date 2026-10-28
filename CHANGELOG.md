@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.36 (2026-10-28)
+
+### Added
+- **Browse Files** (Settings → Library): a little Finder for the music folder.
+  - **The list:** folders first, then files, with their size (folder sizes come in a moment later), the number of items and the kind of file. Unfinished downloads (.part) and macOS leftovers ("._") are named as such. The top row shows the free space on the card.
+  - **Moving around:** A opens a folder.
+  - **Deleting:** Y (or holding A) on a row offers Delete. Select Several lets A tick more rows, and Delete Selected removes them together.
+  - **Safety:** deleting always asks first. Nothing outside the music folder can be deleted, and the library is scanned again afterwards.
+- **Pictures for the games** on the right of the Games list: a wall of glossy bricks with the ball and the paddle (Brick), three fanned cards (Solitaire), and for Weather one of its animated icons, a different one each time, with its name.
+
+### Changed
+- **Destructive options are red** in the sheets (Delete, Remove, Clear Up Next).
+- **Every sheet is titled** with the row it is about.
+- **The preview follows the selected row** as soon as a menu opens or comes back (before, it waited for a move).
+
 ## v0.35.1 (2026-10-28)
 
 ### Added

@@ -126,7 +126,7 @@ The first start scans the music folder. Later starts load the saved library inst
 |---|---|
 | Shuffle, Repeat | Submenus with the options; the active one is ticked |
 | Theme | Light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00) |
-| Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Missing Covers** (each album's search results with thumbnails, search by hand, or all automatically), **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
+| Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Missing Covers** (each album's search results with thumbnails, search by hand, or all automatically), **Browse Files** (see and delete files and folders), **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
 | Database | Folder for the library, artwork, settings, statistics and game saves |
 | Software Update | Checks for a new version over Wi-Fi and installs it |
 

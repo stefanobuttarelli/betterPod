@@ -251,9 +251,9 @@ func (ui *IpodUI) enqueue(tracks []*Track, next bool) string {
 func (ui *IpodUI) gamesView() *View {
 	v := &View{ID: "games", Title: "Games", Kind: KindSplit}
 	v.Items = []Item{
-		{Label: "Brick", Preview: PrevGames, OnSelect: func() { ui.openBrick() }},
-		{Label: "Solitaire", Preview: PrevGames, OnSelect: func() { ui.openSolitaire() }},
-		{Label: "Weather", Preview: PrevGames, OnSelect: func() { ui.openWeather() }},
+		{Label: "Brick", Preview: PrevBrick, OnSelect: func() { ui.openBrick() }},
+		{Label: "Solitaire", Preview: PrevSolitaire, OnSelect: func() { ui.openSolitaire() }},
+		{Label: "Weather", Preview: PrevWeather, OnSelect: func() { ui.openWeather() }},
 	}
 	return v
 }

@@ -15,6 +15,7 @@ import (
 type SheetOption struct {
 	Label    string
 	Icon     string // "queue_next", "queue_last": drawn before the label
+	Danger   bool   // a destructive action (Delete): red
 	Selected bool
 	OnSelect func()
 }
@@ -146,9 +147,18 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 	}
 	row := func(i int, ry float64, label string, icon string, lf font.Face, first, last bool) {
 		tc := th.text
+		danger := s.opts[i].Danger
+		if danger {
+			tc = hex("#e0352b")
+		}
 		if i == s.index {
-			// the selected option: the list's blue, inset in the card
-			fillRoundedGradient(img, (x0+4)*d, (ry+3)*d, (x1-4)*d, (ry+sheetRowH-3)*d, 8*d, selGrad, 1)
+			// the selected option: the list's blue (red for a destructive
+			// one), inset in the card
+			g := selGrad
+			if danger {
+				g = []GradStop{{0, hex("#ff6b5e")}, {1, hex("#d42a1e")}}
+			}
+			fillRoundedGradient(img, (x0+4)*d, (ry+3)*d, (x1-4)*d, (ry+sheetRowH-3)*d, 8*d, g, 1)
 			tc = colWhite
 		}
 		label = ellipsize(lf, label, (x1-x0-24)*d)

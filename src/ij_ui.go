@@ -241,6 +241,7 @@ func (ui *IpodUI) showView(v *View, headerTitle string) {
 		prev.hide.To(-1, durSlide, easeCSS, 0)
 	}
 	*stack = append(*stack, v)
+	ui.previewForSplit()
 	if headerTitle != "" {
 		ui.headerTitle = headerTitle
 	} else {
@@ -300,8 +301,21 @@ func (ui *IpodUI) hideView() {
 	if t, ok := top.titleOverride(); ok {
 		ui.headerTitle = t
 	}
+	ui.previewForSplit()
 	ui.updatePanels()
 	ui.dirty = true
+}
+
+// previewForSplit: the preview follows the selected row of the menu on
+// top (when a menu opens or comes back).
+func (ui *IpodUI) previewForSplit() {
+	if len(ui.full) > 0 || len(ui.split) == 0 {
+		return
+	}
+	v := ui.split[len(ui.split)-1]
+	if v.Index >= 0 && v.Index < len(v.Items) {
+		ui.schedulePreview(v.Items[v.Index].Preview)
+	}
 }
 
 func (v *View) titleOverride() (string, bool) { return "", false }
@@ -354,6 +368,9 @@ func (ui *IpodUI) setPreview(p PreviewKind) {
 		ui.musicPrev.To(0, durPreview, easeInOut, 0)
 	} else if ui.preview == PrevMusic {
 		ui.musicPrev.To(1, durPreview, easeInOut, 0)
+	}
+	if p == PrevWeather {
+		nextWxPreview() // a different weather each time
 	}
 	ui.preview = p
 	ui.dirty = true
@@ -508,11 +525,7 @@ func (ui *IpodUI) centerLongPress() {
 	}
 	it := v.Items[v.Index]
 	if len(it.LongPress) > 0 {
-		title := ""
-		if it.Tracks != nil || it.Album != nil {
-			title = it.Label // what the options are about
-		}
-		ui.showSheetTitled(title, it.LongPress)
+		ui.showSheetTitled(it.Label, it.LongPress) // titled with what it's about
 	}
 }
 
@@ -704,7 +717,7 @@ func (ui *IpodUI) animating(now time.Time) bool {
 	if ui.kb.animating(ui) {
 		return true
 	}
-	if ui.miniAnimating(now) || tickerAnimating(now) || toastAnimating() {
+	if ui.miniAnimating(now) || tickerAnimating(now) || toastAnimating() || ui.wxPreviewAnimating(now) {
 		return true
 	}
 	return !ui.noMarquee && ui.listMarquee()

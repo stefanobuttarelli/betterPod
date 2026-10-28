@@ -237,6 +237,12 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 		ui.drawIconPreview(dst, "dice", 96, []previewLine{{"Games", 16, W500}})
 	case PrevSettings:
 		ui.drawIconPreview(dst, "ipod_logo", 32, []previewLine{{"Settings", 16, W500}})
+	case PrevBrick:
+		ui.drawImgPreview(dst, brickIcon(), "Brick", "")
+	case PrevSolitaire:
+		ui.drawImgPreview(dst, ui.solitaireIcon(), "Solitaire", "")
+	case PrevWeather:
+		ui.drawWeatherPreview(dst, now)
 	case PrevNowPlaying:
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			art := ui.art(ui.trackAlbum(p.Track), h)
@@ -316,4 +322,7 @@ const (
 	PrevGames
 	PrevSettings
 	PrevNowPlaying
+	PrevBrick
+	PrevSolitaire
+	PrevWeather
 )

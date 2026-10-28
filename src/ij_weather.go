@@ -332,7 +332,7 @@ func (ui *IpodUI) openWeather() {
 			p := p
 			it := Item{Label: p.Name, Sublabel: p.where(), Album: placeThumb(p),
 				OnSelect: func() { ui.showView(ui.forecastView(p), "") },
-				LongPress: []SheetOption{{Label: "Remove " + p.Name, OnSelect: func() {
+				LongPress: []SheetOption{{Label: "Remove " + p.Name, Danger: true, OnSelect: func() {
 					for i, q := range st.Places {
 						if q == p {
 							st.Places = append(st.Places[:i], st.Places[i+1:]...)
