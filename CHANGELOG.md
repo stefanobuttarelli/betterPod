@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.52 (2026-10-28)
+
+### Added
+- **Move the music to another memory card:** Settings → Library → **Music Folder**. It lists the cards, with their free space, and the one the music is on now ("Here"). Choosing another one asks first: **Move Music**, **Copy Music (keep the originals)**, or **Use the Music Already There** when a copy is there.
+  - **Safe steps:** every file is copied, then read back from the new card and compared (CRC-32, from the card, not the cache). Only then, when moving, are the originals deleted. A file that doesn't match is copied again.
+  - **Interruptions lose nothing.** Each file is written as name.kpart and renamed once whole. Moving again after a stop skips what's already there. A card taken out pauses it ("Paused · put the card back"), and it goes on when the card is back. It checks it's the same card, so it never writes into the empty folder a card leaves behind. A full card stops it.
+  - **Afterwards:** the library uses the new folder (kept in musicdir.txt, also after a restart), and the database goes with it if it was inside. Playlists' lines with the old folder are rewritten. Now Playing is cleared and the library is scanned again.
+  - **The screen:**
+    - **Copying:** the albums travel from one card's pile to the other's, the one being copied flying across on an arc as its files are copied. Under it are the album, the file, the GB left on one side and arrived on the other, and a bar with the time left and the speed.
+    - **Checking:** each album is lifted with a blue outline, and the checked ones get a ✓.
+    - **When it's all done,** the albums open into a Cover Flow line.
+    - **B** asks before stopping, or hides the screen while it goes on.
+  - **Formatting a new card** is left to Knulli (Developer Options → Format A Disk).
+
 ## v0.51 (2026-10-28)
 
 ### Added

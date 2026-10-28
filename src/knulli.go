@@ -32,14 +32,14 @@ var otaDisabled = isKnulli
 
 // musicRoot returns the folder scanned for music, always with a trailing slash.
 // Default on Knulli is /userdata/music; override with MIYOOPOD_MUSIC_DIR.
+// The folder chosen in Settings → Library → Music Folder comes first
+// (ij_musicdir.go).
 func musicRoot() string {
-	dir := os.Getenv("MIYOOPOD_MUSIC_DIR")
+	musicDirMu.Lock()
+	dir := musicDirOverride
+	musicDirMu.Unlock()
 	if dir == "" {
-		if isKnulli {
-			dir = "/userdata/music"
-		} else {
-			dir = "/mnt/SDCARD/Media/Music"
-		}
+		dir = defaultMusicRoot()
 	}
 	return strings.TrimRight(dir, "/") + "/"
 }

@@ -13,7 +13,7 @@ var rescanPending atomic.Bool
 // rescanLibrary rescans the music folder in the background and rebuilds
 // the menus when it's done.
 func (ui *IpodUI) rescanLibrary() {
-	if dbBusy { // the database is being moved
+	if dbBusy { // the database or the music is being moved
 		return
 	}
 	go func() {
