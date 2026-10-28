@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.46 (2026-10-28)
+
+### Added
+- **Pictures in the Internet Archive results.** Each item shows its own picture, its cover when it has one (archive.org's thumbnail, loaded three at a time after the results). They stop loading when you search again or leave.
+- **Recent Searches** in Internet Archive, YouTube and Podcasts: the searches of the last 7 days, newest first, under the search field.
+  - **Choosing one** runs it again. The field above opens the keyboard for a new search.
+  - **The keyboard** no longer opens by itself when there are recent searches; it still does the first time.
+  - **Y on one** removes it, or clears them all.
+  - **Podcasts** shows the last 3, above Your Podcasts.
+  - They're kept in `recent_searches.json` in the data folder.
+
 ## v0.45.3 (2026-10-28)
 
 ### Fixed

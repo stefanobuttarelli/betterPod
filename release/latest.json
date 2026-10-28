@@ -1,8 +1,8 @@
 {
-  "version": "0.45.3",
-  "path": "release/knullipod-v0.45.3-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.45.3-knulli.zip",
-  "sha256": "91127eb4b8b3364b54513d82ebb65c371bfbf419e684d00159db405e2fe10234",
-  "size": 15011660,
-  "notes": "- MENU + volume (brightness) no longer turns the screen off when you let go of MENU\n- Waking the console from sleep turns the screen back on\n- The song that starts playing shows in the header in Cover Flow and in the lists too (0.45.2)\n- Weather: a rainy day no longer says \"Rain 0%\" (0.45.1)"
+  "version": "0.46",
+  "path": "release/knullipod-v0.46-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.46-knulli.zip",
+  "sha256": "5a185e3a0f99cef4df53fca024f9d24108356f55e0cc00c71e78b214805df651",
+  "size": 15018989,
+  "notes": "- Internet Archive results show each item's picture (its cover when it has one)\n- Recent Searches of the last 7 days in Internet Archive, YouTube and Podcasts\n- MENU + volume (brightness) no longer turns the screen off (0.45.3)\n- The song that starts playing shows in the header in Cover Flow too (0.45.2)"
 }

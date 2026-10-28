@@ -295,6 +295,12 @@ func (ui *IpodUI) youtubeView() *View {
 				}
 			}})
 		}
+		if st.ran == "" && !st.busy {
+			items = append(items, ui.recentItems("youtube", func(term string) {
+				st.term = term
+				run()
+			}, func() { ui.refreshView(v) })...)
+		}
 		for _, e := range st.res {
 			e := e
 			var parts []string
@@ -336,6 +342,7 @@ func (ui *IpodUI) youtubeView() *View {
 		if st.cancel != nil {
 			st.cancel()
 		}
+		addRecentSearch("youtube", q)
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		st.cancel = cancel
 		st.gen++
@@ -371,7 +378,11 @@ func (ui *IpodUI) youtubeView() *View {
 		}()
 	}
 	v.Items = v.Build()
-	ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
+	if len(recentSearches("youtube")) == 0 {
+		ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
+	} else {
+		v.Index = 2 // the recent searches (the field above opens the keyboard)
+	}
 	return v
 }
 

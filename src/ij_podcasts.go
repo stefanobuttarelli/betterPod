@@ -604,7 +604,19 @@ func (ui *IpodUI) podcastsView() *View {
 			}
 			return items
 		}
+		// the last few searches, then Your Podcasts
+		rec := ui.recentItems("podcasts", func(term string) {
+			st.term = term
+			run()
+		}, func() { ui.refreshView(v) })
+		if len(rec) > 3 {
+			rec = rec[:3]
+		}
+		items = append(items, rec...)
 		if len(saved) == 0 {
+			if len(rec) > 0 {
+				return items
+			}
 			return append(items, Item{Label: "Find a podcast", Sublabel: "Search above; the ones you download from are kept here", NoArrow: true})
 		}
 		for _, p := range saved {
@@ -630,6 +642,7 @@ func (ui *IpodUI) podcastsView() *View {
 			return
 		}
 		g := st.gen.Add(1)
+		addRecentSearch("podcasts", term)
 		st.busy, st.status, st.searched, st.res = true, "", true, nil
 		v.Index = 0
 		ui.refreshView(v)

@@ -20,6 +20,7 @@ package main
 // cover saved as cover.jpg; the library is rescanned at the end.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -306,9 +307,12 @@ func (ui *IpodUI) iaSearchView() *View {
 		busy              bool
 		res               []iaResult
 		total, page       int
-		gen               int // the current search; older answers are dropped
-	}{}
+		gen               int               // the current search; older answers are dropped
+		thumbs            map[string]*Album // the items' pictures, by identifier
+		live              atomic.Int64      // st.gen, for the thumbnail workers
+	}{thumbs: map[string]*Album{}}
 	v := &View{ID: "iaSearch", Title: "Internet Archive", Kind: KindFull}
+	v.onClose = func() { st.gen++; st.live.Store(int64(st.gen)) } // the thumbnails stop
 	var run func()
 	var more func()
 	v.Build = func() []Item {
@@ -351,8 +355,19 @@ func (ui *IpodUI) iaSearchView() *View {
 				sub = strings.Trim(sub+" · "+r.Year, " ·")
 			}
 			sub = strings.Trim(sub+" · "+licenseLabel(r.License), " ·")
-			items = append(items, Item{Label: r.Title, Sublabel: sub,
+			th := st.thumbs[r.ID]
+			if th == nil {
+				th = &Album{Name: r.Title, Artist: r.Creator} // the default art until the picture comes
+				st.thumbs[r.ID] = th
+			}
+			items = append(items, Item{Label: r.Title, Sublabel: sub, Album: th,
 				OnSelect: func() { ui.showView(ui.iaItemView(r), "") }})
+		}
+		if st.ran == "" && !st.busy {
+			items = append(items, ui.recentItems("ia", func(term string) {
+				st.term = term
+				run()
+			}, func() { ui.refreshView(v) })...)
 		}
 		switch {
 		case st.busy:
@@ -384,6 +399,7 @@ func (ui *IpodUI) iaSearchView() *View {
 				} else {
 					st.status = ""
 					st.res = append(st.res, res...)
+					ui.iaLoadThumbs(v, res, st.thumbs, func() bool { return st.live.Load() == int64(gen) })
 					st.total, st.page = total, page
 					if len(res) == 0 {
 						st.total = len(st.res) // no more pages
@@ -408,6 +424,8 @@ func (ui *IpodUI) iaSearchView() *View {
 			return
 		}
 		st.gen++
+		st.live.Store(int64(st.gen))
+		addRecentSearch("ia", q)
 		st.busy, st.status, st.ran = true, "", q
 		st.res, st.total, st.page = nil, 0, 0
 		v.Index = 0
@@ -423,8 +441,74 @@ func (ui *IpodUI) iaSearchView() *View {
 		fetch(st.ran, st.page+1, st.gen)
 	}
 	v.Items = v.Build()
-	ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
+	if len(recentSearches("ia")) == 0 {
+		ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
+	} else {
+		v.Index = 1 // the recent searches (the field above opens the keyboard)
+	}
 	return v
+}
+
+// iaLoadThumbs fetches the items' pictures (archive.org's own, about
+// 180 px: the cover when the item has one), three at a time, while current
+// (safe off the UI goroutine) says the search is still the one shown. On
+// the UI goroutine.
+func (ui *IpodUI) iaLoadThumbs(v *View, res []iaResult, thumbs map[string]*Album, current func() bool) {
+	type job struct {
+		th *Album
+		id string
+	}
+	work := make(chan job)
+	for w := 0; w < 3; w++ {
+		go func() {
+			for j := range work {
+				if !current() {
+					continue
+				}
+				data, err := coverImage("Internet Archive", iaBase()+"/services/img/"+url.PathEscape(j.id))
+				if err != nil || data == nil {
+					continue
+				}
+				img, _, err := image.Decode(bytes.NewReader(data))
+				if err != nil {
+					continue
+				}
+				th := j.th
+				ui.postSure(func() {
+					if !current() {
+						return
+					}
+					th.ArtImg = img
+					ui.artc.dropAlbum(th)
+					v.dirty = true
+					ui.dirty = true
+				})
+			}
+		}()
+	}
+	var jobs []job
+	for _, r := range res {
+		if r.ID == "" {
+			continue
+		}
+		th := thumbs[r.ID]
+		if th == nil {
+			th = &Album{Name: r.Title, Artist: r.Creator}
+			thumbs[r.ID] = th
+		}
+		if th.ArtImg == nil {
+			jobs = append(jobs, job{th, r.ID})
+		}
+	}
+	go func() {
+		defer close(work)
+		for _, j := range jobs {
+			if !ui.app.Running {
+				return
+			}
+			work <- j
+		}
+	}()
 }
 
 // iaGroupOrder: the download buttons, lossless formats first.
