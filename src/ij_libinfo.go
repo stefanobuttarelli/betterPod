@@ -289,7 +289,10 @@ func (ui *IpodUI) libraryInfoView() *View {
 			}
 			items = append(items, Item{Label: "Missing Covers", Sublabel: sub, OnSelect: func() { ui.showView(ui.missingCoversView(), "") }})
 			items = append(items, Item{Label: "Browse Files", Sublabel: "See and delete files and folders", OnSelect: func() { ui.showView(ui.filesView(MUSIC_ROOT), "") }})
-			if st := scanStats; st != nil && len(st.FolderList) > 0 {
+			scanStatsMu.Lock()
+			st := scanStats
+			scanStatsMu.Unlock()
+			if st != nil && len(st.FolderList) > 0 {
 				withMusic := 0
 				for _, f := range st.FolderList {
 					if f.Audio > 0 {
@@ -359,7 +362,7 @@ func (ui *IpodUI) rescanWithProgress(v *View) {
 			time.Sleep(300 * time.Millisecond)
 		}
 		time.Sleep(100 * time.Millisecond)
-		ui.post(func() {
+		ui.postSure(func() {
 			dataSizeCache.at = time.Time{}
 			ui.refreshView(v)
 		})

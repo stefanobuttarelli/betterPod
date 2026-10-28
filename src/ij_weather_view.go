@@ -38,10 +38,24 @@ type ForecastView struct {
 	firstTo int
 	firstA  *Anim
 
-	layer    *image.RGBA // everything but the animated icon
-	layerKey string
-	frameAt  time.Time
-	frame    int
+	layer    *image.RGBA // the sky, the place, the selected day (not the tiles nor the icon)
+	layerKey wxLayerKey
+	layerOK  bool
+	tiles    map[[2]int]*image.RGBA // (day, selected) → its tile
+	tilesKey wxTilesKey
+	frame    int // the hero icon's frame last drawn
+}
+
+// wxLayerKey: what the layer shows; it is drawn again when this changes.
+type wxLayerKey struct {
+	f          *wxForecast
+	sel        int
+	loading    bool
+	err        string
+	clock      string // the place's time, to the minute
+	ago        int    // minutes since the update ("Updated N minutes ago")
+	fahrenheit bool
+	w          int
 }
 
 const (
@@ -71,7 +85,7 @@ func (fv *ForecastView) refresh(ui *IpodUI) {
 	p := fv.place
 	go func() {
 		f, err := fetchForecast(p)
-		ui.post(func() {
+		ui.postSure(func() {
 			fv.loading = false
 			if err != nil {
 				fv.err = iaErrText(err)
@@ -81,7 +95,8 @@ func (fv *ForecastView) refresh(ui *IpodUI) {
 				p.thumb = nil
 				wxSave()
 				if fv.sel >= f.days() {
-					fv.sel = 0
+					fv.sel, fv.firstTo = 0, 0
+					fv.firstA.Set(0)
 				}
 			}
 			ui.dirty = true
@@ -91,7 +106,11 @@ func (fv *ForecastView) refresh(ui *IpodUI) {
 }
 
 func (fv *ForecastView) Animating(now time.Time) bool {
-	return fv.firstA.Running() || now.Sub(fv.frameAt) >= time.Second/time.Duration(wxFrames/wxLoopSecs)
+	if fv.firstA.Running() {
+		return true
+	}
+	// the big icon: a new frame of its loop (when there is an icon)
+	return (fv.place.Forecast != nil || fv.loading) && wxFrameAt(now) != fv.frame
 }
 
 func (fv *ForecastView) OnCenter(ui *IpodUI) { fv.refresh(ui) }
@@ -182,19 +201,23 @@ func (fv *ForecastView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Ti
 	if f != nil {
 		local = f.localNow()
 	}
-	key := fmt.Sprintf("%p|%d|%.3f|%v|%s|%s|%v|%d|%v", f, fv.sel, fv.first, fv.loading, fv.err, local.Format("15:04"), wxLoad().Fahrenheit, W, 0)
+	key := wxLayerKey{f: f, sel: fv.sel, loading: fv.loading, err: fv.err, clock: local.Format("Mon 15:04"),
+		fahrenheit: wxLoad().Fahrenheit, w: W}
+	if f != nil {
+		key.ago = int(time.Since(f.Fetched) / time.Minute)
+	}
 	if fv.layer == nil || fv.layer.Bounds().Dx() != W || fv.layer.Bounds().Dy() != H {
 		fv.layer = newCanvas(W, H)
-		fv.layerKey = ""
+		fv.layerOK = false
 	}
-	if key != fv.layerKey || (f != nil && time.Since(f.Fetched) > time.Minute && now.Second() == 0) {
+	if key != fv.layerKey || !fv.layerOK {
 		fv.drawLayer(fv.layer, kind, day, local)
-		fv.layerKey = key
+		fv.layerKey, fv.layerOK = key, true
 	}
 	blitOpaque(dst, fv.layer, 0, 0)
+	fv.drawStrip(dst)
 	// the big icon, animated
-	fv.frame = int(math.Mod(float64(now.UnixNano())/1e9, wxLoopSecs) / wxLoopSecs * wxFrames)
-	fv.frameAt = now
+	fv.frame = wxFrameAt(now)
 	if f != nil || fv.loading {
 		ic := wxIcon(kind, px(wxHeroSz), fv.frame)
 		blit(dst, ic, px(8), px(32), 1)
@@ -285,69 +308,9 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 	lineF := face(W500, 10)
 	shadowText(dst, lineF, ellipsize(lineF, line, float64(W)-(x+8)*d), x*d, 118*d, rgba(255, 255, 255, 0.88))
 
-	// ---- the days: glass tiles ----
+	// (the tiles are drawn over this layer each frame: drawStrip)
 	n := f.days()
 	x0 := (wCSS - (wxTiles*wxTileW + (wxTiles-1)*wxTileG)) / 2
-	clip := image.Rect(px(x0-2), px(wxStripY-4), px(wCSS-x0+2), px(wxStripY+wxTileH+4))
-	strip := dst.SubImage(clip).(*image.RGBA)
-	dayF := face(W700, 10)
-	hiF := face(W700, 14)
-	loF := face(W600, 12)
-	rainF := face(W600, 9)
-	for j := 0; j < n; j++ {
-		tx := x0 + (float64(j)-fv.first)*(wxTileW+wxTileG)
-		if tx > wCSS || tx+wxTileW < 0 {
-			continue
-		}
-		ty := wxStripY
-		sel := j == fv.sel
-		if sel {
-			ty -= 2
-		}
-		x1, y1 := tx+wxTileW, ty+wxTileH
-		// shadow, glass, shine, edge
-		fillRoundedGradient(strip, tx*d, (ty+2)*d, x1*d, (y1+2)*d, 9*d, []GradStop{{0, rgba(0, 20, 50, 0.18)}, {1, rgba(0, 20, 50, 0.28)}}, 1)
-		top, bot := rgba(255, 255, 255, 0.88), rgba(225, 236, 248, 0.78)
-		if sel {
-			top, bot = rgba(255, 255, 255, 0.98), rgba(214, 234, 255, 0.95)
-		}
-		fillRoundedGradient(strip, tx*d, ty*d, x1*d, y1*d, 9*d, []GradStop{{0, top}, {1, bot}}, 1)
-		fillRoundedGradient(strip, (tx+1.5)*d, (ty+1.5)*d, (x1-1.5)*d, (ty+wxTileH*0.42)*d, 8*d, []GradStop{{0, rgba(255, 255, 255, 0.85)}, {1, rgba(255, 255, 255, 0.15)}}, 1)
-		if sel {
-			strokeRounded(strip, (tx-1.5)*d, (ty-1.5)*d, (x1+1.5)*d, (y1+1.5)*d, 10.5*d, 3.5, rgba(70, 170, 255, 0.95), 1)
-			strokeRounded(strip, tx*d, ty*d, x1*d, y1*d, 9*d, 1.5, rgba(255, 255, 255, 1), 1)
-		} else {
-			strokeRounded(strip, tx*d, ty*d, x1*d, y1*d, 9*d, 1.5, rgba(255, 255, 255, 0.9), 1)
-		}
-		// the day
-		lab := "TODAY"
-		if j > 0 {
-			dt, _ := time.Parse("2006-01-02", f.Daily.Time[j])
-			lab = strings.ToUpper(dt.Format("Mon")) + " " + dt.Format("2")
-		}
-		lw := textWidth(dayF, lab) / d
-		drawText(strip, dayF, lab, (tx+(wxTileW-lw)/2)*d, (ty+13)*d, hex("#3b4f6b"))
-		// the icon
-		ic := wxIcon(wxKindFor(f.Daily.Code[j], true), px(wxTileIc), -1)
-		blit(strip, ic, px(tx+(wxTileW-wxTileIc)/2), px(ty+16), 1)
-		// high in red, low in blue
-		hs, ls := wxTemp(f.Daily.Max[j]), wxTemp(f.Daily.Min[j])
-		hw, lw2 := textWidth(hiF, hs)/d, textWidth(loF, ls)/d
-		gap := 4.0
-		sx := tx + (wxTileW-(hw+gap+lw2))/2
-		drawText(strip, hiF, hs, sx*d, (ty+68)*d, hex("#d8261b"))
-		drawText(strip, loF, ls, (sx+hw+gap)*d, (ty+68)*d, hex("#1f5fc8"))
-		// the chance of rain, when there is one
-		if r := f.rain(j); r >= 10 {
-			rs := fmt.Sprintf("%d%%", int(r))
-			rw := textWidth(rainF, rs) / d
-			dropW := 6.0
-			rx := tx + (wxTileW-(dropW+2+rw))/2
-			drop := wxDropIcon(px(dropW + 2))
-			blit(strip, drop, px(rx-1), px(ty+72.5), 1)
-			drawText(strip, rainF, rs, (rx+dropW+2)*d, (ty+81)*d, hex("#3d6aa6"))
-		}
-	}
 	// more days on either side
 	arrow := func(right bool) {
 		y := wxStripY + wxTileH/2
@@ -368,6 +331,108 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 	if fv.firstTo+wxTiles < n {
 		arrow(true)
 	}
+}
+
+// drawStrip draws the day tiles at the strip's eased scroll position (the
+// tiles are cached images: scrolling only moves them).
+func (fv *ForecastView) drawStrip(dst *image.RGBA) {
+	f := fv.place.Forecast
+	if f == nil {
+		return
+	}
+	W := dst.Bounds().Dx()
+	wCSS := float64(W) / DPR
+	x0 := (wCSS - (wxTiles*wxTileW + (wxTiles-1)*wxTileG)) / 2
+	clip := image.Rect(px(x0-2), px(wxStripY-4), px(wCSS-x0+2), px(wxStripY+wxTileH+4))
+	strip := dst.SubImage(clip).(*image.RGBA)
+	tk := wxTilesKey{f, wxLoad().Fahrenheit}
+	if tk != fv.tilesKey {
+		fv.tilesKey, fv.tiles = tk, map[[2]int]*image.RGBA{}
+	}
+	for j := 0; j < f.days(); j++ {
+		tx := x0 + (float64(j)-fv.first)*(wxTileW+wxTileG)
+		if tx > wCSS || tx+wxTileW < 0 {
+			continue
+		}
+		sel := 0
+		if j == fv.sel {
+			sel = 1
+		}
+		img := fv.tiles[[2]int{j, sel}]
+		if img == nil {
+			img = fv.renderTile(f, j, sel == 1)
+			fv.tiles[[2]int{j, sel}] = img
+		}
+		blit(strip, img, px(tx-wxTilePad), px(wxStripY-wxTilePad), 1)
+	}
+}
+
+// wxTilePad: room around a tile image for its glow and shadow (CSS px).
+const wxTilePad = 4.0
+
+type wxTilesKey struct {
+	f          *wxForecast
+	fahrenheit bool
+}
+
+// renderTile draws day j's glass tile (selected: lifted, with a blue glow)
+// on its own transparent image.
+func (fv *ForecastView) renderTile(f *wxForecast, j int, sel bool) *image.RGBA {
+	d := DPR
+	strip := newCanvas(px(wxTileW+2*wxTilePad), px(wxTileH+2*wxTilePad))
+	dayF := face(W700, 10)
+	hiF := face(W700, 14)
+	loF := face(W600, 12)
+	rainF := face(W600, 9)
+	tx := wxTilePad
+	ty := wxTilePad
+	if sel {
+		ty -= 2
+	}
+	x1, y1 := tx+wxTileW, ty+wxTileH
+	// shadow, glass, shine, edge
+	fillRoundedGradient(strip, tx*d, (ty+2)*d, x1*d, (y1+2)*d, 9*d, []GradStop{{0, rgba(0, 20, 50, 0.18)}, {1, rgba(0, 20, 50, 0.28)}}, 1)
+	top, bot := rgba(255, 255, 255, 0.88), rgba(225, 236, 248, 0.78)
+	if sel {
+		top, bot = rgba(255, 255, 255, 0.98), rgba(214, 234, 255, 0.95)
+	}
+	fillRoundedGradient(strip, tx*d, ty*d, x1*d, y1*d, 9*d, []GradStop{{0, top}, {1, bot}}, 1)
+	fillRoundedGradient(strip, (tx+1.5)*d, (ty+1.5)*d, (x1-1.5)*d, (ty+wxTileH*0.42)*d, 8*d, []GradStop{{0, rgba(255, 255, 255, 0.85)}, {1, rgba(255, 255, 255, 0.15)}}, 1)
+	if sel {
+		strokeRounded(strip, (tx-1.5)*d, (ty-1.5)*d, (x1+1.5)*d, (y1+1.5)*d, 10.5*d, 3.5, rgba(70, 170, 255, 0.95), 1)
+		strokeRounded(strip, tx*d, ty*d, x1*d, y1*d, 9*d, 1.5, rgba(255, 255, 255, 1), 1)
+	} else {
+		strokeRounded(strip, tx*d, ty*d, x1*d, y1*d, 9*d, 1.5, rgba(255, 255, 255, 0.9), 1)
+	}
+	// the day
+	lab := "TODAY"
+	if j > 0 {
+		dt, _ := time.Parse("2006-01-02", f.Daily.Time[j])
+		lab = strings.ToUpper(dt.Format("Mon")) + " " + dt.Format("2")
+	}
+	lw := textWidth(dayF, lab) / d
+	drawText(strip, dayF, lab, (tx+(wxTileW-lw)/2)*d, (ty+13)*d, hex("#3b4f6b"))
+	// the icon
+	ic := wxIcon(wxKindFor(f.Daily.Code[j], true), px(wxTileIc), -1)
+	blit(strip, ic, px(tx+(wxTileW-wxTileIc)/2), px(ty+16), 1)
+	// high in red, low in blue
+	hs, ls := wxTemp(f.Daily.Max[j]), wxTemp(f.Daily.Min[j])
+	hw, lw2 := textWidth(hiF, hs)/d, textWidth(loF, ls)/d
+	gap := 4.0
+	sx := tx + (wxTileW-(hw+gap+lw2))/2
+	drawText(strip, hiF, hs, sx*d, (ty+68)*d, hex("#d8261b"))
+	drawText(strip, loF, ls, (sx+hw+gap)*d, (ty+68)*d, hex("#1f5fc8"))
+	// the chance of rain, when there is one
+	if r := f.rain(j); r >= 10 {
+		rs := fmt.Sprintf("%d%%", int(r))
+		rw := textWidth(rainF, rs) / d
+		dropW := 6.0
+		rx := tx + (wxTileW-(dropW+2+rw))/2
+		drop := wxDropIcon(px(dropW + 2))
+		blit(strip, drop, px(rx-1), px(ty+72.5), 1)
+		drawText(strip, rainF, rs, (rx+dropW+2)*d, (ty+81)*d, hex("#3d6aa6"))
+	}
+	return strip
 }
 
 // wxDropIcon: the little raindrop of the tiles.

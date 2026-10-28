@@ -21,13 +21,14 @@ type SheetOption struct {
 }
 
 type Sheet struct {
-	title   string // what the options are about (a song, an album…)
-	opts    []SheetOption
-	index   int
-	anim    *Anim // 0 shown, 1 hidden below the screen
-	exiting bool
-	cache   *image.RGBA
-	cacheIx int
+	title     string // what the options are about (a song, an album…)
+	opts      []SheetOption
+	index     int
+	anim      *Anim // 0 shown, 1 hidden below the screen
+	exiting   bool
+	cache     *image.RGBA
+	cacheIx   int
+	cacheDark bool
 }
 
 // The sheet is a small floating card at the bottom of the screen, over a
@@ -125,7 +126,7 @@ func sheetCard(img *image.RGBA, x0, y0, x1, y1 float64) {
 }
 
 func (s *Sheet) render(ui *IpodUI) *image.RGBA {
-	if s.cache != nil && s.cacheIx == s.index {
+	if s.cache != nil && s.cacheIx == s.index && s.cacheDark == th.dark {
 		return s.cache
 	}
 	d := DPR
@@ -145,7 +146,7 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 	if s.title != "" {
 		cardH += sheetTitleH
 	}
-	row := func(i int, ry float64, label string, icon string, lf font.Face, first, last bool) {
+	row := func(i int, ry float64, label string, icon string, lf font.Face, last bool) {
 		tc := th.text
 		danger := s.opts[i].Danger
 		if danger {
@@ -186,15 +187,16 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 			ry += sheetTitleH
 		}
 		for i := 0; i < n; i++ {
-			row(i, ry, s.opts[i].Label, s.opts[i].Icon, f, i == 0, i == n-1)
+			row(i, ry, s.opts[i].Label, s.opts[i].Icon, f, i == n-1)
 			ry += sheetRowH
 		}
 		y += cardH + sheetGap
 	}
 	sheetCard(img, x0, y, x1, y+sheetRowH)
-	row(n, y, s.opts[n].Label, "", fc, true, true)
+	row(n, y, s.opts[n].Label, "", fc, true)
 	s.cache = img
 	s.cacheIx = s.index
+	s.cacheDark = th.dark
 	return img
 }
 
@@ -241,12 +243,18 @@ func (ui *IpodUI) showToast(text string) {
 	ui.dirty = true
 }
 
-func toastAnimating() bool { return toast.a.Running() || toast.a.Target() == 1 }
+func toastAnimating() bool { return toast.a.Running() }
 
-func (ui *IpodUI) drawToast(dst *image.RGBA, now time.Time) {
+// toastTick fades the toast out when its time is up (from the loop, so the
+// screen needn't be redrawn while it just sits there).
+func (ui *IpodUI) toastTick(now time.Time) {
 	if toast.a.Target() == 1 && now.After(toast.until) {
 		toast.a.To(0, 250*time.Millisecond, easeCSS, 0)
+		ui.dirty = true
 	}
+}
+
+func (ui *IpodUI) drawToast(dst *image.RGBA, now time.Time) {
 	a := toast.a.Get(now)
 	if a <= 0.001 {
 		return
@@ -264,42 +272,59 @@ func (ui *IpodUI) drawToast(dst *image.RGBA, now time.Time) {
 
 // drawQueueIcon: three lines with an arrow on their left, 18 × 14 CSS px
 // from x, centred on cy. Play Next: the first line is the bold one and the
-// arrow points up; End of Queue: the last one, the arrow down.
+// arrow points up; End of Queue: the last one, the arrow down. Drawn once
+// per kind and colour, then blitted.
 func drawQueueIcon(dst *image.RGBA, x, cy float64, next bool, c Col) {
+	img := queueIconImg(next, c)
+	blit(dst, img, px(x), px(cy-8), 1)
+}
+
+type queueIconKey struct {
+	next bool
+	c    Col
+}
+
+var queueIcons = map[queueIconKey]*image.RGBA{}
+
+func queueIconImg(next bool, c Col) *image.RGBA {
+	k := queueIconKey{next, c}
+	if img := queueIcons[k]; img != nil {
+		return img
+	}
 	d := DPR
-	dc := gg.NewContextForRGBA(dst)
+	img := image.NewRGBA(image.Rect(0, 0, px(20), px(16)))
+	dc := gg.NewContextForRGBA(img)
 	dc.SetColor(c8(c))
 	dc.SetLineCapRound()
-	top := cy - 5.5
+	cy := 8.0
 	for i := 0; i < 3; i++ {
-		y := top + float64(i)*5.5
+		y := cy - 5.5 + float64(i)*5.5
 		bold := (next && i == 0) || (!next && i == 2)
 		w := 1.4
 		if bold {
 			w = 2.8
 		}
 		dc.SetLineWidth(w * d)
-		dc.MoveTo((x+8)*d, y*d)
-		dc.LineTo((x+18)*d, y*d)
+		dc.MoveTo(8*d, y*d)
+		dc.LineTo(18*d, y*d)
 		dc.Stroke()
 	}
 	// the arrow
-	ax := x + 2.5
+	ax := 2.5
 	y0, y1 := cy+5.5, cy-5.5 // from, to (up)
+	dir := 1.0
 	if !next {
-		y0, y1 = y1, y0
+		y0, y1, dir = y1, y0, -1
 	}
 	dc.SetLineWidth(1.6 * d)
 	dc.MoveTo(ax*d, y0*d)
 	dc.LineTo(ax*d, y1*d)
 	dc.Stroke()
-	dir := 1.0
-	if !next {
-		dir = -1
-	}
 	dc.SetLineJoinRound()
 	dc.MoveTo((ax-2.4)*d, (y1+2.6*dir)*d)
 	dc.LineTo(ax*d, y1*d)
 	dc.LineTo((ax+2.4)*d, (y1+2.6*dir)*d)
 	dc.Stroke()
+	queueIcons[k] = img
+	return img
 }

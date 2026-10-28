@@ -33,12 +33,9 @@ func brickIcon() *image.RGBA {
 	for r, c := range rows {
 		for i := 0; i < 4; i++ {
 			off := 0.0
-			n := 4
 			if r%2 == 1 {
 				off = -(bw + gap) / 2
-				n = 5
 			}
-			_ = n
 			x := x0 + off + float64(i)*(bw+gap)
 			if r%2 == 1 && i == 0 {
 				// half bricks at the ends of the odd rows
@@ -190,12 +187,6 @@ var wxPrev = struct {
 	frame int
 }{kind: wxPartlySun, frame: -1}
 
-var wxPrevNames = map[wxKind]string{
-	wxSun: "Sunny", wxMoon: "Clear Night", wxPartlySun: "Partly Cloudy", wxPartlyMoon: "Partly Cloudy",
-	wxCloudy: "Cloudy", wxFog: "Fog", wxDrizzle: "Drizzle", wxRain: "Rain", wxSnow: "Snow",
-	wxSleet: "Sleet", wxThunder: "Thunderstorm",
-}
-
 // nextWxPreview picks another icon (never the same twice in a row).
 func nextWxPreview() {
 	k := wxPrev.kind
@@ -212,11 +203,11 @@ func wxFrameAt(now time.Time) int {
 func (ui *IpodUI) drawWeatherPreview(dst *image.RGBA, now time.Time) {
 	f := wxFrameAt(now)
 	wxPrev.frame = f
-	ui.drawImgPreview(dst, wxIcon(wxPrev.kind, px(gameIconCSS+16), f), "Weather", wxPrevNames[wxPrev.kind])
+	ui.drawImgPreview(dst, wxIcon(wxPrev.kind, px(gameIconCSS+16), f), "Weather", "")
 }
 
 // wxPreviewAnimating: the Weather preview is on screen and its icon has a
 // new frame.
 func (ui *IpodUI) wxPreviewAnimating(now time.Time) bool {
-	return ui.preview == PrevWeather && ui.previewHide.Get(now) < 1 && wxFrameAt(now) != wxPrev.frame
+	return ui.preview == PrevWeather && ui.previewHide.Get(now) < 1 && ui.previewOnScreen() && wxFrameAt(now) != wxPrev.frame
 }

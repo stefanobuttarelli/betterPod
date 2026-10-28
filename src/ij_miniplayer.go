@@ -70,6 +70,9 @@ var miniPauseHide = func() time.Duration {
 // followed by the UI loop (followPause).
 var pausedSince time.Time
 
+// pauseHideFired: the long pause has been noticed (the block sent away).
+var pauseHideFired bool
+
 // followPause notes when a pause starts; it marks the screen dirty when the
 // block's pause time runs out, so it slides away even on an idle screen.
 func (ui *IpodUI) followPause(now time.Time) {
@@ -83,8 +86,12 @@ func (ui *IpodUI) followPause(now time.Time) {
 		}
 	case pausedSince.IsZero():
 		pausedSince = now
-	case now.Sub(pausedSince) >= miniPauseHide && now.Sub(pausedSince) < miniPauseHide+2*time.Second:
+	case now.Sub(pausedSince) >= miniPauseHide && !pauseHideFired:
+		pauseHideFired = true // once: the block slides away
 		ui.dirty = true
+	}
+	if !paused {
+		pauseHideFired = false
 	}
 }
 
@@ -115,7 +122,7 @@ func (ui *IpodUI) miniAnimating(now time.Time) bool {
 	if mini.pause.Running() || mini.change.Running() {
 		return true
 	}
-	return mini.marqOn && mini.drawnAt >= ui.frameNo-1
+	return mini.marqOn && !ui.noMarquee && mini.drawnAt >= ui.frameNo-1 && marqSyncNeedsFrame(now)
 }
 
 var miniPlayerBg *image.RGBA
@@ -124,9 +131,13 @@ var miniPlayerBg *image.RGBA
 // seamless 256 px tile) repeated at device resolution, with a dark top
 // edge and a faint light line under it. Built once per size.
 func (ui *IpodUI) miniPlayerTexture(w, h int) *image.RGBA {
-	if miniPlayerBg != nil && miniPlayerBg.Bounds().Dx() == w && miniPlayerBg.Bounds().Dy() == h {
-		return miniPlayerBg
+	// built once at the full width; a narrower panel takes its left part
+	// (both panels can show the block in the same frame)
+	if miniPlayerBg != nil && miniPlayerBg.Bounds().Dx() >= w && miniPlayerBg.Bounds().Dy() == h {
+		return miniPlayerBg.SubImage(image.Rect(0, 0, w, h)).(*image.RGBA)
 	}
+	want := w
+	w = max(w, 640)
 	img := newCanvas(w, h)
 	tile := ui.asset("woven")
 	tw, th := tile.Bounds().Dx(), tile.Bounds().Dy()
@@ -145,7 +156,7 @@ func (ui *IpodUI) miniPlayerTexture(w, h int) *image.RGBA {
 	fillRect(img, 0, 0, w, px(1), rgb(8, 9, 12))
 	fillRect(img, 0, px(1), w, 1, rgba(255, 255, 255, 0.12))
 	miniPlayerBg = img
-	return img
+	return img.SubImage(image.Rect(0, 0, want, h)).(*image.RGBA)
 }
 
 // drawMiniPlayer draws the block of a panel (x, w device px) whose stack
@@ -201,7 +212,7 @@ func (ui *IpodUI) updateMini(t *Track, now time.Time) {
 			mini.old = mini.shown
 			mini.dir = skipDir
 			mini.change.Set(0)
-			mini.change.To(1, 380*time.Millisecond, easeInOut, 0)
+			mini.change.To(1, 380*time.Millisecond, easeLinear, 0) // the phases ease themselves
 		}
 		mini.shown = t
 		mini.since = now

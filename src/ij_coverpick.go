@@ -173,7 +173,7 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 					img, _, err = image.Decode(bytes.NewReader(data))
 				}
 				h := h
-				ui.post(func() {
+				ui.postSure(func() {
 					switch {
 					case err != nil:
 						h.state = "error"
@@ -248,7 +248,7 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 					}
 				}
 			}
-			ui.post(func() {
+			ui.postSure(func() {
 				if gen != st.gen {
 					return
 				}
@@ -301,7 +301,7 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 			if err == nil && data != nil {
 				saveCoverFile(a, data)
 			}
-			ui.post(func() {
+			ui.postSure(func() {
 				st.getting = nil
 				switch {
 				case err != nil:
@@ -318,7 +318,9 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 					if onSaved != nil {
 						onSaved()
 					}
-					ui.hideView()
+					if ui.topScreen() == v && ui.keyboard == nil && ui.activeSheet() == nil {
+						ui.hideView() // back to the list (unless the user moved on)
+					}
 					return
 				}
 				ui.refreshView(v)

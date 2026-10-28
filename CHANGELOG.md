@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.37 (2026-10-28)
+
+A quality pass over the code of the last versions: bugs, speed and battery, smoother animations.
+
+### Fixed
+- **Holding B with an options sheet open froze the app.** It now goes back to the main menu. Buttons pressed while a sheet slides away are no longer lost.
+- **A rescan with music playing could crash the app.** The new library is now built on the side and swapped in whole, and the menus show the old one until then. The queue and the queued marks follow the new library, and songs that are gone leave the queue.
+- **Deleting songs that were in the queue stopped playback.** They now leave the queue at once.
+- **Browse Files can't delete outside the music folder,** even through a link to a folder elsewhere.
+- **A second rescan asked for during one was lost.** It now runs when the first ends.
+- **Screens could stay on "Searching…" or "Loading…" for good** when a result came back while the app was busy. Results can no longer be dropped. Finding a cover could also hang its search for good.
+- **Internet Archive downloads:**
+  - without a connection, they stop after two tracks in a row fail, instead of trying every track for half an hour;
+  - resuming an album only needs room for what is left;
+  - a stale partial file is started over instead of being kept;
+  - a PNG cover is saved as cover.png.
+- **Covers:** a busy MusicBrainz is asked again after a pause, and a cover that fails to download tries the next candidate.
+- **Play Next / Add to End of Queue after the queue has ended** plays the songs, instead of doing nothing.
+- **Up Next:** choosing a song checks it is still there and goes to Now Playing. Skipped songs lose their queue mark. A long queue shows its first 300 songs, and Clear Up Next is instant even with Shuffle All.
+- **The header ticker:**
+  - a song that starts while the previous one slides out waits its turn, instead of jumping;
+  - it doesn't start while locked;
+  - it can no longer stay stuck.
+- **Weather:** a saved forecast without days no longer risks a crash, and the strip resets when an update brings fewer days.
+- **Folders that can't be read in full** follow the same rules as the others (hidden and system folders stay skipped), and quitting stops a scan at once.
+- **Browse Files:** Select Several keeps the cursor on the right file, and after a delete the folders above show their new sizes.
+
+### Faster, and easier on the battery
+- **Nothing is redrawn while the screen is locked** (it used to redraw 60 times a second with the screen off).
+- **Animations that nobody sees no longer keep the screen redrawing.** This covers:
+  - scrolling titles during their pause;
+  - a finished animation;
+  - the toast;
+  - the Weather icon behind a full screen;
+  - the download screen.
+- **The keyboard is drawn again only when its selection changes.** The Now Playing block's fabric is built once. The queue icons are drawn once.
+- **Weather:**
+  - the day tiles are images that just slide when you scroll, instead of redrawing the whole screen every frame;
+  - the animated icons are drawn in the background, and the still icon shows meanwhile;
+  - at most two animations are kept in memory, and freed when unused.
+- **Browse Files reads folders in the background** (a "Loading…" row meanwhile). Folder sizes fill in as they're measured and stop when you leave.
+- **All network requests share one connection pool,** so connections are reused and the certificate bundle is read once.
+- **Internet Archive downloads no longer wake the screen** on every piece received.
+
+### Changed
+- **The Weather picture in Games shows only the icon** (a different one each time), without its name.
+- **Song changes in Now Playing and in the block move more evenly.** The motion was eased twice.
+
 ## v0.36 (2026-10-28)
 
 ### Added

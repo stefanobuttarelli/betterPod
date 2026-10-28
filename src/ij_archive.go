@@ -384,7 +384,7 @@ func (ui *IpodUI) iaSearchView() *View {
 	fetch := func(q string, page int, gen int) {
 		go func() {
 			res, total, err := iaSearch(q, page)
-			ui.post(func() {
+			ui.postSure(func() {
 				if gen != st.gen {
 					return // a newer search has started
 				}
@@ -459,8 +459,8 @@ func iaErrText(err error) string {
 	if s == "No Wi-Fi connection" {
 		return s
 	}
-	if len(s) > 48 {
-		s = s[:48] + "…"
+	if r := []rune(s); len(r) > 48 {
+		s = string(r[:48]) + "…"
 	}
 	return s
 }
@@ -540,7 +540,7 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 	v.Items = v.Build()
 	go func() {
 		it, err := iaMetadata(r.ID)
-		ui.post(func() {
+		ui.postSure(func() {
 			st.item = it
 			if err != nil {
 				st.err = iaErrText(err)
@@ -665,7 +665,7 @@ func (ui *IpodUI) startIADownload(it *iaItem, format string, files []iaFile) {
 	ui.showView(ui.iaDownloadView(), "")
 	go func() {
 		err := d.run(ui)
-		ui.post(func() {
+		ui.postSure(func() {
 			d.mu.Lock()
 			d.finished = true
 			switch {
@@ -691,14 +691,21 @@ func (d *iaDownload) run(ui *IpodUI) error {
 	if err := os.MkdirAll(d.dir, 0755); err != nil {
 		return err
 	}
-	if fb := freeBytes(d.dir); fb >= 0 && d.total > 0 && fb < d.total+50<<20 {
+	// room for what is still to come (an album resumed needs only the rest)
+	_, left := iaHave(d.item, d.files)
+	for _, f := range d.files {
+		if st, err := os.Stat(filepath.Join(d.dir, safeName(filepath.Base(f.Name))) + ".part"); err == nil {
+			left -= st.Size()
+		}
+	}
+	if fb := freeBytes(d.dir); fb >= 0 && left > 0 && fb < left+50<<20 {
 		return fmt.Errorf("Not enough space (%s free)", formatBytes(fb))
 	}
 	client := updateClient(0)
 	// get downloads one file into dst.part and renames it at the end. A
 	// .part left by an earlier attempt is continued (Range) when the server
 	// allows it. base is d.done before this file, for the progress.
-	get := func(name string, dst string, count bool, base int64) error {
+	get := func(name string, dst string, count bool, base, size int64) error {
 		u := iaBase() + "/download/" + url.PathEscape(d.item.ID) + "/" + escapePath(name)
 		part := dst + ".part"
 		var have int64
@@ -710,7 +717,7 @@ func (d *iaDownload) run(ui *IpodUI) error {
 				d.mu.Lock()
 				d.done = base + n
 				d.mu.Unlock()
-				ui.post(func() { ui.dirty = true })
+				// (no redraw nudge: the download view polls the progress)
 			}
 		}
 		setDone(have)
@@ -736,15 +743,20 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		defer resp.Body.Close()
 		flags := os.O_WRONLY | os.O_CREATE
 		switch {
-		case resp.StatusCode == 206 && have > 0:
+		case resp.StatusCode == 206 && have > 0 && strings.HasPrefix(resp.Header.Get("Content-Range"), fmt.Sprintf("bytes %d-", have)):
 			flags |= os.O_APPEND // continue the .part
 		case resp.StatusCode == 200:
 			flags |= os.O_TRUNC // from the start
 			have = 0
 			setDone(0)
 		case resp.StatusCode == 416 && have > 0:
-			// the .part is already whole
-			return os.Rename(part, dst)
+			// nothing after the .part's end: whole if it has the right size,
+			// else it is stale and the file starts over
+			if size == 0 || have == size {
+				return os.Rename(part, dst)
+			}
+			os.Remove(part)
+			return &iaRetry{msg: "The partial file didn't match", after: time.Second}
 		case resp.StatusCode == 429 || resp.StatusCode >= 500:
 			r := &iaRetry{msg: fmt.Sprintf("archive.org answered %d", resp.StatusCode)}
 			if sec, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && sec > 0 {
@@ -796,15 +808,15 @@ func (d *iaDownload) run(ui *IpodUI) error {
 	}
 	// getRetry: get, tried again after a pause when archive.org is busy or
 	// the connection drops (a .part is continued, not started over)
-	getRetry := func(name, dst string, count bool, base int64, title string) error {
+	getRetry := func(name, dst string, count bool, base, size int64) error {
 		for attempt := 1; ; attempt++ {
-			err := get(name, dst, count, base)
+			err := get(name, dst, count, base, size)
 			var r *iaRetry
 			if !errors.As(err, &r) {
 				return err
 			}
 			if attempt >= iaAttempts {
-				return errors.New(r.msg)
+				return &iaGaveUp{r.msg}
 			}
 			wait := r.after
 			if wait == 0 {
@@ -829,9 +841,14 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		}
 	}
 	// the cover first (best effort), so the album shows with its art
-	if c := filepath.Join(d.dir, "cover.jpg"); !fileExists(c) && d.item.Cover != "" {
-		_ = get(d.item.Cover, c, false, 0)
+	ext := strings.ToLower(filepath.Ext(d.item.Cover))
+	if ext == ".jpeg" || ext == "" {
+		ext = ".jpg"
 	}
+	if c := filepath.Join(d.dir, "cover"+ext); !fileExists(c) && d.item.Cover != "" {
+		_ = get(d.item.Cover, c, false, 0, 0)
+	}
+	netFails := 0 // tracks given up in a row because of the connection
 	for i, f := range d.files {
 		d.mu.Lock()
 		d.index, d.state = i, f.Title
@@ -844,16 +861,26 @@ func (d *iaDownload) run(ui *IpodUI) error {
 			d.mu.Unlock()
 			continue // already there
 		}
-		err := getRetry(f.Name, dst, true, base, f.Title)
+		err := getRetry(f.Name, dst, true, base, f.Size)
 		d.mu.Lock()
 		d.retry = ""
 		d.mu.Unlock()
+		var gaveUp *iaGaveUp
+		if errors.As(err, &gaveUp) {
+			netFails++
+		} else {
+			netFails = 0
+		}
 		switch {
 		case err == nil:
 		case errors.Is(err, errIACancelled):
 			return err
 		case isDiskErr(err):
 			return err // no point going on
+		case netFails >= 2:
+			// two tracks in a row couldn't be fetched: the connection is
+			// gone (Try Again resumes when it's back)
+			return fmt.Errorf("%s (stopped: two tracks in a row failed)", gaveUp.msg)
 		default:
 			// this track failed: note it and go on with the others
 			logMsg("Internet Archive: " + f.Name + ": " + err.Error())
@@ -882,6 +909,11 @@ type iaRetry struct {
 func (r *iaRetry) Error() string { return r.msg }
 
 var errIACancelled = errors.New("Cancelled")
+
+// iaGaveUp: every try of a file failed with a busy server or the connection.
+type iaGaveUp struct{ msg string }
+
+func (g *iaGaveUp) Error() string { return g.msg }
 
 // isDiskErr: writing to the card failed (full, read-only, damaged).
 func isDiskErr(err error) bool {
@@ -917,6 +949,7 @@ type IADownloadView struct {
 	movedAt    time.Time // last time bytes arrived
 	etaText    string
 	etaAt      time.Time
+	tickAt     time.Time // last draw (a redraw a second while downloading)
 }
 
 // eta updates the speed and returns the time left ("2:13 left"), "" while
@@ -1001,7 +1034,7 @@ func (dv *IADownloadView) Animating(now time.Time) bool {
 		d.mu.Lock()
 		running := !d.finished
 		d.mu.Unlock()
-		return running && now.Sub(dv.etaAt) >= time.Second
+		return running && now.Sub(dv.tickAt) >= time.Second
 	}
 	return false
 }
@@ -1054,6 +1087,7 @@ func (dv *IADownloadView) OnCenter(ui *IpodUI) {
 }
 
 func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
+	dv.tickAt = now
 	W := dst.Bounds().Dx()
 	fillRect(dst, 0, 0, W, dst.Bounds().Dy(), th.bg)
 	wCSS := float64(W) / DPR

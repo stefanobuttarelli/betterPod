@@ -214,7 +214,8 @@ func (ui *IpodUI) mediaOptions(tracks []*Track) []SheetOption {
 func (ui *IpodUI) enqueue(tracks []*Track, next bool) string {
 	app := ui.app
 	q := app.Queue
-	if q == nil || len(q.Tracks) == 0 || app.Playing.Track == nil {
+	if q == nil || len(q.Tracks) == 0 || app.Playing.Track == nil || app.Playing.State == StateStopped {
+		// nothing playing (or the queue ran out): play them now
 		ui.playSong(tracks, 0, false)
 		return "Playing"
 	}
@@ -450,9 +451,7 @@ func (ui *IpodUI) refreshBuilt() {
 			if v.Build != nil {
 				idx := v.Index
 				v.Items = v.Build()
-				if idx < len(v.Items) {
-					v.Index = idx
-				}
+				v.Index = max(0, min(idx, len(v.Items)-1)) // the list may be shorter
 			}
 			v.dirty = true
 		}

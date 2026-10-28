@@ -71,12 +71,12 @@ func (kb *KenBurns) update(now time.Time) {
 }
 
 func (kb *KenBurns) animating(ui *IpodUI) bool {
-	if ui.preview == PrevNowPlaying && ui.previewHide.Target() < 1 && ui.musicPreviewVisible() {
+	if ui.preview == PrevNowPlaying && ui.previewHide.Target() < 1 && ui.previewOnScreen() {
 		if p := ui.app.Playing; p != nil && p.Track != nil && !hold.on {
 			return true
 		}
 	}
-	return ui.preview == PrevMusic && ui.previewHide.Target() < 1 && len(kb.stack) > 0 && ui.musicPreviewVisible()
+	return ui.preview == PrevMusic && ui.previewHide.Target() < 1 && len(kb.stack) > 0 && ui.previewOnScreen()
 }
 
 // Now Playing preview: the current cover, full height, panning slowly
@@ -116,6 +116,15 @@ func (ui *IpodUI) drawNowPlayingPan(dst, art *image.RGBA, now time.Time) {
 // musicPreviewVisible: the split menu (with its preview) is on screen
 // or sliding.
 func (ui *IpodUI) musicPreviewVisible() bool { return ui.leftX.Target() > -1 || ui.leftX.Running() }
+
+// previewOnScreen: some of the right half's preview can be seen (the menu
+// panel is there and no full-screen view covers it).
+func (ui *IpodUI) previewOnScreen() bool {
+	if !ui.musicPreviewVisible() {
+		return false
+	}
+	return len(ui.full) == 0 || ui.fullX.Running() || ui.fullX.Target() > 0
+}
 
 // render draws the stack: the next cover under the top one, which fades
 // out during a transition.

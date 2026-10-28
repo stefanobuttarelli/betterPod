@@ -1,8 +1,8 @@
 {
-  "version": "0.36",
-  "path": "release/knullipod-v0.36-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.36-knulli.zip",
-  "sha256": "38b5f75f8595cd7ad79914e3c6cb55de6b98eaa6a015026983b166c6ff4e1a4b",
-  "size": 14421996,
-  "notes": "Browse Files, game pictures"
+  "version": "0.37",
+  "path": "release/knullipod-v0.37-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.37-knulli.zip",
+  "sha256": "1f1cb587710f9b05f906995ca0016ef2496ab53c9719a36d3d8e59f2aa9cf9a2",
+  "size": 14436690,
+  "notes": "Quality pass: fixes, speed, battery"
 }

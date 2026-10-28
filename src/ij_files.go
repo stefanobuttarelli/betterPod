@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type fileEntry struct {
@@ -32,36 +33,48 @@ type fileEntry struct {
 	items int   // folders: entries directly inside
 }
 
-// folder sizes, computed in the background and kept for the session
+// folder sizes and item counts, computed in the background and kept for
+// the session
+type dirInfo struct {
+	size  int64
+	items int
+}
+
 var (
 	dirSizeMu sync.Mutex
-	dirSizes  = map[string]int64{}
+	dirSizes  = map[string]dirInfo{}
 )
 
+// listFolder reads a folder: one directory read, and a stat only for links
+// and files (their size). Folder sizes and counts come later (dirInfoOf).
 func listFolder(dir string) ([]fileEntry, error) {
 	des, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	var out []fileEntry
+	out := make([]fileEntry, 0, len(des))
 	for _, de := range des {
-		e := fileEntry{name: de.Name(), path: filepath.Join(dir, de.Name()), size: -1}
-		info, err := os.Stat(e.path) // follows links
-		if err != nil {
-			info, _ = de.Info()
-		}
-		if info != nil && info.IsDir() {
-			e.dir = true
-			if sub, err := os.ReadDir(e.path); err == nil {
-				e.items = len(sub)
+		e := fileEntry{name: de.Name(), path: filepath.Join(dir, de.Name()), size: -1, items: -1}
+		isDir := de.IsDir()
+		if de.Type()&os.ModeSymlink != 0 {
+			if info, err := os.Stat(e.path); err == nil {
+				isDir = info.IsDir()
+				if !isDir {
+					e.size = info.Size()
+				}
 			}
+		} else if !isDir {
+			if info, err := de.Info(); err == nil {
+				e.size = info.Size()
+			}
+		}
+		if isDir {
+			e.dir = true
 			dirSizeMu.Lock()
-			if s, ok := dirSizes[e.path]; ok {
-				e.size = s
+			if di, ok := dirSizes[e.path]; ok {
+				e.size, e.items = di.size, di.items
 			}
 			dirSizeMu.Unlock()
-		} else if info != nil {
-			e.size = info.Size()
 		}
 		out = append(out, e)
 	}
@@ -72,6 +85,27 @@ func listFolder(dir string) ([]fileEntry, error) {
 		return strings.ToLower(out[i].name) < strings.ToLower(out[j].name)
 	})
 	return out, nil
+}
+
+// dirInfoOf: a folder's total size and its number of entries.
+func dirInfoOf(p string) dirInfo {
+	di := dirInfo{size: dirSize(p)}
+	if des, err := os.ReadDir(p); err == nil {
+		di.items = len(des)
+	}
+	return di
+}
+
+// forgetDirInfo drops what is known of p and the folders around it (after
+// a delete).
+func forgetDirInfo(p string) {
+	dirSizeMu.Lock()
+	for k := range dirSizes {
+		if k == p || strings.HasPrefix(p, k+string(filepath.Separator)) || strings.HasPrefix(k, p+string(filepath.Separator)) {
+			delete(dirSizes, k)
+		}
+	}
+	dirSizeMu.Unlock()
 }
 
 func fileKind(name string) string {
@@ -108,11 +142,22 @@ func fileKind(name string) string {
 	return "File"
 }
 
-// insideMusic: p is in the music folder (and is not the folder itself).
+// insideMusic: p is in the music folder (and is not the folder itself),
+// also once links are resolved: the folder holding p must really be inside
+// the music folder, so a link to elsewhere can't lead outside it (deleting
+// a link itself only removes the link).
 func insideMusic(p string) bool {
 	root := filepath.Clean(MUSIC_ROOT)
 	p = filepath.Clean(p)
-	return p != root && strings.HasPrefix(p, root+string(filepath.Separator))
+	if p == root || !strings.HasPrefix(p, root+string(filepath.Separator)) {
+		return false
+	}
+	realRoot, err1 := filepath.EvalSymlinks(root)
+	realDir, err2 := filepath.EvalSymlinks(filepath.Dir(p))
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return realDir == realRoot || strings.HasPrefix(realDir, realRoot+string(filepath.Separator))
 }
 
 // filesView: one folder.
@@ -127,43 +172,98 @@ func (ui *IpodUI) filesView(dir string) *View {
 		selecting bool
 		picked    map[string]bool
 		busy      string
+		loading   bool
+		gen       int // the current load; older background work stops
 	}{picked: map[string]bool{}}
 	v := &View{ID: "files", Title: title, Kind: KindFull, Empty: "Empty folder"}
 	var load func()
+	var measure func(gen int, todo []string)
 	var del func(paths []string, what string)
 
+	// load reads the folder in the background ("Loading…" meanwhile), then
+	// measures its subfolders one by one, updating the rows as it goes and
+	// stopping when the view is left or loaded again
 	load = func() {
-		es, err := listFolder(dir)
-		st.entries, st.err = es, ""
-		if err != nil {
-			st.err = "Couldn't open: " + shortErr(err)
+		st.gen++
+		gen := st.gen
+		st.loading = true
+		go func() {
+			es, err := listFolder(dir)
+			ui.postSure(func() {
+				if gen != st.gen {
+					return
+				}
+				st.loading = false
+				st.entries, st.err = es, ""
+				if err != nil {
+					st.err = "Couldn't open: " + shortErr(err)
+				}
+				keep := v.Index
+				ui.refreshView(v)
+				if keep == 0 && len(v.Items) > 1 {
+					v.Index = 1
+				}
+				var todo []string
+				for _, e := range es {
+					if e.dir && e.size < 0 {
+						todo = append(todo, e.path)
+					}
+				}
+				if len(todo) > 0 {
+					go measure(gen, todo)
+				}
+			})
+		}()
+	}
+	measure = func(gen int, todo []string) {
+		last := time.Now()
+		var done []string
+		flush := func() {
+			got := done
+			done = nil
+			ui.postSure(func() {
+				if gen != st.gen {
+					return
+				}
+				if !ui.viewOpen(v) {
+					st.gen++ // left: stop measuring
+					return
+				}
+				for _, p := range got {
+					dirSizeMu.Lock()
+					di := dirSizes[p]
+					dirSizeMu.Unlock()
+					for i := range st.entries {
+						if st.entries[i].path == p {
+							st.entries[i].size, st.entries[i].items = di.size, di.items
+						}
+					}
+				}
+				ui.refreshView(v)
+			})
 		}
-		// folder sizes in the background
-		var todo []string
-		for _, e := range es {
-			if e.dir && e.size < 0 {
-				todo = append(todo, e.path)
+		for _, p := range todo {
+			if !ui.app.Running {
+				return
+			}
+			di := dirInfoOf(p)
+			dirSizeMu.Lock()
+			dirSizes[p] = di
+			dirSizeMu.Unlock()
+			done = append(done, p)
+			if time.Since(last) > 250*time.Millisecond {
+				flush()
+				last = time.Now()
+				// the view may have been left: checked on the UI side
+				stop := make(chan bool, 1)
+				ui.postSure(func() { stop <- gen != st.gen })
+				if <-stop {
+					return
+				}
 			}
 		}
-		if len(todo) > 0 {
-			go func() {
-				for _, p := range todo {
-					n := dirSize(p)
-					dirSizeMu.Lock()
-					dirSizes[p] = n
-					dirSizeMu.Unlock()
-				}
-				ui.post(func() {
-					for i := range st.entries {
-						dirSizeMu.Lock()
-						if s, ok := dirSizes[st.entries[i].path]; ok {
-							st.entries[i].size = s
-						}
-						dirSizeMu.Unlock()
-					}
-					ui.refreshView(v)
-				})
-			}()
+		if len(done) > 0 {
+			flush()
 		}
 	}
 
@@ -175,29 +275,33 @@ func (ui *IpodUI) filesView(dir string) *View {
 				var failed error
 				for _, p := range paths {
 					if !insideMusic(p) {
+						if failed == nil {
+							failed = fmt.Errorf("outside the music folder")
+						}
 						continue
 					}
 					if err := os.RemoveAll(p); err != nil && failed == nil {
 						failed = err
 					}
-					// the sizes of the folders above it change
-					dirSizeMu.Lock()
-					for k := range dirSizes {
-						if strings.HasPrefix(p, k+string(filepath.Separator)) || k == p || strings.HasPrefix(k, p+string(filepath.Separator)) {
-							delete(dirSizes, k)
-						}
-					}
-					dirSizeMu.Unlock()
+					forgetDirInfo(p) // the folders above it change size
 				}
-				ui.post(func() {
+				ui.postSure(func() {
+					// songs that were deleted leave the queue at once (the
+					// one playing goes on: the player has it open)
+					ui.app.remapQueueWith(func(t *Track) *Track {
+						for _, p := range paths {
+							if t.Path == p || strings.HasPrefix(t.Path, p+string(filepath.Separator)) {
+								return nil
+							}
+						}
+						return t
+					})
 					st.busy = ""
 					st.selecting = false
 					st.picked = map[string]bool{}
-					load()
-					ui.refreshView(v)
-					if len(v.Items) > 1 {
-						v.Index = 1
-					}
+					// this folder and the ones above it read again (the
+					// cursor stays where it was, clamped)
+					ui.refreshAllFiles()
 					if failed != nil {
 						ui.showToast("Couldn't delete: " + shortErr(failed))
 					} else {
@@ -236,8 +340,11 @@ func (ui *IpodUI) filesView(dir string) *View {
 			items = append(items, Item{Label: "Done Selecting", NoArrow: true, OnSelect: func() {
 				st.selecting = false
 				st.picked = map[string]bool{}
+				v.Index = 1
 				ui.refreshView(v)
 			}})
+		case st.loading && st.entries == nil:
+			items = append(items, Item{Label: "Loading…", NoArrow: true})
 		default:
 			free := ""
 			if fb := freeBytes(dir); fb >= 0 {
@@ -258,7 +365,10 @@ func (ui *IpodUI) filesView(dir string) *View {
 				it.Value = "…"
 			}
 			if e.dir {
-				it.Sublabel = fmt.Sprintf("Folder · %d %s", e.items, pluralize(e.items, "item", "items"))
+				it.Sublabel = "Folder"
+				if e.items >= 0 {
+					it.Sublabel = fmt.Sprintf("Folder · %d %s", e.items, pluralize(e.items, "item", "items"))
+				}
 			} else {
 				it.Sublabel = fileKind(e.name)
 				it.NoArrow = true
@@ -286,6 +396,7 @@ func (ui *IpodUI) filesView(dir string) *View {
 				{Label: "Select Several", OnSelect: func() {
 					st.selecting = true
 					st.picked = map[string]bool{e.path: true}
+					v.Index++ // two rows on top now instead of one
 					ui.refreshView(v)
 				}},
 			}
@@ -296,10 +407,30 @@ func (ui *IpodUI) filesView(dir string) *View {
 		}
 		return items
 	}
+	v.refresh = load
 	load()
 	v.Items = v.Build()
-	if len(v.Items) > 1 {
-		v.Index = 1
-	}
 	return v
+}
+
+// viewOpen: v is still in one of the stacks.
+func (ui *IpodUI) viewOpen(v *View) bool {
+	for _, st := range [][]*View{ui.split, ui.full} {
+		for _, x := range st {
+			if x == v {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// refreshAllFiles reloads the open Browse Files folders (after a delete the
+// folders above have other sizes and counts).
+func (ui *IpodUI) refreshAllFiles() {
+	for _, v := range ui.full {
+		if v.ID == "files" && v.refresh != nil {
+			v.refresh()
+		}
+	}
 }

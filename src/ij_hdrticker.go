@@ -22,6 +22,7 @@ var ticker struct {
 	start     time.Time // zero: not showing
 	lastTrack *Track
 	lastState PlayState
+	next      *Track // a song that started while the last one slid out
 }
 
 // tickerAllowed: the screen on top has no Now Playing block (and isn't Now
@@ -42,12 +43,21 @@ func (ui *IpodUI) followTicker(now time.Time) {
 	if p := ui.app.Playing; p != nil {
 		tr, st = p.Track, p.State
 	}
-	if tr != nil && st == StatePlaying && (tr != ticker.lastTrack || ticker.lastState != StatePlaying) && ui.tickerAllowed() {
-		if e := now.Sub(ticker.start); !ticker.start.IsZero() && e > tickIn/2 && e < tickIn+tickHold {
-			// already showing: the new song takes its place, the time restarts
-			ticker.start = now.Add(-tickIn)
-		} else if ticker.start.IsZero() || e >= tickIn+tickHold {
+	if tr != nil && st == StatePlaying && (tr != ticker.lastTrack || ticker.lastState != StatePlaying) && ui.tickerAllowed() && !hold.on && !ui.app.Locked {
+		e := now.Sub(ticker.start)
+		switch {
+		case ticker.start.IsZero() || e >= tickIn+tickHold+tickOut:
 			ticker.start = now
+		case e < tickIn:
+			// still sliding in: the new song takes its place, no jump
+		case e < tickIn+tickHold:
+			ticker.start = now.Add(-tickIn) // showing: the hold starts again
+		default:
+			// sliding out: let it finish, then the new song comes in
+			ticker.next = tr
+			ui.dirty = true
+			ticker.lastTrack, ticker.lastState = tr, st
+			return
 		}
 		ticker.track = tr
 		ui.dirty = true
@@ -79,6 +89,11 @@ func tickerOffsets(now time.Time) (title, song float64, ok bool) {
 		return h * (1 - q), -h * q, true
 	}
 	ticker.start = time.Time{}
+	if ticker.next != nil {
+		// the song that started meanwhile comes in now
+		ticker.track, ticker.next, ticker.start = ticker.next, nil, now
+		return 0, h, true
+	}
 	return 0, 0, false
 }
 
@@ -87,7 +102,16 @@ func tickerAnimating(now time.Time) bool {
 		return false
 	}
 	e := now.Sub(ticker.start)
-	// moving, or about to end (one more frame puts the title back)
+	if e >= tickIn+tickHold+tickOut {
+		if ticker.next != nil {
+			return true // the next song is waiting to come in
+		}
+		if e >= tickIn+tickHold+tickOut+100*time.Millisecond {
+			ticker.start = time.Time{} // over (even if no frame drew its end)
+			return false
+		}
+	}
+	// moving (or about to: one more frame puts the title back)
 	return e < tickIn || e >= tickIn+tickHold-50*time.Millisecond
 }
 

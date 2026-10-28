@@ -42,6 +42,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,7 +53,7 @@ import (
 // manifest; knulliPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.36"
+	KNULLIPOD_VERSION  = "0.37"
 	knulliPodBuildDate = "2026-10-27"
 	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
 	// GitHub's API serves the current files at once; raw.githubusercontent
@@ -509,9 +510,21 @@ func updateRoots() *x509.CertPool {
 	return pool
 }
 
-// updateClient verifies the server certificate itself, at the current
-// time or at the build date if the clock is behind it.
+// updateClient: an HTTP client that verifies the server certificate itself
+// (system and bundled roots), at the current time or at the build date if
+// the clock is behind it. All clients share one transport (built once), so
+// connections are kept alive and the roots are parsed only once.
 func updateClient(timeout time.Duration) *http.Client {
+	sharedTransportOnce.Do(func() { sharedTransport = newSharedTransport() })
+	return &http.Client{Timeout: timeout, Transport: sharedTransport}
+}
+
+var (
+	sharedTransportOnce sync.Once
+	sharedTransport     *http.Transport
+)
+
+func newSharedTransport() *http.Transport {
 	roots := updateRoots()
 	build, _ := time.Parse("2006-01-02", knulliPodBuildDate)
 	cfg := &tls.Config{
@@ -534,7 +547,8 @@ func updateClient(timeout time.Duration) *http.Client {
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = cfg
-	return &http.Client{Timeout: timeout, Transport: tr}
+	tr.MaxIdleConnsPerHost = 4
+	return tr
 }
 
 func fetchManifest() (*updateManifest, error) {

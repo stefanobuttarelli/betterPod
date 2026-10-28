@@ -307,8 +307,34 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 	if v <= 0.001 {
 		return
 	}
-	d := DPR
+	key := kbPanelState{kb.layer, kb.row, kb.col, th.dark}
 	p := newCanvasCached(&kbPanel, px(320), px(kbPanelH))
+	if key != kbPanelKey || !kbPanelOK {
+		kbPanelKey, kbPanelOK = key, true
+		kb.drawPanel(p)
+	}
+	y := 240 - kbPanelH*v
+	// a shadow above the panel
+	prof := boxShadowProfile(8, 1)
+	for i, a := range prof {
+		fillRect(dst, 0, px(y)-1-i, 640, 1, Col{0, 0, 0, a * 0.6 * v})
+	}
+	blitOpaque(dst, p, 0, px(y))
+}
+
+// the panel is drawn again only when the selected key or the layer changes
+type kbPanelState struct {
+	layer, row, col int
+	dark            bool
+}
+
+var (
+	kbPanelKey kbPanelState
+	kbPanelOK  bool
+)
+
+func (kb *Keyboard) drawPanel(p *image.RGBA) {
+	d := DPR
 	fillVGradient(p, 0, 0, px(320), px(kbPanelH), []GradStop{{0, rgb(74, 78, 85)}, {1, rgb(28, 30, 34)}})
 	fillRect(p, 0, 0, px(320), px(1), rgb(18, 19, 22))
 	fillRect(p, 0, px(1), px(320), 1, rgba(255, 255, 255, 0.10))
@@ -371,13 +397,6 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 			}
 		}
 	}
-	y := 240 - kbPanelH*v
-	// a shadow above the panel
-	prof := boxShadowProfile(8, 1)
-	for i, a := range prof {
-		fillRect(dst, 0, px(y)-1-i, 640, 1, Col{0, 0, 0, a * 0.6 * v})
-	}
-	blitOpaque(dst, p, 0, px(y))
 }
 
 func upperASCII(s string) string {

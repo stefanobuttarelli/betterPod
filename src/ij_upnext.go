@@ -80,6 +80,30 @@ func (q *PlaybackQueue) removeAt(pos int) {
 	q.Tracks = append(q.Tracks[:pos], q.Tracks[pos+1:]...)
 }
 
+// clearAfterCurrent drops every song after the current one, in one pass.
+func (q *PlaybackQueue) clearAfterCurrent() {
+	if q.Shuffle && len(q.ShuffleOrder) > 0 {
+		if q.CurrentIndex+1 >= len(q.ShuffleOrder) {
+			return
+		}
+		keep := q.ShuffleOrder[:q.CurrentIndex+1]
+		tracks := make([]*Track, 0, len(keep))
+		so := make([]int, 0, len(keep))
+		for _, ti := range keep {
+			if ti >= 0 && ti < len(q.Tracks) {
+				so = append(so, len(tracks))
+				tracks = append(tracks, q.Tracks[ti])
+			}
+		}
+		q.Tracks, q.ShuffleOrder = tracks, so
+		q.CurrentIndex = len(so) - 1
+		return
+	}
+	if q.CurrentIndex+1 < len(q.Tracks) {
+		q.Tracks = q.Tracks[: q.CurrentIndex+1 : q.CurrentIndex+1]
+	}
+}
+
 // moveNext puts the song at a play position right after the current one.
 func (q *PlaybackQueue) moveNext(pos int) {
 	to := q.CurrentIndex + 1
@@ -110,7 +134,10 @@ func (ui *IpodUI) upNextView() *View {
 		}
 		var items []Item
 		n := q.length()
-		for pos := q.CurrentIndex + 1; pos < n; pos++ {
+		// a long queue (Shuffle All) shows its first songs only
+		const maxRows = 300
+		end := min(n, q.CurrentIndex+1+maxRows)
+		for pos := q.CurrentIndex + 1; pos < end; pos++ {
 			t := q.trackAt(pos)
 			if t == nil {
 				continue
@@ -122,7 +149,7 @@ func (ui *IpodUI) upNextView() *View {
 			}
 			items = append(items, Item{Label: title, Sublabel: t.Artist, Album: ui.trackAlbum(t),
 				QueueMark: queuedMarks[t], NoArrow: true,
-				OnSelect: func() { ui.playQueuePos(pos) },
+				OnSelect: func() { ui.playQueuePos(pos, t) },
 				LongPress: []SheetOption{
 					{Label: "Play Next", Icon: "queue_next", OnSelect: func() {
 						if q.trackAt(pos) == t {
@@ -141,15 +168,16 @@ func (ui *IpodUI) upNextView() *View {
 					}},
 				}})
 		}
-		if len(items) > 1 {
-			items = append(items, Item{Label: "Clear Up Next", Sublabel: fmt.Sprintf("%d songs", len(items)), NoArrow: true,
+		if rest := n - end; rest > 0 {
+			items = append(items, Item{Label: fmt.Sprintf("and %d more", rest), NoArrow: true})
+		}
+		if left := n - q.CurrentIndex - 1; left > 1 {
+			items = append(items, Item{Label: "Clear Up Next", Sublabel: fmt.Sprintf("%d songs", left), NoArrow: true,
 				OnSelect: func() {
 					ui.showSheetTitled("Clear the songs up next?", []SheetOption{{Label: "Clear Up Next", Danger: true, OnSelect: func() {
-						for p := q.length() - 1; p > q.CurrentIndex; p-- {
-							if t := q.trackAt(p); t != nil {
-								delete(queuedMarks, t)
-							}
-							q.removeAt(p)
+						q.clearAfterCurrent()
+						for t := range queuedMarks {
+							delete(queuedMarks, t)
 						}
 						ui.refreshView(v)
 						ui.dirtyAllViews()
@@ -161,20 +189,31 @@ func (ui *IpodUI) upNextView() *View {
 	return v
 }
 
-// playQueuePos plays the song at a play position now.
-func (ui *IpodUI) playQueuePos(pos int) {
+// playQueuePos plays the song at a play position now (if t is still
+// there), and shows Now Playing.
+func (ui *IpodUI) playQueuePos(pos int, t *Track) {
 	app := ui.app
 	q := app.Queue
-	if q == nil || pos >= q.length() {
+	if q == nil || pos >= q.length() || q.trackAt(pos) != t {
 		return
+	}
+	// the songs jumped over won't play: no longer "queued"
+	for p := q.CurrentIndex + 1; p < pos; p++ {
+		delete(queuedMarks, q.trackAt(p))
 	}
 	q.CurrentIndex = pos
 	skipDir = 1
+	v0 := ui.topScreen()
 	go func() {
 		app.playCurrentQueueTrack()
-		ui.post(func() {
+		ui.postSure(func() {
 			ui.onTrackChanged()
-			ui.hideView() // back to Now Playing
+			if ui.topScreen() == v0 {
+				ui.hideView() // back to where Up Next was opened from
+			}
+			if !ui.nowPlayingOnScreen() {
+				ui.showNowPlaying()
+			}
 		})
 	}()
 }

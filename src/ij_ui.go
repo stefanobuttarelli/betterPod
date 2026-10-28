@@ -103,7 +103,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 		longFired:   map[Key]bool{},
 		volume:      0.5,
 		shuffleMode: "off",
-		events:      make(chan func(), 64),
+		events:      make(chan func(), 512),
 		dirty:       true,
 	}
 	ui.shadow = boxShadowProfile(48, 1)
@@ -148,11 +148,42 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 }
 
 // post runs f on the UI goroutine (from callbacks and background work).
+// It never blocks: with the queue full, f is dropped, so use it only for
+// "redraw" kinds of nudges; results that must arrive go through postSure.
 func (ui *IpodUI) post(f func()) {
 	select {
 	case ui.events <- f:
 	default:
 	}
+}
+
+// postSure is post for results that must not be lost (a search's answer,
+// the end of a job): from a background goroutine it waits for room in the
+// queue (giving up only if the app is quitting).
+func (ui *IpodUI) postSure(f func()) {
+	select {
+	case ui.events <- f:
+		return
+	default:
+	}
+	for ui.app.Running {
+		select {
+		case ui.events <- f:
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+// activeSheet: the options sheet on top that is not already leaving (nil
+// if none): input goes to it.
+func (ui *IpodUI) activeSheet() *Sheet {
+	for i := len(ui.sheets) - 1; i >= 0; i-- {
+		if !ui.sheets[i].exiting {
+			return ui.sheets[i]
+		}
+	}
+	return nil
 }
 
 func (ui *IpodUI) assetSafe(name string) *image.RGBA { return ui.asset(name) }
@@ -260,7 +291,7 @@ func (ui *IpodUI) hideView() {
 		cf.menu(ui)
 		return
 	}
-	if len(ui.sheets) > 0 {
+	if ui.activeSheet() != nil {
 		ui.hideSheet()
 		return
 	}
@@ -326,8 +357,8 @@ func (ui *IpodUI) resetViews() {
 	if cf := ui.cover; cf != nil && !cf.exiting {
 		ui.closeCoverFlow()
 	}
-	for len(ui.sheets) > 0 {
-		ui.hideSheet()
+	for ui.activeSheet() != nil {
+		ui.hideSheet() // each call sends one sheet away
 	}
 	for len(ui.split)+len(ui.full) > 1 {
 		ui.hideView()
@@ -415,8 +446,8 @@ func (ui *IpodUI) scroll(dir int, velocity float64) {
 		cf.scroll(ui, dir, velocity)
 		return
 	}
-	if len(ui.sheets) > 0 {
-		ui.sheets[len(ui.sheets)-1].scroll(ui, dir, velocity)
+	if sh := ui.activeSheet(); sh != nil {
+		sh.scroll(ui, dir, velocity)
 		return
 	}
 	v := ui.topScreen()
@@ -456,8 +487,8 @@ func (ui *IpodUI) centerClick() {
 		cf.center(ui)
 		return
 	}
-	if len(ui.sheets) > 0 {
-		ui.sheets[len(ui.sheets)-1].selectCurrent(ui)
+	if sh := ui.activeSheet(); sh != nil {
+		sh.selectCurrent(ui)
 		return
 	}
 	v := ui.topScreen()
@@ -486,7 +517,7 @@ func (ui *IpodUI) menuClick() {
 		ui.dirty = true
 		return
 	}
-	if ui.keyboard == nil && ui.cover == nil && len(ui.sheets) == 0 {
+	if ui.keyboard == nil && ui.cover == nil && ui.activeSheet() == nil {
 		if mh, ok := ui.topScreen().Custom.(interface{ OnMenu(*IpodUI) }); ok {
 			mh.OnMenu(ui)
 			ui.dirty = true
@@ -497,7 +528,7 @@ func (ui *IpodUI) menuClick() {
 }
 
 func (ui *IpodUI) centerLongPress() {
-	if len(ui.sheets) > 0 {
+	if ui.activeSheet() != nil {
 		return
 	}
 	// Cover Flow: the album in front, or the song on its back
@@ -678,6 +709,9 @@ func (ui *IpodUI) checkLongPress(now time.Time) {
 	}
 }
 
+// lastWxFree: when the unused weather animations were last freed.
+var lastWxFree = -1
+
 // animating reports whether another frame must be drawn now.
 // Idle screens are not redrawn at all: input or a timer marks them dirty.
 func (ui *IpodUI) animating(now time.Time) bool {
@@ -806,6 +840,7 @@ func fillRectClipped(dst *image.RGBA, x, y, w, h int, c Col, clip image.Rectangl
 func (ui *IpodUI) renderFrame(now time.Time) {
 	ui.frameNo++
 	marqueeActive = false
+	marqSyncMoving, marqSyncWake = false, time.Time{}
 	mini.marqOn = false
 	artSyncLeft = artSyncBudget
 	fb := ui.fb
@@ -833,7 +868,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// right half: preview
 	//
 	ph := ui.previewHide.Get(now)
-	if ph < 1 {
+	if ph < 1 && ui.previewOnScreen() {
 		pv := newCanvasCached(&previewBuf, 320, 480)
 		ui.renderPreview(pv, now)
 		blit(fb, pv, 320+int(ph*320+0.5), 0, 1-ph)
@@ -1200,6 +1235,11 @@ func (ui *IpodUI) Run() {
 		ui.autoCheckTick(now)
 		ui.followPause(now)
 		ui.followTicker(now)
+		ui.toastTick(now)
+		if m := now.Second(); m%10 == 0 && m != lastWxFree {
+			lastWxFree = m
+			wxFreeLoops(now)
+		}
 		ui.tickOverlays(now)
 		ui.checkLongPress(now)
 		ui.checkRepeat(now)
@@ -1228,7 +1268,8 @@ func (ui *IpodUI) Run() {
 			}
 			ui.updateTheme()
 		}
-		anim := ui.animating(now)
+		// locked (screen off): nothing moves, so nothing is animated
+		anim := !app.Locked && ui.animating(now)
 		presentBlocked := false
 		if ui.dirty || anim {
 			ui.dirty = false
@@ -1270,7 +1311,9 @@ func (ui *IpodUI) Run() {
 		// the Ken Burns preview alone runs at 20 fps (30 while fading or
 		// scrolling a title)
 		frame := 16 * time.Millisecond
-		if !anim {
+		if app.Locked {
+			frame = 200 * time.Millisecond // screen off: poll slowly
+		} else if !anim {
 			frame = 25 * time.Millisecond
 		} else if ui.onlyKenBurns(now) {
 			frame = 50 * time.Millisecond // slow pan: fewer frames save battery

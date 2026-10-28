@@ -803,6 +803,25 @@ func marqueeCycle(f font.Face, s string, maxW float64) float64 {
 // together (title, artist, album) all start at once and, once a shorter one
 // has come round, it waits at its start until the longest has finished, so
 // they never drift apart. cycle 0 uses the line's own.
+// marqSyncMoving: a synced marquee moved in the frame being drawn;
+// marqSyncWake: otherwise, the earliest time one starts moving again (reset
+// each frame), so the screens can idle through the pauses.
+var (
+	marqSyncMoving bool
+	marqSyncWake   time.Time
+)
+
+func marqSyncWakeAt(t time.Time) {
+	if marqSyncWake.IsZero() || t.Before(marqSyncWake) {
+		marqSyncWake = t
+	}
+}
+
+// marqSyncNeedsFrame: a synced marquee is moving or due to move.
+func marqSyncNeedsFrame(now time.Time) bool {
+	return marqSyncMoving || (!marqSyncWake.IsZero() && !now.Before(marqSyncWake))
+}
+
 func drawMarqueeSync(dst *image.RGBA, f font.Face, s string, x, baseline, maxW float64, c Col, since, now time.Time, cycle float64) {
 	tw := textWidth(f, s) / DPR
 	b := dst.Bounds()
@@ -828,6 +847,15 @@ func drawMarqueeSync(dst *image.RGBA, f font.Face, s string, x, baseline, maxW f
 		// done early: wait with the start showing (the second copy has
 		// taken the first one's place)
 		off = math.Min((t-marqueePause)*marqueeSpeed, loop)
+	}
+	// moving now, or when it will move again (no frames needed meanwhile)
+	switch {
+	case t > marqueePause && off < loop:
+		marqSyncMoving = true
+	case t <= marqueePause:
+		marqSyncWakeAt(now.Add(time.Duration((marqueePause - t) * float64(time.Second))))
+	default:
+		marqSyncWakeAt(now.Add(time.Duration((cycle - t) * float64(time.Second))))
 	}
 	drawText(clip, f, s, (x-off)*DPR, baseline*DPR, c)
 	drawText(clip, f, s, (x-off+loop)*DPR, baseline*DPR, c)

@@ -137,7 +137,18 @@ func (a *Anim) Target() float64 {
 	return a.val
 }
 
-func (a *Anim) Running() bool { return a.active }
+// Running: the transition hasn't reached its end yet, by the clock (so an
+// animation that nobody draws any more doesn't count as running forever).
+func (a *Anim) Running() bool {
+	if !a.active {
+		return false
+	}
+	if _, done := a.tw.Value(animNow()); done {
+		a.Get(animNow())
+		return false
+	}
+	return true
+}
 
 // Tween interpolates From → To over Dur starting at Start.
 type Tween struct {

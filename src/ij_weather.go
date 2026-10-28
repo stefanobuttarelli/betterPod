@@ -192,6 +192,13 @@ func wxLoad() *wxState {
 	if data, err := os.ReadFile(wxPath()); err == nil {
 		_ = json.Unmarshal(data, wxSaved)
 	}
+	// a saved forecast without days (an old or partial file) is dropped,
+	// so the screens can rely on day 0
+	for _, p := range wxSaved.Places {
+		if p.Forecast != nil && p.Forecast.days() == 0 {
+			p.Forecast = nil
+		}
+	}
 	return wxSaved
 }
 
@@ -280,7 +287,6 @@ func (ui *IpodUI) openWeather() {
 		for _, q := range st.Places {
 			if math.Abs(q.Lat-p.Lat) < 0.01 && math.Abs(q.Lon-p.Lon) < 0.01 {
 				p = q
-				p.Forecast = q.Forecast
 				goto open
 			}
 		}
@@ -371,7 +377,7 @@ func (ui *IpodUI) openWeather() {
 		ui.refreshView(v)
 		go func() {
 			res, err := searchPlaces(q)
-			ui.post(func() {
+			ui.postSure(func() {
 				if gen != s.gen {
 					return
 				}

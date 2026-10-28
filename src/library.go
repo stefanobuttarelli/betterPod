@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dhowden/tag"
@@ -24,9 +25,13 @@ import (
 
 // startLibraryScan launches a background library scan, switching to the scan screen.
 // The onComplete callback (if non-nil) is called when the scan finishes.
-func (app *MiyooPod) startLibraryScan(onComplete func()) {
+// It reports false (and doesn't call onComplete) when a scan is already
+// running.
+func (app *MiyooPod) startLibraryScan(onComplete func()) bool {
+	scanStartMu.Lock()
+	defer scanStartMu.Unlock()
 	if app.LibScanRunning {
-		return
+		return false
 	}
 
 	app.LibScanRunning = true
@@ -41,6 +46,106 @@ func (app *MiyooPod) startLibraryScan(onComplete func()) {
 	app.drawCurrentScreen()
 
 	go app.runLibraryScan(onComplete)
+	return true
+}
+
+var scanStartMu sync.Mutex
+
+// scanLib is the library being built by the running scan.
+var scanLib *Library
+
+// installLibrary makes lib the library: on the iPod UI's goroutine (which
+// reads it every frame), pointing the queue and the queued marks at the new
+// tracks too.
+func (app *MiyooPod) installLibrary(lib *Library) {
+	ui := ipodUI
+	if ui == nil {
+		app.Library = lib
+		return
+	}
+	done := make(chan struct{})
+	ui.postSure(func() {
+		app.Library = lib
+		app.remapQueue(lib)
+		close(done)
+	})
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		// the UI isn't taking work (quitting): install it directly
+		app.Library = lib
+	}
+}
+
+// remapQueue points the queue at the tracks of a new library (by path) and
+// drops the ones that are gone; the song playing stays.
+func (app *MiyooPod) remapQueue(lib *Library) {
+	app.remapQueueWith(func(t *Track) *Track { return lib.TracksByPath[t.Path] })
+}
+
+// remapQueueWith replaces each queued track by find(track), dropping those
+// it returns nil for (except the one playing). UI goroutine.
+func (app *MiyooPod) remapQueueWith(find func(*Track) *Track) {
+	q := app.Queue
+	var cur *Track
+	if app.Playing != nil {
+		cur = app.Playing.Track
+	}
+	if cur != nil {
+		if n := find(cur); n != nil {
+			app.Playing.Track = n
+		}
+	}
+	marks := map[*Track]string{}
+	for t, m := range queuedMarks {
+		if n := find(t); n != nil {
+			marks[n] = m
+		}
+	}
+	queuedMarks = marks
+	if q == nil || len(q.Tracks) == 0 {
+		return
+	}
+	newIdx := make([]int, len(q.Tracks))
+	var tracks []*Track
+	for i, t := range q.Tracks {
+		newIdx[i] = -1
+		if t == nil {
+			continue
+		}
+		n := find(t)
+		if n == nil && t == cur {
+			n = t // gone from the folder, but playing: keep it
+		}
+		if n == nil {
+			continue
+		}
+		newIdx[i] = len(tracks)
+		tracks = append(tracks, n)
+	}
+	if q.Shuffle && len(q.ShuffleOrder) > 0 {
+		var so []int
+		curPos := 0
+		for p, ti := range q.ShuffleOrder {
+			if ti < 0 || ti >= len(newIdx) || newIdx[ti] < 0 {
+				continue
+			}
+			if p <= q.CurrentIndex {
+				curPos = len(so)
+			}
+			so = append(so, newIdx[ti])
+		}
+		q.ShuffleOrder, q.CurrentIndex = so, curPos
+	} else {
+		curPos := 0
+		for i := 0; i <= q.CurrentIndex && i < len(newIdx); i++ {
+			if newIdx[i] >= 0 {
+				curPos = newIdx[i]
+			}
+		}
+		q.CurrentIndex = curPos
+	}
+	q.Tracks = tracks
 }
 
 // runLibraryScan is the background goroutine that performs the actual library scan.
@@ -49,7 +154,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	start := time.Now()
 	logMsg("INFO: Scanning music library...")
 
-	app.Library = &Library{
+	scanLib = &Library{
 		TracksByPath:  make(map[string]*Track),
 		AlbumsByKey:   make(map[string]*Album),
 		ArtistsByName: make(map[string]*Artist),
@@ -60,10 +165,20 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 
 	var walk filepath.WalkFunc
 	walk = func(path string, info os.FileInfo, err error) error {
+		if !app.Running {
+			return filepath.SkipAll
+		}
 		if err != nil {
 			logMsg(fmt.Sprintf("[SCAN] cannot read %s: %v", path, err))
 			note := "Couldn't open: " + shortErr(err)
 			if info != nil && info.IsDir() {
+				// the same rules as for readable folders
+				if isSystemPath(info.Name()) || (path != MUSIC_ROOT && strings.HasPrefix(info.Name(), ".")) {
+					scanNote(func(s *ScanStats) { s.scanFolder(path, "Skipped: system or hidden folder") })
+					return nil
+				}
+				app.LibScanFolder = path
+				scanNote(func(s *ScanStats) { s.Folders++ })
 				// a folder that can't be listed in full (a damaged folder
 				// on the card): keep whatever part of it can be read
 				names := readDirPartial(path)
@@ -78,9 +193,6 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 				return nil
 			}
 			scanNote(func(s *ScanStats) { s.scanFolder(path, note) })
-			return nil
-		}
-		if !app.Running {
 			return nil
 		}
 		if info.IsDir() {
@@ -153,7 +265,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 			}
 
 		case ".m3u", ".m3u8":
-			app.Library.Playlists = append(app.Library.Playlists, &Playlist{
+			scanLib.Playlists = append(scanLib.Playlists, &Playlist{
 				Name: strings.TrimSuffix(filepath.Base(path), ext),
 				Path: path,
 			})
@@ -163,23 +275,23 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	}
 	filepath.Walk(MUSIC_ROOT, walk)
 
-	finishAlbums(app.Library)
+	finishAlbums(scanLib)
 
 	// Sort phase
 	app.LibScanPhase = "sorting"
 	app.LibScanStatus = "Sorting library..."
 	app.requestRedraw()
 
-	sort.Slice(app.Library.Tracks, func(i, j int) bool {
-		return strings.ToLower(app.Library.Tracks[i].Title) < strings.ToLower(app.Library.Tracks[j].Title)
+	sort.Slice(scanLib.Tracks, func(i, j int) bool {
+		return strings.ToLower(scanLib.Tracks[i].Title) < strings.ToLower(scanLib.Tracks[j].Title)
 	})
-	sort.Slice(app.Library.Albums, func(i, j int) bool {
-		return strings.ToLower(app.Library.Albums[i].Name) < strings.ToLower(app.Library.Albums[j].Name)
+	sort.Slice(scanLib.Albums, func(i, j int) bool {
+		return strings.ToLower(scanLib.Albums[i].Name) < strings.ToLower(scanLib.Albums[j].Name)
 	})
-	sort.Slice(app.Library.Artists, func(i, j int) bool {
-		return strings.ToLower(app.Library.Artists[i].Name) < strings.ToLower(app.Library.Artists[j].Name)
+	sort.Slice(scanLib.Artists, func(i, j int) bool {
+		return strings.ToLower(scanLib.Artists[i].Name) < strings.ToLower(scanLib.Artists[j].Name)
 	})
-	for _, album := range app.Library.Albums {
+	for _, album := range scanLib.Albums {
 		sort.Slice(album.Tracks, func(i, j int) bool {
 			if album.Tracks[i].DiscNum != album.Tracks[j].DiscNum {
 				return album.Tracks[i].DiscNum < album.Tracks[j].DiscNum
@@ -187,16 +299,20 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 			return album.Tracks[i].TrackNum < album.Tracks[j].TrackNum
 		})
 	}
-	for _, artist := range app.Library.Artists {
+	for _, artist := range scanLib.Artists {
 		sort.Slice(artist.Albums, func(i, j int) bool {
 			return strings.ToLower(artist.Albums[i].Name) < strings.ToLower(artist.Albums[j].Name)
 		})
 	}
 
 	// Parse playlists
-	for _, pl := range app.Library.Playlists {
+	for _, pl := range scanLib.Playlists {
 		app.parsePlaylist(pl)
 	}
+
+	// the new library replaces the old one only now, whole (the menus kept
+	// showing the old one meanwhile, and nothing reads a half-built one)
+	app.installLibrary(scanLib)
 
 	// Decode album art in background so the scan completes immediately
 	go app.decodeAlbumArt()
@@ -308,8 +424,8 @@ func (app *MiyooPod) scanTrack(path string) {
 	}
 
 	// Register track
-	app.Library.Tracks = append(app.Library.Tracks, track)
-	app.Library.TracksByPath[path] = track
+	scanLib.Tracks = append(scanLib.Tracks, track)
+	scanLib.TracksByPath[path] = track
 
 	// Build album key
 	albumArtist := track.AlbumArtist
@@ -319,15 +435,15 @@ func (app *MiyooPod) scanTrack(path string) {
 	albumKey := albumKeyFor(track)
 
 	// Register or get album
-	album, exists := app.Library.AlbumsByKey[albumKey]
+	album, exists := scanLib.AlbumsByKey[albumKey]
 	if !exists {
 		album = &Album{
 			Name:   track.Album,
 			Artist: albumArtist,
 			Key:    albumKey,
 		}
-		app.Library.AlbumsByKey[albumKey] = album
-		app.Library.Albums = append(app.Library.Albums, album)
+		scanLib.AlbumsByKey[albumKey] = album
+		scanLib.Albums = append(scanLib.Albums, album)
 	}
 	album.Tracks = append(album.Tracks, track)
 
@@ -343,11 +459,11 @@ func (app *MiyooPod) scanTrack(path string) {
 	}
 
 	// Register artist
-	artist, exists := app.Library.ArtistsByName[albumArtist]
+	artist, exists := scanLib.ArtistsByName[albumArtist]
 	if !exists {
 		artist = &Artist{Name: albumArtist}
-		app.Library.ArtistsByName[albumArtist] = artist
-		app.Library.Artists = append(app.Library.Artists, artist)
+		scanLib.ArtistsByName[albumArtist] = artist
+		scanLib.Artists = append(scanLib.Artists, artist)
 	}
 
 	// Avoid duplicate album refs on same artist

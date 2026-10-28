@@ -15,6 +15,7 @@ import (
 	"image/color"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/fogleman/gg"
 )
@@ -485,8 +486,52 @@ var (
 const wxStaticPhase = 0.3
 
 // wxIcon returns the icon at size device px: static (frame < 0), or one
-// of wxFrames frames of its loop.
+// of wxFrames frames of its loop. Animated frames are drawn in the
+// background (all of a loop at once) and the still icon stands in until
+// they are ready; at most two loops (kind × size) are kept, and a loop
+// unused for a while is freed.
 func wxIcon(kind wxKind, size, frame int) *image.RGBA {
+	if frame < 0 {
+		return wxIconDraw(kind, size, -1)
+	}
+	lk := wxLoopKey{kind, size}
+	wxIconMu.Lock()
+	l := wxLoops[lk]
+	if l == nil {
+		l = &wxLoop{frames: make([]*image.RGBA, wxFrames)}
+		wxLoops[lk] = l
+		// keep two loops at most: drop the one used longest ago
+		if len(wxLoops) > 2 {
+			var old wxLoopKey
+			var oldT time.Time
+			for k, x := range wxLoops {
+				if k != lk && (oldT.IsZero() || x.used.Before(oldT)) {
+					old, oldT = k, x.used
+				}
+			}
+			delete(wxLoops, old)
+		}
+		go func() {
+			for f := 0; f < wxFrames; f++ {
+				img := image.NewRGBA(image.Rect(0, 0, size, size))
+				drawWxIcon(gg.NewContextForRGBA(img), kind, float64(size), float64(f)/wxFrames)
+				wxIconMu.Lock()
+				l.frames[f] = img
+				wxIconMu.Unlock()
+			}
+		}()
+	}
+	l.used = time.Now()
+	img := l.frames[frame%wxFrames]
+	wxIconMu.Unlock()
+	if img == nil {
+		return wxIconDraw(kind, size, -1) // still being drawn
+	}
+	return img
+}
+
+// wxIconDraw: a still icon, drawn once and kept.
+func wxIconDraw(kind wxKind, size, frame int) *image.RGBA {
 	k := wxIconKey{kind, size, frame}
 	wxIconMu.Lock()
 	img := wxIconCache[k]
@@ -495,24 +540,34 @@ func wxIcon(kind wxKind, size, frame int) *image.RGBA {
 		return img
 	}
 	img = image.NewRGBA(image.Rect(0, 0, size, size))
-	dc := gg.NewContextForRGBA(img)
-	t := wxStaticPhase
-	if frame >= 0 {
-		t = float64(frame) / wxFrames
-	}
-	drawWxIcon(dc, kind, float64(size), t)
+	drawWxIcon(gg.NewContextForRGBA(img), kind, float64(size), wxStaticPhase)
 	wxIconMu.Lock()
-	// the animated frames of one kind and size at a time
-	if frame >= 0 {
-		for kk := range wxIconCache {
-			if kk.frame >= 0 && (kk.kind != kind || kk.size != size) {
-				delete(wxIconCache, kk)
-			}
-		}
-	}
 	wxIconCache[k] = img
 	wxIconMu.Unlock()
 	return img
+}
+
+type wxLoopKey struct {
+	kind wxKind
+	size int
+}
+
+type wxLoop struct {
+	frames []*image.RGBA
+	used   time.Time
+}
+
+var wxLoops = map[wxLoopKey]*wxLoop{}
+
+// wxFreeLoops drops the animated frames not used for a while (memory).
+func wxFreeLoops(now time.Time) {
+	wxIconMu.Lock()
+	for k, l := range wxLoops {
+		if now.Sub(l.used) > 20*time.Second {
+			delete(wxLoops, k)
+		}
+	}
+	wxIconMu.Unlock()
 }
 
 // wxFrames: frames in the animated icon's 3-second loop (20 a second).

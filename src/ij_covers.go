@@ -266,6 +266,20 @@ func mbSearchGroups(q string) ([]mbGroup, error) {
 // mbSearch runs a release-group search: q in Lucene syntax, or (dismax) as
 // plain words matched against title, artist and so on.
 func mbSearch(q string, dismax bool, limit int) ([]mbGroup, error) {
+	// MusicBrainz answers 503 when asked too fast: wait and try again
+	for try := 0; ; try++ {
+		gs, err := mbSearchOnce(q, dismax, limit)
+		if errors.Is(err, errMBBusy) && try < 2 {
+			time.Sleep(time.Duration(2+try*3) * time.Second)
+			continue
+		}
+		return gs, err
+	}
+}
+
+var errMBBusy = errors.New("MusicBrainz is busy")
+
+func mbSearchOnce(q string, dismax bool, limit int) ([]mbGroup, error) {
 	mbWait()
 	u := fmt.Sprintf("%s/ws/2/release-group/?fmt=json&limit=%d&query=%s", mbBase(), limit, url.QueryEscape(q))
 	if dismax {
@@ -277,7 +291,7 @@ func mbSearch(q string, dismax bool, limit int) ([]mbGroup, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 503 {
-		return nil, errors.New("MusicBrainz is busy")
+		return nil, errMBBusy
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("MusicBrainz answered %d", resp.StatusCode)
@@ -467,14 +481,19 @@ func findCover(a *Album) ([]byte, error) {
 		logMsg(fmt.Sprintf("Covers: %q by %q: not on MusicBrainz (searched %q by %q)", a.Name, a.Artist, cleanTitle(a.Name), cleanArtist(a.Artist)))
 		return nil, nil
 	}
+	var lastErr error
 	for _, id := range ids {
 		data, err := caaFront(id)
 		if err != nil {
-			return nil, err
+			lastErr = err // try the other candidates
+			continue
 		}
 		if data != nil {
 			return data, nil
 		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 	logMsg(fmt.Sprintf("Covers: %q by %q: on MusicBrainz but without a cover", a.Name, a.Artist))
 	return nil, nil
@@ -596,7 +615,7 @@ func (ui *IpodUI) startCoverSearch() {
 			}
 			saveCoverFile(a, data)
 			done := make(chan struct{})
-			ui.post(func() {
+			ui.postSure(func() {
 				ui.setAlbumCover(a, data)
 				close(done)
 			})
@@ -607,13 +626,13 @@ func (ui *IpodUI) startCoverSearch() {
 		}
 	done:
 		if j.found > 0 {
-			ui.post(func() {
+			ui.postSure(func() {
 				if err := ui.app.saveLibraryJSON(); err != nil {
 					logMsg("Covers: saving the library: " + err.Error())
 				}
 			})
 		}
-		ui.post(func() {
+		ui.postSure(func() {
 			j.mu.Lock()
 			j.finished, j.current = true, nil
 			j.index = len(j.albums)

@@ -60,6 +60,7 @@ type CustomView interface {
 }
 
 type View struct {
+	refresh          func() // reload its data (views that read it in the background)
 	ID               string
 	Title            string
 	Kind             ViewKind

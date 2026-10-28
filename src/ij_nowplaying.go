@@ -44,6 +44,7 @@ type NowPlayingView struct {
 	since    time.Time
 	marqOn   bool
 	lastDraw time.Time
+	drawnAt  int // ui.frameNo of the last draw (on screen while it follows the frames)
 	wasPause bool
 	// the lossless badge's bars: 1 moving, 0 still (paused)
 	barsLive *Anim
@@ -82,7 +83,12 @@ func (np *NowPlayingView) Animating(now time.Time) bool {
 	}
 	// a scrolling line or the moving bars keep the view redrawing while it
 	// is on screen
-	return (np.marqOn || np.barsOn) && now.Sub(np.lastDraw) < 200*time.Millisecond
+	// on screen: drawn in the last frame (frames stop while nothing moves,
+	// so this holds through a marquee's pause)
+	if ipodUI == nil || np.drawnAt < ipodUI.frameNo-1 {
+		return false
+	}
+	return np.barsOn || (np.marqOn && marqSyncNeedsFrame(now))
 }
 
 // updateControls slides the control rows for the current mode.
@@ -353,7 +359,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 			if np.shownT != nil && now.Sub(np.lastDraw) < 200*time.Millisecond {
 				np.oldT, np.dir = np.shownT, skipDir
 				np.change.Set(0)
-				np.change.To(1, 420*time.Millisecond, easeInOut, 0)
+				np.change.To(1, 420*time.Millisecond, easeLinear, 0) // changePhases eases each phase
 			} else {
 				np.oldWarp = nil
 			}
@@ -392,6 +398,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 			ui.drawNPInfo(dst, np, t, npMetaH, 0, 1, !paused, now)
 		}
 		np.lastDraw = now
+		np.drawnAt = ui.frameNo
 	}
 	// control rows, sliding horizontally
 	//
