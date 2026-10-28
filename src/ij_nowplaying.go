@@ -130,6 +130,36 @@ func (np *NowPlayingView) OnCenter(ui *IpodUI) {
 	np.updateControls()
 }
 
+// keyDir turns a d-pad key into a wheel step: down / right go forward, like
+// turning the wheel clockwise. On Now Playing, where the wheel is the
+// volume (or the scrubber), up / right raise it and down / left lower it.
+func (ui *IpodUI) keyDir(k Key) int {
+	fwd := k == DOWN || k == RIGHT
+	if (k == UP || k == DOWN) && ui.nowPlayingTakesScroll() {
+		fwd = k == UP
+	}
+	if fwd {
+		return 1
+	}
+	return -1
+}
+
+// nowPlayingTakesScroll: the wheel goes to Now Playing (nothing above it,
+// see scroll), or to Cover Flow's own Now Playing.
+func (ui *IpodUI) nowPlayingTakesScroll() bool {
+	if kb := ui.keyboard; kb != nil && !kb.exiting {
+		return false
+	}
+	if cf := ui.cover; cf != nil && !cf.exiting {
+		return cf.playing
+	}
+	if len(ui.sheets) > 0 {
+		return false
+	}
+	_, ok := ui.topScreen().Custom.(*NowPlayingView)
+	return ok
+}
+
 func (np *NowPlayingView) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	p := ui.app.Playing
 	if np.scrubbing {

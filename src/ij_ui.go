@@ -639,11 +639,8 @@ func (ui *IpodUI) HandleKey(ev int) {
 		ui.wheelTick(1)
 	case WHEEL_CCW:
 		ui.wheelTick(-1)
-	case DOWN, RIGHT:
-		ui.scroll(1, 0)
-		ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
-	case UP, LEFT:
-		ui.scroll(-1, 0)
+	case DOWN, RIGHT, UP, LEFT:
+		ui.scroll(ui.keyDir(k), 0)
 		ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
 	case A, B:
 		ui.pressStart[k] = now
@@ -681,11 +678,7 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 	if ui.keyboardKey(ui.repeatKey) {
 		return
 	}
-	if ui.repeatKey == DOWN || ui.repeatKey == RIGHT {
-		ui.scroll(1, 0)
-	} else {
-		ui.scroll(-1, 0)
-	}
+	ui.scroll(ui.keyDir(ui.repeatKey), 0)
 	ui.dirty = true
 }
 

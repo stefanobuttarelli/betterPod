@@ -184,7 +184,10 @@ func (ui *IpodUI) upNextView() *View {
 					}}})
 				}})
 		}
-		return items
+		if len(items) == 0 {
+			items = append(items, Item{Label: v.Empty, NoArrow: true})
+		}
+		return append(items, ui.clearNowPlayingItem()...) // Clear Now Playing (ij_clearnp.go)
 	}
 	return v
 }

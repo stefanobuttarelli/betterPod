@@ -18,7 +18,8 @@ func (ui *IpodUI) homeView() *View {
 			{Label: "Settings", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.settingsView(), "") }},
 		}
 		if p := ui.app.Playing; p != nil && p.Track != nil {
-			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying})
+			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
+				LongPress: ui.clearNowPlayingOptions()})
 		}
 		// a new version found (by hand or by the daily check)
 		if updateAvailable() {
@@ -41,7 +42,8 @@ func (ui *IpodUI) musicView() *View {
 			{Label: "Search", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchHubView(), "") }},
 		}
 		if p := ui.app.Playing; p != nil && p.Track != nil {
-			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying})
+			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
+				LongPress: ui.clearNowPlayingOptions()})
 			items = append(items, Item{Label: "Up Next", Preview: PrevNowPlaying, OnSelect: func() { ui.showView(ui.upNextView(), "") }})
 		}
 		return items
