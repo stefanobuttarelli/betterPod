@@ -136,7 +136,7 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 		case st.status != "":
 			label, sub, _ := strings.Cut(st.status, " · ")
 			items = append(items, Item{Label: label, Sublabel: sub, NoArrow: true, OnSelect: func() {
-				if strings.HasSuffix(st.status, "press to retry") {
+				if strings.HasSuffix(st.status, "press A to retry") {
 					run(st.manual)
 				}
 			}})
@@ -298,7 +298,7 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 				st.hits = append(best, rest...)
 				switch {
 				case err != nil && len(st.hits) == 0:
-					st.status = "No answer · " + iaErrText(err) + " · press to retry"
+					st.status = "No answer · " + iaErrText(err) + " · press A to retry"
 					logMsg("Covers: " + a.Name + ": " + err.Error())
 				case len(st.hits) == 0 && manual:
 					st.status = "No results · nothing found for these words"

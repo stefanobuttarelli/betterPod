@@ -541,7 +541,7 @@ func (ui *IpodUI) youtubeSettingsView() *View {
 			items = append(items, Item{Label: status, Sublabel: "The tools for YouTube, from GitHub", NoArrow: true})
 		case status != "":
 			l, sub, _ := strings.Cut(status, " · ")
-			items = append(items, Item{Label: l, Sublabel: sub + " · press to try again", NoArrow: true,
+			items = append(items, Item{Label: l, Sublabel: sub + " · press A to try again", NoArrow: true,
 				OnSelect: func() { ui.ytInstallTools(false, nil) }})
 		case ytToolsReady():
 			ver := ytGetVersion()

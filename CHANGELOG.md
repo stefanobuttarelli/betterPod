@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.42 (2026-10-28)
+
+### Added
+- **Settings → Podcasts (On/Off)** takes Podcasts out of the main menu, or puts it back under Music. It's kept after a restart, and the episodes already downloaded stay in Music. The main menu's cursor stays on the entry it was on.
+
+### Changed
+- **The hints name the button:** "Press A to show Playlists & Albums" instead of "Press for…", and "press A to retry" / "press A to try again" where a row can be pressed again.
+
 ## v0.41 (2026-10-28)
 
 ### Added

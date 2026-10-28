@@ -380,7 +380,7 @@ func (ui *IpodUI) iaSearchView() *View {
 				}
 				st.busy = false
 				if err != nil {
-					st.status = iaErrText(err) + " · press to retry"
+					st.status = iaErrText(err) + " · press A to retry"
 				} else {
 					st.status = ""
 					st.res = append(st.res, res...)
@@ -498,7 +498,7 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 			// some already downloaded (an earlier download stopped): resume
 			switch have, left := iaHave(it, fs); {
 			case have == len(fs):
-				label, sub = g+" downloaded", fmt.Sprintf("All %d %s are in your library · press to check again", len(fs), pluralize(len(fs), "track", "tracks"))
+				label, sub = g+" downloaded", fmt.Sprintf("All %d %s are in your library · press A to check again", len(fs), pluralize(len(fs), "track", "tracks"))
 			case have > 0:
 				label = "Resume " + g + " download"
 				sub = fmt.Sprintf("%d of %d %s left · %s", len(fs)-have, len(fs), pluralize(len(fs), "track", "tracks"), formatBytes(left))

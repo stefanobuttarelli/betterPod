@@ -276,7 +276,7 @@ func (ui *IpodUI) youtubeView() *View {
 		if st.playlists {
 			kind, other = "Playlists & Albums", "Videos"
 		}
-		items = append(items, Item{Label: "Showing: " + kind, Sublabel: "Press for " + other, NoArrow: true, OnSelect: func() {
+		items = append(items, Item{Label: "Showing: " + kind, Sublabel: "Press A to show " + other, NoArrow: true, OnSelect: func() {
 			st.playlists = !st.playlists
 			if st.ran != "" {
 				run()
@@ -290,7 +290,7 @@ func (ui *IpodUI) youtubeView() *View {
 		case st.status != "":
 			l, sb, _ := strings.Cut(st.status, " · ")
 			items = append(items, Item{Label: l, Sublabel: sb, NoArrow: true, OnSelect: func() {
-				if strings.HasSuffix(st.status, "press to retry") {
+				if strings.HasSuffix(st.status, "press A to retry") {
 					run()
 				}
 			}})
@@ -357,7 +357,7 @@ func (ui *IpodUI) youtubeView() *View {
 				st.busy = false
 				switch {
 				case err != nil:
-					st.status = "Couldn't search · " + iaErrText(err) + " · press to retry"
+					st.status = "Couldn't search · " + iaErrText(err) + " · press A to retry"
 				case len(res) == 0:
 					st.status = "No results"
 				}
@@ -657,7 +657,7 @@ func (ui *IpodUI) ytItemView(e ytEntry) *View {
 		if st.info == nil {
 			if st.err != "" {
 				l, sub, _ := strings.Cut(st.err, " · ")
-				return []Item{{Label: l, Sublabel: sub + " · press to try again", NoArrow: true, OnSelect: func() {
+				return []Item{{Label: l, Sublabel: sub + " · press A to try again", NoArrow: true, OnSelect: func() {
 					st.err = ""
 					ui.refreshView(v)
 					load()

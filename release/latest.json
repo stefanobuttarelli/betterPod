@@ -1,8 +1,8 @@
 {
-  "version": "0.41",
-  "path": "release/knullipod-v0.41-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.41-knulli.zip",
-  "sha256": "8e08050eb366c19c0c3913af015a87cec48604b5b0a27aef6849c293f85a5b13",
-  "size": 15003701,
-  "notes": "Podcasts in the main menu (PR #2), with safer downloads and deletes"
+  "version": "0.42",
+  "path": "release/knullipod-v0.42-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.42-knulli.zip",
+  "sha256": "3ad7f46a002c026337906a1ac43cd68f263b8d14891884609b306baea91bb7ce",
+  "size": 15005403,
+  "notes": "Settings → Podcasts takes Podcasts out of the main menu; clearer button hints"
 }

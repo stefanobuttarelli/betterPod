@@ -264,7 +264,7 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 	if f == nil {
 		msg, msg2 := "Loading the forecast…", "From Open-Meteo"
 		if fv.err != "" && !fv.loading {
-			msg, msg2 = "Couldn't load the forecast", fv.err+" · press to try again"
+			msg, msg2 = "Couldn't load the forecast", fv.err+" · press A to try again"
 		}
 		mf := face(W700, 15)
 		shadowText(dst, mf, msg, 104*d, 72*d, colWhite)

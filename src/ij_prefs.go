@@ -14,6 +14,7 @@ type ipodPrefs struct {
 	HoldBright  int     `json:"holdBrightness,omitempty"`
 	Theme       string  `json:"theme,omitempty"`
 	YouTube     bool    `json:"youtube,omitempty"`
+	NoPodcasts  bool    `json:"hidePodcasts,omitempty"` // Podcasts taken out of the main menu
 }
 
 func ipodPrefsPath() string { return dataPath("ipodjs_settings.json") }
@@ -32,6 +33,7 @@ func (ui *IpodUI) loadPrefs() {
 		themeMode = p.Theme
 	}
 	ytEnabled = p.YouTube
+	podsInMenu = !p.NoPodcasts
 	if p.HoldBright >= 1 && p.HoldBright <= 100 {
 		hold.level = p.HoldBright
 	}
@@ -64,6 +66,6 @@ func (ui *IpodUI) savePrefs() {
 			rep = "all"
 		}
 	}
-	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled})
+	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu})
 	_ = os.WriteFile(ipodPrefsPath(), data, 0644)
 }

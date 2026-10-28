@@ -14,9 +14,12 @@ func (ui *IpodUI) homeView() *View {
 		items := []Item{
 			{Label: "Cover Flow", Preview: PrevMusic, OnSelect: ui.openCoverFlow},
 			{Label: "Music", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.musicView(), "") }},
-			{Label: "Podcasts", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.podcastsView(), "") }},
 			{Label: "Games", Preview: PrevGames, OnSelect: func() { ui.showView(ui.gamesView(), "") }},
 			{Label: "Settings", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.settingsView(), "") }},
+		}
+		if podsInMenu { // under Music (Settings → Podcasts turns it off)
+			items = append(items[:2], append([]Item{{Label: "Podcasts", Preview: PrevMusic,
+				OnSelect: func() { ui.showView(ui.podcastsView(), "") }}}, items[2:]...)...)
 		}
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying})
@@ -272,6 +275,21 @@ func (ui *IpodUI) settingsView() *View {
 			{Label: "Library", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.libraryInfoView(), "") }},
 			{Label: "Database", Preview: PrevSettings, Value: dbLabel(dataDir()), OnSelect: func() { ui.showView(ui.databaseView(), "") }},
 			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
+			{Label: "Podcasts", Preview: PrevSettings, Value: onOff(podsInMenu), OnSelect: func() {
+				podsInMenu = !podsInMenu // in the main menu or not (downloaded episodes stay in Music)
+				ui.savePrefs()
+				// the main menu's cursor stays on the same entry (Settings)
+				for _, h := range ui.split {
+					if h.ID == "home" && h.Index >= 2 {
+						if podsInMenu {
+							h.Index++
+						} else {
+							h.Index--
+						}
+					}
+				}
+				ui.refreshBuilt()
+			}},
 			{Label: "Software Update", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.updateView(), "") }},
 		}
 	}

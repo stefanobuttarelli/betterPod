@@ -57,6 +57,10 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 )
 
+// podsInMenu: Podcasts is in the main menu (Settings → Podcasts; saved
+// with the prefs).
+var podsInMenu = true
+
 type podcast struct {
 	Name   string `json:"name"`
 	Author string `json:"author"`
@@ -638,7 +642,7 @@ func (ui *IpodUI) podcastsView() *View {
 				st.busy = false
 				switch {
 				case err != nil:
-					st.status = "No answer · " + iaErrText(err) + " · press to retry"
+					st.status = "No answer · " + iaErrText(err) + " · press A to retry"
 				case len(ps) == 0:
 					st.status = "No podcasts found · try other words"
 				}
