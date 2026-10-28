@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.35.1 (2026-10-28)
+
+### Added
+- **Up Next in the Music menu**, under Now Playing, while a song is playing.
+
 ## v0.35 (2026-10-28)
 
 ### Added

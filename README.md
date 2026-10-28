@@ -100,7 +100,7 @@ The first start scans the music folder. Later starts load the saved library inst
 | SELECT + START | | Quit |
 
 - **Now Playing:**
-  - Y (or holding A) opens **Up Next**, the songs that will play next: A plays one at once; Y on a song offers Play Next and Remove from Up Next; Clear Up Next empties it;
+  - Y (or holding A) opens **Up Next** (also in the Music menu), the songs that will play next: A plays one at once; Y on a song offers Play Next and Remove from Up Next; Clear Up Next empties it;
   - up/down change the volume;
   - the centre button switches to the scrubber, and then up/down seek.
 - **Search keyboard:** a QWERTY grid. The keys with a shortcut show its button: X space, B delete, Y 123, START search (the magnifying glass).
