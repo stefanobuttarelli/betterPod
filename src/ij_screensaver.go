@@ -396,7 +396,6 @@ func (ui *IpodUI) saverKey(ev int) bool {
 		skipDir = 1
 		go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
 	case L2, R2:
-		logMsg("Screensaver: L2 / R2")
 		ui.saverBrightness(k == R2)
 		ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
 	}
@@ -468,8 +467,16 @@ func (s *screensaver) moveSel(k Key, now time.Time) {
 func (ui *IpodUI) saverBrightness(up bool) {
 	s := ui.saver
 	if hold.on {
-		return // (Hold has its own, with UP / DOWN)
+		return // (Hold has its own)
 	}
+	if !saverDim && !s.dimmed {
+		// as anywhere else: the console's brightness
+		ui.stepBrightness(up)
+		s.briShown = briOSD.until
+		return
+	}
+	// Dim the Screen: the screensaver's own brightness, kept for next
+	// time; the one from before comes back when it closes
 	cur := getBacklightPercent()
 	if !s.dimmed {
 		s.savedBri, s.dimmed = cur, true
@@ -486,6 +493,7 @@ func (ui *IpodUI) saverBrightness(up bool) {
 	cur = min(max(cur, 1), 100)
 	setBacklightPercent(cur)
 	saverLevel = cur
+	briOSD.level = cur
 	s.briShown = animNow().Add(1500 * time.Millisecond)
 	ui.savePrefs()
 }
@@ -974,6 +982,9 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	// left: the clock, or the brightness for a moment after it changes
 	if now.Before(s.briShown) || hold.on && now.Before(hold.levelShown) {
 		lvl := getBacklightPercent()
+		if lvl < 0 {
+			lvl = briOSD.level
+		}
 		if hold.on {
 			lvl = hold.cur
 		}

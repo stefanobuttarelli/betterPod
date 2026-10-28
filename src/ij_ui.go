@@ -700,6 +700,10 @@ func (ui *IpodUI) HandleKey(ev int) {
 	case START, X:
 		ui.app.togglePlayPause()
 		ui.dirty = true
+	case L2, R2:
+		// the brightness, anywhere (held: it keeps going)
+		ui.stepBrightness(k == R2)
+		ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
 	case L, R:
 		if k == R {
 			skipDir = 1
@@ -752,6 +756,10 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 	}
 	if ui.customKey(ui.repeatKey) {
 		ui.dirty = true
+		return
+	}
+	if ui.repeatKey == L2 || ui.repeatKey == R2 {
+		ui.stepBrightness(ui.repeatKey == R2)
 		return
 	}
 	if ui.repeatKey == L || ui.repeatKey == R {
@@ -1123,7 +1131,11 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		drawText(sub, f, clock, cx*DPR, (1.5+asc)*DPR, th.headerText)
 	}
 	if hold.on && now.Before(hold.levelShown) {
-		ui.drawHeaderBrightness(sub, tx, maxW) // Hold's brightness, while it changes
+		ui.drawHeaderBrightness(sub, tx, maxW, hold.cur) // Hold's brightness, while it changes
+		return
+	}
+	if now.Before(briOSD.until) {
+		ui.drawHeaderBrightness(sub, tx, maxW, briOSD.level) // L2 / R2
 		return
 	}
 	ui.drawHeaderTitle(sub, ui.headerTitle, tx, maxW, ui.hdrActive, now)
@@ -1131,7 +1143,7 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 
 // drawHeaderBrightness: a sun and a bar in the title's room (like the
 // volume, drawHeaderVolume), for Hold's brightness.
-func (ui *IpodUI) drawHeaderBrightness(sub *image.RGBA, tx, maxW float64) {
+func (ui *IpodUI) drawHeaderBrightness(sub *image.RGBA, tx, maxW float64, level int) {
 	c := th.headerText
 	// (fillCircle is in CSS px)
 	sx, sy := tx+7, 10.0
@@ -1148,7 +1160,7 @@ func (ui *IpodUI) drawHeaderBrightness(sub *image.RGBA, tx, maxW float64) {
 	y := 7.5
 	fillRoundedGradient(sub, bx*DPR, y*DPR, (bx+bw)*DPR, (y+5)*DPR, 2.5*DPR,
 		[]GradStop{{0, Col{0, 0, 0, 0.22}}, {1, Col{0, 0, 0, 0.12}}}, 1)
-	fw := math.Max(bw*float64(hold.cur)/100, 5)
+	fw := math.Max(bw*float64(level)/100, 5)
 	fillRoundedGradient(sub, bx*DPR, y*DPR, (bx+fw)*DPR, (y+5)*DPR, 2.5*DPR, selGrad, 1)
 }
 

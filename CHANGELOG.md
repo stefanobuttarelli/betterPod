@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.56 (2026-10-28)
+
+### Added
+- **L2 / R2 set the brightness anywhere:** L2 down, R2 up, in steps of 5% (1% at the bottom). Held, they keep going. The level shows for a moment in the header, a sun and a bar where the title is, like the volume. In Hold they set Hold's brightness (as UP / DOWN do). In the screensaver they set the console's brightness, unless Dim the Screen is on: then they set the screensaver's own, which goes back as it was when it closes.
+
 ## v0.55.2 (2026-10-28)
 
 ### Changed

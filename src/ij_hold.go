@@ -112,9 +112,9 @@ func (ui *IpodUI) holdFilter(ev int) bool {
 	}
 	if hold.on {
 		if ev >= 0 {
-			if hold.adjust && (Key(ev) == UP || Key(ev) == DOWN) {
+			if k := Key(ev); hold.adjust && (k == UP || k == DOWN) || k == L2 || k == R2 {
 				// the brightness shows in the header (no badge)
-				ui.holdBrightness(Key(ev) == UP)
+				ui.holdBrightness(k == UP || k == R2)
 				now := animNow()
 				hold.repKey, hold.repStart, hold.repLast = Key(ev), now, now
 				ui.dirty = true
@@ -141,7 +141,7 @@ func (ui *IpodUI) holdRepeat(now time.Time) {
 		return
 	}
 	hold.repLast = now
-	ui.holdBrightness(hold.repKey == UP)
+	ui.holdBrightness(hold.repKey == UP || hold.repKey == R2)
 	ui.dirty = true
 }
 
@@ -193,7 +193,8 @@ func (ui *IpodUI) tickOverlays(now time.Time) bool {
 	if hold.badge.Target() == 1 && now.After(hold.badgeUntil) {
 		hold.badge.To(0, 300*time.Millisecond, easeCSS, 0)
 	}
-	if hold.badge.Running() || hold.badge.Target() == 1 || hold.on && now.Before(hold.levelShown.Add(50*time.Millisecond)) {
+	if hold.badge.Running() || hold.badge.Target() == 1 || hold.on && now.Before(hold.levelShown.Add(50*time.Millisecond)) ||
+		now.Before(briOSD.until.Add(50*time.Millisecond)) {
 		vis = true // (the brightness in the header, until it goes)
 	}
 	if volOSD.a.Target() == 1 && now.After(volOSD.until) {
@@ -464,4 +465,38 @@ func (ui *IpodUI) hookClick() {
 			ui.dirty = true
 		})
 	})
+}
+
+// ---- the brightness, with L2 / R2 anywhere ----
+
+// briOSD: the brightness shows in the header (as Hold's) until until.
+var briOSD struct {
+	until time.Time
+	level int
+}
+
+// stepBrightness: L2 (down) / R2 (up), in steps of 5% (1% at the bottom),
+// shown in the header for a moment.
+func (ui *IpodUI) stepBrightness(up bool) {
+	cur := getBacklightPercent()
+	if cur < 0 {
+		cur = briOSD.level // (no backlight to read: the test machine)
+		if cur <= 0 {
+			cur = 50
+		}
+	}
+	step := 5
+	if cur < 10 || cur == 10 && !up {
+		step = 1
+	}
+	if up {
+		cur += step
+	} else {
+		cur -= step
+	}
+	cur = min(max(cur, 1), 100)
+	setBacklightPercent(cur)
+	briOSD.level = cur
+	briOSD.until = animNow().Add(1500 * time.Millisecond)
+	ui.dirty = true
 }
