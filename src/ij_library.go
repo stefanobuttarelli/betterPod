@@ -14,6 +14,7 @@ func (ui *IpodUI) homeView() *View {
 		items := []Item{
 			{Label: "Cover Flow", Preview: PrevMusic, OnSelect: ui.openCoverFlow},
 			{Label: "Music", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.musicView(), "") }},
+			{Label: "Podcasts", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.podcastsView(), "") }},
 			{Label: "Games", Preview: PrevGames, OnSelect: func() { ui.showView(ui.gamesView(), "") }},
 			{Label: "Settings", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.settingsView(), "") }},
 		}
