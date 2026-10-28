@@ -97,13 +97,14 @@ type wxForecast struct {
 		WindDir  float64 `json:"wind_direction_10m"`
 	} `json:"current"`
 	Daily struct {
-		Time    []string  `json:"time"`
-		Code    []int     `json:"weather_code"`
-		Max     []float64 `json:"temperature_2m_max"`
-		Min     []float64 `json:"temperature_2m_min"`
-		Rain    []float64 `json:"precipitation_probability_max"`
-		Sunrise []string  `json:"sunrise"`
-		Sunset  []string  `json:"sunset"`
+		Time    []string   `json:"time"`
+		Code    []int      `json:"weather_code"`
+		Max     []float64  `json:"temperature_2m_max"`
+		Min     []float64  `json:"temperature_2m_min"`
+		Rain    []*float64 `json:"precipitation_probability_max"` // null where there is no probability
+		RainMM  []*float64 `json:"precipitation_sum"`
+		Sunrise []string   `json:"sunrise"`
+		Sunset  []string   `json:"sunset"`
 	} `json:"daily"`
 }
 
@@ -117,11 +118,57 @@ func (f *wxForecast) days() int {
 	return n
 }
 
+// rain: day i's chance of rain or snow (-1: none given; Open-Meteo sends
+// null past the models that give one).
 func (f *wxForecast) rain(i int) float64 {
-	if i < len(f.Daily.Rain) {
-		return f.Daily.Rain[i]
+	if i < len(f.Daily.Rain) && f.Daily.Rain[i] != nil {
+		return *f.Daily.Rain[i]
 	}
 	return -1
+}
+
+// rainMM: day i's rain or snow in mm (-1: not given).
+func (f *wxForecast) rainMM(i int) float64 {
+	if i < len(f.Daily.RainMM) && f.Daily.RainMM[i] != nil {
+		return *f.Daily.RainMM[i]
+	}
+	return -1
+}
+
+// rainText: what the hero says about day i's rain, never at odds with
+// its picture. The picture (weather_code) and the chance come from
+// different models, so a day can show showers with a 0% chance: then the
+// amount is said instead (or nothing).
+// short: the chance alone when both are known (a line that wouldn't fit).
+func (f *wxForecast) rainText(i int, short bool) string {
+	code := f.Daily.Code[i]
+	snow := (code >= 71 && code <= 77) || code == 85 || code == 86
+	wet := code >= 51
+	word := "Rain"
+	if snow {
+		word = "Snow"
+	}
+	p, mm := f.rain(i), f.rainMM(i)
+	amount := ""
+	if mm >= 0.1 {
+		amount = fmt.Sprintf("%.0f mm", math.Max(1, math.Round(mm)))
+		if mm < 1 {
+			amount = "<1 mm"
+		}
+	}
+	switch {
+	case p > 0 && amount != "" && !short:
+		return fmt.Sprintf("%s %d%% · %s", word, int(p), amount)
+	case p > 0:
+		return fmt.Sprintf("%s %d%%", word, int(p))
+	case wet && amount != "":
+		return word + " " + amount
+	case wet:
+		return "" // a wet picture and no numbers: nothing to contradict it
+	case p == 0:
+		return "Rain 0%"
+	}
+	return ""
 }
 
 // localNow: the time at the place.
@@ -135,7 +182,7 @@ func fetchForecast(p *wxPlace) (*wxForecast, error) {
 	v.Set("longitude", fmt.Sprintf("%.4f", p.Lon))
 	v.Set("timezone", "auto")
 	v.Set("current", "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m")
-	v.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset")
+	v.Set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset")
 	v.Set("forecast_days", "10")
 	var f wxForecast
 	if err := meteoGet(meteoAPIBase()+"/v1/forecast?"+v.Encode(), &f); err != nil {

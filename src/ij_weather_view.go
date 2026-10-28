@@ -285,8 +285,9 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 		big = wxTemp(f.Daily.Max[i])
 		cond = wxLabel(f.Daily.Code[i])
 		var parts []string
-		if r := f.rain(i); r >= 0 {
-			parts = append(parts, fmt.Sprintf("Rain %d%%", int(r)))
+		rainAt := len(parts)
+		if r := f.rainText(i, false); r != "" {
+			parts = append(parts, r)
 		}
 		if i < len(f.Daily.Sunrise) && len(f.Daily.Sunrise[i]) >= 16 {
 			parts = append(parts, "Sunrise "+f.Daily.Sunrise[i][11:16])
@@ -295,6 +296,10 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 			parts = append(parts, "Sunset "+f.Daily.Sunset[i][11:16])
 		}
 		line = strings.Join(parts, " · ")
+		if lf := face(W500, 10); rainAt < len(parts) && textWidth(lf, line) > float64(W)-(x+8)*d {
+			parts[rainAt] = f.rainText(i, true) // too long: the amount goes
+			line = strings.Join(parts, " · ")
+		}
 	}
 	hi, lo = "↑ "+wxTemp(f.Daily.Max[i]), "↓ "+wxTemp(f.Daily.Min[i])
 	shadowText(dst, bigF, big, x*d, 82*d, colWhite)

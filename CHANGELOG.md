@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.45.1 (2026-10-28)
+
+### Fixed
+- **Weather: the rain line no longer contradicts the picture.** A day drawn with showers could say "Rain 0%". The picture and the chance come from different forecast models in Open-Meteo, and a missing chance (null) was read as 0.
+  - A missing chance is now treated as unknown, not 0.
+  - The day's amount is asked too. A wet day with no chance gives "Rain 2 mm" (or "Snow…") instead of 0%. When the chance is known, both are shown ("Rain 60% · 3 mm"), or only the chance if the line is too long.
+  - A wet day with neither number says nothing about rain.
+
 ## v0.45 (2026-10-28)
 
 ### Fixed

@@ -1,8 +1,8 @@
 {
-  "version": "0.45",
-  "path": "release/knullipod-v0.45-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.45-knulli.zip",
-  "sha256": "9c41b70c7ee0410a624332c2d00b10118c8f76d66c9dfe2791332e0680ec94d4",
-  "size": 15007916,
-  "notes": "- The Solitaire icon shows whole (the queen was cut off)\n- Cancel is grey and Done is blue on the download screens (0.44)\n- Software Update shows every note whole, and they scroll (0.44)\n- YouTube: the header says YouTube, the video is the first row (0.43)\n- Settings → Podcasts takes Podcasts out of the main menu (0.42)"
+  "version": "0.45.1",
+  "path": "release/knullipod-v0.45.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.45.1-knulli.zip",
+  "sha256": "b1d07af98b6ff8d581a400f88e7c533ede25c5988eeb968682fcd20df12714a5",
+  "size": 15011474,
+  "notes": "- Weather: a rainy day no longer says \"Rain 0%\"; it shows the amount (\"Rain 2 mm\") when the chance is missing\n- The Solitaire icon shows whole (0.45)\n- Cancel is grey and Done is blue on the download screens (0.44)\n- Software Update shows every note whole, and they scroll (0.44)"
 }
