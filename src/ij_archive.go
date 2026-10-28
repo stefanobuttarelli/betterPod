@@ -650,6 +650,7 @@ func formatBytes(n int64) string {
 
 type iaDownload struct {
 	mu       sync.Mutex
+	whole    bool // the step is for the whole download (its audio, the cover), not a track
 	item     *iaItem
 	files    []iaFile
 	format   string
@@ -1185,7 +1186,7 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	}
 	d.mu.Lock()
 	title, creator := d.item.Title, d.item.Creator
-	state, errs, fin := d.state, d.err, d.finished
+	state, errs, fin, whole := d.state, d.err, d.finished, d.whole
 	idx, n, done, total, format := d.index, len(d.files), d.done, d.total, d.format
 	retry, failed, lastErr := d.retry, len(d.failed), d.lastErr
 	d.mu.Unlock()
@@ -1221,6 +1222,8 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		status = fmt.Sprintf("%s · %d %s · %s", state, n, pluralize(n, "track", "tracks"), format)
 	case fin:
 		status, detail = state, errs
+	case whole:
+		status, detail = state, retry // (no track yet: the tracks come after)
 	default:
 		status = fmt.Sprintf("Track %d of %d · %s", min(idx+1, n), n, state)
 		detail = retry

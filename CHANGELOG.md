@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.54.2 (2026-10-28)
+
+### Fixed
+- **YouTube download:** while the cover is made and the audio downloaded, the progress no longer says "Track 1 of N". Those steps are for the whole video, and the tracks come after, when it is cut at the chapters ("Track 2 of 5 · Making the tracks"). For a playlist, each video still shows its own track.
+
 ## v0.54.1 (2026-10-28)
 
 ### Fixed

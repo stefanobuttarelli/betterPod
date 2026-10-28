@@ -1072,7 +1072,7 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 	}
 	setState := func(s string) {
 		d.mu.Lock()
-		d.state = s
+		d.state, d.whole = s, true
 		d.mu.Unlock()
 	}
 	// the cover first, so the album shows with it
@@ -1147,7 +1147,7 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 				return errIACancelled
 			}
 			d.mu.Lock()
-			d.index, d.state = i, "Making the tracks"
+			d.index, d.state, d.whole = i, "Making the tracks", false
 			d.mu.Unlock()
 			if fileExists(trackPath(i)) {
 				continue
@@ -1186,7 +1186,7 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 		func(id string, got, _ int64) {
 			d.mu.Lock()
 			if i, ok := byID[id]; ok {
-				d.index, d.state = i, a.Tracks[i].Title
+				d.index, d.state, d.whole = i, a.Tracks[i].Title, false
 			}
 			d.done = finished + got
 			d.mu.Unlock()
