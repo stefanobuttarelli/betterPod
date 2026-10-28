@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.40 (2026-10-28)
+
+### Added
+- **Missing Covers also searches iTunes, Deezer and Wikipedia** (by Emanuele Macrì, from [MacriPod](https://github.com/emanuelemacri/macripod), PR #1). None of them needs a key or an account.
+  - **The sources:** iTunes for covers up to 1200 px (searches spaced by 3 s, as Apple asks), and Deezer up to 1000 px. Wikipedia gives the picture at the top of an album's article, or the game's box for a soundtrack ripped from a game.
+  - **Choosing an album** asks MusicBrainz and the other three at the same time. Each result shows its source, and the checked results come first, with the very same title at the top.
+  - **Search All Automatically:** when MusicBrainz has nothing, or nothing with a cover, it tries the others with the same checks. A result with the very same title wins over one that only shares the main title.
+  - **Soundtracks by genre:** songs tagged Soundtrack, Game, Score, OST or VGM make their album count as a soundtrack.
+
 ## v0.39 (2026-10-28)
 
 ### Changed

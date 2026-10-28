@@ -2,7 +2,7 @@
   "version": "0.40",
   "path": "release/knullipod-v0.40-knulli.zip",
   "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.40-knulli.zip",
-  "sha256": "6bbb9589ef6fb06dfa0a6e7daf38442c5397f27a709110875698833383bb7446",
-  "size": 14535480,
+  "sha256": "62b6df9e6e054159d8fd73cce1cb6f672a17d51094707ab4661cd531153e30af",
+  "size": 14535484,
   "notes": "Covers from iTunes, Deezer and Wikipedia too (PR #1)"
 }
