@@ -9,20 +9,24 @@ package main
 //	  Live at the Pier          ▣ Hercules — Hercules and Love Affair · 2008
 //
 // Choosing an album searches MusicBrainz for it at once (title and artist,
-// then the title alone, then its main part before ":") and lists everything
-// MusicBrainz answers, unfiltered: the ones that pass the automatic search's
-// checks first ("Best match"), each with its cover from the Cover Art
-// Archive as a thumbnail. Choosing one downloads that cover (1200 px) and
-// gives it to the album. If nothing fits, "Edit search" opens the keyboard
-// on the search to look for anything by hand (plain words, matched against
-// title, artist and the rest). Errors are shown as they are, so a missing
-// connection doesn't look like "no results".
+// then the title alone, then its main part before ":"), and at the same
+// time iTunes, Deezer and Wikipedia (ij_coversources.go). Everything they
+// answer is listed, unfiltered: the ones that pass the automatic search's
+// checks first ("Best match"), then MusicBrainz's, iTunes', Deezer's and
+// Wikipedia's, each with its cover as a thumbnail and its source. Choosing
+// one downloads that cover (up to 1200 px) and gives it to the album. If
+// nothing fits, "Edit search" opens the keyboard on the search to look for
+// anything by hand (plain words, matched against title, artist and the
+// rest). Errors are shown as they are, so a missing connection doesn't look
+// like "no results".
 
 import (
 	"bytes"
 	"fmt"
 	"image"
+	"sort"
 	"strings"
+	"sync"
 )
 
 // missingCoversView: "Search All Automatically" (the old one-shot search)
@@ -62,7 +66,7 @@ func (ui *IpodUI) missingCoversView() *View {
 
 // a result of the cover search
 type coverHit struct {
-	g     mbGroup
+	c     coverCand
 	best  bool   // passes the automatic search's checks
 	thumb *Album // stand-in album for the thumbnail (ArtImg once loaded)
 	state string // "" · "loading" (thumbnail) · "none" (no cover) · "error"
@@ -70,19 +74,16 @@ type coverHit struct {
 
 func (h *coverHit) sublabel() string {
 	parts := []string{}
-	if a := h.g.artist(); a != "" {
+	if a := h.c.Artist; a != "" {
 		parts = append(parts, a)
 	}
-	if len(h.g.First) >= 4 {
-		parts = append(parts, h.g.First[:4])
+	if h.c.Year != "" {
+		parts = append(parts, h.c.Year)
 	}
-	kind := h.g.Primary
-	if h.g.soundtrack() {
-		kind = "Soundtrack"
+	if h.c.Kind != "" {
+		parts = append(parts, h.c.Kind)
 	}
-	if kind != "" && kind != "Album" {
-		parts = append(parts, kind)
-	}
+	parts = append(parts, h.c.Source)
 	switch h.state {
 	case "none":
 		parts = append(parts, "No cover image")
@@ -96,7 +97,7 @@ func (h *coverHit) sublabel() string {
 	return strings.Join(parts, " · ")
 }
 
-// coverPickView: the search for one album and what MusicBrainz answers.
+// coverPickView: the search for one album and what the sources answer.
 func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 	q := newAlbumQuery(a)
 	st := &struct {
@@ -125,13 +126,13 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 			ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, func() { run(true) })
 			ui.refreshView(v)
 		}
-		items := []Item{ui.searchField(&st.term, "Search MusicBrainz", note, edit, []SheetOption{
+		items := []Item{ui.searchField(&st.term, "Search MusicBrainz, iTunes, Deezer…", note, edit, []SheetOption{
 			{Label: "Clear search", OnSelect: func() { st.term = ""; edit() }},
 			{Label: "Search automatically again", OnSelect: func() { run(false) }},
 		})}
 		switch {
 		case st.busy:
-			items = append(items, Item{Label: "Searching MusicBrainz…", NoArrow: true})
+			items = append(items, Item{Label: "Searching…", Sublabel: "MusicBrainz, iTunes, Deezer, Wikipedia", NoArrow: true})
 		case st.status != "":
 			label, sub, _ := strings.Cut(st.status, " · ")
 			items = append(items, Item{Label: label, Sublabel: sub, NoArrow: true, OnSelect: func() {
@@ -146,7 +147,7 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 			if st.getting == h {
 				sub = "Downloading the cover…"
 			}
-			items = append(items, Item{Label: h.g.Title, Sublabel: sub, Album: h.thumb,
+			items = append(items, Item{Label: h.c.Title, Sublabel: sub, Album: h.thumb,
 				OnSelect: func() { pick(h) }})
 		}
 		if !st.busy && st.ran != "" && len(st.hits) > 0 {
@@ -155,14 +156,14 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 		return items
 	}
 
-	// thumbnails: one by one, front-250 from the Cover Art Archive
+	// thumbnails: one by one, about 250 px from each source
 	loadThumbs := func(gen int, hits []*coverHit) {
 		go func() {
 			for _, h := range hits {
 				if gen != st.gen || !ui.app.Running {
 					return
 				}
-				data, err := caaImage(h.g.ID, "front-250")
+				data, err := h.c.image(false)
 				var img image.Image
 				if err == nil && data != nil {
 					img, _, err = image.Decode(bytes.NewReader(data))
@@ -201,6 +202,24 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 		}
 		v.Index = 0
 		ui.refreshView(v)
+		// the other sources at the same time as MusicBrainz
+		other := make([][]coverCand, len(otherCoverSources))
+		otherErr := make([]error, len(otherCoverSources))
+		var wg sync.WaitGroup
+		for i, s := range otherCoverSources {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if manual {
+					other[i], otherErr[i] = s.search(term, 8)
+				} else {
+					other[i], otherErr[i] = q.searchSource(s, 8)
+				}
+				if otherErr[i] != nil {
+					logMsg("Covers: " + s.name + ": " + otherErr[i].Error())
+				}
+			}()
+		}
 		go func() {
 			var groups []mbGroup
 			var err error
@@ -243,28 +262,46 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 					}
 				}
 			}
+			if err != nil {
+				logMsg("Covers: MusicBrainz: " + err.Error())
+			}
+			wg.Wait()
+			cands := make([]coverCand, 0, len(groups))
+			for _, g := range groups {
+				cands = append(cands, g.cand())
+			}
+			for i := range other {
+				cands = append(cands, other[i]...)
+				if err == nil {
+					err = otherErr[i]
+				}
+			}
 			ui.postSure(func() {
 				if gen != st.gen {
 					return
 				}
 				st.busy = false
 				var best, rest []*coverHit
-				for _, g := range groups {
-					h := &coverHit{g: g, best: q.titleOK(g) && (q.artistOK(g) || q.soundtrack || q.various),
-						thumb: &Album{Name: g.Title, Artist: g.artist()}, state: "loading"}
+				for _, c := range cands {
+					h := &coverHit{c: c, best: q.matches(c),
+						thumb: &Album{Name: c.Title, Artist: c.Artist}, state: "loading"}
 					if h.best {
 						best = append(best, h)
 					} else {
 						rest = append(rest, h)
 					}
 				}
+				// the very same title first among the best
+				sort.SliceStable(best, func(i, j int) bool {
+					return sameTitle(q.title, best[i].c.Title) && !sameTitle(q.title, best[j].c.Title)
+				})
 				st.hits = append(best, rest...)
 				switch {
 				case err != nil && len(st.hits) == 0:
-					st.status = "MusicBrainz didn't answer · " + iaErrText(err) + " · press to retry"
+					st.status = "No answer · " + iaErrText(err) + " · press to retry"
 					logMsg("Covers: " + a.Name + ": " + err.Error())
 				case len(st.hits) == 0 && manual:
-					st.status = "No results · MusicBrainz has nothing for these words"
+					st.status = "No results · nothing found for these words"
 				case len(st.hits) == 0:
 					st.status = "No results · edit the search above and try other words"
 				}
@@ -285,14 +322,14 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 			return
 		}
 		if h.state == "none" {
-			st.status = "“" + h.g.Title + "” has no cover image"
+			st.status = "“" + h.c.Title + "” has no cover image"
 			ui.refreshView(v)
 			return
 		}
 		st.getting, st.status = h, ""
 		ui.refreshView(v)
 		go func() {
-			data, err := caaFront(h.g.ID)
+			data, err := h.c.image(true)
 			if err == nil && data != nil {
 				saveCoverFile(a, data)
 			}
@@ -303,13 +340,13 @@ func (ui *IpodUI) coverPickView(a *Album, onSaved func()) *View {
 					st.status = "Cover not downloaded · " + iaErrText(err)
 				case data == nil:
 					h.state = "none"
-					st.status = "“" + h.g.Title + "” has no cover image"
+					st.status = "“" + h.c.Title + "” has no cover image"
 				default:
 					ui.setAlbumCover(a, data)
 					if err := ui.app.saveLibraryJSON(); err != nil {
 						logMsg("Covers: saving the library: " + err.Error())
 					}
-					logMsg(fmt.Sprintf("Covers: %q: chose %q by %q (%s)", a.Name, h.g.Title, h.g.artist(), h.g.ID))
+					logMsg(fmt.Sprintf("Covers: %q: chose %q by %q (%s %s)", a.Name, h.c.Title, h.c.Artist, h.c.Source, h.c.ID+h.c.Full))
 					if onSaved != nil {
 						onSaved()
 					}

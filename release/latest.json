@@ -1,8 +1,8 @@
 {
-  "version": "0.39",
-  "path": "release/knullipod-v0.39-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.39-knulli.zip",
-  "sha256": "f6a80f07f8d054eb0b8e3b178544561e74986472016ebea75a3af2003ccedfef",
-  "size": 14521656,
-  "notes": "Search fields, YouTube loading progress"
+  "version": "0.40",
+  "path": "release/knullipod-v0.40-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.40-knulli.zip",
+  "sha256": "6bbb9589ef6fb06dfa0a6e7daf38442c5397f27a709110875698833383bb7446",
+  "size": 14535480,
+  "notes": "Covers from iTunes, Deezer and Wikipedia too (PR #1)"
 }

@@ -2,16 +2,19 @@ package main
 
 // ij_covers.go — Settings → Library → Missing Covers → Search All Automatically: covers for the
 // albums that have none, from the Cover Art Archive (coverartarchive.org),
-// found through MusicBrainz.
+// found through MusicBrainz, or else from iTunes, Deezer or Wikipedia
+// (ij_coversources.go).
 //
 // For each album without artwork: a MusicBrainz search for the release
 // group (album title + artist, best matches first), then the release
 // group's front cover from the Cover Art Archive at 1200 px (no huge
 // originals). MusicBrainz allows about one request per second per address
 // with a User-Agent that says who is asking, so requests are spaced by
-// 1.1 s. A cover found is saved as cover.jpg in the album's folder (when
-// the folder holds only that album and has no cover yet) and in the
-// artwork cache; the library is saved at the end.
+// 1.1 s. An album MusicBrainz doesn't have, or has without a cover, is
+// looked for in the other sources, with the same checks. A cover found is
+// saved as cover.jpg in the album's folder (when the folder holds only
+// that album and has no cover yet) and in the artwork cache; the library
+// is saved at the end.
 
 import (
 	"bytes"
@@ -70,12 +73,16 @@ func mbWait() {
 }
 
 func coverGet(u string, timeout time.Duration) (*http.Response, error) {
+	return coverGetAccept(u, "application/json", timeout)
+}
+
+func coverGetAccept(u, accept string, timeout time.Duration) (*http.Response, error) {
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", coverUA)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 	return updateClient(timeout).Do(req)
 }
 
@@ -315,7 +322,7 @@ type albumQuery struct {
 	title      string
 	artists    []string // album artist and track artists, most common first
 	various    bool     // several different track artists (a compilation)
-	soundtrack bool     // the title says so
+	soundtrack bool     // the title says so, or most songs' genre
 }
 
 func newAlbumQuery(a *Album) albumQuery {
@@ -350,13 +357,32 @@ func newAlbumQuery(a *Album) albumQuery {
 	q.various = len(trackArtists) > 2 || !usableArtist(a.Artist)
 	low := strings.ToLower(a.Name)
 	q.soundtrack = strings.Contains(low, "soundtrack") || strings.Contains(low, "o.s.t") || strings.Contains(low, " ost")
+	// game rips and film scores are often tagged by genre only
+	sg := 0
+	for _, t := range a.Tracks {
+		if t != nil && soundtrackGenre(t.Genre) {
+			sg++
+		}
+	}
+	if sg > 0 && sg*2 >= len(a.Tracks) {
+		q.soundtrack = true
+	}
 	return q
 }
 
-// artistOK: the release group's artist is one of ours, or "Various
-// Artists" for a compilation.
-func (q albumQuery) artistOK(g mbGroup) bool {
-	ga := g.artist()
+// soundtrackGenre: "Soundtrack", "Game", "Video Game Music", "OST", "Score"…
+func soundtrackGenre(g string) bool {
+	g = strings.ToLower(strings.TrimSpace(g))
+	if g == "ost" || g == "vgm" {
+		return true
+	}
+	return strings.Contains(g, "soundtrack") || strings.Contains(g, "game") || strings.Contains(g, "score")
+}
+
+// artistOK: the result's artist is one of ours, or "Various Artists" for
+// a compilation.
+func (q albumQuery) artistOK(c coverCand) bool {
+	ga := c.Artist
 	for _, a := range q.artists {
 		if sameArtist(a, ga) {
 			return true
@@ -367,12 +393,12 @@ func (q albumQuery) artistOK(g mbGroup) bool {
 
 // titleOK: the same title; or the same main title (before ":") when the
 // artist matches too, or both are soundtracks.
-func (q albumQuery) titleOK(g mbGroup) bool {
-	if sameTitle(q.title, g.Title) {
+func (q albumQuery) titleOK(c coverCand) bool {
+	if sameTitle(q.title, c.Title) {
 		return true
 	}
-	mainSame := sameTitle(mainTitle(q.title), mainTitle(g.Title)) || sameTitle(mainTitle(q.title), g.Title)
-	return mainSame && (q.artistOK(g) || q.soundtrack && g.soundtrack())
+	mainSame := sameTitle(mainTitle(q.title), mainTitle(c.Title)) || sameTitle(mainTitle(q.title), c.Title)
+	return mainSame && (q.artistOK(c) || q.soundtrack && c.soundtrack)
 }
 
 // mbReleaseGroups returns release group IDs for the album, best first (at
@@ -393,10 +419,11 @@ func mbReleaseGroups(a *Album) ([]string, error) {
 	}
 	check := func(gs []mbGroup, needArtist bool) {
 		for _, g := range gs {
-			if !q.titleOK(g) {
+			c := g.cand()
+			if !q.titleOK(c) {
 				continue
 			}
-			if needArtist && !q.artistOK(g) {
+			if needArtist && !q.artistOK(c) {
 				continue
 			}
 			add(g.ID)
@@ -473,6 +500,22 @@ func caaImage(rgid, size string) ([]byte, error) {
 
 // findCover looks up one album; nil data means no cover was found.
 func findCover(a *Album) ([]byte, error) {
+	data, err := findMBCover(a)
+	if data != nil || err != nil {
+		return data, err
+	}
+	data, from, err := findOtherCover(a)
+	switch {
+	case data != nil:
+		logMsg(fmt.Sprintf("Covers: %q by %q: from %s", a.Name, a.Artist, from))
+	case err == nil:
+		logMsg(fmt.Sprintf("Covers: %q by %q: not in iTunes, Deezer or Wikipedia either", a.Name, a.Artist))
+	}
+	return data, err
+}
+
+// findMBCover: the cover from MusicBrainz and the Cover Art Archive.
+func findMBCover(a *Album) ([]byte, error) {
 	ids, err := mbReleaseGroups(a)
 	if err != nil {
 		return nil, err
@@ -722,7 +765,7 @@ func (cv *CoverView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	if j == nil {
 		n := len(ui.missingCovers())
 		line1 = fmt.Sprintf("%d %s without a cover", n, pluralize(n, "album", "albums"))
-		line2 = "From the Cover Art Archive · needs Wi-Fi"
+		line2 = "From MusicBrainz, iTunes, Deezer, Wikipedia · needs Wi-Fi"
 		if n == 0 {
 			line1, button = "Every album has a cover", "Done"
 		}
