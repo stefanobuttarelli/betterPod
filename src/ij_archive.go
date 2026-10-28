@@ -504,9 +504,18 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 			if g != "MP3" {
 				label += " (lossless)"
 			}
+			sub := fmt.Sprintf("%d %s · %s", len(fs), pluralize(len(fs), "track", "tracks"), formatBytes(size))
+			// some already downloaded (an earlier download stopped): resume
+			switch have, left := iaHave(it, fs); {
+			case have == len(fs):
+				label, sub = g+" downloaded", fmt.Sprintf("All %d %s are in your library · press to check again", len(fs), pluralize(len(fs), "track", "tracks"))
+			case have > 0:
+				label = "Resume " + g + " download"
+				sub = fmt.Sprintf("%d of %d %s left · %s", len(fs)-have, len(fs), pluralize(len(fs), "track", "tracks"), formatBytes(left))
+			}
 			g := g
 			items = append(items, Item{Label: label,
-				Sublabel: fmt.Sprintf("%d %s · %s", len(fs), pluralize(len(fs), "track", "tracks"), formatBytes(size)),
+				Sublabel: sub,
 				OnSelect: func() { ui.startIADownload(it, g, it.Groups[g]) }})
 		}
 		// the track list shows the first format there is (lossless first)
@@ -578,6 +587,9 @@ type iaDownload struct {
 	err      string
 	finished bool
 	cancel   chan struct{}
+	retry    string   // while waiting to try again: why, and which try
+	failed   []string // tracks skipped after every try failed
+	lastErr  string
 }
 
 var iaCur *iaDownload
@@ -616,16 +628,35 @@ func freeBytes(dir string) int64 {
 	return int64(st.Bavail) * int64(st.Bsize)
 }
 
+// iaDir: the folder an item is downloaded to.
+func iaDir(it *iaItem) string {
+	creator := it.Creator
+	if creator == "" {
+		creator = "Unknown Artist"
+	}
+	return filepath.Join(musicRoot(), "Internet Archive", safeName(creator), safeName(it.Title))
+}
+
+// iaHave: how many of files are already downloaded, and the bytes left.
+func iaHave(it *iaItem, files []iaFile) (have int, left int64) {
+	dir := iaDir(it)
+	for _, f := range files {
+		dst := filepath.Join(dir, safeName(filepath.Base(f.Name)))
+		if st, err := os.Stat(dst); err == nil && (f.Size == 0 || st.Size() == f.Size) {
+			have++
+		} else {
+			left += f.Size
+		}
+	}
+	return have, left
+}
+
 func (ui *IpodUI) startIADownload(it *iaItem, format string, files []iaFile) {
 	if iaCur != nil && !iaCur.finished {
 		ui.showView(ui.iaDownloadView(), "")
 		return
 	}
-	creator := it.Creator
-	if creator == "" {
-		creator = "Unknown Artist"
-	}
-	dir := filepath.Join(musicRoot(), "Internet Archive", safeName(creator), safeName(it.Title))
+	dir := iaDir(it)
 	d := &iaDownload{item: it, files: files, format: format, dir: dir, cancel: make(chan struct{}), state: "Starting…"}
 	for _, f := range files {
 		d.total += f.Size
@@ -637,10 +668,14 @@ func (ui *IpodUI) startIADownload(it *iaItem, format string, files []iaFile) {
 		ui.post(func() {
 			d.mu.Lock()
 			d.finished = true
-			if err != nil {
-				d.err = iaErrText(err)
-				d.state = "Download stopped"
-			} else {
+			switch {
+			case errors.Is(err, errIACancelled):
+				d.err, d.state = "Cancelled", "Download stopped"
+			case err != nil:
+				d.err, d.state = err.Error(), "Download stopped"
+			case len(d.failed) > 0:
+				d.state = "Added to your library"
+			default:
 				d.state = "Added to your library"
 			}
 			d.mu.Unlock()
@@ -660,8 +695,25 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		return fmt.Errorf("Not enough space (%s free)", formatBytes(fb))
 	}
 	client := updateClient(0)
-	get := func(name string, dst string, count bool) error {
+	// get downloads one file into dst.part and renames it at the end. A
+	// .part left by an earlier attempt is continued (Range) when the server
+	// allows it. base is d.done before this file, for the progress.
+	get := func(name string, dst string, count bool, base int64) error {
 		u := iaBase() + "/download/" + url.PathEscape(d.item.ID) + "/" + escapePath(name)
+		part := dst + ".part"
+		var have int64
+		if st, err := os.Stat(part); err == nil {
+			have = st.Size()
+		}
+		setDone := func(n int64) {
+			if count {
+				d.mu.Lock()
+				d.done = base + n
+				d.mu.Unlock()
+				ui.post(func() { ui.dirty = true })
+			}
+		}
+		setDone(have)
 		// a connection that stops sending for iaStall is dropped (the
 		// request is cancelled, the read fails)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -671,29 +723,49 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		defer watchdog.Stop()
 		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 		req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+		if have > 0 {
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			if stalled.Load() {
-				return errors.New("Connection stalled")
+				return &iaRetry{msg: "Connection stalled"}
 			}
-			return err
+			return &iaRetry{msg: iaErrText(err)}
 		}
 		defer resp.Body.Close()
-		if resp.StatusCode != 200 {
-			return fmt.Errorf("archive.org answered %d", resp.StatusCode)
+		flags := os.O_WRONLY | os.O_CREATE
+		switch {
+		case resp.StatusCode == 206 && have > 0:
+			flags |= os.O_APPEND // continue the .part
+		case resp.StatusCode == 200:
+			flags |= os.O_TRUNC // from the start
+			have = 0
+			setDone(0)
+		case resp.StatusCode == 416 && have > 0:
+			// the .part is already whole
+			return os.Rename(part, dst)
+		case resp.StatusCode == 429 || resp.StatusCode >= 500:
+			r := &iaRetry{msg: fmt.Sprintf("archive.org answered %d", resp.StatusCode)}
+			if sec, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && sec > 0 {
+				r.after = time.Duration(min(sec, 120)) * time.Second
+			}
+			return r
+		default:
+			return fmt.Errorf("archive.org answered %d (%s)", resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
-		part := dst + ".part"
-		out, err := os.Create(part)
+		out, err := os.OpenFile(part, flags, 0644)
 		if err != nil {
 			return err
 		}
 		buf := make([]byte, 64<<10)
+		got := have
 		for {
 			select {
 			case <-d.cancel:
 				out.Close()
 				os.Remove(part)
-				return errors.New("Cancelled")
+				return errIACancelled
 			default:
 			}
 			n, rerr := resp.Body.Read(buf)
@@ -701,26 +773,20 @@ func (d *iaDownload) run(ui *IpodUI) error {
 				watchdog.Reset(iaStall)
 				if _, err := out.Write(buf[:n]); err != nil {
 					out.Close()
-					os.Remove(part)
-					return err
+					return err // the card is full or failing: not retried
 				}
-				if count {
-					d.mu.Lock()
-					d.done += int64(n)
-					d.mu.Unlock()
-					ui.post(func() { ui.dirty = true })
-				}
+				got += int64(n)
+				setDone(got)
 			}
 			if rerr == io.EOF {
 				break
 			}
 			if rerr != nil {
-				out.Close()
-				os.Remove(part)
+				out.Close() // the .part stays, the next attempt continues it
 				if stalled.Load() {
-					return errors.New("Connection stalled")
+					return &iaRetry{msg: "Connection stalled"}
 				}
-				return rerr
+				return &iaRetry{msg: iaErrText(rerr)}
 			}
 		}
 		if err := out.Close(); err != nil {
@@ -728,13 +794,48 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		}
 		return os.Rename(part, dst)
 	}
+	// getRetry: get, tried again after a pause when archive.org is busy or
+	// the connection drops (a .part is continued, not started over)
+	getRetry := func(name, dst string, count bool, base int64, title string) error {
+		for attempt := 1; ; attempt++ {
+			err := get(name, dst, count, base)
+			var r *iaRetry
+			if !errors.As(err, &r) {
+				return err
+			}
+			if attempt >= iaAttempts {
+				return errors.New(r.msg)
+			}
+			wait := r.after
+			if wait == 0 {
+				wait = time.Duration(min(3<<(attempt-1), 60)) * time.Second // 3, 6, 12, 24, 48, 60 s
+			}
+			logMsg(fmt.Sprintf("Internet Archive: %s: %s, trying again in %v (%d/%d)", name, r.msg, wait, attempt, iaAttempts))
+			for end := time.Now().Add(wait); time.Now().Before(end); {
+				left := int(time.Until(end).Seconds() + 0.99)
+				d.mu.Lock()
+				d.retry = fmt.Sprintf("%s · retrying in %d s (%d/%d)", r.msg, left, attempt+1, iaAttempts)
+				d.mu.Unlock()
+				ui.post(func() { ui.dirty = true })
+				select {
+				case <-d.cancel:
+					return errIACancelled
+				case <-time.After(250 * time.Millisecond):
+				}
+			}
+			d.mu.Lock()
+			d.retry = ""
+			d.mu.Unlock()
+		}
+	}
 	// the cover first (best effort), so the album shows with its art
 	if c := filepath.Join(d.dir, "cover.jpg"); !fileExists(c) && d.item.Cover != "" {
-		_ = get(d.item.Cover, c, false)
+		_ = get(d.item.Cover, c, false, 0)
 	}
 	for i, f := range d.files {
 		d.mu.Lock()
 		d.index, d.state = i, f.Title
+		base := d.done
 		d.mu.Unlock()
 		dst := filepath.Join(d.dir, safeName(filepath.Base(f.Name)))
 		if st, err := os.Stat(dst); err == nil && (f.Size == 0 || st.Size() == f.Size) {
@@ -743,14 +844,53 @@ func (d *iaDownload) run(ui *IpodUI) error {
 			d.mu.Unlock()
 			continue // already there
 		}
-		if err := get(f.Name, dst, true); err != nil {
+		err := getRetry(f.Name, dst, true, base, f.Title)
+		d.mu.Lock()
+		d.retry = ""
+		d.mu.Unlock()
+		switch {
+		case err == nil:
+		case errors.Is(err, errIACancelled):
 			return err
+		case isDiskErr(err):
+			return err // no point going on
+		default:
+			// this track failed: note it and go on with the others
+			logMsg("Internet Archive: " + f.Name + ": " + err.Error())
+			d.mu.Lock()
+			d.failed = append(d.failed, f.Title)
+			d.lastErr = err.Error()
+			d.done = base + f.Size
+			d.mu.Unlock()
 		}
 	}
 	d.mu.Lock()
 	d.index = len(d.files)
 	d.mu.Unlock()
 	return nil
+}
+
+// iaAttempts: how many times a file is tried before it is skipped.
+const iaAttempts = 6
+
+// iaRetry: a failure worth trying again (busy server, dropped connection).
+type iaRetry struct {
+	msg   string
+	after time.Duration // Retry-After
+}
+
+func (r *iaRetry) Error() string { return r.msg }
+
+var errIACancelled = errors.New("Cancelled")
+
+// isDiskErr: writing to the card failed (full, read-only, damaged).
+func isDiskErr(err error) bool {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return true
+	}
+	var le *os.LinkError
+	return errors.As(err, &le)
 }
 
 // escapePath escapes each segment of a file path inside an item.
@@ -838,6 +978,9 @@ func (dv *IADownloadView) progress() float64 {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.finished && d.err == "" {
+		if n := len(d.files); n > 0 && len(d.failed) > 0 {
+			return float64(n-len(d.failed)) / float64(n) // the tracks that made it
+		}
 		return 1
 	}
 	if d.total > 0 {
@@ -863,6 +1006,20 @@ func (dv *IADownloadView) Animating(now time.Time) bool {
 	return false
 }
 
+// canRetry: the download ended with tracks missing (not cancelled).
+func (dv *IADownloadView) canRetry() bool {
+	d := iaCur
+	if d == nil {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.finished && (len(d.failed) > 0 || d.err != "" && d.err != "Cancelled")
+}
+
+// iaHintY: the line above the button (CSS px).
+const iaHintY = 160.0
+
 func (dv *IADownloadView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 
 func (dv *IADownloadView) OnCenter(ui *IpodUI) {
@@ -875,6 +1032,17 @@ func (dv *IADownloadView) OnCenter(ui *IpodUI) {
 	fin := d.finished
 	d.mu.Unlock()
 	if fin {
+		if dv.canRetry() {
+			// again: the tracks already there are skipped, a .part is
+			// continued
+			d.mu.Lock()
+			it, format, files := d.item, d.format, d.files
+			d.mu.Unlock()
+			iaCur = nil
+			ui.hideView()
+			ui.startIADownload(it, format, files) // a fresh download view
+			return
+		}
 		ui.hideView()
 		return
 	}
@@ -897,6 +1065,7 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	title, creator := d.item.Title, d.item.Creator
 	state, errs, fin := d.state, d.err, d.finished
 	idx, n, done, total, format := d.index, len(d.files), d.done, d.total, d.format
+	retry, failed, lastErr := d.retry, len(d.failed), d.lastErr
 	d.mu.Unlock()
 	center := func(f font.Face, s string, y float64, c Col) {
 		s = ellipsize(f, s, (wCSS-40)*DPR)
@@ -921,21 +1090,27 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	if creator != "" {
 		center(face(W500, 13), creator, 42+a13, th.sub)
 	}
-	status := ""
+	status, detail := "", ""
 	switch {
+	case fin && errs == "" && failed > 0:
+		status = fmt.Sprintf("%d of %d %s added · %d failed", n-failed, n, pluralize(n, "track", "tracks"), failed)
+		detail = lastErr
 	case fin && errs == "":
 		status = fmt.Sprintf("%s · %d %s · %s", state, n, pluralize(n, "track", "tracks"), format)
 	case fin:
-		status = state + ": " + errs
+		status, detail = state, errs
 	default:
 		status = fmt.Sprintf("Track %d of %d · %s", min(idx+1, n), n, state)
+		detail = retry
 	}
 	center(face(W600, 13), status, 76+a13, th.text)
 	eta := ""
-	if !fin {
+	if !fin && retry == "" {
 		eta = dv.eta(now, done, total)
 	}
-	if total > 0 && !fin {
+	if detail != "" {
+		center(face(W500, 12), detail, 94+a12, th.sub)
+	} else if total > 0 && !fin {
 		line := fmt.Sprintf("%s of %s · %s", formatBytes(done), formatBytes(total), format)
 		if eta != "" && dv.speed > 0 && now.Sub(dv.movedAt) <= 4*time.Second {
 			line += " · " + formatSpeed(dv.speed)
@@ -954,6 +1129,10 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	label := "Cancel"
 	if fin {
 		label = "Done"
+		if dv.canRetry() {
+			label = "Try Again"
+			center(face(W500, 12), "Tracks already downloaded are kept · B to close", iaHintY+a12, th.sub)
+		}
 	}
 	f := face(W700, 14)
 	bh := 28.0

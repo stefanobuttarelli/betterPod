@@ -1,8 +1,8 @@
 {
-  "version": "0.32.2",
-  "path": "release/knullipod-v0.32.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32.2-knulli.zip",
-  "sha256": "ef68413209285f9eed8d4a57ffd2e96cf8c3fab97a5b20361ce3fe4f476c3f1e",
-  "size": 14338580,
-  "notes": "Internet Archive downloads: time left and speed"
+  "version": "0.32.3",
+  "path": "release/knullipod-v0.32.3-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.32.3-knulli.zip",
+  "sha256": "7805fbd4606518ad36893ef62966bd3a9aa00bf12fe232230bf6912b60754023",
+  "size": 14343398,
+  "notes": "Internet Archive: retries, resume, skipped tracks"
 }

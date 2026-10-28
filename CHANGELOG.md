@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.32.3 (2026-10-28)
+
+### Fixed
+- **Internet Archive downloads no longer stop at the first error.** A long album could stop halfway ("Download stopped: archive.org answered…") because one file failed once.
+  - **Retries:** when archive.org is busy (429, 5xx) or the connection drops or stalls, the file is tried again after a pause (3, 6, 12, 24, 48 s, or what archive.org asks), up to 6 times. The screen shows why and when ("archive.org answered 503 · retrying in 6 s (2/6)").
+  - **Resume within a file:** a file cut off halfway continues from where it stopped (HTTP Range), instead of starting over.
+  - **Skipped tracks:** a track that still fails (or is missing, 404) is skipped and the others go on. At the end: "170 of 173 tracks added · 3 failed", with **Try Again**, which downloads only what is missing (B closes).
+  - **Disk errors** (card full or not writable) still stop the download at once.
+
+### Added
+- **Resume an album later.** An item page whose album is partly downloaded offers "Resume FLAC download · 113 of 173 tracks left", and only the missing tracks are downloaded. This works for albums downloaded in part by earlier versions too. A complete album shows "FLAC downloaded".
+
 ## v0.32.2 (2026-10-28)
 
 ### Added
