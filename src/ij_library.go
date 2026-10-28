@@ -202,18 +202,26 @@ func sortedArtists(in []*Artist) []*Artist {
 // mediaOptions: the long-press sheet of songs and albums.
 func (ui *IpodUI) mediaOptions(tracks []*Track) []SheetOption {
 	return []SheetOption{
-		{Label: "Play Next", OnSelect: func() { ui.enqueue(tracks, true) }},
-		{Label: "Play Later", OnSelect: func() { ui.enqueue(tracks, false) }},
+		{Label: "Play Next", OnSelect: func() { ui.showToast(ui.enqueue(tracks, true)) }},
+		{Label: "Add to End of Queue", OnSelect: func() { ui.showToast(ui.enqueue(tracks, false)) }},
 	}
 }
 
-func (ui *IpodUI) enqueue(tracks []*Track, next bool) {
+// enqueue adds tracks after the current song (next) or at the end of the
+// queue; with nothing playing they start at once. It returns what happened,
+// for the toast.
+func (ui *IpodUI) enqueue(tracks []*Track, next bool) string {
 	app := ui.app
 	q := app.Queue
 	if q == nil || len(q.Tracks) == 0 || app.Playing.Track == nil {
 		ui.playSong(tracks, 0, false)
-		return
+		return "Playing"
 	}
+	msg := "Playing Next"
+	if !next {
+		msg = "Added to Queue"
+	}
+	defer ui.refreshBuilt()
 	if q.Shuffle && len(q.ShuffleOrder) > 0 {
 		// shuffled: new tracks go in the shuffle order after the current one
 		base := len(q.Tracks)
@@ -227,13 +235,14 @@ func (ui *IpodUI) enqueue(tracks []*Track, next bool) {
 			ins = append(ins, base+i)
 		}
 		q.ShuffleOrder = append(q.ShuffleOrder[:pos], append(ins, q.ShuffleOrder[pos:]...)...)
-		return
+		return msg
 	}
 	pos := len(q.Tracks)
 	if next {
 		pos = q.CurrentIndex + 1
 	}
 	q.Tracks = append(q.Tracks[:pos], append(append([]*Track{}, tracks...), q.Tracks[pos:]...)...)
+	return msg
 }
 
 // gamesView: Brick, Solitaire and Weather.

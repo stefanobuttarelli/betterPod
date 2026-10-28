@@ -90,11 +90,11 @@ The first start scans the music folder. Later starts load the saved library inst
 | Button | On the iPod | Action |
 |---|---|---|
 | D-pad or either stick | Click wheel | Down/right = forward, up/left = back; hold to keep scrolling |
-| A, or a stick click | Centre button | Select; hold 0.5 s for options (Play Next / Play Later) |
+| A, or a stick click | Centre button | Select; hold 0.5 s for options (Play Next / Add to End of Queue) |
 | B | MENU | Back; hold 0.5 s to return to the main menu |
 | START or X | Play/Pause | Play/Pause |
 | L / R | ⏮ / ⏭ | Previous / next track |
-| Y | | Options for the selected song or album |
+| Y | | Queue the selected song or album: Play Next or Add to End of Queue (in Cover Flow too) |
 | SELECT | Hold switch | Lock/unlock the controls and dim the screen; the music keeps playing |
 | MENU (function key) | | Tap: screen off/on. Hold 5 s: quit |
 | SELECT + START | | Quit |
@@ -102,7 +102,7 @@ The first start scans the music folder. Later starts load the saved library inst
 - **Now Playing:**
   - up/down change the volume;
   - the centre button switches to the scrubber, and then up/down seek.
-- **Search keyboard:** a QWERTY grid.
+- **Search keyboard:** a QWERTY grid. The keys with a shortcut show its button: X space, B delete, Y 123, START search.
   - the d-pad moves between the keys;
   - A types the selected key, B deletes, holding B closes the keyboard;
   - X types a space, Y switches to 123 (digits and symbols);

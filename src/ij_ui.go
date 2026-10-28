@@ -34,6 +34,7 @@ type IpodUI struct {
 	keyboard *Keyboard
 
 	headerTitle string
+	hdrActive   bool   // the header being drawn is the top screen's (the song ticker)
 	prevFB      []byte // last presented frame (only changed rows are uploaded)
 	noMarquee   bool
 	frameNo     int
@@ -482,8 +483,22 @@ func (ui *IpodUI) centerLongPress() {
 	if len(ui.sheets) > 0 {
 		return
 	}
+	// Cover Flow: the album in front, or the song on its back
+	if cf := ui.cover; cf != nil {
+		if cf.exiting || cf.playing || len(cf.albums) == 0 {
+			return
+		}
+		if cf.selected != nil && cf.back != nil && len(cf.back.Items) > 0 {
+			it := cf.back.Items[cf.back.Index]
+			ui.showSheetTitled(it.Label, ui.mediaOptions(it.Tracks[it.TrackIdx:it.TrackIdx+1]))
+		} else if cf.selected == nil {
+			al := cf.albums[cf.active]
+			ui.showSheetTitled(al.Name, ui.mediaOptions(albumTracks(al)))
+		}
+		return
+	}
 	v := ui.topScreen()
-	if lp, ok := v.Custom.(interface{ OnLongPress(*IpodUI) }); ok && ui.cover == nil && ui.keyboard == nil {
+	if lp, ok := v.Custom.(interface{ OnLongPress(*IpodUI) }); ok && ui.keyboard == nil {
 		lp.OnLongPress(ui)
 		ui.dirty = true
 		return
@@ -493,7 +508,11 @@ func (ui *IpodUI) centerLongPress() {
 	}
 	it := v.Items[v.Index]
 	if len(it.LongPress) > 0 {
-		ui.showSheet(it.LongPress)
+		title := ""
+		if it.Tracks != nil || it.Album != nil {
+			title = it.Label // what the options are about
+		}
+		ui.showSheetTitled(title, it.LongPress)
 	}
 }
 
@@ -681,7 +700,7 @@ func (ui *IpodUI) animating(now time.Time) bool {
 	if ui.kb.animating(ui) {
 		return true
 	}
-	if ui.miniAnimating(now) {
+	if ui.miniAnimating(now) || tickerAnimating(now) || toastAnimating() {
 		return true
 	}
 	return !ui.noMarquee && ui.listMarquee()
@@ -783,6 +802,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		} else {
 			l := newCanvasCached(&coverLayer, 640, 480)
 			fillRect(l, 0, 0, 640, 480, th.bg)
+			ui.hdrActive = false
 			ui.drawHeader(l, 0, 640, now)
 			ui.renderCoverFlow(l, now)
 			if op >= 1 {
@@ -804,6 +824,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	lx := ui.leftX.Get(now)
 	leftPx := int(lx*320 - 0.5)
 	if lx > -1 {
+		ui.hdrActive = len(ui.full) == 0
 		ui.drawHeader(fb, leftPx, 320, now)
 		ui.drawStack(ui.split, KindSplit, leftPx, 320, now)
 		// panel shadow over the preview
@@ -823,6 +844,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		fullPx := int(fx*640 + 0.5)
 		if fullPx < 640 {
 			fillRect(fb, fullPx, 0, 640-fullPx, 480, th.bg)
+			ui.hdrActive = len(ui.full) > 0
 			ui.drawHeader(fb, fullPx, 640, now)
 			ui.drawStack(ui.full, KindFull, fullPx, 640, now)
 		}
@@ -833,6 +855,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 
 	// search keyboard
 	ui.drawKeyboard(fb, now)
+	ui.drawToast(fb, now)
 
 	// hold badge and volume overlay
 	ui.drawHoldBadge(fb, now)
@@ -953,8 +976,7 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		}
 		drawText(sub, f, clock, cx*DPR, (1.5+asc)*DPR, th.headerText)
 	}
-	title := ellipsize(f, ui.headerTitle, maxW*DPR)
-	drawText(sub, f, title, tx*DPR, (1.5+asc)*DPR, th.headerText)
+	ui.drawHeaderTitle(sub, ui.headerTitle, tx, maxW, ui.hdrActive, now)
 }
 
 // drawBattery: ipod.js battery (shell, fill by level, bolt/plug when charging).
@@ -1160,6 +1182,7 @@ func (ui *IpodUI) Run() {
 		}
 		ui.autoCheckTick(now)
 		ui.followPause(now)
+		ui.followTicker(now)
 		ui.tickOverlays(now)
 		ui.checkLongPress(now)
 		ui.checkRepeat(now)

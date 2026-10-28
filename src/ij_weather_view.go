@@ -259,9 +259,8 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 		cond = wxLabel(f.Current.Code)
 		line = fmt.Sprintf("Feels %s · Humidity %d%% · %s %s", wxTemp(f.Current.Feels), int(f.Current.Humidity), compass(f.Current.WindDir), wxWind(f.Current.Wind))
 	} else {
-		dt, _ := time.Parse("2006-01-02", f.Daily.Time[i])
 		big = wxTemp(f.Daily.Max[i])
-		cond = wxHeroDays[dt.Weekday()] + " · " + wxLabel(f.Daily.Code[i])
+		cond = wxLabel(f.Daily.Code[i])
 		var parts []string
 		if r := f.rain(i); r >= 0 {
 			parts = append(parts, fmt.Sprintf("Rain %d%%", int(r)))
@@ -324,7 +323,7 @@ func (fv *ForecastView) drawLayer(dst *image.RGBA, kind wxKind, day bool, local 
 		lab := "TODAY"
 		if j > 0 {
 			dt, _ := time.Parse("2006-01-02", f.Daily.Time[j])
-			lab = strings.ToUpper(dt.Format("Mon"))
+			lab = strings.ToUpper(dt.Format("Mon")) + " " + dt.Format("2")
 		}
 		lw := textWidth(dayF, lab) / d
 		drawText(strip, dayF, lab, (tx+(wxTileW-lw)/2)*d, (ty+13)*d, hex("#3b4f6b"))

@@ -72,7 +72,7 @@ func kbBottomRow(layer int) []kbDef {
 	if layer == 1 {
 		lab = "ABC"
 	}
-	return []kbDef{{lab, kbLayer, 45}, {"space", kbSpace, 150}, {"⌫", kbDelete, 45}, {"Search", kbEnter, 58}}
+	return []kbDef{{lab, kbLayer, 48}, {"space", kbSpace, 132}, {"⌫", kbDelete, 46}, {"Search", kbEnter, 72}}
 }
 
 // Keyboard is the on-screen keyboard and the text it edits.
@@ -346,7 +346,17 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 			if f == sf {
 				size = 11
 			}
-			drawText(p, f, label, (x+(k.w-tw)/2)*d, (y+kbKeyH/2+lineCapHeight(size)/2)*d, tc)
+			// the console button that does the same, in a little square
+			btn := kbButtonFor(k.act)
+			bw := 0.0
+			if btn != "" {
+				bw = kbBadgeW(btn) + 4
+			}
+			lx := x + (k.w-tw-bw)/2
+			drawText(p, f, label, lx*d, (y+kbKeyH/2+lineCapHeight(size)/2)*d, tc)
+			if btn != "" {
+				kbBadge(p, btn, lx+tw+4, y+kbKeyH/2, sel)
+			}
 		}
 	}
 	y := 240 - kbPanelH*v
@@ -366,4 +376,52 @@ func upperASCII(s string) string {
 		}
 	}
 	return string(b)
+}
+
+// kbButtonFor: the button that is a shortcut for an action key (as labelled
+// on the console: X top, Y left, B bottom).
+func kbButtonFor(a kbAction) string {
+	switch a {
+	case kbSpace:
+		return "X"
+	case kbDelete:
+		return "B"
+	case kbLayer:
+		return "Y"
+	case kbEnter:
+		return "START"
+	}
+	return ""
+}
+
+func kbBadgeW(btn string) float64 {
+	if len(btn) == 1 {
+		return 12
+	}
+	return textWidth(face(W700, 7), btn)/DPR + 7
+}
+
+// kbBadge draws the button's label in a small rounded square (a pill for
+// START), centred on cy.
+func kbBadge(p *image.RGBA, btn string, x, cy float64, sel bool) {
+	d := DPR
+	w := kbBadgeW(btn)
+	h := 12.0
+	y := cy - h/2
+	bg, fg := Col{255, 255, 255, 0.92}, rgb(70, 74, 80)
+	if sel {
+		fg = rgb(36, 98, 156)
+	}
+	r := 3.0
+	if len(btn) > 1 {
+		r = h / 2
+	}
+	fillRoundedGradient(p, x*d, y*d, (x+w)*d, (y+h)*d, r*d, []GradStop{{0, bg}, {1, bg}}, 1)
+	size := 9.0
+	if len(btn) > 1 {
+		size = 7
+	}
+	f := face(W700, size)
+	tw := textWidth(f, btn) / d
+	drawText(p, f, btn, (x+(w-tw)/2)*d, (cy+lineCapHeight(size)/2)*d, fg)
 }

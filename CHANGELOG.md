@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.34 (2026-10-28)
+
+### Added
+- **The song in the header.** When a song starts playing (a new song, or play after a pause) on a screen without the Now Playing block, the header's title slides up and the song comes in from below, with its little cover, for a few seconds. Then it slides up in turn and the title comes back. A long title ends with "…", clear of the icons.
+- **Y queues songs.** On a song or an album (also in Cover Flow, in front or on the back of a cover), Y opens Play Next / Add to End of Queue. A short message confirms it ("Playing Next", "Added to Queue"); with nothing playing, it plays.
+- **Keyboard:** the keys with a button shortcut show it in a little square: space X, delete B, 123 Y, Search START.
+
+### Changed
+- **Option sheets are smaller:** a floating card over the dimmed screen, with what it's about as a title (the song, the album), 32 px options with the selected one in the list's blue, and Cancel on its own card.
+- **Weather:** the day tiles show the date ("THU 29", "SUN 1"). The top no longer repeats the weekday.
+
+### Fixed
+- Holding A in Cover Flow opened the options of the list behind it; it now offers the album in front or the song on its back.
+
 ## v0.33.1 (2026-10-28)
 
 ### Changed

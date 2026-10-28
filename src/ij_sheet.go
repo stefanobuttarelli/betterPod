@@ -17,6 +17,7 @@ type SheetOption struct {
 }
 
 type Sheet struct {
+	title   string // what the options are about (a song, an album…)
 	opts    []SheetOption
 	index   int
 	anim    *Anim // 0 shown, 1 hidden below the screen
@@ -25,17 +26,17 @@ type Sheet struct {
 	cacheIx int
 }
 
-// Each option is a 60 CSS px row (a rounded, gradient "button" with a
-// shadowed label), over a dark gradient; the selected option is blue.
-//
-//
-//
-//
+// The sheet is a small floating card at the bottom of the screen, over a
+// dimmed screen: an optional title (what it is about), the options in
+// 32 px rows, and Cancel on a card of its own; the selected option is the
+// list's blue.
 
-func (ui *IpodUI) showSheet(opts []SheetOption) {
+func (ui *IpodUI) showSheet(opts []SheetOption) { ui.showSheetTitled("", opts) }
+
+func (ui *IpodUI) showSheetTitled(title string, opts []SheetOption) {
 	all := append([]SheetOption{}, opts...)
 	all = append(all, SheetOption{Label: "Cancel"})
-	s := &Sheet{opts: all, anim: newAnim(1), cacheIx: -1}
+	s := &Sheet{title: title, opts: all, anim: newAnim(1), cacheIx: -1}
 	for i, o := range all {
 		if o.Selected {
 			s.index = i
@@ -86,45 +87,92 @@ func (s *Sheet) selectCurrent(ui *IpodUI) {
 	}
 }
 
-// heightCSS: 60 CSS px per option plus 16 px of padding.
-func (s *Sheet) heightCSS() float64 { return float64(len(s.opts))*60 + 16 }
-
-// action sheet gradients (ipod.js ActionSheet)
-var (
-	sheetBgGrad     = []GradStop{{0, hex("#bbbcbf")}, {0.1169, hex("#626770")}, {1, hex("#626770")}}
-	sheetOptGrad    = []GradStop{{0, hex("#ffffff")}, {0.4844, hex("#cbccce")}, {1, hex("#dfdfdf")}}
-	sheetOptSelGrad = []GradStop{{0, hex("#707379")}, {0.5, hex("#3b3f46")}, {1, hex("#363c44")}}
+const (
+	sheetRowH   = 32.0
+	sheetTitleH = 26.0
+	sheetMargin = 12.0 // from the sides and the bottom
+	sheetGap    = 7.0  // above Cancel
 )
+
+// heightCSS: the cards, without the bottom margin.
+func (s *Sheet) heightCSS() float64 {
+	h := float64(len(s.opts)-1)*sheetRowH + sheetGap + sheetRowH
+	if s.title != "" {
+		h += sheetTitleH
+	}
+	return h + 4 // the shadow under the last card
+}
+
+func sheetCard(img *image.RGBA, x0, y0, x1, y1 float64) {
+	d := DPR
+	r := 11.0
+	// soft shadow
+	for i, a := range []float64{0.10, 0.07, 0.04} {
+		g := float64(i)
+		fillRoundedGradient(img, (x0-g)*d, (y0+1-g)*d, (x1+g)*d, (y1+2+g)*d, (r+g)*d, []GradStop{{0, rgba(0, 0, 0, a)}, {1, rgba(0, 0, 0, a)}}, 1)
+	}
+	top, bot, edge, hi := hex("#ffffff"), hex("#eceef2"), rgba(0, 0, 0, 0.28), rgba(255, 255, 255, 0.9)
+	if th.dark {
+		top, bot, edge, hi = hex("#3b3e44"), hex("#2b2e33"), rgba(0, 0, 0, 0.7), rgba(255, 255, 255, 0.10)
+	}
+	fillRoundedGradient(img, x0*d, y0*d, x1*d, y1*d, r*d, []GradStop{{0, top}, {1, bot}}, 1)
+	strokeRounded(img, x0*d, y0*d, x1*d, y1*d, r*d, 1.5, edge, 1)
+	fillRect(img, px(x0+r), px(y0)+2, px(x1-x0-2*r), 1, hi)
+}
 
 func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 	if s.cache != nil && s.cacheIx == s.index {
 		return s.cache
 	}
+	d := DPR
 	hCSS := s.heightCSS()
 	img := newCanvas(640, px(hCSS))
-	fillVGradient(img, 0, 0, 640, img.Bounds().Dy(), sheetBgGrad)
-	f := face(W700, 16)
-	lh, asc := lineBox(16)
-	y := 8.0
-	for i, o := range s.opts {
-		// option: margin 4px 19px, border 3px, padding 8px,
-		// border-radius 12px
-		//
-		x0, x1 := 19.0, 301.0
-		y0 := (y + 4 + 3 + 4) * DPR
-		y1 := y0 + (lh+16+6)*DPR
-		grad, border, tc := th.sheetOpt, th.sheetBorder, th.sheetText
-		if i == s.index {
-			grad, border, tc = selGrad, hex("#ececec"), colWhite
-		}
-		fillRoundedGradient(img, x0*DPR, y0, x1*DPR, y1, 24, grad, 1)
-		strokeRounded(img, x0*DPR, y0, x1*DPR, y1, 24, 6, border, 1)
-		tw := textWidth(f, o.Label)
-		tx := 320 - tw/2
-		by := (11+asc)*DPR + y0
-		drawTextShadow(img, f, o.Label, tx, by, tc, th.sheetShadow)
-		y += 60
+	x0, x1 := sheetMargin, 320-sheetMargin
+	sep := rgba(0, 0, 0, 0.09)
+	if th.dark {
+		sep = rgba(255, 255, 255, 0.07)
 	}
+	f := face(W600, 15)
+	fc := face(W700, 15)
+	tf := face(W500, 11)
+	n := len(s.opts) - 1 // without Cancel
+	y := 0.0
+	cardH := float64(n) * sheetRowH
+	if s.title != "" {
+		cardH += sheetTitleH
+	}
+	row := func(i int, ry float64, label string, lf font.Face, first, last bool) {
+		tc := th.text
+		if i == s.index {
+			// the selected option: the list's blue, inset in the card
+			fillRoundedGradient(img, (x0+4)*d, (ry+3)*d, (x1-4)*d, (ry+sheetRowH-3)*d, 8*d, selGrad, 1)
+			tc = colWhite
+		}
+		label = ellipsize(lf, label, (x1-x0-24)*d)
+		tw := textWidth(lf, label)
+		drawText(img, lf, label, 320-tw/2, (ry+sheetRowH/2+lineCapHeight(15)/2)*d, tc)
+		if !last && i != s.index && i+1 != s.index {
+			fillRect(img, px(x0+12), px(ry+sheetRowH)-1, px(x1-x0-24), 1, sep)
+		}
+	}
+	if n > 0 || s.title != "" {
+		sheetCard(img, x0, y, x1, y+cardH)
+		ry := y
+		if s.title != "" {
+			t := ellipsize(tf, s.title, (x1-x0-24)*d)
+			tw := textWidth(tf, t)
+			drawText(img, tf, t, 320-tw/2, (ry+sheetTitleH/2+lineCapHeight(11)/2)*d, th.sub)
+			fillRect(img, px(x0), px(ry+sheetTitleH)-1, px(x1-x0), 1, sep)
+			ry += sheetTitleH
+		}
+		for i := 0; i < n; i++ {
+			row(i, ry, s.opts[i].Label, f, i == 0, i == n-1)
+			ry += sheetRowH
+		}
+		y += cardH + sheetGap
+	}
+	sheetCard(img, x0, y, x1, y+sheetRowH)
+	row(n, y, s.opts[n].Label, fc, true, true)
 	s.cache = img
 	s.cacheIx = s.index
 	return img
@@ -147,15 +195,49 @@ func (ui *IpodUI) drawSheets(dst *image.RGBA, now time.Time) {
 			continue
 		}
 		keep = append(keep, s)
+		// the screen dims behind the sheet
+		fillRect(dst, 0, 0, 640, 480, rgba(0, 0, 0, 0.32*(1-v)))
 		img := s.render(ui)
 		h := img.Bounds().Dy()
-		y := 480 - h + int(float64(h)*1.1*v+0.5)
-		// box-shadow above the sheet
-		prof := boxShadowProfile(8, 1)
-		for i, a := range prof {
-			fillRect(dst, 0, y-1-i, 640, 1, Col{0, 0, 0, a})
-		}
+		rest := 480 - h - px(sheetMargin) + px(4)
+		y := rest + int(float64(480-rest)*v+0.5)
 		blit(dst, img, 0, y, 1)
 	}
 	ui.sheets = keep
+}
+
+// ---- toast: a short confirmation at the bottom ("Playing Next") ----
+
+var toast = struct {
+	text  string
+	a     *Anim
+	until time.Time
+}{a: newAnim(0)}
+
+func (ui *IpodUI) showToast(text string) {
+	toast.text = text
+	toast.until = time.Now().Add(1600 * time.Millisecond)
+	toast.a.To(1, 200*time.Millisecond, easeCSS, 0)
+	ui.dirty = true
+}
+
+func toastAnimating() bool { return toast.a.Running() || toast.a.Target() == 1 }
+
+func (ui *IpodUI) drawToast(dst *image.RGBA, now time.Time) {
+	if toast.a.Target() == 1 && now.After(toast.until) {
+		toast.a.To(0, 250*time.Millisecond, easeCSS, 0)
+	}
+	a := toast.a.Get(now)
+	if a <= 0.001 {
+		return
+	}
+	d := DPR
+	f := face(W600, 13)
+	tw := textWidth(f, toast.text) / d
+	w := tw + 28
+	x0 := 160 - w/2
+	y0 := 240 - miniPlayerH - 14 - 28 + (1-a)*8 // above the Now Playing block
+	fillRoundedGradient(dst, x0*d, y0*d, (x0+w)*d, (y0+28)*d, 14*d, []GradStop{{0, Col{48, 50, 54, 0.9}}, {1, Col{12, 13, 15, 0.9}}}, a)
+	strokeRounded(dst, x0*d, y0*d, (x0+w)*d, (y0+28)*d, 14*d, 1.5, rgba(255, 255, 255, 0.18*a), 1)
+	drawText(dst, f, toast.text, (x0+14)*d, (y0+14+lineCapHeight(13)/2)*d, Col{255, 255, 255, a})
 }
