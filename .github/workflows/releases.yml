@@ -1,0 +1,20 @@
+# A GitHub release, with the CHANGELOG's notes and the zip, for each new
+# version pushed to main.
+name: Releases
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 tools/gh_releases.py
+        env:
+          GH_TOKEN: ${{ github.token }}
