@@ -47,6 +47,7 @@ type QuizGame struct {
 	phase   string // loading, playing, reveal, done, empty
 	started time.Time
 	shownAt time.Time
+	selAt   time.Time // the row the cursor is on since (its title scrolls when long)
 	mu      sync.Mutex
 	closed  bool
 	gen     int // the round's load (a late load of an old round is ignored)
@@ -138,6 +139,7 @@ func (q *QuizGame) next() {
 	}
 	q.rng.Shuffle(len(q.choices), func(i, j int) { q.choices[i], q.choices[j] = q.choices[j], q.choices[i] })
 	q.sel, q.picked, q.gained = 0, -1, 0
+	q.selAt = time.Now()
 	q.phase = "loading"
 	q.shownAt = time.Now()
 	// a part from the middle of the song
@@ -221,6 +223,7 @@ func (q *QuizGame) OnKey(ui *IpodUI, k Key) bool {
 				d = -1
 			}
 			q.sel = (q.sel + d + len(q.choices)) % len(q.choices)
+			q.selAt = time.Now()
 			ui.dirty = true
 		}
 		return true
@@ -247,7 +250,7 @@ func (q *QuizGame) OnCenter(ui *IpodUI) {
 func (q *QuizGame) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 
 func (q *QuizGame) Animating(now time.Time) bool {
-	return q.phase == "playing" || q.phase == "loading" || now.Sub(q.shownAt) < 400*time.Millisecond
+	return q.phase == "playing" || q.phase == "loading" || q.phase == "reveal" || now.Sub(q.shownAt) < 400*time.Millisecond
 }
 
 // ---- drawing ----
@@ -362,7 +365,19 @@ func (q *QuizGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 		if q.phase == "reveal" {
 			ty = y + 8
 		}
-		drawText(dst, tf.f, ellipsize(tf.f, c.Title, rw-28), rx+14, ty+tf.asc, tc)
+		// the row with the cursor (or, after the answer, the right one)
+		// scrolls its title when it is too long
+		live := (q.phase != "reveal" && i == q.sel) || (q.phase == "reveal" && c == q.answer)
+		if live && textWidth(tf.f, c.Title) > rw-28 {
+			since := q.selAt
+			if q.phase == "reveal" {
+				since = q.shownAt
+			}
+			sub := dst.SubImage(image.Rect(int(rx+14), int(y), int(rx+rw-14), int(y+rh))).(*image.RGBA)
+			drawMarquee(sub, tf.f, c.Title, (rx+14)/DPR, (ty+tf.asc)/DPR, (rw-28)/DPR, tc, since, now)
+		} else {
+			drawText(dst, tf.f, ellipsize(tf.f, c.Title, rw-28), rx+14, ty+tf.asc, tc)
+		}
 		if q.phase == "reveal" {
 			drawText(dst, sf.f, ellipsize(sf.f, c.Artist, rw-28), rx+14, y+33+sf.asc, scol)
 		}

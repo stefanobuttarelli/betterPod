@@ -245,7 +245,7 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 	case PrevGames:
 		ui.drawIconPreview(dst, "apps", 96, []previewLine{{"Apps", 16, W500}})
 	case PrevSettings:
-		ui.drawIconPreview(dst, "ipod_logo", 32, []previewLine{{"Settings", 16, W500}})
+		ui.drawIconPreview(dst, "settings_tile", 96, []previewLine{{"Settings", 16, W500}})
 	case PrevBrick:
 		ui.drawImgPreview(dst, brickIcon(), "Brick", "")
 	case PrevSolitaire:

@@ -1,8 +1,8 @@
 {
-  "version": "0.67",
-  "path": "release/betterpod-v0.67-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.67-knulli.zip",
-  "sha256": "5d91bd4b35d7ebc064cb4120ea723d8de3451263d6924769151bc0c168991345",
-  "size": 15507092,
-  "notes": "- Apps \u2192 Puzzles: 12 puzzles from Simon Tatham's collection (Mines, Sudoku, Net, Flood\u2026)\n- X is play / pause again in 2048 (START starts a new game)\n- Apps: 2048 and Guess the Song (0.66)\n- Games is now Apps (0.65)"
+  "version": "0.67.1",
+  "path": "release/betterpod-v0.67.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.67.1-knulli.zip",
+  "sha256": "ac030586dbe6dc6a22bdd875cce75b6793466c52787d95ab5a5d92343925c3e9",
+  "size": 15549676,
+  "notes": "- New betterPod logo and wordmark in About and Software Update\n- Guess the Song: long titles scroll when selected\n- Apps \u2192 Puzzles: 12 puzzles from Simon Tatham's collection (0.67)\n- Apps: 2048 and Guess the Song (0.66)"
 }

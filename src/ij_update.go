@@ -233,11 +233,13 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	}
 
 	// name and state
-	logo := ui.asset("ipod_logo")
+	logo := ui.asset("betterpod_logo")
 	blit(dst, logo, (W-logo.Bounds().Dx())/2, px(14), 1)
 	_, asc16 := lineBox(16)
 	_, asc13 := lineBox(13)
-	center(face(W700, 16), "betterPod", 14+32+8+asc16, th.text)
+	wf := face(W900, 16)
+	ww := textWidth(wf, "better") + textWidth(wf, "Pod")
+	drawWordmark(dst, wf, (float64(W)-ww)/2, (14+32+8+asc16)*DPR)
 	status, sub := "Version "+BETTERPOD_VERSION, ""
 	m := upd.manifest
 	switch upd.state {

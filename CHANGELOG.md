@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.67.1 (2026-10-29)
+
+### Changed
+- **About and Software Update** carry the new betterPod logo and the two-colour wordmark, with the tagline "The mid-2000s music player, reborn on retro handhelds", the site (betterpod.xyz) and the community (r/betterPod).
+  - The credits list Puzzles (Simon Tatham) and 2048 (Gabriele Cirulli), and a note says betterPod is an independent fan project, not affiliated with Apple.
+- The Settings preview shows the new glossy gear.
+
+### Fixed
+- **Guess the Song:** a title too long for its row now scrolls when it is selected (and on the right answer after the reveal), instead of being cut.
+
 ## v0.67 (2026-10-29)
 
 ### Added

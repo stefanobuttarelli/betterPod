@@ -16,6 +16,8 @@ package main
 import (
 	"image"
 	"time"
+
+	"golang.org/x/image/font"
 )
 
 var columnBuf *image.RGBA
@@ -294,4 +296,18 @@ func (ui *IpodUI) setAppleMode(on bool) {
 		}
 	}
 	ui.refreshBuilt()
+}
+
+// drawWordmark: "betterPod", "better" in the text colour and "Pod" in the
+// selection blue (as on the logo and the community's banners), from x
+// at baseline y (device px); it returns its width.
+func drawWordmark(dst *image.RGBA, f font.Face, x, y float64) float64 {
+	drawText(dst, f, "better", x, y, th.text)
+	w := textWidth(f, "better")
+	blue := Col{47, 134, 208, 1}
+	if th.dark {
+		blue = Col{88, 186, 255, 1}
+	}
+	drawText(dst, f, "Pod", x+w, y, blue)
+	return w + textWidth(f, "Pod")
 }
