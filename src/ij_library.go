@@ -524,7 +524,7 @@ func (ui *IpodUI) refreshBuilt() {
 // Knulli's or Onion's menu comes back).
 func (ui *IpodUI) quitView() *View {
 	return &View{ID: "quit", Title: "Quit betterPod", Kind: KindSplit, Items: []Item{{
-		Label: "Quit Now", Sublabel: "The music stops", NoArrow: true, Preview: PrevSettings,
+		Label: "Quit Now", NoArrow: true, Preview: PrevSettings,
 		OnSelect: func() {
 			logMsg("Quit from Settings")
 			ui.app.Running = false

@@ -1,8 +1,8 @@
 {
-  "version": "0.77",
-  "path": "release/betterpod-v0.77-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77-onion.zip",
-  "sha256": "daeaab39040e6df25c865cc7a29fc083499a1553da043bb1bcdab8fc37164beb",
-  "size": 28278176,
-  "notes": "- Settings reordered: few choices in the right column, more on a page of their own\n- Software Update second, under About\n- Screensaver and Database are pages\n- Quit betterPod: one row, A quits\n- A row's value never cuts its label"
+  "version": "0.77.1",
+  "path": "release/betterpod-v0.77.1-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77.1-onion.zip",
+  "sha256": "cfbed3508614c35cd604d60e6df6c3a4491653416a256807037149e3947a20ed",
+  "size": 28278265,
+  "notes": "- Quit betterPod: Quit Now without a second line"
 }

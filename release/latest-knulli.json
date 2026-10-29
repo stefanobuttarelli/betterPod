@@ -1,8 +1,8 @@
 {
-  "version": "0.77",
-  "path": "release/betterpod-v0.77-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77-knulli.zip",
-  "sha256": "8c4337f593dfea7ecf37a5f39bd1743b3e4a954f8b23094d13e8e13416059847",
-  "size": 16145002,
-  "notes": "- Settings reordered: few choices in the right column, more on a page of their own\n- Software Update second, under About\n- Screensaver and Database are pages\n- Quit betterPod: one row, A quits\n- A row's value never cuts its label"
+  "version": "0.77.1",
+  "path": "release/betterpod-v0.77.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77.1-knulli.zip",
+  "sha256": "fbc5d364c8f8b25c7908d4c0e511b2b0ac73c26a0404d61f0e4805e602f747be",
+  "size": 16145175,
+  "notes": "- Quit betterPod: Quit Now without a second line"
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.77.1 (2026-10-30)
+
+### Changed
+- **Quit betterPod:** the Quit Now row has no second line.
+
 ## v0.77 (2026-10-30)
 
 ### Changed
