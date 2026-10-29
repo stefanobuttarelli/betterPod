@@ -54,19 +54,19 @@ func (s *ShareView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 	hint := ""
 	switch {
 	case s.send && s.phase == shDone:
-		hint = "B  back"
+		hint = "[B] back"
 	case s.send:
-		hint = "B  stop sharing"
+		hint = "[B] stop sharing"
 	case s.phase == shCode:
 		hint = ""
 	case s.phase == shFailed:
-		hint = "A  try again    B  back"
+		hint = "[A] try again     [B] back"
 	case s.phase == shDone && s.playable:
-		hint = "A  play    B  back"
+		hint = "[A] play     [Y] open the album     [B] back"
 	case s.phase == shDone:
-		hint = "B  back"
+		hint = "[B] back"
 	default:
-		hint = "B  cancel"
+		hint = "[B] cancel"
 	}
 	if hint != "" {
 		shText(dst, hint, float64(W)/2, float64(H)-22, W600, 15, shSub)
@@ -110,6 +110,9 @@ func (s *ShareView) title() (string, string) {
 	if s.info.Songs > 1 {
 		sub = fmt.Sprintf("%s · %d songs", s.info.Artist, s.info.Songs)
 	}
+	if s.info.Bytes > 0 {
+		sub += " · " + humanBytes(s.info.Bytes)
+	}
 	return t, sub
 }
 
@@ -134,12 +137,13 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p flo
 				blit(dst, sub, int(cx0), int(cy0), 1)
 			}
 		}
-		period := 3.2
+		// waiting: a slow sweep up and down; sending: it stays on the edge
+		// between what's gone (pale) and what's still to go
+		y := cy0 + p*shareCoverPx
 		if s.phase != shMoving {
-			period = 7.0 // slower while waiting
+			t := math.Mod(float64(now.UnixMilli())/1000/7.0, 1)
+			y = cy0 + shareCoverPx*(0.5-0.5*math.Cos(t*2*math.Pi))
 		}
-		t := math.Mod(float64(now.UnixMilli())/1000/period, 1)
-		y := cy0 + shareCoverPx*(0.5-0.5*math.Cos(t*2*math.Pi))
 		shLaser(dst, cx0, cx0+shareCoverPx, y, Col{40, 150, 255, 1})
 	}
 	// the code
@@ -235,7 +239,7 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 		case s.phase == shFailed:
 			shText(dst, s.err, W/2, 216, W600, 15, Col{200, 60, 50, 1})
 		default:
-			shText(dst, "↑ ↓  digit      ← →  move      A  receive", W/2, 216, W500, 14, shSub)
+			shText(dst, "[↑] [↓] digit      [←] [→] move      [A] receive", W/2, 216, W500, 14, shSub)
 		}
 		return
 	}
@@ -269,8 +273,7 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 		for y := float64(built + 18); y < shareCoverPx; y += 8 {
 			fillRect(dst, int(cx0)+1, int(cy0+y), shareCoverPx-2, 1, Col{40, 190, 110, 0.12})
 		}
-		jit := 1.5 * math.Sin(float64(now.UnixMilli())/90)
-		shLaser(dst, cx0, cx0+shareCoverPx, cy0+float64(built)+jit, Col{40, 200, 110, 1})
+		shLaser(dst, cx0, cx0+shareCoverPx, cy0+float64(built), Col{40, 200, 110, 1})
 	}
 	label := "RECEIVING"
 	switch s.phase {
@@ -299,13 +302,13 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 		shAquaBar(dst, 360, 190, 216, p, true)
 		line := fmt.Sprintf("%d%% · %s/s", int(p*100), humanBytes(int64(s.rate)))
 		if s.info.Songs > 1 {
-			line = fmt.Sprintf("Song %d of %d · %d%%", min(s.info.Songs, 1+int(p*float64(s.info.Songs))), s.info.Songs, int(p*100))
+			line = fmt.Sprintf("Song %d of %d · %d%% · %s/s", min(s.info.Songs, 1+int(p*float64(s.info.Songs))), s.info.Songs, int(p*100), humanBytes(int64(s.rate)))
 		}
 		shText(dst, line, shRX, 218, W500, 15, shSub)
 	case shSaving:
 		shText(dst, "Putting it in your Music…", shRX, 172, W500, 15, shBody)
 	case shDone:
-		shText(dst, "Now in Music → Albums", shRX, 168, W500, 15, shBody)
+		shText(dst, "In your library, under Albums", shRX, 168, W500, 15, shBody)
 		if s.have > 0 {
 			shText(dst, fmt.Sprintf("You already had %d %s by %s", s.have, pluralize(s.have, "album", "albums"), s.info.Artist), shRX, 190, W500, 15, shSub)
 		}

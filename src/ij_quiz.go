@@ -283,7 +283,7 @@ func (q *QuizGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 			msg = "A new best!"
 		}
 		center(ff(W600, 14), msg, 320, 250, sub)
-		center(ff(W500, 13), "A: play again · B: back", 320, 330, sub)
+		center(ff(W500, 13), "[A] play again · [B] back", 320, 330, sub)
 		return
 	}
 	// the round and the score
@@ -389,15 +389,15 @@ func (q *QuizGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	case "loading":
 		msg = "Listen…"
 	case "playing":
-		msg = "UP / DOWN choose · A answer"
+		msg = "[↑] [↓] choose · [A] answer"
 	case "reveal":
 		switch {
 		case q.picked < 0:
-			msg = "Time's up · A: next song"
+			msg = "Time's up · [A] next song"
 		case q.gained > 0:
-			msg = fmt.Sprintf("Right! +%d · A: next song", q.gained)
+			msg = fmt.Sprintf("Right! +%d · [A] next song", q.gained)
 		default:
-			msg = "Not this one · A: next song"
+			msg = "Not this one · [A] next song"
 		}
 		if q.round >= quizRounds {
 			msg = strings.Replace(msg, "next song", "see your score", 1)

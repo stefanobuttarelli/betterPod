@@ -40,21 +40,21 @@ type pzInfo struct {
 
 // pzList: the puzzles, in pzfe.c's order.
 var pzList = []pzInfo{
-	{"mines", "Mines", "Find the mines: numbers count those around", false, "A open · Y flag · L undo · START new"},
+	{"mines", "Mines", "Find the mines: numbers count those around", false, "[A] open · [Y] flag · [L] undo · [START] new"},
 	{"solo", "Sudoku", "Every row, column and box holds each digit once", true, ""},
-	{"net", "Net", "Turn the tiles to connect the whole network", false, "A turn · Y turn back · L undo · START new"},
-	{"flood", "Flood", "Fill the board with one colour in few moves", false, "A flood with this colour · L undo · START new"},
-	{"samegame", "Same Game", "Clear groups of the same colour", false, "A select, A again remove · L undo · START new"},
-	{"fifteen", "Fifteen", "Slide the tiles into order", false, "Arrows slide · L undo · START new"},
-	{"lightup", "Light Up", "Light every square with bulbs that don't see each other", false, "A bulb · Y mark · L undo · START new"},
-	{"unruly", "Unruly", "Black and white: no three in a row, as many of each", false, "A cycle · Y cycle back · L undo · START new"},
+	{"net", "Net", "Turn the tiles to connect the whole network", false, "[A] turn · [Y] turn back · [L] undo · [START] new"},
+	{"flood", "Flood", "Fill the board with one colour in few moves", false, "[A] flood with this colour · [L] undo · [START] new"},
+	{"samegame", "Same Game", "Clear groups of the same colour", false, "[A] select, [A] again remove · [L] undo · [START] new"},
+	{"fifteen", "Fifteen", "Slide the tiles into order", false, "[DPAD] slide · [L] undo · [START] new"},
+	{"lightup", "Light Up", "Light every square with bulbs that don't see each other", false, "[A] bulb · [Y] mark · [L] undo · [START] new"},
+	{"unruly", "Unruly", "Black and white: no three in a row, as many of each", false, "[A] cycle · [Y] cycle back · [L] undo · [START] new"},
 	{"towers", "Towers", "Place the towers: the clues count those you can see", true, ""},
 	{"keen", "Keen", "A Latin square whose cages add, multiply…", true, ""},
-	{"pattern", "Pattern", "Fill the squares the clues describe (nonogram)", false, "A fill · Y empty · L undo · START new"},
-	{"tents", "Tents", "A tent next to each tree, never touching", false, "A tent · Y grass · L undo · START new"},
+	{"pattern", "Pattern", "Fill the squares the clues describe (nonogram)", false, "[A] fill · [Y] empty · [L] undo · [START] new"},
+	{"tents", "Tents", "A tent next to each tree, never touching", false, "[A] tent · [Y] grass · [L] undo · [START] new"},
 }
 
-const pzNumHint = "R digit · A place · Y pencil · L undo · START new"
+const pzNumHint = "[R] digit · [A] place · [Y] pencil · [L] undo · [START] new"
 
 // puzzlesView: the list of puzzles.
 func (ui *IpodUI) puzzlesView() *View {

@@ -360,7 +360,7 @@ func (ui *IpodUI) openWeather() {
 		case s.status != "":
 			l, sb, _ := strings.Cut(s.status, " · ")
 			items = append(items, Item{Label: l, Sublabel: sb, NoArrow: true, OnSelect: func() {
-				if strings.HasSuffix(s.status, "press A to retry") {
+				if strings.HasSuffix(s.status, "press [A] to retry") {
 					run()
 				}
 			}})
@@ -423,7 +423,7 @@ func (ui *IpodUI) openWeather() {
 				s.busy = false
 				switch {
 				case err != nil:
-					s.status = "Couldn't search · " + iaErrText(err) + " · press A to retry"
+					s.status = "Couldn't search · " + iaErrText(err) + " · press [A] to retry"
 				case len(res) == 0:
 					s.status = "No places found · try another name"
 				}

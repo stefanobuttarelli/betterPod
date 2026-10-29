@@ -1415,15 +1415,15 @@ func (ui *IpodUI) saverSettingsView() *View {
 			if m > 0 {
 				l = "After " + strconv.Itoa(m) + " min"
 			}
-			items = append(items, Item{Label: l, Sublabel: map[bool]string{true: "SELECT + Y still starts it"}[m == 0], Checked: saverAfter == m, NoArrow: true, Preview: PrevSettings, OnSelect: func() {
+			items = append(items, Item{Label: l, Sublabel: map[bool]string{true: "[SELECT] + [Y] still starts it"}[m == 0], Checked: saverAfter == m, NoArrow: true, Preview: PrevSettings, OnSelect: func() {
 				saverAfter = m
 				ui.savePrefs()
 				ui.refreshBuilt()
 			}})
 		}
-		style, sub := "Cover Flip", "The covers, turning over · press A for the Visualizer"
+		style, sub := "Cover Flip", "The covers, turning over · press [A] for the Visualizer"
 		if saverStyle == "viz" {
-			style, sub = "Visualizer", "Moves with the music · ◀ ▶ change the effect · press A for Cover Flip"
+			style, sub = "Visualizer", "Moves with the music · [◀] [▶] change the effect · press [A] for Cover Flip"
 		}
 		items = append(items, Item{Label: "Style", Value: style, Sublabel: sub, NoArrow: true, Preview: PrevSettings, OnSelect: func() {
 			if saverStyle == "viz" {
@@ -1435,12 +1435,12 @@ func (ui *IpodUI) saverSettingsView() *View {
 			ui.refreshBuilt()
 		}})
 		items = append(items,
-			Item{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "L2 / R2 set the brightness while it shows", NoArrow: true, Preview: PrevSettings, OnSelect: func() {
+			Item{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "[L2] / [R2] set the brightness while it shows", NoArrow: true, Preview: PrevSettings, OnSelect: func() {
 				saverDim = !saverDim
 				ui.savePrefs()
 				ui.refreshBuilt()
 			}},
-			Item{Label: "Start Now", Sublabel: "Or SELECT + Y", NoArrow: true, Preview: PrevSettings, OnSelect: func() { ui.startSaver() }},
+			Item{Label: "Start Now", Sublabel: "Or [SELECT] + [Y]", NoArrow: true, Preview: PrevSettings, OnSelect: func() { ui.startSaver() }},
 		)
 		return items
 	}

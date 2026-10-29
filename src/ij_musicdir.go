@@ -977,7 +977,7 @@ func (ui *IpodUI) musicFolderView() *View {
 			items = append(items, Item{Label: "Chosen folder not found", Sublabel: musicDirMissing + " · is the card in?", NoArrow: true})
 		}
 		if j := moveCur; j != nil && moveRunning(j.snapPhase()) {
-			items = append(items, Item{Label: "Moving the music…", Sublabel: "Press A to see it", OnSelect: func() {
+			items = append(items, Item{Label: "Moving the music…", Sublabel: "Press [A] to see it", OnSelect: func() {
 				ui.showView(&View{ID: "moveMusic", Title: "Moving Music", Kind: KindFull, Custom: &moveView{job: j}}, "")
 			}})
 			return items

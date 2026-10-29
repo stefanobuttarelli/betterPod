@@ -307,6 +307,7 @@ func (ui *IpodUI) settingsView() *View {
 			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), Column: ui.youtubeSettingsView, OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
 			{Label: "Bluetooth", Preview: PrevSettings, Value: btSettingsValue(), Column: ui.btSummary, OnSelect: func() { ui.showView(ui.bluetoothView(), "") }},
 			col("Podcasts", onOff(podsInMenu), ui.podcastsMenuView),
+			col("Sharing", shareNameLabel(), ui.sharingSettingsView),
 			col("Screensaver", saverLabel(), ui.saverSettingsView),
 			col("Turn it Apple", onOff(appleMode), ui.appleView),
 			{Label: "Software Update", Preview: PrevSettings, Column: ui.updateSummary, OnSelect: func() { ui.showView(ui.updateView(), "") }},

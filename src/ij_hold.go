@@ -318,7 +318,7 @@ func (ui *IpodUI) drawHoldBadge(dst *image.RGBA, now time.Time) {
 		[]GradStop{{0, Col{30, 30, 30, 0.82}}, {1, Col{0, 0, 0, 0.82}}}, a)
 	drawPadlock(dst, x0+44, 80, 4, padlockBadgeGrad, rgb(225, 228, 230), a)
 	label := "Hold"
-	hint := "SELECT to unlock"
+	hint := "[SELECT] to unlock"
 	if !hold.on {
 		label, hint = "Unlocked", ""
 	}

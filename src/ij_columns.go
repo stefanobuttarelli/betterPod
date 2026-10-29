@@ -198,9 +198,9 @@ func (ui *IpodUI) aboutSummary() *View {
 func (ui *IpodUI) btSummary() *View {
 	switch v := btSettingsValue(); v {
 	case "":
-		return summaryView("Bluetooth", Item{Label: "Bluetooth", Sublabel: "Press A to connect headphones"})
+		return summaryView("Bluetooth", Item{Label: "Bluetooth", Sublabel: "Press [A] to connect headphones"})
 	case "On", "Off":
-		return summaryView("Bluetooth", Item{Label: "Bluetooth", Value: v}, Item{Label: "No headphones connected", Sublabel: "Press A to connect them"})
+		return summaryView("Bluetooth", Item{Label: "Bluetooth", Value: v}, Item{Label: "No headphones connected", Sublabel: "Press [A] to connect them"})
 	default:
 		return summaryView("Bluetooth", Item{Label: "Bluetooth", Value: "On"}, Item{Label: v, Sublabel: "Connected"})
 	}
@@ -209,9 +209,9 @@ func (ui *IpodUI) btSummary() *View {
 func (ui *IpodUI) updateSummary() *View {
 	items := []Item{{Label: "Version", Value: BETTERPOD_VERSION}}
 	if upd.manifest != nil && isNewerVersion(BETTERPOD_VERSION, upd.manifest.Version) {
-		items = append(items, Item{Label: "Update Available", Value: upd.manifest.Version, Sublabel: "Press A to install it"})
+		items = append(items, Item{Label: "Update Available", Value: upd.manifest.Version, Sublabel: "Press [A] to install it"})
 	} else {
-		items = append(items, Item{Label: "Check for Updates", Sublabel: "Press A"})
+		items = append(items, Item{Label: "Check for Updates", Sublabel: "Press [A]"})
 	}
 	return summaryView("Software Update", items...)
 }

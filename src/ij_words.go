@@ -521,9 +521,9 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	// the hint at the side of the board
 	hf := face(W600, 10)
 	_, ha := lineBox(10)
-	hints := []string{"A  type", "Y  delete", "START  send", "B  back"}
+	hints := []string{"[A] type", "[Y] delete", "[START] send", "[B] back"}
 	if g.over {
-		hints = []string{"A / START", "new word", "", "B  back"}
+		hints = []string{"[A] new word", "", "", "[B] back"}
 	}
 	for i, l := range hints {
 		drawText(dst, hf, l, 452, 40+float64(i)*28+ha*DPR/2, Col{110, 118, 132, 1})

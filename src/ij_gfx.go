@@ -402,6 +402,14 @@ func drawText(dst *image.RGBA, face font.Face, s string, x, baseline float64, c 
 	if s == "" {
 		return
 	}
+	if parts := keyParts(s); parts != nil {
+		drawTextKeys(dst, face, parts, x, baseline, c) // "[A]": a button
+		return
+	}
+	drawTextPlain(dst, face, s, x, baseline, c)
+}
+
+func drawTextPlain(dst *image.RGBA, face font.Face, s string, x, baseline float64, c Col) {
 	d := &font.Drawer{
 		Dst:  dst,
 		Src:  image.NewUniform(color.NRGBA{uint8(c.R), uint8(c.G), uint8(c.B), uint8(c.A*255 + 0.5)}),
@@ -412,6 +420,9 @@ func drawText(dst *image.RGBA, face font.Face, s string, x, baseline float64, c 
 }
 
 func textWidth(face font.Face, s string) float64 {
+	if parts := keyParts(s); parts != nil {
+		return textWidthKeys(face, parts)
+	}
 	return float64(font.MeasureString(face, s)) / 64
 }
 

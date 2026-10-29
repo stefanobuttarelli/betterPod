@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.70 (2026-10-29)
+
+### Added
+- **Settings → Sharing → Device Name:** the name your friends see when you share with them (without one, a friend's betterPod).
+- **Buttons look like buttons.** Wherever betterPod names a button it draws it: A, B, X and Y in a circle, L, R, L2, R2, START and SELECT in a rounded rectangle, the arrows in a little square and the d-pad as a cross (the hints of Share, 2048, Five Letters, Puzzles, Guess the Song, the screensaver's settings, "press A to…" lines).
+
+### Changed
+- **Share:**
+  - next to the number of songs, how big it is (on both sides);
+  - while it sends or receives, the laser stays on the edge between what has gone (or arrived) and what is still to come, instead of sweeping;
+  - receiving shows the speed too;
+  - when it's received, Y opens the album in the library (A still plays it). The songs are in the music folder, in Shared/<album>, and in the library under the album's own name.
+
 ## v0.69.2 (2026-10-29)
 
 ### Fixed

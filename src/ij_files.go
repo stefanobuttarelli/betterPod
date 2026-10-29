@@ -307,7 +307,7 @@ func (ui *IpodUI) filesView(dir string) *View {
 			}
 			n := len(paths)
 			lab := "Delete Selected"
-			sub := "Press A on the items to select them"
+			sub := "Press [A] on the items to select them"
 			if n > 0 {
 				sub = fmt.Sprintf("%d %s selected", n, pluralize(n, "item", "items"))
 			}

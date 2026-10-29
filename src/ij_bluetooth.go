@@ -7,7 +7,7 @@ package main
 //	▣ Sony WH-1000XM4         Connected · 80%
 //	▣ AirPods Pro             Not Connected
 //	  Find New Devices        Put the headphones in pairing mode
-//	▣ JBL Flip 5              New · press A to pair and connect
+//	▣ JBL Flip 5              New · press [A] to pair and connect
 //
 // It drives BlueZ, Knulli's Bluetooth, with bluetoothctl (one command at a
 // time, each in the background with a time limit): the paired devices and
@@ -472,7 +472,7 @@ func (ui *IpodUI) bluetoothView() *View {
 		}
 		for _, d := range st.devs {
 			d := d
-			sub := "Not Connected · press A to connect"
+			sub := "Not Connected · press [A] to connect"
 			if d.Connected {
 				sub = "Connected"
 				if d.Battery >= 0 {
@@ -512,7 +512,7 @@ func (ui *IpodUI) bluetoothView() *View {
 		items = append(items, find)
 		for _, d := range st.found {
 			d := d
-			sub := "New · press A to pair and connect"
+			sub := "New · press [A] to pair and connect"
 			if s := st.doing[d.MAC]; s != "" {
 				sub = s
 			}

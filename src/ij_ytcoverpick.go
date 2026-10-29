@@ -118,12 +118,12 @@ func ytCoverPreview(src image.Image, c ytCoverChoice, size int) *image.RGBA {
 func ytCoverText(src image.Image, c ytCoverChoice) string {
 	switch c.mode {
 	case "crop":
-		return "Your square · press A to change"
+		return "Your square · press [A] to change"
 	case "whole":
-		return "Whole picture, blurred sides · press A to change"
+		return "Whole picture, blurred sides · press [A] to change"
 	}
 	_, _, why := ytCoverAuto(src)
-	return "Automatic: " + why + " · press A to change"
+	return "Automatic: " + why + " · press [A] to change"
 }
 
 // ytCoverSource: the first of urls that loads as a picture (the biggest
@@ -452,9 +452,9 @@ func (ed *ytCoverEditor) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.T
 	cap := "Cover"
 	drawText(dst, f, cap, px0+(float64(px(prevS))-textWidth(f, cap))/2, py0+float64(px(prevS))+14*DPR, th.sub)
 	// the keys
-	hint := "◀ ▶ ▲ ▼ Move · L R Zoom · A Use This · Y More"
+	hint := "[DPAD] move · [L] [R] zoom · [A] use this · [Y] more"
 	if ed.choice.mode == "whole" {
-		hint = "Whole picture · ◀ ▶ or L R a square instead · A Use This"
+		hint = "Whole picture · [◀] [▶] or [L] [R] a square instead · [A] use this"
 	}
 	hf := face(W500, 12)
 	hint = ellipsize(hf, hint, float64(W)-2*pad*DPR)

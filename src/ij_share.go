@@ -77,12 +77,12 @@ type shareInfo struct {
 
 // share phases
 const (
-	shPreparing = iota // sender: zipping, meeting the server
-	shWaiting          // sender: the code is up, nobody yet
-	shCode             // receiver: typing the code
-	shConnecting       // receiver: looking for the sender
-	shMoving           // the bytes are going
-	shSaving           // receiver: unpacking into the music folder
+	shPreparing  = iota // sender: zipping, meeting the server
+	shWaiting           // sender: the code is up, nobody yet
+	shCode              // receiver: typing the code
+	shConnecting        // receiver: looking for the sender
+	shMoving            // the bytes are going
+	shSaving            // receiver: unpacking into the music folder
 	shDone
 	shFailed
 )
@@ -176,7 +176,50 @@ func shareErrText(err error) string {
 	return "It didn't work · " + m
 }
 
+// shareName: this betterPod's name for Share (Settings → Sharing).
+var shareName string
+
+func shareNameLabel() string {
+	if strings.TrimSpace(shareName) == "" {
+		return "Not set"
+	}
+	return shareName
+}
+
+// sharingSettingsView: Settings → Sharing: the name friends see.
+func (ui *IpodUI) sharingSettingsView() *View {
+	v := &View{ID: "sharing", Title: "Sharing", Kind: KindSplit}
+	edit := shareName
+	v.Build = func() []Item {
+		name := shareNameLabel()
+		if ui.keyboardEditing(&edit) {
+			name = ui.withCaret(&edit)
+		}
+		return []Item{
+			{Label: "Device Name", Value: name, Sublabel: "Your friends see it when you share with them", NoArrow: true, OnSelect: func() {
+				edit = shareName
+				ui.showKeyboard(&edit, func() { ui.refreshView(v) }, func() {
+					n := strings.TrimSpace(edit)
+					if len([]rune(n)) > 32 {
+						n = string([]rune(n)[:32])
+					}
+					shareName = n
+					ui.savePrefs()
+					ui.refreshBuilt()
+				})
+				ui.refreshView(v)
+			}},
+			{Label: "How it works", Sublabel: "[Y] on an album or a song → Share; Music → Receive", NoArrow: true},
+		}
+	}
+	v.Items = v.Build()
+	return v
+}
+
 func shareFrom() string {
+	if n := strings.TrimSpace(shareName); n != "" {
+		return n
+	}
 	h, _ := os.Hostname()
 	h = strings.TrimSpace(h)
 	if h == "" || strings.EqualFold(h, "localhost") || strings.EqualFold(h, "knulli") {
@@ -495,6 +538,7 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 			}
 		}
 	}
+	logMsg("Share: received into " + dest)
 	ui.postSure(func() {
 		s.dest, s.have = dest, have
 		s.setPhase(shDone)
@@ -529,6 +573,7 @@ func (ui *IpodUI) shareFindTracks(s *ShareView) {
 			return a.Path < b.Path
 		})
 		s.tracks, s.playable = out, len(out) > 0
+		logMsg(fmt.Sprintf("Share: %d received songs in the library", len(out)))
 		ui.dirty = true
 	})
 }
@@ -724,6 +769,13 @@ func shareKeep(name string) bool {
 // ---- keys ----
 
 func (s *ShareView) OnKey(ui *IpodUI, k Key) bool {
+	if !s.send && s.phase == shDone && s.playable && k == Y {
+		// the album, where it is in the library
+		if al := ui.trackAlbum(s.tracks[0]); al != nil {
+			ui.showView(ui.albumView(al), al.Name)
+		}
+		return true
+	}
 	if s.send || s.phase != shCode {
 		if !s.send && s.phase == shFailed && (k == UP || k == DOWN || k == LEFT || k == RIGHT) {
 			s.setPhase(shCode) // back to the digits to fix them
