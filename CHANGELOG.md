@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.69 (2026-10-29)
+
+### Added
+- **Share:** send an album or a song to another betterPod, with an 8-digit code.
+  - **To send:** an album's or a song's options (Y) → Share. The code shows; the cover stands on a white pedestal, and a laser goes up and down over it while it is sent.
+  - **To receive:** Music → Receive, set the 8 digits (↑ ↓ change a digit, ← → move), A. The cover arrives first and is built line by line on the other pedestal, then the songs; they go in `Shared/` in the music folder and into the library, and Play plays them.
+  - **Over the internet or the same Wi-Fi.** The two consoles meet on the public servers of magic-wormhole through the code; the files go straight from one to the other when the network allows it, else through its relay. Either way they are encrypted from one console to the other, and a wrong code just ends the share.
+  - Before receiving, betterPod checks there is room on the card. Only music, pictures, lyrics and cue sheets are written.
+  - A few little things to find.
+
 ## v0.68.1 (2026-10-29)
 
 ### Fixed
