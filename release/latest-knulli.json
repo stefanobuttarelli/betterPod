@@ -1,8 +1,8 @@
 {
-  "version": "0.73",
-  "path": "release/betterpod-v0.73-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.73-knulli.zip",
-  "sha256": "fba4e0416b53c067f7a3a88c72646eb3c32aaf355b352ef444122d06e107acc9",
-  "size": 16125484,
-  "notes": "- betterPod now runs on the Miyoo Mini too (Onion OS), thanks to Emanuele Macri\n- Settings \u2192 Effects: Full or Light\n- Share checks the formats before anything moves\n- Share, Five Letters and the Weather gear allocate far less while drawing"
+  "version": "0.74",
+  "path": "release/betterpod-v0.74-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.74-knulli.zip",
+  "sha256": "a954a2a3e0e2bfab39aa3388db493a8ead1a0aad872d49446c7708a89b2d8397",
+  "size": 16125993,
+  "notes": "- Headphones and Wi-Fi share one icon: five dots under the headphones show the signal\n- betterPod runs on the Miyoo Mini too (Onion OS) (0.73)\n- Settings \u2192 Effects: Full or Light (0.73)"
 }

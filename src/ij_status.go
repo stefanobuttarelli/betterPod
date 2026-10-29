@@ -22,7 +22,7 @@ import (
 	"github.com/fogleman/gg"
 )
 
-var wifiState int32 = -1 // -1 not connected, else 0..3 arcs
+var wifiState int32 = -1 // -1 not connected, else 0..5 bars
 
 func wifiLevel() int { return int(atomic.LoadInt32(&wifiState)) }
 
@@ -38,11 +38,11 @@ func startWifiWatch() {
 	}()
 }
 
-// readWifi: the connected wireless interface and its signal in arcs (0-3),
+// readWifi: the connected wireless interface and its signal in bars (0-5),
 // or -1. The interface is any with a wireless/ or phy80211 entry in
 // /sys/class/net; connected means it has a carrier and isn't down or
 // dormant. The signal comes from /proc/net/wireless, else from iw, else
-// from wpa_cli; connected with no signal to read shows all three arcs.
+// from wpa_cli; connected with no signal to read shows all five.
 func readWifi() int {
 	if v := os.Getenv("MIYOOPOD_FAKE_WIFI"); v != "" { // (tests)
 		n, _ := strconv.Atoi(v)
@@ -66,12 +66,12 @@ func readWifi() int {
 			continue
 		}
 		if dbm, ok := wifiDBM(iface); ok {
-			n := wifiArcs(dbm)
-			wifiNote(note + fmt.Sprintf(" signal %d/3", n)) // (not the dBm: it moves all the time)
+			n := wifiBars(dbm)
+			wifiNote(note + fmt.Sprintf(" signal %d/5", n)) // (not the dBm: it moves all the time)
 			return n
 		}
 		wifiNote(note + " (no signal readable)")
-		return 3
+		return 5
 	}
 	wifiNote(note)
 	return -1
@@ -132,17 +132,25 @@ func wifiDBM(iface string) (float64, bool) {
 	return 0, false
 }
 
-func wifiArcs(dbm float64) int {
+// wifiBars: the signal in five steps (the dots under the headphones).
+func wifiBars(dbm float64) int {
 	switch {
-	case dbm >= -60:
-		return 3
+	case dbm >= -55:
+		return 5
+	case dbm >= -63:
+		return 4
 	case dbm >= -70:
+		return 3
+	case dbm >= -77:
 		return 2
-	case dbm >= -80:
+	case dbm >= -85:
 		return 1
 	}
 	return 0
 }
+
+// wifiArcs: the five steps as the Wi-Fi icon's three arcs.
+func wifiArcs(bars int) int { return (bars*3 + 4) / 5 }
 
 // runQuick: a small program's output, given at most 2 s.
 func runQuick(bin string, args ...string) (string, error) {
@@ -226,21 +234,81 @@ func (ui *IpodUI) drawStatusIcons(dst *image.RGBA, left, y float64, c Col, white
 		blit(dst, ic, px(left-iw), px(y), 1)
 		left -= iw + gap
 	}
-	if n := wifiLevel(); n >= 0 {
-		put(wifiIcon(n, c))
-	}
 	bt := btConnected()
-	if headphonesOut() {
-		put(volIcon(true, c))
+	if bt || headphonesOut() {
+		// headphones (Bluetooth: with its mark) and the Wi-Fi as five dots
+		// under them: one icon for both
+		put(headsetIcon(wifiLevel(), bt, c))
+		return left
 	}
-	if bt {
-		if white {
-			put(whiteIcon(ui, "bluetooth"))
-		} else {
-			put(ui.themed("bluetooth"))
-		}
+	if n := wifiLevel(); n >= 0 {
+		put(wifiIcon(wifiArcs(n), c))
 	}
 	return left
+}
+
+// headsetIcon: headphones, with the Bluetooth mark between the cups when
+// bt, and under them the Wi-Fi's strength as five dots (bars of 0-5; none
+// when there is no Wi-Fi: the headphones are then centred). 15 × 14 CSS px.
+var headsetIcons = map[string]*image.RGBA{}
+
+func headsetIcon(bars int, bt bool, c Col) *image.RGBA {
+	key := fmt.Sprint(bars, bt, c)
+	if img := headsetIcons[key]; img != nil {
+		return img
+	}
+	img := image.NewRGBA(image.Rect(0, 0, px(15), px(14)))
+	p := pen{gg.NewContextForRGBA(img), float64(px(14)) / 14}
+	dc := p.dc
+	s := 9.5 // the headphones' height
+	cx, cy := 7.5, 7.0
+	if bars >= 0 {
+		cy = 5.25
+	}
+	on := p.solid(c)
+	// the headband
+	w := s * 1.05
+	dc.SetStrokeStyle(on)
+	dc.SetLineWidth(p.u(s * 0.14))
+	dc.DrawEllipticalArc(p.u(cx), p.u(cy-s*0.5+s*0.525), p.u(w/2-s*0.07), p.u(s*0.525-s*0.07), gg.Radians(180), gg.Radians(360))
+	dc.Stroke()
+	// the cups
+	cw, ch := s*0.30, s*0.46
+	yb := cy + s*0.05
+	x0, x1 := cx-w/2, cx+w/2
+	dc.SetFillStyle(on)
+	for _, x := range []float64{x0 - cw*0.15, x1 - cw*0.85} {
+		dc.DrawRoundedRectangle(p.u(x), p.u(yb-ch*0.1), p.u(cw), p.u(ch), p.u(cw*0.35))
+		dc.Fill()
+	}
+	if bt {
+		// the Bluetooth rune
+		bw, bh := s*0.16, s*0.56
+		by := cy + s*0.1
+		dc.SetLineWidth(p.u(s * 0.085))
+		dc.SetLineCap(gg.LineCapRound)
+		dc.SetLineJoin(gg.LineJoinRound)
+		pts := [][2]float64{{cx - bw, by - bh*0.27}, {cx + bw, by + bh*0.25}, {cx, by + bh*0.5}, {cx, by - bh*0.5}, {cx + bw, by - bh*0.25}, {cx - bw, by + bh*0.27}}
+		dc.MoveTo(p.u(pts[0][0]), p.u(pts[0][1]))
+		for _, q := range pts[1:] {
+			dc.LineTo(p.u(q[0]), p.u(q[1]))
+		}
+		dc.Stroke()
+	}
+	if bars >= 0 {
+		off := p.solid(Col{c.R, c.G, c.B, c.A * 0.25})
+		for i := 0; i < 5; i++ {
+			if i < bars {
+				dc.SetFillStyle(on)
+			} else {
+				dc.SetFillStyle(off)
+			}
+			dc.DrawCircle(p.u(cx+float64(i-2)*2.6), p.u(12.3), p.u(0.88))
+			dc.Fill()
+		}
+	}
+	headsetIcons[key] = img
+	return img
 }
 
 // iconTint: the colour of an icon (its most solid pixel).

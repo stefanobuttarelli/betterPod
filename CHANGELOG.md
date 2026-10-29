@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.74 (2026-10-29)
+
+### Changed
+- **Headphones and Wi-Fi share one icon in the status bar.** With headphones in (or Bluetooth headphones connected, with the Bluetooth mark between the cups), the Wi-Fi shows as five dots under them, as many lit as the signal is strong; no dots without Wi-Fi. Without headphones the Wi-Fi icon is as before. The signal is now read in five steps instead of three.
+
 ## v0.73 (2026-10-29)
 
 ### Added
