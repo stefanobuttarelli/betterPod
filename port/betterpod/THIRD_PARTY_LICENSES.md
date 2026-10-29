@@ -61,9 +61,19 @@ The SDL_mixer build includes Apple's [reference ALAC decoder](https://github.com
 | [github.com/skip2/go-qrcode](https://github.com/skip2/go-qrcode) | MIT |
 | [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) | BSD-3-Clause |
 | [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | BSD-3-Clause |
+| [github.com/psanford/wormhole-william](https://github.com/psanford/wormhole-william) (Share; in `third_party/`) | MIT |
+| SPAKE2 for Share (`third_party/gospake2`, written for betterPod after [python-spake2](https://github.com/warner/python-spake2) by Brian Warner) | MIT |
+| [nhooyr.io/websocket](https://github.com/coder/websocket) | ISC |
+| [github.com/klauspost/compress](https://github.com/klauspost/compress) | BSD-3-Clause |
+| [filippo.io/edwards25519](https://github.com/FiloSottile/edwards25519) | BSD-3-Clause |
+| [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) | BSD-3-Clause |
 | The Go standard library | BSD-3-Clause |
 
 The full license texts are in each project's repository.
+
+### Share
+
+Share uses the public servers of the [magic-wormhole](https://magic-wormhole.readthedocs.io) project (relay.magic-wormhole.io and transit.magic-wormhole.io), run by its volunteers, to let two consoles find each other. The music is encrypted end to end: the servers never see it, nor the key.
 
 ### Five Letters word lists
 

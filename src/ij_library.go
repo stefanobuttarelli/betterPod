@@ -44,6 +44,7 @@ func (ui *IpodUI) musicView() *View {
 			{Label: "Artists", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.artistsView(), "") }},
 			{Label: "Albums", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.albumsView(nil), "") }},
 			{Label: "Search", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchHubView(), "") }},
+			{Label: "Receive", Preview: PrevMusic, OnSelect: ui.openReceive},
 		}
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
@@ -227,6 +228,7 @@ func (ui *IpodUI) mediaOptions(tracks []*Track) []SheetOption {
 	return []SheetOption{
 		{Label: "Play Next", Icon: "queue_next", OnSelect: func() { ui.showToast(ui.enqueue(tracks, true)) }},
 		{Label: "Add to End of Queue", Icon: "queue_last", OnSelect: func() { ui.showToast(ui.enqueue(tracks, false)) }},
+		{Label: "Share", OnSelect: func() { ui.shareTracks(tracks) }},
 	}
 }
 
