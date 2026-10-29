@@ -14,7 +14,7 @@ func (ui *IpodUI) homeView() *View {
 		items := []Item{
 			{Label: "Cover Flow", Preview: PrevMusic, OnSelect: ui.openCoverFlow},
 			{Label: "Music", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.musicView(), "") }},
-			{Label: "Games", Preview: PrevGames, OnSelect: func() { ui.showView(ui.gamesView(), "") }},
+			{Label: "Apps", Preview: PrevGames, OnSelect: func() { ui.showView(ui.gamesView(), "") }},
 			{Label: "Settings", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.settingsView(), "") }},
 		}
 		if podsInMenu { // under Music (Settings → Podcasts turns it off)
@@ -272,7 +272,7 @@ func (ui *IpodUI) enqueue(tracks []*Track, next bool) string {
 // gamesView: Brick, Solitaire and Weather.
 // The preview on the right is the Games icon.
 func (ui *IpodUI) gamesView() *View {
-	v := &View{ID: "games", Title: "Games", Kind: KindSplit}
+	v := &View{ID: "games", Title: "Apps", Kind: KindSplit}
 	v.Items = []Item{
 		{Label: "Brick", Preview: PrevBrick, OnSelect: func() { ui.openBrick() }},
 		{Label: "Solitaire", Preview: PrevSolitaire, OnSelect: func() { ui.openSolitaire() }},

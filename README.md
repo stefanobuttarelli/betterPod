@@ -3,7 +3,7 @@
 <p align="center">
   <b>An iPod-style music player for retro handhelds. This is the version for Anbernic handhelds running Knulli.</b><br>
   The iPod classic interface, rebuilt natively from <a href="https://github.com/tvillarete/ipod-classic-js">iPod.js</a>.<br>
-  Split-screen menus, Cover Flow, a 3D Now Playing screen, wheel-keyboard search and games.<br>
+  Split-screen menus, Cover Flow, a 3D Now Playing screen, wheel-keyboard search, games and apps.<br>
   Your own music, lossless and hi-res, played at its native sample rate.
 </p>
 
@@ -34,7 +34,7 @@
 - **Japanese titles too.** Latin, Greek and Cyrillic come from Inter, kana and kanji from Noto Sans JP.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **YouTube (optional):** turn it on in Settings → YouTube and search in Music → Search → YouTube. A video with chapters becomes an album with a track per chapter, a playlist an album with a track per video. Tracks are tagged M4A with a square cover made from the video's picture. The tools (yt-dlp, QuickJS) are downloaded from their official GitHub releases when you turn it on, checked (SHA-256 where published, CPU, a test run) and not shipped. YouTube's terms don't allow downloading: use it for your own or freely licensed videos.
-- **Games:** Brick and Solitaire, the classic iPod games (Solitaire saves your game), and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
+- **Apps:** Brick and Solitaire, the classic iPod games (Solitaire saves your game), and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
 - **Audio quality:**
   - every track plays at its own sample rate (44.1, 48, 96, 192 kHz…), with 32-bit float mixing;
   - 24-bit FLAC and ALAC reach the system mixer untouched;

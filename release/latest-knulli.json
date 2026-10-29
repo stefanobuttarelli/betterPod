@@ -1,8 +1,8 @@
 {
-  "version": "0.64.1",
-  "path": "release/betterpod-v0.64.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.64.1-knulli.zip",
-  "sha256": "44d81ffbb04729f1cc84ebe69069f61f2e5a9d40f0f9e5fe0f774863d8687e9e",
-  "size": 15253384,
-  "notes": "- Wi-Fi icon: the biggest arc is no longer cut at its ends\n- The main menu says betterPod; Settings \u2192 Turn it Apple brings back iPod (0.64)\n- Fixed a freeze when picking a song just as another one ends (0.64)\n- The Wi-Fi icon shows on more consoles (0.63.4)"
+  "version": "0.65",
+  "path": "release/betterpod-v0.65-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.65-knulli.zip",
+  "sha256": "63f90ab5d6b5b38d158b245468ec7bea6ff830d3630465e180ffa2dbff5cc2fc",
+  "size": 15276736,
+  "notes": "- Games is now Apps, with a new icon\n- Wi-Fi icon: the biggest arc is no longer cut (0.64.1)\n- The main menu says betterPod; Settings \u2192 Turn it Apple brings back iPod (0.64)\n- Fixed a freeze when picking a song just as another one ends (0.64)"
 }

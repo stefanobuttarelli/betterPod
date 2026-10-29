@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.65 (2026-10-29)
+
+### Changed
+- **Games is now Apps**, in the main menu and as its title. It holds Brick, Solitaire and Weather, and not all of them are games.
+- **A new icon for Apps:** four small glossy app tiles (Brick's bricks, Solitaire's spade, Weather's sun, and a "+" for what comes next) instead of the die.
+
 ## v0.64.1 (2026-10-29)
 
 ### Fixed

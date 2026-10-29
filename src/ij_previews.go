@@ -240,10 +240,10 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 	w := dst.Bounds().Dx()
 	h := dst.Bounds().Dy()
 	fillRect(dst, 0, 0, w, h, th.bg)
-	// Games / Settings / Now Playing previews; Music (Ken Burns) below
+	// Apps / Settings / Now Playing previews; Music (Ken Burns) below
 	switch ui.preview {
 	case PrevGames:
-		ui.drawIconPreview(dst, "dice", 96, []previewLine{{"Games", 16, W500}})
+		ui.drawIconPreview(dst, "apps", 96, []previewLine{{"Apps", 16, W500}})
 	case PrevSettings:
 		ui.drawIconPreview(dst, "ipod_logo", 32, []previewLine{{"Settings", 16, W500}})
 	case PrevBrick:
