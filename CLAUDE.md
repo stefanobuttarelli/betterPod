@@ -14,7 +14,7 @@ Each system has its own launcher, package, build and update manifest. The interf
 - **Both systems, or a reason.** A new feature works on both. When one system can't carry it, it is switched off there (not removed), with the reason in the code and a line in README's features table. What is off on the Miyoo so far is listed under Onion below.
 - **Audio first, then fluidity.** Music must never crackle; then the interface should be smooth. On the Miyoo (two Cortex-A7, 128 MB) anything that adds steady CPU load needs a reason and a measurement (`tools/onion/perf.sh`): an animation that keeps redrawing, a timer, a program run every few seconds.
 - **One version.** `BETTERPOD_VERSION` in `src/ij_update.go` is the version on both systems. Each system has its own zip and manifest in `release/` (`latest-knulli.json`, `latest-onion.json`). A fix for one system can be released for that system alone.
-- **One changelog.** A change that concerns one system says so ("On the Miyoo: …").
+- **One changelog.** A change that concerns one system says so ("On the Miyoo: …"). A version for one system alone carries only that system's zip and manifest; its GitHub release is titled "(Knulli only)" or "(Miyoo only)" (`tools/gh_releases.py`, from the zips in `release/`), and "Latest" stays on the newest release with Knulli's zip.
 - **Build and test both** before a release that touches shared code.
 
 ## The platform switch
