@@ -9,3 +9,8 @@ port/betterpod/conf/*
 !port/betterpod/conf/.gitkeep
 port/betterpod/*.log
 port/log.txt
+# Onion: runtime data of local test copies
+onion/betterpod/conf/
+onion/betterpod/betterpod
+onion/betterpod/*.log
+.DS_Store

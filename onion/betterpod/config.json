@@ -1,0 +1,6 @@
+{
+	"label": "betterPod",
+	"icon": "./icon.png",
+	"launch": "launch.sh",
+	"description": "iPod-style music player"
+}
