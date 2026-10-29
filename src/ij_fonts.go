@@ -18,6 +18,7 @@ import (
 type FontWeight int
 
 const (
+	W300 FontWeight = 300 // Inter Display Light, the clock's digits only
 	W400 FontWeight = 400
 	W500 FontWeight = 500
 	W600 FontWeight = 600
@@ -26,6 +27,7 @@ const (
 )
 
 var fontFiles = map[FontWeight]string{
+	W300: "InterDisplay-Light-Digits.otf",
 	W400: "Inter-Regular.otf",
 	W500: "Inter-Medium.otf",
 	W600: "Inter-SemiBold.otf",

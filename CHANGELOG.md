@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.2 (2026-10-29)
+
+### Changed
+- **Visualizer: the big clock (START) is frosted glass.** Thin digits (Inter Display Light) show the effect behind them, blurred and lightened, with a bright rim. The dark patch behind the clock is gone, and the date has a soft shadow so it reads on any effect. The clock also sits a little higher, so the date clears the floor of the Bars effect.
+- The font is cut down to the digits and the colon (4 KB).
+
 ## v0.59.1 (2026-10-29)
 
 ### Changed

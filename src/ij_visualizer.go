@@ -671,18 +671,16 @@ var vizShade *image.RGBA // the lower third's shade (made once)
 func (ui *IpodUI) vizOverlays(dst *image.RGBA, s *screensaver, now time.Time) {
 	if a := s.clockA.Get(now); a > 0.002 {
 		t := time.Now()
-		big := face(W400, 72)
 		small := face(W500, 15)
-		hm := t.Format("15:04")
 		day := t.Format("Monday 2 January")
-		_, ab := lineBox(72)
 		_, as := lineBox(15)
-		cy := (vizTop/DPR + (240-vizTop/DPR)/2) - 8 + 6*(1-a)
-		// a soft dark halo so it reads on any effect
-		fillRoundedGradient(dst, 320-200, (cy-56)*DPR, 320+200, (cy+40)*DPR, 40*DPR,
-			[]GradStop{{0, Col{0, 0, 0, 0.35}}, {1, Col{0, 0, 0, 0.35}}}, a)
-		drawText(dst, big, hm, 320-textWidth(big, hm)/2, (cy+ab/2-12)*DPR, Col{255, 255, 255, a})
-		drawText(dst, small, day, 320-textWidth(small, day)/2, (cy+40+as/2)*DPR, Col{255, 255, 255, 0.8 * a})
+		cy := (vizTop/DPR + (240-vizTop/DPR)/2) - 22 + 6*(1-a) // (the date above the bars' floor)
+		vizClockFrost(dst, t.Format("15:04"), int(cy*DPR), a)
+		dx, by := 320-textWidth(small, day)/2, (cy+46+as/2)*DPR
+		for _, o := range [...][2]float64{{-1, 0}, {1, 0}, {0, -1}, {0, 2}} { // (a soft shadow: it reads on any effect)
+			drawText(dst, small, day, dx+o[0], by+o[1], Col{0, 0, 0, 0.45 * a})
+		}
+		drawText(dst, small, day, dx, by, Col{255, 255, 255, 0.9 * a})
 	}
 	if a := s.lowA.Get(now); a > 0.002 {
 		t := ui.miniPlayerTrack()
