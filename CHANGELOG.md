@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.67.2 (2026-10-29)
+
+### Changed
+- **Apps → Puzzles:** each puzzle has its own icon on the right of the list (a minefield, a Sudoku grid, a network of pipes, a tent by a tree…), so you can tell them apart at a glance.
+
 ## v0.67.1 (2026-10-29)
 
 ### Changed

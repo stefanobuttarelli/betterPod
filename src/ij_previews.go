@@ -258,6 +258,13 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 		ui.drawImgPreview(dst, g48Icon(), "2048", "")
 	case PrevWeather:
 		ui.drawWeatherPreview(dst, now)
+	default:
+		// one puzzle of Apps → Puzzles: its own icon
+		if i := int(ui.preview - PrevPuzzleBase); ui.preview >= PrevPuzzleBase && i < len(pzList) {
+			if ic := ui.asset("pz_" + pzList[i].id); ic != nil {
+				ui.drawImgPreview(dst, ic, pzList[i].name, "")
+			}
+		}
 	case PrevNowPlaying:
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			art := ui.art(ui.trackAlbum(p.Track), h)
@@ -343,4 +350,5 @@ const (
 	Prev2048
 	PrevQuiz
 	PrevPuzzles
+	PrevPuzzleBase PreviewKind = 100 // + the puzzle's index in pzList
 )

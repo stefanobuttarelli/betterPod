@@ -61,7 +61,7 @@ func (ui *IpodUI) puzzlesView() *View {
 	v := &View{ID: "puzzles", Title: "Puzzles", Kind: KindSplit}
 	for i, p := range pzList {
 		i := i
-		v.Items = append(v.Items, Item{Label: p.name, Sublabel: p.about, Preview: PrevPuzzles,
+		v.Items = append(v.Items, Item{Label: p.name, Sublabel: p.about, Preview: PrevPuzzleBase + PreviewKind(i),
 			OnSelect: func() { ui.openPuzzle(i) }})
 	}
 	return v
