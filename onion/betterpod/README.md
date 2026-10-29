@@ -47,7 +47,7 @@ Music → **Internet Archive** searches archive.org (START runs the search). Eac
 
 ## Apps, weather and covers
 
-- **Apps:** Brick, Solitaire, 2048, Guess the Song (a quiz on your own music), twelve of Simon Tatham's Puzzles, and Weather.
+- **Apps:** Brick, Solitaire, 2048, Five Letters (a five-letter word game), Guess the Song (a quiz on your own music), twelve of Simon Tatham's Puzzles, and Weather.
 - **Apps → Weather:** search for a place and see its 10-day forecast (from Open-Meteo, over Wi-Fi). The last forecast stays saved, so it also shows offline.
 - **Settings → Library → Missing Covers:** the albums without a cover, each with what MusicBrainz, iTunes, Deezer and Wikipedia find, to choose from, or Search All Automatically. For a soundtrack ripped from a game, Wikipedia gives the game's box.
 - **Settings → Library → Browse Files:** the files and folders in `Media/Music`, with their sizes; Y deletes, always asking first.
