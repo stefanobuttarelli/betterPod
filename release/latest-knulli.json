@@ -1,8 +1,8 @@
 {
-  "version": "0.69",
-  "path": "release/betterpod-v0.69-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.69-knulli.zip",
-  "sha256": "a21bfbebe065409b7cc5399a46cb9cffa9709bd4ee631cc53185545420a5a2ce",
-  "size": 16082137,
-  "notes": "- Share: send an album or a song to another betterPod with an 8-digit code (Y on it \u2192 Share; Music \u2192 Receive on the other)\n- Cover Flow loads the covers left to right (0.68.1)\n- Apps \u2192 Five Letters (0.68)\n- Apps \u2192 Puzzles: every puzzle has its own icon (0.67.2)"
+  "version": "0.69.1",
+  "path": "release/betterpod-v0.69.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.69.1-knulli.zip",
+  "sha256": "200e59a72e292cb9e383d00784834b3939064cabd6d9b2612340ae04dcd6b69f",
+  "size": 16082127,
+  "notes": "- Share: the laser moves slower and more smoothly\n- Share: send an album or a song to another betterPod with an 8-digit code (0.69)\n- Cover Flow loads the covers left to right (0.68.1)\n- Apps \u2192 Five Letters (0.68)"
 }

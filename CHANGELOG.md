@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.69.1 (2026-10-29)
+
+### Changed
+- **Share:** the laser over the cover moves slower and more smoothly (a sweep takes 7 seconds while waiting, 3 while sending).
+
 ## v0.69 (2026-10-29)
 
 ### Added

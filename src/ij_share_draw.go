@@ -134,9 +134,9 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p flo
 				blit(dst, sub, int(cx0), int(cy0), 1)
 			}
 		}
-		period := 1.8
+		period := 3.2
 		if s.phase != shMoving {
-			period = 4.0 // slower while waiting
+			period = 7.0 // slower while waiting
 		}
 		t := math.Mod(float64(now.UnixMilli())/1000/period, 1)
 		y := cy0 + shareCoverPx*(0.5-0.5*math.Cos(t*2*math.Pi))
