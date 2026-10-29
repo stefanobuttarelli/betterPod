@@ -173,12 +173,15 @@ func (ui *IpodUI) npStage(dst *image.RGBA, np *NowPlayingView, now time.Time) {
 	}
 	np.lastFrame = ui.frameNo
 	f := np.flip.Get(now)
-	ba := np.backA.Get(now)
-	key := npStageKey{tilt: np.tilt.Get(now), flip: f, k: 1, hide: np.flyHide || f >= 0.999 && ba >= 0.999, dark: th.dark}
+	key := npStageKey{tilt: np.tilt.Get(now), flip: f, k: 1, dark: th.dark}
 	base := npCoverPose(key.tilt)
 	base.A -= 360 // (a full turn back: it turns over the same way as Cover Flow's)
-	m := coverMatrix(lerpX(base, backPose(), f))
+	pose := lerpX(base, backPose(), f)
+	m := coverMatrix(pose)
 	front := facesViewer(m)
+	// turned away with the card on its back: the card is drawn instead
+	onBack := np.back != nil && !front
+	key.hide = np.flyHide || onBack
 	var al, oldAl *Album
 	if !key.hide {
 		al = ui.trackAlbum(p.Track)
@@ -229,9 +232,8 @@ func (ui *IpodUI) npStage(dst *image.RGBA, np *NowPlayingView, now time.Time) {
 		np.stageKey = key
 	}
 	blitOpaque(dst, np.stageBuf, 0, 0)
-	if np.back != nil {
-		bm := coverMatrix(backPose())
-		drawBacksideCard(dst, bm, bm, ba, func(w, h float64) *image.RGBA {
+	if onBack {
+		drawBacksideCard(dst, m, coverMatrix(backPose()), 1, cardGrow(pose.A), func(w, h float64) *image.RGBA {
 			return ui.backsideTex(&np.backBuf, &np.backList, np.backAl, np.back, w, h, np.backSince, now)
 		})
 	}

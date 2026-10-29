@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.60.2 (2026-10-29)
+
+### Changed
+- **The album's songs are the back of the cover.** START in Now Playing, and A on an album in Cover Flow, now turn the cover over as one thing. The card is on the cover's back: it starts the size of the cover when the cover is edge-on, and grows to the whole card as it finishes the turn. Turning back, it shrinks into the cover and the cover lands. There is no fade between card and cover any more, so two pictures never show at once.
+
 ## v0.60.1 (2026-10-29)
 
 ### Fixed

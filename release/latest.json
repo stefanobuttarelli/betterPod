@@ -1,8 +1,8 @@
 {
-  "version": "0.60.1",
-  "path": "release/knullipod-v0.60.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.60.1-knulli.zip",
-  "sha256": "e98397fba9e242574a4705681bd82820fb864e7449e985ce522859b7c68a3ea5",
-  "size": 15235259,
-  "notes": "- Cover Flow's Now Playing: START turns the cover over and stays in Now Playing\n- Smoother cover turn: the card comes after the cover turns away, no double text\n- Bar at the top: headphones and Wi-Fi icons (0.60)\n- Visualizer: the song comes up by itself on a new song (0.59.3)"
+  "version": "0.60.2",
+  "path": "release/knullipod-v0.60.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.60.2-knulli.zip",
+  "sha256": "75a021fe87ac3fae36416140791e5aff4be4927f0b23e9c91d79ceee4781d203",
+  "size": 15236080,
+  "notes": "- The album's songs are the back of the cover: one piece turns over, no fades\n- Cover Flow's Now Playing: START stays in Now Playing (0.60.1)\n- Bar at the top: headphones and Wi-Fi icons (0.60)\n- Visualizer: the song comes up by itself on a new song (0.59.3)"
 }
