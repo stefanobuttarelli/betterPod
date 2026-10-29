@@ -1,8 +1,8 @@
 {
-  "version": "0.71.1",
-  "path": "release/betterpod-v0.71.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.71.1-knulli.zip",
-  "sha256": "b9bc699e0abaad652f62e41302aa7dcea42fd35b93834ddc12e99cbe0ee7dc31",
-  "size": 16090648,
-  "notes": "- Share: a received album is in the library at once, without scanning everything\n- Share: when it's received, the cover turns over and grows, with Listen Now and Receive Another (0.71)\n- The keyboard: with nothing left to delete, B closes it and goes back (0.71)\n- Settings \u2192 Sharing: a name for your betterPod (0.70)"
+  "version": "0.72",
+  "path": "release/betterpod-v0.72-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.72-knulli.zip",
+  "sha256": "ae17a49cbb381124f0fb94821a5c0fa639919e393aecd5bd3fda09d4fef495f8",
+  "size": 16091226,
+  "notes": "- Weather: a gear button next to the search bar opens the units and the data credits\n- Share: a received album is in the library at once (0.71.1)\n- Share: when it's received, the cover turns over and grows, with Listen Now and Receive Another (0.71)\n- Settings \u2192 Sharing: a name for your betterPod (0.70)"
 }

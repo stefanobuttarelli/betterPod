@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.72 (2026-10-29)
+
+### Changed
+- **Weather:** a round button with a gear at the right of the search bar (→ from the bar, then A) opens **Weather Settings**: the units (Celsius / Fahrenheit) and where the forecasts and the place search come from (Open-Meteo, GeoNames). The Units row is no longer under the places.
+
 ## v0.71.1 (2026-10-29)
 
 ### Fixed
