@@ -7,6 +7,8 @@ import (
 	"image"
 	"math"
 	"time"
+
+	"golang.org/x/image/vector"
 )
 
 type ViewKind int
@@ -41,6 +43,7 @@ type Item struct {
 	Duration       string // track length, right-aligned (Cover Flow track list)
 	QueueMark      string // queue icon before the title ("queue_next"/"queue_last"); songs look it up
 	SearchField    bool   // the search bar on top: Label is the text, Placeholder shows when empty, Value a note
+	Gear           func() // (search bar) a round gear button at its right, reached with RIGHT
 	Placeholder    string
 	Progress       float64 // > 0: a progress bar under the text (0..1), for a loading row
 }
@@ -69,6 +72,7 @@ type CustomView interface {
 }
 
 type View struct {
+	gearOn           bool   // the cursor is on the search bar's gear button
 	refresh          func() // reload its data (views that read it in the background)
 	onClose          func() // when it leaves the stack (stop its background work)
 	ID               string
@@ -230,7 +234,7 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		}
 		sel := i == v.Index && !v.noCursor
 		if it.SearchField {
-			drawSearchBar(dst, it, y, wCSS, sel)
+			drawSearchBar(dst, it, y, wCSS, sel && !(v.gearOn && it.Gear != nil), sel && v.gearOn && it.Gear != nil)
 			continue
 		}
 		if it.Progress > 0 {
@@ -520,7 +524,7 @@ func (ui *IpodUI) searchField(term *string, placeholder, note string, edit func(
 // drawSearchBar: a bar the width of the list, a little darker than it,
 // holding a white rounded field with a magnifying glass, like the search
 // bar of the first iPhone. Selected, the field gets a blue ring.
-func drawSearchBar(dst *image.RGBA, it *Item, y, wCSS float64, sel bool) {
+func drawSearchBar(dst *image.RGBA, it *Item, y, wCSS float64, sel, gearSel bool) {
 	d := DPR
 	h := searchBarH
 	top, bot, line := hex("#dde2e8"), hex("#c3cad3"), hex("#a5adb8")
@@ -534,6 +538,11 @@ func drawSearchBar(dst *image.RGBA, it *Item, y, wCSS float64, sel bool) {
 	x0, x1 := 8.0, wCSS-8
 	fy0, fy1 := y+8, y+h-8
 	r := (fy1 - fy0) / 2
+	if it.Gear != nil {
+		// the round button at the right, as tall as the field
+		x1 -= fy1 - fy0 + 8
+		drawGearButton(dst, x1+8+r, (fy0+fy1)/2, r, gearSel)
+	}
 	if sel {
 		// the focus ring
 		fillRoundedGradient(dst, (x0-2.5)*d, (fy0-2.5)*d, (x1+2.5)*d, (fy1+2.5)*d, (r+2.5)*d,
@@ -575,4 +584,62 @@ func drawSearchBar(dst *image.RGBA, it *Item, y, wCSS float64, sel bool) {
 		}
 	}
 	drawText(dst, f, s, tx*d, (cy+lineCapHeight(14)/2)*d, text)
+}
+
+// drawGearButton: a round glossy button with a gear (CSS px centre and
+// radius); selected, it turns blue like the field's ring.
+func drawGearButton(dst *image.RGBA, cx, cy, r float64, sel bool) {
+	d := DPR
+	top, bot, edge, glyph := hex("#fdfdfe"), hex("#d9dee5"), hex("#9aa3ae"), rgb(96, 104, 116)
+	if th.dark {
+		top, bot, edge, glyph = hex("#4a4e56"), hex("#2c2f35"), hex("#141518"), rgb(220, 222, 226)
+	}
+	if sel {
+		fillRoundedGradient(dst, (cx-r-2.5)*d, (cy-r-2.5)*d, (cx+r+2.5)*d, (cy+r+2.5)*d, (r+2.5)*d,
+			[]GradStop{{0, rgba(90, 170, 255, 0.9)}, {1, rgba(40, 120, 220, 0.9)}}, 1)
+		top, bot, glyph = hex("#6cb8ff"), hex("#1f74d8"), colWhite
+	}
+	fillRoundedGradient(dst, (cx-r)*d, (cy-r)*d, (cx+r)*d, (cy+r)*d, r*d, []GradStop{{0, top}, {1, bot}}, 1)
+	fillRoundedGradient(dst, (cx-r+1.5)*d, (cy-r+1.5)*d, (cx+r-1.5)*d, cy*d, (r-1.5)*d,
+		[]GradStop{{0, rgba(255, 255, 255, 0.45)}, {1, rgba(255, 255, 255, 0.05)}}, 1)
+	if !sel {
+		strokeRounded(dst, (cx-r)*d, (cy-r)*d, (cx+r)*d, (cy+r)*d, r*d, 1.5, edge, 1)
+	}
+	drawGear(dst, cx*d, cy*d, r*0.62*d, glyph)
+}
+
+// drawGear: a gear of 8 teeth with a hole (device px).
+func drawGear(dst *image.RGBA, cx, cy, R float64, c Col) {
+	var pts [][2]float64
+	const n = 8
+	for i := 0; i < n*4; i++ {
+		a := (float64(i) + 0.5) / float64(n*4) * 2 * math.Pi
+		rr := R
+		if (i/2)%2 == 1 {
+			rr = R * 0.74
+		}
+		pts = append(pts, [2]float64{cx + rr*math.Cos(a), cy + rr*math.Sin(a)})
+	}
+	aaPolyHole(dst, pts, cx, cy, R*0.32, c)
+}
+
+// aaPolyHole: a filled polygon with a round hole in it.
+func aaPolyHole(dst *image.RGBA, pts [][2]float64, hx, hy, hr float64, c Col) {
+	b := dst.Bounds()
+	var ras vector.Rasterizer
+	ras.Reset(b.Dx(), b.Dy())
+	ras.MoveTo(float32(pts[0][0]), float32(pts[0][1]))
+	for _, p := range pts[1:] {
+		ras.LineTo(float32(p[0]), float32(p[1]))
+	}
+	ras.ClosePath()
+	// the hole, the other way round (non-zero winding leaves it empty)
+	const m = 24
+	ras.MoveTo(float32(hx+hr), float32(hy))
+	for i := m - 1; i >= 1; i-- {
+		a := float64(i) / m * 2 * math.Pi
+		ras.LineTo(float32(hx+hr*math.Cos(a)), float32(hy+hr*math.Sin(a)))
+	}
+	ras.ClosePath()
+	ras.Draw(dst, b, image.NewUniform(c8(c)), image.Point{})
 }

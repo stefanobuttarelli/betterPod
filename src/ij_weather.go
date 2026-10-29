@@ -353,7 +353,9 @@ func (ui *IpodUI) openWeather() {
 			ui.showKeyboard(&s.term, func() { ui.refreshView(v) }, run)
 			ui.refreshView(v)
 		}
-		items := []Item{ui.searchField(&s.term, "Search for a city or town", note, edit, nil)}
+		bar := ui.searchField(&s.term, "Search for a city or town", note, edit, nil)
+		bar.Gear = func() { ui.showView(ui.weatherSettingsView(v), "") }
+		items := []Item{bar}
 		switch {
 		case s.busy:
 			items = append(items, Item{Label: "Searching…", NoArrow: true})
@@ -393,15 +395,6 @@ func (ui *IpodUI) openWeather() {
 			}
 			items = append(items, it)
 		}
-		unit := "°C"
-		if st.Fahrenheit {
-			unit = "°F"
-		}
-		items = append(items, Item{Label: "Units", Value: unit, Sublabel: "Weather data by Open-Meteo.com", NoArrow: true, OnSelect: func() {
-			st.Fahrenheit = !st.Fahrenheit
-			wxSave()
-			ui.refreshView(v)
-		}})
 		return items
 	}
 	run = func() {
@@ -444,4 +437,30 @@ func (ui *IpodUI) openWeather() {
 		ui.showKeyboard(&s.term, func() { ui.refreshView(v) }, run)
 		ui.refreshView(v)
 	}
+}
+
+// weatherSettingsView: what the search bar's gear opens: the units and
+// where the forecasts come from.
+func (ui *IpodUI) weatherSettingsView(list *View) *View {
+	st := wxLoad()
+	v := &View{ID: "weather-settings", Title: "Weather Settings", Kind: KindFull}
+	v.Build = func() []Item {
+		unit := "Celsius (°C)"
+		if st.Fahrenheit {
+			unit = "Fahrenheit (°F)"
+		}
+		return []Item{
+			{Label: "Units", Value: unit, NoArrow: true, OnSelect: func() {
+				st.Fahrenheit = !st.Fahrenheit
+				wxSave()
+				ui.refreshView(v)
+				ui.refreshView(list)
+			}},
+			{Label: "Weather data by Open-Meteo.com", Sublabel: "Free and open forecasts · CC BY 4.0", NoArrow: true},
+			{Label: "Place search by Open-Meteo", Sublabel: "GeoNames data · CC BY 4.0", NoArrow: true},
+			{Label: "Forecasts may be wrong", Sublabel: "Updated every 30 minutes when online", NoArrow: true},
+		}
+	}
+	v.Items = v.Build()
+	return v
 }

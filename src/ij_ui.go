@@ -556,6 +556,11 @@ func (ui *IpodUI) centerClick() {
 		return
 	}
 	it := v.Items[v.Index]
+	if v.gearOn && it.Gear != nil {
+		it.Gear()
+		ui.dirty = true
+		return
+	}
 	if it.isSong() {
 		ui.playSong(it.Tracks, it.TrackIdx, it.ShowNowPlaying)
 		return
@@ -729,6 +734,11 @@ func (ui *IpodUI) HandleKey(ev int) {
 		if k == UP || k == DOWN || k == LEFT || k == RIGHT {
 			ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
 		}
+		ui.dirty = true
+		return
+	}
+	// a search bar's gear button: RIGHT onto it, LEFT back to the field
+	if ui.gearKey(k) {
 		ui.dirty = true
 		return
 	}
@@ -1653,4 +1663,33 @@ func (ui *IpodUI) onResume() {
 	}
 	menuKey.down = false
 	ui.dirty = true
+}
+
+// gearKey: on a search bar with a gear button, RIGHT moves the cursor onto
+// the button and LEFT back; UP / DOWN leave it (and move as usual).
+func (ui *IpodUI) gearKey(k Key) bool {
+	if ui.keyboard != nil || len(ui.sheets) > 0 || ui.coverUp() != nil {
+		return false
+	}
+	v := ui.topScreen()
+	if v == nil || v.Custom != nil || v.Index < 0 || v.Index >= len(v.Items) {
+		return false
+	}
+	if v.Items[v.Index].Gear == nil {
+		v.gearOn = false
+		return false
+	}
+	switch k {
+	case RIGHT:
+		v.gearOn, v.dirty = true, true
+		return true
+	case LEFT:
+		if v.gearOn {
+			v.gearOn, v.dirty = false, true
+			return true
+		}
+	case UP, DOWN:
+		v.gearOn, v.dirty = false, true
+	}
+	return false
 }
