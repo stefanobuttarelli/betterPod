@@ -362,9 +362,17 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		}
 		if v.TrackList {
 			if mark {
-				// play mark: a small triangle, black (white when selected)
+				// play mark: a small triangle, black (white when selected);
+				// paused, two bars instead
 				cy := ty + 4 + lasc - capH/2
-				fillTriangle(dst, (x-playMarkW+5)*DPR, (cy-4.5)*DPR, (x-playMarkW+5)*DPR, (cy+4.5)*DPR, (x-playMarkW+12.5)*DPR, cy*DPR, tc)
+				if p := ui.app.Playing; p != nil && p.State == StatePaused {
+					x0 := x - playMarkW + 5
+					bar := []GradStop{{0, tc}, {1, tc}}
+					fillRoundedGradient(dst, x0*DPR, (cy-4.5)*DPR, (x0+2.6)*DPR, (cy+4.5)*DPR, 0, bar, 1)
+					fillRoundedGradient(dst, (x0+5)*DPR, (cy-4.5)*DPR, (x0+7.6)*DPR, (cy+4.5)*DPR, 0, bar, 1)
+				} else {
+					fillTriangle(dst, (x-playMarkW+5)*DPR, (cy-4.5)*DPR, (x-playMarkW+5)*DPR, (cy+4.5)*DPR, (x-playMarkW+12.5)*DPR, cy*DPR, tc)
+				}
 			}
 			if it.Duration != "" {
 				rx := right + durW - 8

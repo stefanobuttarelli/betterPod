@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.61.1 (2026-10-29)
+
+### Fixed
+- **Track lists: the current song shows a pause mark while paused.** Before, the triangle stayed even when the music was paused. This covers the album's card in Cover Flow and Now Playing and the other track lists. The mark changes as soon as you press play or pause.
+
 ## v0.61 (2026-10-29)
 
 ### Changed
