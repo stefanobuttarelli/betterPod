@@ -1,7 +1,7 @@
 #!/bin/bash
 # betterPod - an iPod-style music player, the version for Knulli (PortMaster-style port)
 # UI recreated from iPod.js by Tanner Villarete (MIT); player engine from MiyooPod by Danilo Fragoso (MIT)
-# https://github.com/stefanobuttarelli/betterpod
+# https://github.com/stefanobuttarelli/betterPod
 
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 

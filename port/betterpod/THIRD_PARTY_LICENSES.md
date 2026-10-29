@@ -1,6 +1,6 @@
 # Third-party licenses
 
-betterPod is licensed under the [MIT License](https://github.com/stefanobuttarelli/betterpod/blob/main/LICENSE). It includes and depends on the components below. Each is distributed under its own license, and the copyright notices stay with their authors.
+betterPod is licensed under the [MIT License](https://github.com/stefanobuttarelli/betterPod/blob/main/LICENSE). It includes and depends on the components below. Each is distributed under its own license, and the copyright notices stay with their authors.
 
 ## Projects betterPod is based on
 

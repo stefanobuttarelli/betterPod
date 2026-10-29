@@ -1,7 +1,7 @@
 {
   "version": "0.61",
   "path": "release/betterpod-v0.61-knulli-bridge.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.61-knulli-bridge.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.61-knulli-bridge.zip",
   "sha256": "5ce794418cc4441882936c7be19da8dabb373272aba4d64d879f6ebf97e35068",
   "size": 15237371,
   "notes": "- KnulliPod is now betterPod. After this update, start it once more from Ports: it moves to its new folder (ports/betterpod) with your library and settings\n- Then update the game lists in EmulationStation: Ports shows betterPod\n- The album's songs are the back of the cover (0.60.2)\n- Bar at the top: headphones and Wi-Fi icons (0.60)"

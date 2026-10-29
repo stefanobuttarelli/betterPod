@@ -13,7 +13,7 @@ Sizes, colours, icons and animation timings come from the original code.
 
 Playback and the library scan come from [MiyooPod](https://github.com/danfragoso/miyoopod) by Danilo Fragoso. Both projects are MIT-licensed (see `LICENSE.ipod.js` and `LICENSE.MiyooPod`). The Inter and Noto Sans JP fonts are under the SIL Open Font License. The Apple Lossless decoder is Apple's reference implementation (Apache 2.0). See `THIRD_PARTY_LICENSES.md`.
 
-Source code, screenshots and updates: https://github.com/stefanobuttarelli/betterpod
+Source code, screenshots and updates: https://github.com/stefanobuttarelli/betterPod
 
 ## Installation
 

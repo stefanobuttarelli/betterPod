@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/betterpod/raw/main/release/betterpod-v0.61-knulli.zip"><b>Download v0.61</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/betterPod/tree/main/release"><b>Download</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -86,7 +86,7 @@
 
 ## Installation
 
-1. Download [`betterpod-v0.61-knulli.zip`](https://github.com/stefanobuttarelli/betterpod/raw/main/release/betterpod-v0.61-knulli.zip) and unzip it.
+1. Download the newest `betterpod-v…-knulli.zip` from the [release folder](https://github.com/stefanobuttarelli/betterPod/tree/main/release) and unzip it.
 2. Copy `betterPod.sh` and the `betterpod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.

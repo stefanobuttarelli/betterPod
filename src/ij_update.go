@@ -59,7 +59,7 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "0.63"
+	BETTERPOD_VERSION  = "0.63.1"
 	betterPodBuildDate = "2026-10-29"
 	// the system this build is for (its manifest and zip)
 	updateDistro      = "knulli"
@@ -72,7 +72,7 @@ const (
 
 // updateRepos: the repository, by its name and by the one it had before
 // (GitHub sends the old one on to the new one; both are tried in turn).
-var updateRepos = []string{"stefanobuttarelli/betterpod", "stefanobuttarelli/knullipod"}
+var updateRepos = []string{"stefanobuttarelli/betterPod", "stefanobuttarelli/knullipod"}
 
 // GitHub's API serves the current files at once; raw.githubusercontent
 // keeps "main" pointing at the previous commit for up to 5 minutes after a

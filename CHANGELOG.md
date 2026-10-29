@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.63.1 (2026-10-29)
+
+### Changed
+- **The repository is now github.com/stefanobuttarelli/betterPod.** Software Update looks there first. The old address still leads to it, so installations that haven't updated yet keep finding updates.
+- The download links in the README point to the release folder, so they don't go stale with each version.
+
 ## v0.63 (2026-10-29)
 
 ### Changed

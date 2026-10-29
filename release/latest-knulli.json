@@ -1,8 +1,8 @@
 {
-  "version": "0.63",
-  "path": "release/betterpod-v0.63-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.63-knulli.zip",
-  "sha256": "0522f5babb2613f7c3126552d0fbe173a816cc07327c22d3420d4d0c84264bb5",
-  "size": 15250398,
-  "notes": "- Settings in two columns: the right side shows the menu of the row you're on\n- A / RIGHT move into it, B / LEFT come back\n- Visualizer: Spectrogram and colours with A (0.62)\n- KnulliPod is now betterPod (0.61)"
+  "version": "0.63.1",
+  "path": "release/betterpod-v0.63.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.63.1-knulli.zip",
+  "sha256": "47cc3cb3fe7ed19aaa311ce36c6a16e0151058782fa3a77d943c80a34f65b644",
+  "size": 15250620,
+  "notes": "- The repository is now github.com/stefanobuttarelli/betterPod\n- Settings in two columns (0.63)\n- Visualizer: Spectrogram and colours with A (0.62)\n- KnulliPod is now betterPod (0.61)"
 }
