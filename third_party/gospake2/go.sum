@@ -1,0 +1,4 @@
+github.com/FiloSottile/edwards25519 v1.1.0 h1:S4P8Svv6l4z9f8MGxpO7un9oPaUAgPXXHgFTTCprCAU=
+github.com/FiloSottile/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4VDT4=
+github.com/golang/crypto v0.31.0 h1:nZgjn8utxC3T6DAnnNombggJ/lnU3MRnY8MaU+3Vv1M=
+github.com/golang/crypto v0.31.0/go.mod h1:kDsLvtWBEx7MV9tJOj9bnXsPbxwJQ6csT/x4KIN4Ssk=
