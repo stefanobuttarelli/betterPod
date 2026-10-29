@@ -41,12 +41,17 @@ type artEntry struct {
 	img *image.RGBA
 }
 
-// 128 MB of scaled images, at most 2 decoded at the same time
+// 128 MB of scaled images (16 MB on the Miyoo), at most 2 decoded at the
+// same time
 func newArtCache() *artCache {
+	budget := 128 << 20
+	if isOnion {
+		budget = int(onionArtBudget())
+	}
 	return &artCache{
 		imgs:    map[artKey]*list.Element{},
 		lru:     list.New(),
-		budget:  128 << 20,
+		budget:  budget,
 		pending: map[artKey]bool{},
 		sem:     make(chan struct{}, 2),
 	}
@@ -321,6 +326,12 @@ func (ui *IpodUI) prefetchArt(lib *Library) {
 		k := artKey{a, 96}
 		c := ui.artc
 		c.mu.Lock()
+		if isOnion && c.bytes > c.budget/2 {
+			// a small cache: keep half of it for what is on screen
+			// (the scaled files on disk are still made as covers show up)
+			c.mu.Unlock()
+			break
+		}
 		have := c.get(k) != nil || c.pending[k]
 		if !have {
 			c.pending[k] = true

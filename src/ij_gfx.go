@@ -189,6 +189,12 @@ func blit(dst, src *image.RGBA, dx, dy int, opacity float64) {
 		return
 	}
 	a := uint32(int(opacity*255 + 0.5))
+	// fading: in C (cdraw.c); fully opaque, the Go loop below with its
+	// early outs for opaque and clear pixels is as quick
+	if cDraw && a < 255 {
+		cBlit(dst, dst.PixOffset(x0, y0), src, src.PixOffset(sb.Min.X+x0-dx, sb.Min.Y+y0-dy), x1-x0, y1-y0, a)
+		return
+	}
 	for yy := y0; yy < y1; yy++ {
 		so := src.PixOffset(sb.Min.X+x0-dx, sb.Min.Y+yy-dy)
 		do := dst.PixOffset(x0, yy)
@@ -252,6 +258,10 @@ func blitClipped(dst, src *image.RGBA, dx, dy int, opacity float64, clip image.R
 // (used for the CSS box-shadow of the sliding panels).
 func darkenColumns(dst *image.RGBA, x0, y0, h int, alpha []float64) {
 	b := dst.Bounds()
+	if cDraw {
+		cDarken(dst, x0, max(x0, b.Min.X), min(x0+len(alpha), b.Max.X), max(y0, b.Min.Y), min(y0+h, b.Max.Y), alpha)
+		return
+	}
 	for i, a := range alpha {
 		x := x0 + i
 		if x < b.Min.X || x >= b.Max.X || a <= 0 {

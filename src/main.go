@@ -4,6 +4,7 @@ package main
 #cgo CFLAGS: -I/root/include/SDL2 -O2 -w -D_GNU_SOURCE=1 -D_REENTRANT
 #cgo LDFLAGS: -Wl,-rpath,'$ORIGIN/libs' -lSDL2 -lSDL2_mixer -lm -lpthread
 #include <stdlib.h>
+#include "onion.c"
 #include "main.c"
 #include "audio.c"
 */
@@ -12,6 +13,7 @@ import "C"
 import (
 	"fmt"
 	"image"
+	"io"
 	"os"
 	"runtime"
 	"time"
@@ -21,8 +23,12 @@ import (
 )
 
 func init() {
-	// Use all the H700 cores (Cortex-A53 x4)
+	// Use all the H700 cores (Cortex-A53 x4); on the Miyoo (2 x Cortex-A7)
+	// Go keeps to one core, the other is left to audio decoding
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	if isOnion {
+		runtime.GOMAXPROCS(onionGoProcs())
+	}
 	// Pin main goroutine to a stable OS thread for CGO/SDL calls
 	runtime.LockOSThread()
 }
@@ -117,9 +123,12 @@ func (app *MiyooPod) Init() {
 	// Start power button monitor (reads directly from /dev/input/event0)
 	app.startPowerButtonMonitor()
 
-	// Generate initial icon PNG with current theme
-	if err := app.generateIconPNG(); err != nil {
-		logMsg(fmt.Sprintf("ERROR: Failed to generate icon: %v", err))
+	// Generate initial icon PNG with current theme (not on Onion: the app's
+	// own icon.png is kept, and nothing is written to the card at start)
+	if !isOnion {
+		if err := app.generateIconPNG(); err != nil {
+			logMsg(fmt.Sprintf("ERROR: Failed to generate icon: %v", err))
+		}
 	}
 
 	logMsg("INFO: MiyooPod init OK!")
@@ -302,6 +311,12 @@ func main() {
 				app.handlePowerButtonPress()
 			} else if keyEvent == -int(LOCK)-1 {
 				app.handlePowerButtonRelease()
+			} else if keyEvent == int(VOL_UP) {
+				app.handleVolumeUp()
+			} else if keyEvent == int(VOL_DOWN) {
+				app.handleVolumeDown()
+			} else if keyEvent == -int(VOL_UP)-1 || keyEvent == -int(VOL_DOWN)-1 {
+				// acted on press
 			} else if keyEvent < 0 {
 				// Key release — clear repeat state if it's the held key
 				keyReleased := Key(-keyEvent - 1)
@@ -374,6 +389,12 @@ func main() {
 	// Restore original CPU governor
 	app.restoreCPUGovernor()
 
+	// Hold or a locked screen may have dimmed the backlight
+	if isOnion {
+		restoreBrightness()
+		onionLogAudio()
+	}
+
 	// Track app closed
 	TrackAppLifecycle("app_closed", nil)
 
@@ -404,6 +425,9 @@ func (app *MiyooPod) handleKeyRelease(key Key) {
 	if key == SELECT {
 		app.SelectKeyPressed = false
 	}
+	if key == MENU {
+		app.MenuKeyPressed = false
+	}
 
 	// Handle seek release on Now Playing screen
 	if (key == L || key == R) && app.SeekHeld {
@@ -428,6 +452,10 @@ func (app *MiyooPod) handleKey(key Key) {
 	// Track SELECT hold state
 	if key == SELECT {
 		app.SelectKeyPressed = true
+	}
+	// MENU + volume keys = brightness (Onion: POWER and volume come from onion.c)
+	if key == MENU {
+		app.MenuKeyPressed = true
 	}
 
 	// SELECT + START = quit
@@ -647,25 +675,31 @@ func audioLoadFile(path string) error {
 	return nil
 }
 
-// audioLoadFileToMemory loads entire audio file into RAM to avoid SD card I/O during playback
+// audioLoadFileToMemory loads entire audio file into RAM to avoid SD card I/O during playback.
+// The file is read straight into C memory (no Go copy: the Miyoo has 128 MB).
 func audioLoadFileToMemory(path string) error {
-	// Read entire file into Go memory
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to read audio file: %v", err)
 	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.Size() <= 0 {
+		return fmt.Errorf("failed to read audio file: %v", err)
+	}
+	size := st.Size()
 
-	// Allocate C memory and copy data
-	cdata := C.malloc(C.size_t(len(data)))
+	cdata := C.malloc(C.size_t(size))
 	if cdata == nil {
 		return fmt.Errorf("failed to allocate memory for audio")
 	}
-
-	// Copy Go bytes to C memory
-	C.memcpy(cdata, unsafe.Pointer(&data[0]), C.size_t(len(data)))
+	if _, err := io.ReadFull(f, unsafe.Slice((*byte)(cdata), size)); err != nil {
+		C.free(cdata)
+		return fmt.Errorf("failed to read audio file: %v", err)
+	}
 
 	// audio_load_mem takes ownership of cdata, will free it on next load or quit
-	if C.audio_load_mem(cdata, C.int(len(data))) != 0 {
+	if C.audio_load_mem(cdata, C.int(size)) != 0 {
 		// audio_load_mem already freed cdata on error
 		return fmt.Errorf("failed to load audio from memory")
 	}

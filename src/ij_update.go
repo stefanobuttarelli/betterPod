@@ -3,8 +3,9 @@ package main
 // ij_update.go — Settings → Software Update: betterPod updates itself over
 // Wi-Fi from its GitHub repository.
 //
-// The repository carries a small manifest per system, for Knulli
-// release/latest-knulli.json:
+// The repository carries a small manifest per system: for Knulli
+// release/latest-knulli.json, for Onion (the Miyoo) release/latest-onion.json
+// with a betterpod-v<version>-onion.zip (tools/onion/release.sh):
 //
 //	{"version": "0.61", "path": "release/betterpod-v0.61-knulli.zip",
 //	 "url": "https://raw.githubusercontent.com/…/betterpod-v0.61-knulli.zip",
@@ -61,14 +62,34 @@ import (
 const (
 	BETTERPOD_VERSION  = "0.72.1"
 	betterPodBuildDate = "2026-10-29"
-	// the system this build is for (its manifest and zip)
-	updateDistro      = "knulli"
-	updateManifestRel = "release/latest-" + updateDistro + ".json"
 	// the installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod
+	// on Knulli; /mnt/SDCARD/App/betterpod/betterpod (with its launch.sh) on
+	// Onion, where App/ is the folder above, as ports/ is on Knulli
 	appDir    = "betterpod"
 	appScript = "betterPod.sh"
 	appBin    = "betterpod"
 )
+
+// updateDistro: the system this build is for, which names its manifest
+// (release/latest-<distro>.json) and its zip.
+func updateDistro() string {
+	if isOnion {
+		return "onion"
+	}
+	return "knulli"
+}
+
+func updateManifestRel() string { return "release/latest-" + updateDistro() + ".json" }
+
+// updateZipRoot: where the installation starts inside the zip. Onion's zip
+// is unpacked at the root of the SD card by hand (App/betterpod/…); the
+// update takes what is under App/, as Knulli's takes the zip's root.
+func updateZipRoot() string {
+	if isOnion {
+		return "App/"
+	}
+	return ""
+}
 
 // updateRepos: the repository, by its name and by the one it had before
 // (GitHub sends the old one on to the new one; both are tried in turn).
@@ -623,10 +644,10 @@ func fetchManifest() (*updateManifest, error) {
 	}
 	var last error
 	for _, repo := range updateRepos {
-		m, err := fetchManifestFrom(apiBase(repo)+updateManifestRel, true)
+		m, err := fetchManifestFrom(apiBase(repo)+updateManifestRel(), true)
 		if err != nil {
 			logMsg("Update check through the API (" + repo + ") failed (" + err.Error() + "), trying raw")
-			m, err = fetchManifestFrom(rawBase(repo)+updateManifestRel, false)
+			m, err = fetchManifestFrom(rawBase(repo)+updateManifestRel(), false)
 		}
 		if err == nil {
 			updRepo = repo
@@ -808,7 +829,8 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 }
 
 // unpackUpdate extracts betterPod.sh and betterpod/… (never betterpod/conf)
-// into dir and returns their relative paths.
+// into dir and returns their relative paths (Onion: betterpod/… from the
+// zip's App/, launch.sh inside it).
 func unpackUpdate(zipPath, dir string) ([]string, error) {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -817,7 +839,14 @@ func unpackUpdate(zipPath, dir string) ([]string, error) {
 	defer zr.Close()
 	var files []string
 	for _, f := range zr.File {
-		name := filepath.Clean(filepath.FromSlash(f.Name))
+		zname := f.Name
+		if root := updateZipRoot(); root != "" {
+			if !strings.HasPrefix(zname, root) {
+				continue
+			}
+			zname = strings.TrimPrefix(zname, root)
+		}
+		name := filepath.Clean(filepath.FromSlash(zname))
 		if f.FileInfo().IsDir() {
 			continue
 		}
@@ -834,7 +863,7 @@ func unpackUpdate(zipPath, dir string) ([]string, error) {
 		if mode == 0 {
 			mode = 0644
 		}
-		if name == appScript || name == filepath.Join(appDir, appBin) {
+		if name == appScript || name == filepath.Join(appDir, appBin) || name == filepath.Join(appDir, "launch.sh") {
 			mode = 0755
 		}
 		dst := filepath.Join(dir, name)

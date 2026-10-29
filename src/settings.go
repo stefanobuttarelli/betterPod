@@ -96,14 +96,15 @@ func (app *MiyooPod) loadSettings() error {
 	}
 
 	// Restore volume (default 50 if not set; on Knulli the system owns it)
-	if settings.Volume != nil && !isKnulli {
+	// (the iPod UI keeps its own volume in ipodjs_settings.json)
+	if settings.Volume != nil && !isKnulli && !useIpodUI {
 		app.SystemVolume = *settings.Volume
 		setMiAOVolume(app.SystemVolume)
 		logMsg(fmt.Sprintf("INFO: Restored volume: %d%%", app.SystemVolume))
 	}
 
 	// Restore brightness (default to current if not set)
-	if settings.Brightness != nil && !isKnulli {
+	if settings.Brightness != nil && !isKnulli && !useIpodUI {
 		app.SystemBrightness = *settings.Brightness
 		setBrightness(app.SystemBrightness)
 		logMsg(fmt.Sprintf("INFO: Restored brightness: %d%%", app.SystemBrightness))

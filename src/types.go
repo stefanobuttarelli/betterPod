@@ -21,7 +21,8 @@ const SCREEN_WIDTH = 640
 const SCREEN_HEIGHT = 480
 
 // Music source and data files: /userdata/music and the port's conf folder on
-// Knulli (MIYOOPOD_MUSIC_DIR / MIYOOPOD_DATA_DIR, see knulli.go).
+// Knulli, /mnt/SDCARD/Media/Music and App/betterPod/conf on Onion
+// (MIYOOPOD_MUSIC_DIR / MIYOOPOD_DATA_DIR, set by the launchers).
 var MUSIC_ROOT = musicRoot()
 
 func LIBRARY_JSON_PATH() string { return dataPath(".miyoopod_library.json") }

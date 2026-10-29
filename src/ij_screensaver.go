@@ -147,7 +147,7 @@ func (ui *IpodUI) startSaver() {
 			s.tiles[r*ssCols+c] = &ssTile{flip: newAnim(1), in: newAnim(1)}
 		}
 	}
-	if saverStyle == "viz" {
+	if saverStyle == "viz" && !isOnion { // (no Visualizer on the Miyoo, see onion.go)
 		// the Visualizer: nothing to get ready
 		s.viz = newVisualizer()
 		s.big = nil
@@ -1442,7 +1442,7 @@ func (ui *IpodUI) saverSettingsView() *View {
 			}},
 			Item{Label: "Start Now", Sublabel: "Or [SELECT] + [Y]", NoArrow: true, Preview: PrevSettings, OnSelect: func() { ui.startSaver() }},
 		)
-		return items
+		return onionSaverSettings(items) // (no Visualizer on the Miyoo, see onion.go)
 	}
 	v.Items = v.Build()
 	for i, it := range v.Items {

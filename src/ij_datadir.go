@@ -20,7 +20,7 @@ var (
 func dbLabel(dir string) string {
 	switch filepath.Clean(dir) {
 	case defaultDataDir():
-		return "Port folder"
+		return portFolderLabel()
 	case musicDataDir():
 		return "Music folder"
 	}
@@ -31,9 +31,29 @@ func dbLabel(dir string) string {
 // the library scan skips it).
 func musicDataDir() string { return filepath.Join(MUSIC_ROOT, ".betterpod") }
 
-// externalRoots lists mounted cards and drives under /media.
+// portFolderLabel: the default folder (the app's conf folder).
+func portFolderLabel() string {
+	if isOnion {
+		return "App folder"
+	}
+	return "Port folder"
+}
+
+// browseRoot: where "Choose a folder…" starts (the SD card on Onion).
+func browseRoot() string {
+	if isOnion {
+		return "/mnt/SDCARD"
+	}
+	return "/userdata"
+}
+
+// externalRoots lists mounted cards and drives under /media (none on the
+// Miyoo: it has one card).
 func externalRoots() []string {
 	var out []string
+	if isOnion {
+		return nil
+	}
 	entries, _ := os.ReadDir("/media")
 	for _, e := range entries {
 		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
@@ -61,7 +81,7 @@ func (ui *IpodUI) databaseView() *View {
 		}
 		items = append(items, Item{Label: "Current folder", Sublabel: cur, NoArrow: true, Preview: PrevSettings})
 		items = append(items,
-			pick("Port folder", defaultDataDir(), defaultDataDir()),
+			pick(portFolderLabel(), defaultDataDir(), defaultDataDir()),
 			pick("Music folder", musicDataDir(), musicDataDir()),
 		)
 		for _, r := range externalRoots() {
@@ -77,7 +97,7 @@ func (ui *IpodUI) databaseView() *View {
 			items = append(items, pick(filepath.Base(cur), cur, cur))
 		}
 		items = append(items, Item{Label: "Choose a folder…", Preview: PrevSettings,
-			OnSelect: func() { ui.showView(ui.folderBrowserView("/userdata"), "") }})
+			OnSelect: func() { ui.showView(ui.folderBrowserView(browseRoot()), "") }})
 		if r := externalRoots(); len(r) > 0 {
 			items = append(items, Item{Label: "Browse cards and drives…", Preview: PrevSettings,
 				OnSelect: func() { ui.showView(ui.folderBrowserView("/media"), "") }})

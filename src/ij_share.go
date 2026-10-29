@@ -118,6 +118,7 @@ type ShareView struct {
 	count     int // shares done here, this one included
 	cancel    context.CancelFunc
 	bg        *image.RGBA
+	lightAt   time.Time // the last frame with Light effects (Animating)
 }
 
 func (s *ShareView) setPhase(p int) {
@@ -843,7 +844,24 @@ func (s *ShareView) OnCenter(ui *IpodUI) {
 
 func (s *ShareView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 
+// Animating: the screen moves all the time while waiting and sending, which
+// can last minutes; with Light effects (the Miyoo's default, ij_effects.go)
+// it is drawn 10 times a second instead of at every frame, leaving the
+// processor to the music and the transfer.
 func (s *ShareView) Animating(now time.Time) bool {
+	if !s.animating(now) {
+		return false
+	}
+	if lightEffects() {
+		if now.Sub(s.lightAt) < 100*time.Millisecond {
+			return false
+		}
+		s.lightAt = now
+	}
+	return true
+}
+
+func (s *ShareView) animating(now time.Time) bool {
 	switch s.phase {
 	case shCode:
 		return s.egg != "" && now.Sub(s.eggAt) < 4*time.Second

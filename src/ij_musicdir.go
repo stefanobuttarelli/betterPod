@@ -941,7 +941,7 @@ var errCardGone = errors.New("the card isn't there")
 
 // fadviseDontNeed drops a file's pages from the cache.
 func fadviseDontNeed(f *os.File) {
-	syscall.Syscall6(syscall.SYS_FADVISE64, f.Fd(), 0, 0, 4 /* POSIX_FADV_DONTNEED */, 0, 0)
+	fadvise(f.Fd(), 4 /* POSIX_FADV_DONTNEED */) // (fadvise.go: 32-bit ARM differs)
 }
 
 // removeEmptyDirs removes the folders the moved files left empty, and

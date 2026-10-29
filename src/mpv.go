@@ -114,7 +114,10 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 	defer audioLoadMu.Unlock()
 	atomic.StoreInt32(&trackLoading, 1)
 	defer atomic.StoreInt32(&trackLoading, 0)
-	const maxRAMSize = 48 * 1024 * 1024 // 48MB (hi-res FLAC fits; the H700 has 1GB)
+	var maxRAMSize int64 = 48 * 1024 * 1024 // 48MB (hi-res FLAC fits; the H700 has 1GB)
+	if isOnion {
+		maxRAMSize = onionMaxRAMTrack() // the Miyoo has 128 MB
+	}
 
 	// Reopen the audio device at the track's sample rate (no resampling).
 	audioPrepareFor(path)
@@ -141,6 +144,9 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 		audioStop()
 	}
 
+	if isOnion {
+		go onionWarmFile(path) // streamed from the card: keep ahead of it
+	}
 	err := audioLoadFile(path)
 	if err != nil {
 		return err

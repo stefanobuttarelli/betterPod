@@ -13,8 +13,10 @@ type AboutView struct {
 }
 
 func (ui *IpodUI) aboutView() *View {
+	sysName, sysConsoles := platformAbout()
 	a := &AboutView{list: &View{ID: "aboutList", Kind: KindFull, Items: []Item{
 		{Label: "betterPod " + BETTERPOD_VERSION, Sublabel: "betterpod.xyz · r/betterPod"},
+		{Label: sysName, Sublabel: sysConsoles},
 		{Label: "Interface: iPod.js", Sublabel: "Tanner Villarete · MIT"},
 		{Label: "Audio engine: MiyooPod", Sublabel: "Danilo Fragoso · MIT"},
 		{Label: "Puzzles: Portable Puzzle Collection", Sublabel: "Simon Tatham and contributors · MIT"},
@@ -23,6 +25,11 @@ func (ui *IpodUI) aboutView() *View {
 		{Label: "Font: Inter", Sublabel: "Rasmus Andersson · OFL"},
 		{Label: "An independent fan project", Sublabel: "iPod is a trademark of Apple Inc.; betterPod is not affiliated with Apple"}}}}
 	//
+	if isOnion { // the Miyoo's SDL2 drivers (onion/betterpod/libs), before the last row
+		items := a.list.Items
+		last := items[len(items)-1]
+		a.list.Items = append(append(items[:len(items)-1:len(items)-1], Item{Label: "SDL2 for the Miyoo", Sublabel: "steward-fu · zlib"}), last)
+	}
 	a.list.dirty = true
 	return &View{ID: "about", Title: "About", Kind: KindFull, Custom: a}
 }

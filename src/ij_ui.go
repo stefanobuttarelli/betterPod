@@ -114,7 +114,9 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	}
 	ui.loadPrefs()
 	ui.updateTheme()
-	if v := initSystemVolume(); v >= 0 {
+	if isOnion {
+		ui.onionInitVolume() // MI_AO hardware volume (onion.go)
+	} else if v := initSystemVolume(); v >= 0 {
 		// the console volume is the player volume; SDL_mixer stays at 100%
 		// (the wheel and the console keys move the same value)
 		ui.volume = math.Min(math.Max(v, 0), 1)
@@ -1116,6 +1118,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// hold badge and volume overlay
 	ui.drawHoldBadge(fb, now)
 	ui.drawVolumeOSD(fb, now)
+	ui.drawPowerExitOSD(fb)
 
 	// views that finished sliding out
 	keep := ui.gone[:0]
@@ -1311,6 +1314,9 @@ func batteryInfo() (int, bool) {
 }
 
 func batteryCharging() bool {
+	if isOnion {
+		return onionCharging()
+	}
 	for _, p := range []string{"/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
 		if b, err := os.ReadFile(p); err == nil {
 			s := string(b)
@@ -1338,6 +1344,12 @@ func (ui *IpodUI) onlyKenBurns(now time.Time) bool {
 // the previous one).
 func (ui *IpodUI) present() bool {
 	pix := ui.fb.Pix
+	if isOnion {
+		// Onion uploads the whole frame anyway (main.c): comparing it with
+		// the last one row by row would cost more than it saves
+		refreshFramebuffer(unsafe.Pointer(&pix[0]))
+		return true
+	}
 	stride := ui.fb.Stride
 	h := len(pix) / stride
 	if len(ui.prevFB) != len(pix) {
@@ -1380,6 +1392,7 @@ func (ui *IpodUI) Run() {
 	lastState := PlayState(-1)
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
+	lastLocked, lastWarn := app.Locked, app.PowerExitWarning
 	lastStatus := -1
 	var lastWall time.Time
 	wasAnim := false // an animation was running at the last frame
@@ -1405,6 +1418,11 @@ func (ui *IpodUI) Run() {
 			}
 			if ev >= 0 && menuKey.down {
 				ui.lockKeyCombo("another key") // MENU + a key: not the lock
+			}
+			// Onion: volume keys, MENU, L2 / R2 (onion.go)
+			ev, used := ui.onionKey(ev)
+			if used {
+				continue
 			}
 			if app.Locked {
 				continue
@@ -1435,10 +1453,21 @@ func (ui *IpodUI) Run() {
 			}
 		}
 		now := animNow()
+		if app.Locked != lastLocked {
+			lastLocked = app.Locked
+			ui.lockChanged()
+		}
+		if app.PowerExitWarning != lastWarn {
+			lastWarn = app.PowerExitWarning
+			ui.dirty = true
+		}
 		ui.lockKeyPoll(now)
 		// back from sleep: the wall clock jumped, the monotonic one didn't
 		wall := time.Now()
-		if !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
+		// (not on Onion: launch.sh stops keymon, so the Miyoo never sleeps
+		// under betterPod; a jump is the clock being set, and would light the
+		// screen in the pocket)
+		if !isOnion && !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
 			ui.onResume()
 		}
 		lastWall = wall
@@ -1484,6 +1513,7 @@ func (ui *IpodUI) Run() {
 		}
 		ui.tickOverlays(now)
 		ui.saverTick(now)
+		ui.onionSleepTick(now) // (Onion's sleep timer, onion_sleep.go)
 		if ui.saver != nil && !ui.saver.exiting && !app.Locked {
 			ui.saverFrame(now)
 		}
@@ -1525,7 +1555,7 @@ func (ui *IpodUI) Run() {
 		if ui.dirty || anim || ended {
 			ui.dirty = false
 			t0 := time.Now()
-			if app.Locked {
+			if app.Locked && !app.PowerExitWarning {
 				fillRect(ui.fb, 0, 0, 640, 480, colBlack)
 			} else {
 				ui.renderFrame(now)
@@ -1570,11 +1600,18 @@ func (ui *IpodUI) Run() {
 			frame = 25 * time.Millisecond
 		} else if ui.onlyKenBurns(now) {
 			frame = 50 * time.Millisecond // slow pan: fewer frames save battery
+			if isOnion && !lightEffects() {
+				// 2.4 px a second: 10 frames keep it smooth on the Miyoo
+				frame = 100 * time.Millisecond
+			}
 			if !ui.kb.transStart.IsZero() || ui.listMarquee() || marqueeActive {
 				frame = 33 * time.Millisecond
 			}
 		}
 
+		if isOnion && app.Locked {
+			frame = onionLockedFrame() // Onion: POWER and the volume keys answer within 0.1 s (onion_sleep.go)
+		}
 		if presentBlocked && frame == 16*time.Millisecond {
 			continue // vsync already paced this frame
 		}

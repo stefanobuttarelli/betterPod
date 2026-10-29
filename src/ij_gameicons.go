@@ -200,6 +200,9 @@ func nextWxPreview() {
 }
 
 func wxFrameAt(now time.Time) int {
+	if lightEffects() {
+		return -1 // still icons (Settings → Effects, see ij_effects.go)
+	}
 	return int(math.Mod(float64(now.UnixNano())/1e9, wxLoopSecs) / wxLoopSecs * wxFrames)
 }
 
