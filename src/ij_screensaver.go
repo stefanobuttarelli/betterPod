@@ -44,9 +44,10 @@ const (
 
 // settings (prefs)
 var (
-	saverAfter = 0     // minutes without a key before it starts; 0: only by hand
-	saverDim   = false // lower the brightness while it shows
-	saverLevel = 0     // the brightness it lowers to (%); 0: a third of the current
+	saverStyle = "cover" // "cover": Cover Flip (the mosaic); "viz": the Visualizer (ij_visualizer.go)
+	saverAfter = 0       // minutes without a key before it starts; 0: only by hand
+	saverDim   = false   // lower the brightness while it shows
+	saverLevel = 0       // the brightness it lowers to (%); 0: a third of the current
 )
 
 type ssTile struct {
@@ -91,6 +92,9 @@ type screensaver struct {
 	subAlb  *Anim     // the grey part after the title: 0 the artist, 1 the album
 	subNext time.Time // when it changes over
 
+	viz    *visualizer     // the Visualizer instead of the mosaic
+	clockA *Anim           // the Visualizer's big clock (START)
+	lowA   *Anim           // the Visualizer's song at the bottom (UP / DOWN)
 	npView *NowPlayingView // Now Playing under it while its cover flies (its own hidden)
 	lib    *Library        // the library its albums are from
 	hideAt time.Time       // when the flying cover takes over from Now Playing's (once it is flat)
@@ -122,7 +126,7 @@ func (ui *IpodUI) startSaver() {
 	}
 	now := animNow()
 	s := &screensaver{fade: newAnim(0), bigFlp: newAnim(1), bigOn: newAnim(0), fly: newAnim(1),
-		selR: -1, selC: -1, selGrow: newAnim(0), songIn: newAnim(0), songChg: newAnim(1), subAlb: newAnim(0), cardOpen: newAnim(0), cardHome: newAnim(0),
+		selR: -1, selC: -1, selGrow: newAnim(0), songIn: newAnim(0), songChg: newAnim(1), subAlb: newAnim(0), clockA: newAnim(0), lowA: newAnim(0), cardOpen: newAnim(0), cardHome: newAnim(0),
 		rng: rand.New(rand.NewSource(now.UnixNano())), nextFlip: now.Add(3 * time.Second)}
 	s.lib = ui.app.Library
 	s.big = ui.saverPlaying()
@@ -135,13 +139,30 @@ func (ui *IpodUI) startSaver() {
 	if p := ui.app.Playing; p != nil {
 		s.songNow = p.Track
 	}
-	ui.ssWarm()
 	for r := 0; r < ssRows; r++ {
 		for c := 0; c < ssCols; c++ {
-			s.tiles[r*ssCols+c] = &ssTile{flip: newAnim(1), in: newAnim(0)}
+			s.tiles[r*ssCols+c] = &ssTile{flip: newAnim(1), in: newAnim(1)}
 		}
 	}
+	if saverStyle == "viz" {
+		// the Visualizer: nothing to get ready
+		s.viz = newVisualizer()
+		s.big = nil
+		s.ready = true
+		s.fade.To(1, 400*time.Millisecond, easeCSS, 0)
+		ui.saver = s
+		ui.sheets = nil
+		for k := range ui.pressStart {
+			delete(ui.pressStart, k)
+		}
+		ui.saverDim(s, now)
+		logMsg("Screensaver on (Visualizer)")
+		ui.dirty = true
+		return
+	}
+	ui.ssWarm()
 	for i := range s.tiles {
+		s.tiles[i].in.Set(0)
 		s.tiles[i].al = s.pick(ui, i)
 	}
 	// from Now Playing: its cover will fly into the big square
@@ -162,6 +183,13 @@ func (ui *IpodUI) startSaver() {
 	for k := range ui.pressStart {
 		delete(ui.pressStart, k) // keys down now count no more (no long press under it)
 	}
+	ui.saverDim(s, now)
+	logMsg("Screensaver on")
+	ui.dirty = true
+}
+
+// saverDim: Dim the Screen: the brightness lowered while it shows.
+func (ui *IpodUI) saverDim(s *screensaver, now time.Time) {
 	if saverDim && !hold.on {
 		s.savedBri = getBacklightPercent()
 		lvl := saverLevel
@@ -175,8 +203,6 @@ func (ui *IpodUI) startSaver() {
 			s.briShown = now.Add(1500 * time.Millisecond)
 		}
 	}
-	logMsg("Screensaver on")
-	ui.dirty = true
 }
 
 // covers asks for the covers on the screen and reports whether all are
@@ -511,6 +537,9 @@ func (ui *IpodUI) saverKey(ev int) bool {
 		ui.saver = nil
 		return true
 	}
+	if s.viz != nil {
+		return ui.vizKey(s, k, now)
+	}
 	if s.card != nil {
 		return ui.saverCardKey(s, k, now)
 	}
@@ -570,6 +599,8 @@ func (ui *IpodUI) saverRepeat(k Key) {
 	s := ui.saver
 	now := animNow()
 	switch {
+	case s.viz != nil && k != L2 && k != R2:
+		// (the Visualizer's keys don't repeat, but the brightness)
 	case s.card != nil && (k == UP || k == DOWN):
 		ui.saverCardKey(s, k, now)
 	case s.card == nil && (k == UP || k == DOWN || k == LEFT || k == RIGHT):
@@ -771,6 +802,10 @@ func (ui *IpodUI) saverCardDone(s *screensaver) {
 // ---- frames ----
 
 func (s *screensaver) animating(now time.Time) bool {
+	if s.viz != nil {
+		return s.fade.Running() || s.songIn.Running() || s.songChg.Running() || s.subAlb.Running() ||
+			s.clockA.Running() || s.lowA.Running() || now.Before(s.briShown) || s.viz.animating(now)
+	}
 	if s.fade.Running() || s.songIn.Running() || s.songChg.Running() || s.subAlb.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
 		s.cardOpen.Running() || s.cardHome.Running() || now.Before(s.briShown) ||
 		s.card != nil && (s.cardMarq || s.cardBack != nil && s.cardBack.marqueeOn) {
@@ -794,7 +829,9 @@ func (ui *IpodUI) saverFrame(now time.Time) {
 		}
 		return
 	}
-	s.follow(ui)
+	if s.viz == nil {
+		s.follow(ui)
+	}
 	// the song in the bar goes down out of it while paused, back up when it plays
 	want := 0.0
 	if ui.saverSongPlaying() {
@@ -830,6 +867,9 @@ func (ui *IpodUI) saverFrame(now time.Time) {
 			s.subNext = now.Add(6 * time.Second)
 		}
 		ui.dirty = true
+	}
+	if s.viz != nil {
+		return // (no covers)
 	}
 	if s.card != nil {
 		if s.cardPlay && !s.cardHome.Running() && s.cardHome.Get(now) >= 1 {
@@ -927,6 +967,12 @@ func lerpRect(a, b image.Rectangle, t float64) image.Rectangle {
 
 func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 	s := ui.saver
+	if s.viz != nil {
+		ui.renderViz(dst, s, now)
+		ui.vizOverlays(dst, s, now)
+		ui.ssBarDraw(dst, s, now)
+		return
+	}
 	fillRect(dst, 0, 0, 640, 480, colBlack)
 	bigOn := s.bigOn.Get(now)
 	bigAl := s.big
@@ -1358,6 +1404,19 @@ func (ui *IpodUI) saverSettingsView() *View {
 				ui.refreshBuilt()
 			}})
 		}
+		style, sub := "Cover Flip", "The covers, turning over · press A for the Visualizer"
+		if saverStyle == "viz" {
+			style, sub = "Visualizer", "Moves with the music · ◀ ▶ change the effect · press A for Cover Flip"
+		}
+		items = append(items, Item{Label: "Style", Value: style, Sublabel: sub, NoArrow: true, Preview: PrevSettings, OnSelect: func() {
+			if saverStyle == "viz" {
+				saverStyle = "cover"
+			} else {
+				saverStyle = "viz"
+			}
+			ui.savePrefs()
+			ui.refreshBuilt()
+		}})
 		items = append(items,
 			Item{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "L2 / R2 set the brightness while it shows", NoArrow: true, Preview: PrevSettings, OnSelect: func() {
 				saverDim = !saverDim

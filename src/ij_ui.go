@@ -1529,6 +1529,8 @@ func (ui *IpodUI) Run() {
 		frame := 16 * time.Millisecond
 		if app.Locked {
 			frame = 200 * time.Millisecond // screen off: poll slowly
+		} else if sv := ui.saver; anim && sv != nil && sv.viz != nil && !sv.exiting {
+			frame = 33 * time.Millisecond // the Visualizer: 30 frames a second
 		} else if !anim {
 			frame = 25 * time.Millisecond
 		} else if ui.onlyKenBurns(now) {

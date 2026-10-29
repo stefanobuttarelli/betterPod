@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.59 (2026-10-29)
+
+### Added
+- **Screensaver: the Visualizer.** Settings → Screensaver → **Style** chooses **Cover Flip** (the covers, as before) or **Visualizer**, effects that move with the music being heard.
+  - **The effects:**
+    - **Bars:** the spectrum in blue bars with falling caps and a reflection.
+    - **Waves:** the sound's wave, glowing, its trails drifting outwards.
+    - **Tunnel:** the bands round a ring, the picture turning into the middle, like the old Infinity.
+    - **Stars:** sparks thrown from the middle, bursts on the beats.
+  - **The keys:**
+    - **LEFT / RIGHT** change the effect (its name shows for a moment, and the choice is kept).
+    - **START** shows a big clock with the date.
+    - **UP / DOWN** bring up the song at the bottom, as Now Playing's block shows it, on a dark fade instead of its background.
+    - **B** leaves (to Now Playing while a song plays), **X** plays and pauses, **L / R** change song, **L2 / R2** set the brightness.
+  - **The sound:** it is taken from what the console is playing (the mixer's output). An FFT gives 40 bands in decibels, with automatic gain, a quick rise and a slower fall, and the beats of the bass. It follows what is heard, not the ~90 ms chunks the audio is sent in.
+  - **Light on the battery:** 30 frames a second. The trail effects draw at half size and are doubled onto the screen, the bars from ready-made pictures. With nothing playing it says so, and stops drawing after a moment.
+
 ## v0.58.3 (2026-10-29)
 
 A review of the last releases: bugs, cleaner code, less work per frame.

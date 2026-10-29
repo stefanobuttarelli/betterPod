@@ -25,6 +25,72 @@ static void on_music_finished() {
     music_finished_flag = 1;
 }
 
+// --- the visualizer's tap ---------------------------------------------------
+// The mixed output (mono) goes into a ring as each chunk is handed to the
+// device; the reader takes the samples being heard now: the chunk's start
+// plus the time since it was handed over (chunks are up to ~90 ms long, so
+// reading only at chunk boundaries would jerk).
+#define VIS_N 32768
+static float vis_ring[VIS_N];
+static volatile unsigned vis_pos;      // samples written so far
+static volatile unsigned vis_cb_start; // ring position where the last chunk starts
+static volatile Uint64 vis_cb_t;       // when it was handed over (perf counter)
+static int vis_f32 = 1, vis_ch = 2, vis_rate = 44100;
+
+static void vis_postmix(void *udata, Uint8 *stream, int len) {
+    (void)udata;
+    unsigned p = vis_pos;
+    int n;
+    if (vis_f32) {
+        const float *s = (const float *)stream;
+        n = len / (int)sizeof(float) / vis_ch;
+        for (int i = 0; i < n; i++) {
+            float v = s[i * vis_ch];
+            if (vis_ch > 1) v = (v + s[i * vis_ch + 1]) * 0.5f;
+            vis_ring[(p + i) & (VIS_N - 1)] = v;
+        }
+    } else {
+        const Sint16 *s = (const Sint16 *)stream;
+        n = len / (int)sizeof(Sint16) / vis_ch;
+        for (int i = 0; i < n; i++) {
+            float v = s[i * vis_ch];
+            if (vis_ch > 1) v = (v + s[i * vis_ch + 1]) * 0.5f;
+            vis_ring[(p + i) & (VIS_N - 1)] = v / 32768.0f;
+        }
+    }
+    vis_cb_start = p;
+    vis_cb_t = SDL_GetPerformanceCounter();
+    vis_pos = p + (unsigned)n;
+}
+
+static void vis_hook(void) {
+    int freq = 0, ch = 0; Uint16 fmt = 0;
+    Mix_QuerySpec(&freq, &fmt, &ch);
+    vis_f32 = fmt == AUDIO_F32SYS;
+    vis_ch = ch > 0 ? ch : 2;
+    vis_rate = freq > 0 ? freq : 44100;
+    Mix_SetPostMix(vis_postmix, NULL);
+}
+
+// audio_vis_read: the n samples (mono, -1..1) heard now. It returns 0 when
+// nothing new came for half a second (paused, stopped: out is silence).
+int audio_vis_read(float *out, int n) {
+    Uint64 now = SDL_GetPerformanceCounter();
+    Uint64 t = vis_cb_t;
+    unsigned start = vis_cb_start, pos = vis_pos;
+    double dt = t ? (double)(now - t) / (double)SDL_GetPerformanceFrequency() : 1e9;
+    if (dt > 0.5 || n > VIS_N / 2) {
+        memset(out, 0, sizeof(float) * (size_t)n);
+        return 0;
+    }
+    unsigned end = start + (unsigned)(dt * vis_rate);
+    if ((int)(end - pos) > 0) end = pos;
+    for (int i = 0; i < n; i++) out[i] = vis_ring[(end - (unsigned)n + (unsigned)i) & (VIS_N - 1)];
+    return 1;
+}
+
+int audio_vis_rate(void) { return vis_rate; }
+
 int audio_init() {
     c_log("audio_init entered");
 
@@ -39,6 +105,7 @@ int audio_init() {
         }
     }
     cur_rate = 44100;
+    vis_hook();
     {
         int freq = 0, ch = 0; Uint16 fmt = 0; char b[96];
         Mix_QuerySpec(&freq, &fmt, &ch);
@@ -91,6 +158,7 @@ int audio_set_rate(int rate) {
         }
     }
     cur_rate = rate;
+    vis_hook();
     Mix_QuerySpec(&freq, &fmt, &ch);
     { char b[96]; snprintf(b, sizeof(b), "audio device: %d Hz, format 0x%x, %d ch", freq, fmt, ch); c_log(b); }
     Mix_HookMusicFinished(on_music_finished);

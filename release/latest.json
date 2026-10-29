@@ -1,8 +1,8 @@
 {
-  "version": "0.58.3",
-  "path": "release/knullipod-v0.58.3-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.58.3-knulli.zip",
-  "sha256": "00350a436f63c3d4b77dbceac3f757113d76a47c33ca8e16f2ee131e8681fd6e",
-  "size": 15204118,
-  "notes": "- Move Music: safer (never over other files, FAT checks, real repairs, switch before deleting)\n- Screensaver, Now Playing, Cover Flow: a round of bug fixes\n- Faster: Now Playing's cover is drawn only when it changes; less work in the screensaver\n- Old unused code removed\n- Screensaver: B to Now Playing only while a song plays (0.58.2)"
+  "version": "0.59",
+  "path": "release/knullipod-v0.59-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.59-knulli.zip",
+  "sha256": "58b127e2080b3526a7a0a38b1d3851fcf64e3fdd7bbe40aa3e80dea893b66f85",
+  "size": 15224324,
+  "notes": "- Screensaver: the Visualizer (Bars, Waves, Tunnel, Stars) moving with the music\n- Visualizer: LEFT/RIGHT change effect, START big clock, UP/DOWN the song at the bottom\n- Settings → Screensaver → Style: Cover Flip or Visualizer\n- Move Music safer; fixes and speed-ups (0.58.3)"
 }
