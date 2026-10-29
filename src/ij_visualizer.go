@@ -639,6 +639,9 @@ func (ui *IpodUI) vizKey(s *screensaver, k Key, now time.Time) bool {
 	case START:
 		toggle(s.clockA)
 	case UP, DOWN:
+		// up for good, or down (even when it came up by itself)
+		s.lowOff = time.Time{}
+		s.lowPin = s.lowA.Target() != 1
 		toggle(s.lowA)
 	case B, MENU:
 		if ui.saverSongPlaying() && ui.coverUp() == nil {

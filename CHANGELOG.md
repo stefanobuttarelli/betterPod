@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.59.3 (2026-10-29)
+
+### Changed
+- **Visualizer: the song comes up by itself.** When the song changes (it ends, L / R, or one picked elsewhere) or the music plays again after a pause, the song's block rises at the bottom for 5 seconds, then goes down again. Pausing does not bring it up.
+  - Brought up with **UP / DOWN**, it stays until UP / DOWN again and just changes with the song.
+
 ## v0.59.2 (2026-10-29)
 
 ### Changed

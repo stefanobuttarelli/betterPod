@@ -95,6 +95,9 @@ type screensaver struct {
 	viz    *visualizer     // the Visualizer instead of the mosaic
 	clockA *Anim           // the Visualizer's big clock (START)
 	lowA   *Anim           // the Visualizer's song at the bottom (UP / DOWN)
+	lowPin bool            // shown with UP / DOWN: stays until UP / DOWN
+	lowOff time.Time       // shown by itself (a new song, playing again): goes then
+	lowArm bool            // past the first frame (what is playing then is no news)
 	npView *NowPlayingView // Now Playing under it while its cover flies (its own hidden)
 	lib    *Library        // the library its albums are from
 	hideAt time.Time       // when the flying cover takes over from Now Playing's (once it is flat)
@@ -804,7 +807,7 @@ func (ui *IpodUI) saverCardDone(s *screensaver) {
 func (s *screensaver) animating(now time.Time) bool {
 	if s.viz != nil {
 		return s.fade.Running() || s.songIn.Running() || s.songChg.Running() || s.subAlb.Running() ||
-			s.clockA.Running() || s.lowA.Running() || now.Before(s.briShown) || s.viz.animating(now)
+			s.clockA.Running() || s.lowA.Running() || !s.lowOff.IsZero() || now.Before(s.briShown) || s.viz.animating(now)
 	}
 	if s.fade.Running() || s.songIn.Running() || s.songChg.Running() || s.subAlb.Running() || s.fly.Running() || s.bigFlp.Running() || s.bigOn.Running() || s.selGrow.Running() ||
 		s.cardOpen.Running() || s.cardHome.Running() || now.Before(s.briShown) ||
@@ -838,10 +841,16 @@ func (ui *IpodUI) saverFrame(now time.Time) {
 		want = 1
 	}
 	if s.songIn.Target() != want {
+		if want == 1 && s.lowArm {
+			s.lowAuto(now) // playing again
+		}
 		s.songIn.To(want, 380*time.Millisecond, easeInOut, 0)
 		ui.dirty = true
 	}
 	if p := ui.app.Playing; p != nil && p.Track != s.songNow {
+		if p.Track != nil && s.lowArm {
+			s.lowAuto(now) // a new song
+		}
 		if s.songNow != nil && p.Track != nil {
 			s.songOld, s.songDir = s.songNow, 1
 			if skipDir < 0 {
@@ -854,6 +863,14 @@ func (ui *IpodUI) saverFrame(now time.Time) {
 		s.subAlb.Set(0) // a new song starts with its artist
 		s.subNext = now.Add(6 * time.Second)
 		ui.dirty = true
+	}
+	if s.viz != nil {
+		s.lowArm = true
+		if !s.lowOff.IsZero() && now.After(s.lowOff) {
+			s.lowOff = time.Time{}
+			s.lowA.To(0, 450*time.Millisecond, easeInOut, 0)
+			ui.dirty = true
+		}
 	}
 	// after the title, the artist (6 s) and the album (4 s) take turns
 	if s.subNext.IsZero() {
@@ -1438,4 +1455,16 @@ func (ui *IpodUI) saverSettingsView() *View {
 		}
 	}
 	return v
+}
+
+// lowAuto: the Visualizer's song comes up by itself for 5 s (a new song,
+// or playing again), unless it is up already for good (UP / DOWN).
+func (s *screensaver) lowAuto(now time.Time) {
+	if s.viz == nil || s.lowPin {
+		return
+	}
+	if s.lowA.Target() != 1 {
+		s.lowA.To(1, 450*time.Millisecond, easeInOut, 0)
+	}
+	s.lowOff = now.Add(5 * time.Second)
 }
