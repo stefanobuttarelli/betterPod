@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.72.1 (2026-10-29)
+
+### Fixed
+- **Share:** the received animation no longer stutters: the album joins the library just after it has played.
+
 ## v0.72 (2026-10-29)
 
 ### Changed

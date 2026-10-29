@@ -547,7 +547,9 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 		s.setPhase(shDone)
 		s.count = shareCountUp()
 		go func() {
-			// just this folder into the library (no full scan)
+			// just this folder into the library (no full scan), once the
+			// received animation has played (it would stutter meanwhile)
+			time.Sleep(1500 * time.Millisecond)
 			if !ui.addFolderToLibrary(dest) {
 				ui.post(ui.rescanLibrary)
 			}
