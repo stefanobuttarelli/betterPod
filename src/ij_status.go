@@ -184,11 +184,13 @@ func wifiIcon(n int, c Col) *image.RGBA {
 	if img := wifiIcons[key]; img != nil {
 		return img
 	}
+	// 18 × 14 CSS px: the widest arc (radius 10.2, at ±45°) needs 16.2
+	// px plus its stroke, so it isn't cut at the sides
 	S := px(14)
-	img := image.NewRGBA(image.Rect(0, 0, S, S))
+	img := image.NewRGBA(image.Rect(0, 0, px(18), S))
 	p := pen{gg.NewContextForRGBA(img), float64(S) / 14}
 	dc := p.dc
-	cx, cy := 7.0, 11.6
+	cx, cy := 9.0, 11.6
 	on, off := p.solid(c), p.solid(Col{c.R, c.G, c.B, c.A * 0.3})
 	// the dot (always there: it is the first step)
 	dc.SetFillStyle(on)

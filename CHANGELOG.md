@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.64.1 (2026-10-29)
+
+### Fixed
+- **Wi-Fi icon: the biggest arc was cut at its ends.** The icon was too narrow for it. It is now 18 px wide, and all three arcs show whole with their rounded ends.
+
 ## v0.64 (2026-10-29)
 
 ### Added

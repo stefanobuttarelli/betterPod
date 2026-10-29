@@ -59,7 +59,7 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "0.64"
+	BETTERPOD_VERSION  = "0.64.1"
 	betterPodBuildDate = "2026-10-29"
 	// the system this build is for (its manifest and zip)
 	updateDistro      = "knulli"
