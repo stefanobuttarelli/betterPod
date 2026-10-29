@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.60.1 (2026-10-29)
+
+### Fixed
+- **Cover Flow's Now Playing: START stays in Now Playing.** The cover turns over to the album's songs and back without going to Cover Flow. The header still reads Now Playing and the other covers stay hidden. **B** on the card turns it back to Now Playing too, as START does, and **A** plays the song picked.
+
+### Changed
+- **Smoother turn of the cover** (Now Playing, Cover Flow's Now Playing and Cover Flow):
+  - The song's info fades as the cover starts to turn.
+  - The card comes only once the cover has turned away, so the two never show at once.
+  - Turning back, the card goes quickly and the info returns as the cover lands.
+
 ## v0.60 (2026-10-29)
 
 ### Added

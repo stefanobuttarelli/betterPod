@@ -205,7 +205,7 @@ func (cf *CoverFlow) sync(now time.Time) {
 		}
 		to, dur := cf.targetFor(i)
 		c.set(to, dur, now)
-		hidden := i != cf.active && cf.playing
+		hidden := i != cf.active && (cf.playing || cf.backFromNP) // (turned over from Now Playing: still on its own)
 		if hidden {
 			c.opacity.To(0, 350*time.Millisecond, easeCSS, 0)
 		} else {
@@ -270,7 +270,7 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 		cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
 		cf.np = newNowPlayingView()
 		cf.np.hideArt = true
-		cf.npFade.To(1, 300*time.Millisecond, easeFramer, 0)
+		cf.npFade.To(1, 250*time.Millisecond, easeInOut, 250*time.Millisecond) // (once the card is mostly gone)
 		ui.headerTitle = "Now Playing"
 		// (the cover art stays in the flow: Now Playing shows only the info)
 	} else if len(cf.albums) == 0 {
@@ -281,14 +281,15 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 		cf.back = ui.backsideList(cf.selected)
 		cf.backAlbum = cf.selected
 		cf.backAnim.Set(0)
-		cf.backAnim.To(1, 500*time.Millisecond, easeInOut, 0)
+		cf.backAnim.To(1, 380*time.Millisecond, easeOutCubic, 170*time.Millisecond) // (once the cover has turned away)
 	}
 	ui.dirty = true
 }
 
 // startKey: START on Cover Flow's Now Playing turns the cover over to its
-// album's songs (as B does), and START there turns it back to Now Playing
-// (the song goes on), as on the other Now Playing.
+// album's songs, still in Now Playing (not back to the flow), and START or
+// B there turn it back to Now Playing (the song goes on), as on the other
+// Now Playing; A plays the song picked.
 func (cf *CoverFlow) startKey(ui *IpodUI) bool {
 	switch {
 	case cf.playing && cf.selected != nil:
@@ -298,6 +299,7 @@ func (cf *CoverFlow) startKey(ui *IpodUI) bool {
 		}
 		cf.backFromNP = true
 		cf.menu(ui)
+		ui.headerTitle = "Now Playing" // (still Now Playing: only the cover turns over)
 		if cf.back != nil {
 			if p := ui.app.Playing; p != nil {
 				for i, it := range cf.back.Items {
@@ -314,7 +316,7 @@ func (cf *CoverFlow) startKey(ui *IpodUI) bool {
 		cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
 		cf.np = newNowPlayingView()
 		cf.np.hideArt = true
-		cf.npFade.To(1, 300*time.Millisecond, easeFramer, 0)
+		cf.npFade.To(1, 250*time.Millisecond, easeInOut, 250*time.Millisecond) // (once the card is mostly gone)
 		ui.headerTitle = "Now Playing"
 		ui.dirty = true
 		return true
@@ -338,12 +340,16 @@ func (cf *CoverFlow) menu(ui *IpodUI) {
 			c.from, c.to, c.dur = p, p, 0
 		}
 		cf.playing = false
-		cf.npFade.To(0, 300*time.Millisecond, easeInOut, 0)
+		cf.npFade.To(0, 160*time.Millisecond, easeOutCubic, 0) // (gone before the card shows)
 		ui.headerTitle = "Cover Flow"
 		// flip back to the track list
 		cf.back = ui.backsideList(cf.selected)
 		cf.backAnim.Set(0)
-		cf.backAnim.To(1, 500*time.Millisecond, easeInOut, 0)
+		cf.backAnim.To(1, 380*time.Millisecond, easeOutCubic, 170*time.Millisecond) // (once the cover has turned away)
+	} else if cf.selected != nil && cf.backFromNP {
+		// turned over from Now Playing: B turns it back there, as START does
+		cf.startKey(ui)
+		return
 	} else if cf.selected != nil {
 		cf.selected = nil
 		cf.backFromNP = false

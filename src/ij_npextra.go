@@ -46,7 +46,7 @@ func (np *NowPlayingView) toggleCard(ui *IpodUI) bool {
 	np.backSince = now
 	np.flip.To(1, 500*time.Millisecond, easeCSS, 0)
 	np.backA.Set(0)
-	np.backA.To(1, 500*time.Millisecond, easeInOut, 0)
+	np.backA.To(1, 380*time.Millisecond, easeOutCubic, 170*time.Millisecond) // (once the cover has turned away)
 	ui.dirty = true
 	return true
 }

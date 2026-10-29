@@ -1,8 +1,8 @@
 {
-  "version": "0.60",
-  "path": "release/knullipod-v0.60-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.60-knulli.zip",
-  "sha256": "d06c5fa62a90493e4213cf54cb1a729f6b4ce37c06c3fe65b60da5446d4c24f9",
-  "size": 15235615,
-  "notes": "- Bar at the top: headphones icon (Bluetooth or wired)\n- Bar at the top: Wi-Fi icon, its arcs filling with the signal\n- Visualizer: the song comes up by itself for 5 s on a new song or when playing again (0.59.3)\n- Visualizer: the big clock in frosted glass (0.59.2)"
+  "version": "0.60.1",
+  "path": "release/knullipod-v0.60.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.60.1-knulli.zip",
+  "sha256": "e98397fba9e242574a4705681bd82820fb864e7449e985ce522859b7c68a3ea5",
+  "size": 15235259,
+  "notes": "- Cover Flow's Now Playing: START turns the cover over and stays in Now Playing\n- Smoother cover turn: the card comes after the cover turns away, no double text\n- Bar at the top: headphones and Wi-Fi icons (0.60)\n- Visualizer: the song comes up by itself on a new song (0.59.3)"
 }
