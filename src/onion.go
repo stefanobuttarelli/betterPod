@@ -387,7 +387,7 @@ var osdBoxGrad = []GradStop{{0, Col{30, 30, 30, 0.82}}, {1, Col{0, 0, 0, 0.82}}}
 
 // drawPowerExitOSD: POWER held for 2 s, betterPod quits at 5 s.
 func (ui *IpodUI) drawPowerExitOSD(dst *image.RGBA) {
-	if !ui.app.PowerExitWarning {
+	if !isOnion || !ui.app.PowerExitWarning { // (Knulli's key is MENU: as before, no overlay)
 		return
 	}
 	fillRoundedGradient(dst, 70*DPR, 84*DPR, 250*DPR, 156*DPR, 14*DPR, osdBoxGrad, 1)
@@ -403,6 +403,9 @@ func (ui *IpodUI) drawPowerExitOSD(dst *image.RGBA) {
 // the backlight and the CPU back (toggleLock leaves that to the classic
 // UI's redraw, which the iPod UI never runs) and redraws the whole frame.
 func (ui *IpodUI) lockChanged() {
+	if !isOnion {
+		return // (Knulli as before: see the PR's note on unlocking there)
+	}
 	app := ui.app
 	ui.dirty = true
 	ui.prevFB = nil

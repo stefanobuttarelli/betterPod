@@ -296,7 +296,7 @@ func diffPixels(a, b *image.RGBA) (n, maxd int) {
 }
 
 func TestCDrawMatchesGo(t *testing.T) {
-	defer func() { cDraw = true }()
+	defer func(was bool) { cDraw = was }(cDraw)
 	r := rand.New(rand.NewSource(1))
 	for iter := 0; iter < 40; iter++ {
 		dst := randImage(r, 640, 480, false)
@@ -328,7 +328,7 @@ func TestCDrawMatchesGo(t *testing.T) {
 }
 
 func TestCDrawTexMatchesGo(t *testing.T) {
-	defer func() { cDraw = true }()
+	defer func(was bool) { cDraw = was }(cDraw)
 	r := rand.New(rand.NewSource(2))
 	art := randImage(r, 256, 256, true)
 	for _, a := range []float64{0, 25, -60, 75, 180} {
@@ -378,7 +378,7 @@ func uiImage(r *rand.Rand, w, h int) *image.RGBA {
 }
 
 func benchDraw(b *testing.B, useC bool, f func(dst *image.RGBA)) {
-	defer func() { cDraw = true }()
+	defer func(was bool) { cDraw = was }(cDraw)
 	cDraw = useC
 	dst := image.NewRGBA(image.Rect(0, 0, 640, 480))
 	b.ResetTimer()

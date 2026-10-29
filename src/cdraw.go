@@ -11,7 +11,8 @@ import "C"
 // pixel for pixel). On the Miyoo's Cortex-A7 the Go loops were most of a
 // frame; clang vectorises them and drops the bounds checks
 // (tools/onion/bench.sh compares them). MIYOOPOD_GO_DRAW=1 keeps the Go
-// versions.
+// versions. Elsewhere the Go loops stay, unless MIYOOPOD_C_DRAW=1: the C
+// ones haven't been tried on the H700.
 
 import (
 	"image"
@@ -19,7 +20,7 @@ import (
 	"unsafe"
 )
 
-var cDraw = os.Getenv("MIYOOPOD_GO_DRAW") != "1"
+var cDraw = os.Getenv("MIYOOPOD_GO_DRAW") != "1" && (isOnion || os.Getenv("MIYOOPOD_C_DRAW") == "1")
 
 func pixPtr(img *image.RGBA, off int) *C.uint8_t {
 	return (*C.uint8_t)(unsafe.Pointer(&img.Pix[off]))

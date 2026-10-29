@@ -1555,7 +1555,7 @@ func (ui *IpodUI) Run() {
 		if ui.dirty || anim || ended {
 			ui.dirty = false
 			t0 := time.Now()
-			if app.Locked && !app.PowerExitWarning {
+			if app.Locked && !(isOnion && app.PowerExitWarning) { // (Onion: the quit warning over the frame)
 				fillRect(ui.fb, 0, 0, 640, 480, colBlack)
 			} else {
 				ui.renderFrame(now)
