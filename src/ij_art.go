@@ -162,7 +162,16 @@ func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA {
 
 	// wanted on the screen now: ahead of the background work
 	atomic.AddInt32(&artFG, 1)
-	go func() {
+	artFGStart.Do(func() {
+		for w := 0; w < cap(c.sem); w++ {
+			go func() {
+				for job := range artFGQueue {
+					job()
+				}
+			}()
+		}
+	})
+	job := func() {
 		defer atomic.AddInt32(&artFG, -1)
 		out := ui.loadArt(a, devSize)
 		c.mu.Lock()
@@ -170,9 +179,23 @@ func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA {
 		delete(c.pending, k)
 		c.mu.Unlock()
 		ui.post(func() { ui.onArtLoaded() })
-	}()
+	}
+	select {
+	case artFGQueue <- job:
+	default:
+		go job() // (the queue is full: don't block the frame)
+	}
 	return nil
 }
+
+// artFGQueue: the covers asked for by the screen, loaded in the order they
+// were asked (first in, first out) by as many workers as loadArt allows at
+// once. (One goroutine each would come in no particular order, often the
+// newest first.)
+var (
+	artFGQueue = make(chan func(), 256)
+	artFGStart sync.Once
+)
 
 // artFG: covers wanted on the screen being loaded. The background work
 // (prefetchArt, the screensaver's warm-up) waits while there are any, and

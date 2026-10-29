@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.68.1 (2026-10-29)
+
+### Fixed
+- **Cover Flow loads the covers in the shelf's order**, left to right (numbers first, then A to Z), instead of from the far end. The covers asked for by the screen are now loaded first in, first out.
+
 ## v0.68 (2026-10-29)
 
 ### Added

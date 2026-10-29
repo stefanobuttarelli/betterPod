@@ -671,16 +671,18 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 		}
 	}
 	size := px(128)
-	// at most 3 missing covers are decoded per frame, nearest to the
-	// active one first
-	need := map[int]bool{}
-	for i := cf.active - 15; i <= cf.active+15 && len(need) < 3; i++ {
+	// at most 3 missing covers are asked for per frame, in the shelf's
+	// order (left to right: numbers first, then A to Z), before anything
+	// is drawn, so they come in that order too
+	asked := 0
+	for i := max(cf.active-15, 0); i <= cf.active+15 && i < len(cf.albums) && asked < 3; i++ {
 		c, ok := cf.covers[i]
-		if !ok || c.opacity.Get(now) <= 0.001 || i < 0 || i >= len(cf.albums) {
+		if !ok || c.opacity.Get(now) <= 0.001 {
 			continue
 		}
 		if ui.artCached(cf.albums[i], size) == nil {
-			need[i] = true
+			ui.art(cf.albums[i], size)
+			asked++
 		}
 	}
 	for _, it := range order {
@@ -697,9 +699,6 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 		}
 		m := coverMatrix(x)
 		art := ui.artCached(cf.albums[it.i], size)
-		if art == nil && need[it.i] {
-			art = ui.art(cf.albums[it.i], size)
-		}
 		if art == nil {
 			art = ui.defaultArtSized(size)
 		}
