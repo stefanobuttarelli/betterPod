@@ -256,6 +256,8 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 		ui.drawImgPreview(dst, quizIcon(), "Guess the Song", "")
 	case Prev2048:
 		ui.drawImgPreview(dst, g48Icon(), "2048", "")
+	case PrevWords:
+		ui.drawImgPreview(dst, wordsIcon(), "Five Letters", "")
 	case PrevWeather:
 		ui.drawWeatherPreview(dst, now)
 	default:
@@ -350,5 +352,6 @@ const (
 	Prev2048
 	PrevQuiz
 	PrevPuzzles
+	PrevWords
 	PrevPuzzleBase PreviewKind = 100 // + the puzzle's index in pzList
 )

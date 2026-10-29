@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.68 (2026-10-29)
+
+### Added
+- **Apps → Five Letters:** guess a five-letter English word in six tries.
+  - Tiles turn green (right letter, right place), orange (in the word, elsewhere) or grey (not in the word), one after the other; the on-screen keyboard keeps the colour of each letter.
+  - **Keys:** the arrows move on the keyboard, A types the key (ENTER and ⌫ too), Y deletes a letter, START sends the word. When the game is over, A or START gives a new word.
+  - Words that aren't in the list shake and say so. Games played, the share won and the streak are shown at the left and kept; the game in progress is kept too.
+  - About 2,100 common words to guess (from SCOWL, without plurals and past tenses), and about 8,600 accepted as guesses (SCOWL and ENABLE).
+
 ## v0.67.2 (2026-10-29)
 
 ### Changed

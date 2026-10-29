@@ -277,6 +277,7 @@ func (ui *IpodUI) gamesView() *View {
 		{Label: "Brick", Preview: PrevBrick, OnSelect: func() { ui.openBrick() }},
 		{Label: "Solitaire", Preview: PrevSolitaire, OnSelect: func() { ui.openSolitaire() }},
 		{Label: "2048", Preview: Prev2048, OnSelect: func() { ui.open2048() }},
+		{Label: "Five Letters", Preview: PrevWords, OnSelect: func() { ui.openWords() }},
 		{Label: "Guess the Song", Preview: PrevQuiz, OnSelect: func() { ui.openQuiz() }},
 		{Label: "Puzzles", Preview: PrevPuzzles, OnSelect: func() { ui.showView(ui.puzzlesView(), "") }},
 		{Label: "Weather", Preview: PrevWeather, OnSelect: func() { ui.openWeather() }},

@@ -19,6 +19,7 @@ func (ui *IpodUI) aboutView() *View {
 		{Label: "Audio engine: MiyooPod", Sublabel: "Danilo Fragoso · MIT"},
 		{Label: "Puzzles: Portable Puzzle Collection", Sublabel: "Simon Tatham and contributors · MIT"},
 		{Label: "2048: the game's rules", Sublabel: "Gabriele Cirulli · MIT"},
+		{Label: "Five Letters: the words", Sublabel: "SCOWL (Kevin Atkinson) · ENABLE, public domain"},
 		{Label: "Font: Inter", Sublabel: "Rasmus Andersson · OFL"},
 		{Label: "An independent fan project", Sublabel: "iPod is a trademark of Apple Inc.; betterPod is not affiliated with Apple"}}}}
 	//

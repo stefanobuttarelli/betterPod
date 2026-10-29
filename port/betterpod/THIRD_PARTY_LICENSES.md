@@ -65,6 +65,11 @@ The SDL_mixer build includes Apple's [reference ALAC decoder](https://github.com
 
 The full license texts are in each project's repository.
 
+### Five Letters word lists
+
+- The answers come from **SCOWL** (Spell Checker Oriented Word Lists), size 35, © 2000–2018 Kevin Atkinson and others, used under its permissive licence (see `LICENSE.scowl`).
+- The accepted guesses add the **ENABLE** word list (Alan Beale, Mendel Cooper and others), which is in the public domain.
+
 ## Trademarks
 
 iPod is a trademark of Apple Inc. betterPod is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.

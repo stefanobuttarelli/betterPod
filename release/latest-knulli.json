@@ -1,8 +1,8 @@
 {
-  "version": "0.67.2",
-  "path": "release/betterpod-v0.67.2-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.67.2-knulli.zip",
-  "sha256": "c7cf2ef8505707e4425823a65b7c477ed3ab1e1a825a0514b5aed9c40c803636",
-  "size": 15719206,
-  "notes": "- Apps → Puzzles: every puzzle has its own icon\n- New betterPod logo in About and Software Update (0.67.1)\n- Guess the Song: long titles scroll (0.67.1)\n- Apps → Puzzles: 12 puzzles from Simon Tatham's collection (0.67)"
+  "version": "0.68",
+  "path": "release/betterpod-v0.68-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.68-knulli.zip",
+  "sha256": "4cd31b9fa6ea828ac2842dfa1b01386d44f664aae2ffd7145218ac557efb99c7",
+  "size": 15763608,
+  "notes": "- Apps \u2192 Five Letters: guess a five-letter word in six tries\n- Apps \u2192 Puzzles: every puzzle has its own icon (0.67.2)\n- New betterPod logo in About and Software Update (0.67.1)\n- Apps \u2192 Puzzles: 12 puzzles from Simon Tatham's collection (0.67)"
 }
