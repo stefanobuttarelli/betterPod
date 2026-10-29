@@ -363,6 +363,7 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 	// Store path and clear memory
 	album.ArtPath = filepath
 	album.ArtData = nil // Free memory!
+	missingLib = nil    // (Missing Covers counts again)
 
 	logMsg(fmt.Sprintf("[ARTWORK] Saved to disk: %s", filepath))
 	return nil

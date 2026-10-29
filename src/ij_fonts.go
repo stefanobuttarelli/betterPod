@@ -53,6 +53,10 @@ var fontDir = "./assets/fonts/"
 // face returns the Inter face for weight w at CSS size cssSize (device px are
 // cssSize*DPR). Parsed fonts and built faces are both cached.
 func face(w FontWeight, cssSize float64) font.Face {
+	// sizes in quarter pixels: an animated size (2048's tiles growing in)
+	// would otherwise build a new face, with its glyph cache, at every
+	// frame, and the cache would only grow
+	cssSize = math.Round(cssSize*4) / 4
 	fontMu.Lock()
 	defer fontMu.Unlock()
 	k := faceKey{w, cssSize}
@@ -198,3 +202,9 @@ func (f *fbFace) Kern(r0, r1 rune) fixed.Int26_6 {
 	return 0
 }
 func (f *fbFace) Metrics() font.Metrics { return f.pri.Metrics() }
+
+func faceCount() int {
+	fontMu.Lock()
+	defer fontMu.Unlock()
+	return len(faceCache)
+}

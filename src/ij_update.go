@@ -60,7 +60,7 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "0.74"
+	BETTERPOD_VERSION  = "0.75"
 	betterPodBuildDate = "2026-10-29"
 	// the installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod
 	// on Knulli; /mnt/SDCARD/App/betterpod/betterpod (with its launch.sh) on

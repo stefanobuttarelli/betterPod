@@ -140,6 +140,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	}
 	startBluetoothWatch()
 	startWifiWatch()
+	startHealthLog()
 	if isKnulli {
 		startVolumeKeyWatch()
 	}
@@ -1424,6 +1425,11 @@ func (ui *IpodUI) Run() {
 			if used {
 				continue
 			}
+			// headphone buttons work in Hold and with the screen off too,
+			// like an iPod remote (and unplugging them pauses)
+			if ui.mediaKey(ev) {
+				continue
+			}
 			if app.Locked {
 				continue
 			}
@@ -1434,9 +1440,6 @@ func (ui *IpodUI) Run() {
 			if Key(ev) == START && hold.selDown {
 				app.Running = false
 				break
-			}
-			if ui.mediaKey(ev) { // headphone buttons work in Hold too, like an iPod remote
-				continue
 			}
 			if ui.holdFilter(ev) {
 				continue

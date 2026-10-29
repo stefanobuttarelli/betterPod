@@ -196,7 +196,8 @@ func (e *albumEdit) apply(a *albumInfo) int {
 // albumOptions: an album's long-press sheet, with Edit Album Info.
 func (ui *IpodUI) albumOptions(al *Album) []SheetOption {
 	return append(ui.mediaOptions(albumTracks(al)),
-		SheetOption{Label: "Edit Album Info", OnSelect: func() { ui.openAlbumInfo(al) }})
+		SheetOption{Label: "Edit Album Info", OnSelect: func() { ui.openAlbumInfo(al) }},
+		SheetOption{Label: "Delete Album", Danger: true, OnSelect: func() { ui.askDeleteAlbum(al) }})
 }
 
 // openAlbumInfo opens Album Info (not while the album is being saved).

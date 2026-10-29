@@ -8,7 +8,7 @@ import (
 )
 
 // parsePlaylist reads an M3U file and resolves track references
-func (app *MiyooPod) parsePlaylist(pl *Playlist) {
+func (app *MiyooPod) parsePlaylist(pl *Playlist, lib *Library) {
 	data, err := os.ReadFile(pl.Path)
 	if err != nil {
 		logMsg("ERROR: Failed to read playlist " + pl.Path + ": " + err.Error())
@@ -34,7 +34,12 @@ func (app *MiyooPod) parsePlaylist(pl *Playlist) {
 		}
 		trackPath = filepath.Clean(trackPath)
 
-		if track, ok := app.Library.TracksByPath[trackPath]; ok {
+		// (the library the playlist belongs to: a scan parses them before
+		// its library is installed, and on a first scan there is no other)
+		if lib == nil {
+			break
+		}
+		if track, ok := lib.TracksByPath[trackPath]; ok {
 			pl.Tracks = append(pl.Tracks, track)
 		}
 	}

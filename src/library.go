@@ -312,7 +312,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 
 	// Parse playlists
 	for _, pl := range scanLib.Playlists {
-		app.parsePlaylist(pl)
+		app.parsePlaylist(pl, scanLib)
 	}
 
 	// the new library replaces the old one only now, whole (the menus kept
@@ -1007,7 +1007,7 @@ func (app *MiyooPod) loadLibraryJSON() error {
 
 	// Parse playlists (they're just references, need to be re-read)
 	for _, pl := range lib.Playlists {
-		app.parsePlaylist(pl)
+		app.parsePlaylist(pl, lib)
 	}
 
 	// Decode album art

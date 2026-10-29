@@ -14,6 +14,7 @@ import (
 	"image"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -332,4 +333,20 @@ func iconTint(img *image.RGBA) Col {
 	c := Col{un(img.Pix[best-3]), un(img.Pix[best-2]), un(img.Pix[best-1]), 1}
 	iconTints[img] = c
 	return c
+}
+
+// startHealthLog writes, every 5 minutes, the memory, the goroutines and
+// the threads to the log, so that a betterPod which grows slow over hours
+// shows why (a cache that keeps growing, goroutines that pile up).
+func startHealthLog() {
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			th, _ := os.ReadDir("/proc/self/task")
+			logMsg(fmt.Sprintf("Health: heap %d MB (%d MB from the system), %d GCs, %d goroutines, %d threads, %d font faces",
+				m.HeapAlloc>>20, m.Sys>>20, m.NumGC, runtime.NumGoroutine(), len(th), faceCount()))
+		}
+	}()
 }

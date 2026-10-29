@@ -585,11 +585,34 @@ func (ui *IpodUI) setAlbumCover(a *Album, data []byte) {
 
 // missingCovers: albums without artwork that can be searched for.
 func (ui *IpodUI) missingCovers() []*Album {
+	// (asked at every frame by Find Missing Covers: worked out at most
+	// every 2 s, as it looks at the cover files)
+	if lib := ui.library(); lib == missingLib && time.Since(missingAt) < 2*time.Second {
+		return missingOut
+	}
+	out := ui.missingCoversNow()
+	missingLib, missingAt, missingOut = ui.library(), time.Now(), out
+	return out
+}
+
+var (
+	missingLib *Library
+	missingAt  time.Time
+	missingOut []*Album
+)
+
+func (ui *IpodUI) missingCoversNow() []*Album {
 	var out []*Album
 	for _, a := range ui.library().Albums {
-		if a.ArtPath == "" && a.ArtData == nil && a.ArtImg == nil && strings.TrimSpace(a.Name) != "" {
-			out = append(out, a)
+		if len(a.Tracks) == 0 || strings.TrimSpace(a.Name) == "" || a.ArtData != nil || a.ArtImg != nil {
+			continue // (an album left with no songs isn't listed anywhere)
 		}
+		// a cover file that is gone (deleted, moved) is a missing cover too:
+		// the default one shows
+		if a.ArtPath != "" && fileExists(a.ArtPath) {
+			continue
+		}
+		out = append(out, a)
 	}
 	return out
 }
@@ -698,6 +721,9 @@ type CoverView struct {
 }
 
 func (ui *IpodUI) coverView() *View {
+	if coverCur != nil && coverCur.finished {
+		coverCur = nil // (a search that ended: the count of now, not its results)
+	}
 	return &View{ID: "covers", Title: "Find Missing Covers", Kind: KindFull, Custom: &CoverView{}}
 }
 
@@ -781,7 +807,7 @@ func (cv *CoverView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 			line1, button = "Every album has a cover", "Done"
 		case fin:
 			title = fmt.Sprintf("Found %d of %d", found, n)
-			line1 = fmt.Sprintf("%d not found", n-found)
+			line1 = fmt.Sprintf("%d not found", len(missed))
 			if canc {
 				line1 = "Stopped · " + line1
 			}

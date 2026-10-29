@@ -140,3 +140,158 @@ func albumDir(al *Album) string {
 	}
 	return filepath.Dir(al.Tracks[0].Path)
 }
+
+// removeFromLibrary drops songs (deleted files) from the library without
+// scanning the whole music folder: the library is copied without them,
+// albums and artists are rebuilt, and the copy replaces it and is saved.
+// Background goroutine (installLibrary waits for the UI goroutine).
+func (ui *IpodUI) removeFromLibrary(paths []string) {
+	app := ui.app
+	scanStartMu.Lock()
+	if app.LibScanRunning || dbBusy {
+		scanStartMu.Unlock()
+		ui.post(ui.rescanLibrary) // (the scan running will see they're gone)
+		return
+	}
+	app.LibScanRunning = true
+	scanStartMu.Unlock()
+	defer func() { app.LibScanRunning = false }()
+
+	gone := map[string]bool{}
+	for _, p := range paths {
+		gone[p] = true
+	}
+	old := app.Library
+	if old == nil {
+		return
+	}
+	lib := &Library{
+		Playlists:     old.Playlists,
+		TracksByPath:  make(map[string]*Track, len(old.Tracks)),
+		AlbumsByKey:   make(map[string]*Album, len(old.Albums)),
+		ArtistsByName: make(map[string]*Artist),
+	}
+	for _, t := range old.Tracks {
+		if !gone[t.Path] {
+			lib.Tracks = append(lib.Tracks, t)
+			lib.TracksByPath[t.Path] = t
+		}
+	}
+	for _, al := range old.Albums {
+		var keep []*Track
+		for _, t := range al.Tracks {
+			if !gone[t.Path] {
+				keep = append(keep, t)
+			}
+		}
+		if len(keep) == 0 {
+			continue
+		}
+		if len(keep) != len(al.Tracks) {
+			// (a copy: the old library keeps its own until it's replaced)
+			c := *al
+			c.Tracks = keep
+			al = &c
+		}
+		lib.Albums = append(lib.Albums, al)
+		lib.AlbumsByKey[al.Key] = al
+	}
+	finishAlbums(lib)
+	sort.Slice(lib.Artists, func(i, j int) bool {
+		return strings.ToLower(lib.Artists[i].Name) < strings.ToLower(lib.Artists[j].Name)
+	})
+	for _, ar := range lib.Artists {
+		ar := ar
+		sort.Slice(ar.Albums, func(i, j int) bool {
+			return strings.ToLower(ar.Albums[i].Name) < strings.ToLower(ar.Albums[j].Name)
+		})
+	}
+	app.installLibrary(lib)
+	if err := app.saveLibraryJSON(); err != nil {
+		logMsg("WARNING: Failed to save library: " + err.Error())
+	}
+	logMsg(fmt.Sprintf("Library: %d songs removed", len(old.Tracks)-len(lib.Tracks)))
+	ui.postSure(func() {
+		ui.kb.initialized = false
+		ui.refreshBuilt()
+	})
+}
+
+// askDeleteAlbum: Delete Album (an album's options), after a confirmation:
+// its songs are deleted from the card and leave the library; its folder
+// goes too when nothing but pictures and lists is left in it.
+func (ui *IpodUI) askDeleteAlbum(al *Album) {
+	tracks := albumTracks(al)
+	if len(tracks) == 0 {
+		return
+	}
+	n := len(tracks)
+	title := fmt.Sprintf("Delete %s? Its %d %s will be deleted from the card. This can't be undone.", al.Name, n, pluralize(n, "song", "songs"))
+	ui.showSheetTitled(title, []SheetOption{{Label: "Delete Album", Danger: true, OnSelect: func() {
+		var paths []string
+		dirs := map[string]bool{}
+		for _, t := range tracks {
+			paths = append(paths, t.Path)
+			dirs[filepath.Dir(t.Path)] = true
+		}
+		// a song of it playing: the music stops (its file goes)
+		if p := ui.app.Playing; p != nil && p.Track != nil {
+			for _, t := range tracks {
+				if t == p.Track || t.Path == p.Track.Path {
+					ui.clearNowPlaying()
+					break
+				}
+			}
+		}
+		go func() {
+			failed := removeMusicPaths(paths)
+			for d := range dirs {
+				removeAlbumDirIfDone(d)
+			}
+			ui.postSure(func() {
+				ui.dropDeletedFromQueue(paths)
+				if failed != nil {
+					ui.showToast("Couldn't delete: " + shortErr(failed))
+				} else {
+					ui.showToast("Deleted " + al.Name)
+				}
+				logMsg(fmt.Sprintf("Delete Album: %q, %d songs", al.Name, n))
+			})
+			ui.removeFromLibrary(paths)
+		}()
+	}}})
+}
+
+// removeAlbumDirIfDone: an album's folder, once its songs are deleted, goes
+// too if only pictures, playlists, lyrics or cue sheets are left (never
+// the music folder itself, never a folder with other files or folders).
+func removeAlbumDirIfDone(dir string) {
+	if !insideMusic(dir) || filepath.Clean(dir) == filepath.Clean(musicRoot()) {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			return
+		}
+		switch strings.ToLower(filepath.Ext(e.Name())) {
+		case ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".m3u", ".m3u8", ".lrc", ".cue", ".txt", ".nfo", ".log", ".json":
+		default:
+			if !strings.HasPrefix(e.Name(), ".") {
+				return // something else: the folder stays
+			}
+		}
+	}
+	os.RemoveAll(dir)
+	forgetDirInfo(dir)
+	// its artist's folder too, when it is left empty
+	if up := filepath.Dir(dir); insideMusic(up) && filepath.Clean(up) != filepath.Clean(musicRoot()) {
+		if left, err := os.ReadDir(up); err == nil && len(left) == 0 {
+			os.Remove(up)
+			forgetDirInfo(up)
+		}
+	}
+}

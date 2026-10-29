@@ -1,8 +1,8 @@
 {
-  "version": "0.74",
-  "path": "release/betterpod-v0.74-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.74-knulli.zip",
-  "sha256": "a954a2a3e0e2bfab39aa3388db493a8ead1a0aad872d49446c7708a89b2d8397",
-  "size": 16125993,
-  "notes": "- Headphones and Wi-Fi share one icon: five dots under the headphones show the signal\n- betterPod runs on the Miyoo Mini too (Onion OS) (0.73)\n- Settings \u2192 Effects: Full or Light (0.73)"
+  "version": "0.75",
+  "path": "release/betterpod-v0.75-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.75-knulli.zip",
+  "sha256": "624cab75ec2c8e15f4a34ecd660947be42c9780ca73f6f60377f70cc359946ec",
+  "size": 16141187,
+  "notes": "- Delete Album, in an album's options\n- Cover Flip lands on Now Playing already turned when a song plays\n- Headphone buttons work with the screen off\n- Fixed: slower and slower after playing 2048; the Missing Covers count; a crash on a first scan with a playlist"
 }

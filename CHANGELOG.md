@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.75 (2026-10-29)
+
+### Added
+- **Delete Album,** in an album's options (Y on it in Albums), after a confirmation: its songs are deleted from the card and leave the library at once, without a rescan. Its folder goes too when only pictures, playlists, lyrics or cue sheets are left in it (and its artist's folder, once empty). A song of it that is playing stops.
+
+### Changed
+- **Cover Flip, back to Now Playing with a song playing:** the cover turns to Now Playing's angle while it flies back, and lands already turned, as the other flips do. Paused, it lands flat, as Now Playing shows it.
+- **Share:** the pedestal's reflection starts right at its base.
+- **The log** notes, every 5 minutes, the memory, the goroutines and the threads betterPod uses, to find out why it might grow slow after hours.
+
+### Fixed
+- **Missing Covers** counts again the albums whose cover file is gone (the default cover shows), leaves out albums with no songs, and Find Missing Covers shows the count of now instead of the results of the last search.
+- **Headphone buttons work with the screen off** (MENU) as in Hold: they were ignored until the screen came back.
+- **Slower and slower after playing 2048:** each frame of its tiles growing in made a new font, kept for ever. Text sizes are now kept to quarter pixels.
+- **A first scan with a playlist (.m3u) in the music folder crashed** betterPod.
+
 ## v0.74 (2026-10-29)
 
 ### Changed

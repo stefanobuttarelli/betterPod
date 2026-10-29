@@ -113,6 +113,7 @@ type screensaver struct {
 	dimmed     bool
 	levelDirty bool // its brightness changed: saved when L2 / R2 is let go
 	savedBri   int
+	flyTilt    bool // flying back to a playing Now Playing: turned on the way
 	briShown   time.Time
 	rng        *rand.Rand
 }
@@ -264,6 +265,12 @@ func (s *screensaver) flyTop(now time.Time) bool {
 // hands over to Now Playing's own cover (which fades in under it).
 func (ui *IpodUI) ssFlyDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	f := s.fly.Get(now)
+	if s.exiting && s.flyTilt {
+		// back to Now Playing with the song playing: the cover turns to Now
+		// Playing's angle while it flies there, and lands already turned
+		ui.ssFlyTilted(dst, s, f)
+		return
+	}
 	// (Now Playing's cover is held flat, just where the flying one lands:
 	// it takes over at the end, then turns if the song plays)
 	r := lerpRect(s.flyFrom, cellRect(0, 0, 2), f)
@@ -290,6 +297,9 @@ func (ui *IpodUI) saverToNowPlaying() {
 	np.tilt.Set(0)
 	ui.npFlyHide(np, true)
 	s.npView = np
+	// playing: it lands turned, as Now Playing shows it (paused: flat)
+	p := ui.app.Playing
+	s.flyTilt = p != nil && p.Track != nil && p.State == StatePlaying
 	s.flyFrom = npCoverRect()
 	s.fly.Set(1)
 	s.fly.To(0, 650*time.Millisecond, easeInOut, 0)
@@ -309,6 +319,8 @@ func (ui *IpodUI) stopSaverIn(d time.Duration) {
 	// still flying in from Now Playing: back to it
 	if s.npView != nil && s.fly.Target() == 1 && s.fly.Get(animNow()) < 1 {
 		s.fly.To(0, 400*time.Millisecond, easeInOut, 0)
+		p := ui.app.Playing
+		s.flyTilt = p != nil && p.Track != nil && p.State == StatePlaying
 	}
 	if s.dimmed && !hold.on {
 		setBacklightPercent(s.savedBri)
@@ -348,6 +360,9 @@ func (ui *IpodUI) saverTick(now time.Time) {
 			if !s.fly.Running() && (s.exiting || s.fly.Get(now) >= 1) {
 				ui.npFlyHide(np, false)
 				np.untilt = false
+				if s.exiting && s.flyTilt {
+					np.tilt.Set(1) // (it landed turned: no turn left to do)
+				}
 				s.npView = nil
 				ui.dirty = true
 			}
@@ -1463,4 +1478,50 @@ func (s *screensaver) lowAuto(now time.Time) {
 		s.lowA.To(1, 450*time.Millisecond, easeInOut, 0)
 	}
 	s.lowOff = now.Add(5 * time.Second)
+}
+
+// ssFlyTilted: the flying cover drawn as Now Playing draws its own, at the
+// angle of 1−f (f: 1 in the mosaic, 0 at Now Playing), and moved and
+// scaled on the screen from the mosaic's big cell (f = 1) to its own place
+// (f = 0), with its reflection coming in as it lands.
+func (ui *IpodUI) ssFlyTilted(dst *image.RGBA, s *screensaver, f float64) {
+	img := ui.ssArtGet(s.big, 2*ssCell)
+	if img == nil {
+		img = ui.ssArtGet(s.big, ssCell)
+	}
+	if img == nil {
+		return
+	}
+	// where Now Playing's flat cover projects (CSS px of its stage), and
+	// where that is on the screen (npCoverRect, measured)
+	proj := func(m mat4) (x0, y0, x1, y1 float64) {
+		H := planeH(m)
+		x0, y0, x1, y1 = math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+		for _, c := range [4][2]float64{{0, 0}, {128, 0}, {0, 128}, {128, 128}} {
+			w := H[6]*c[0] + H[7]*c[1] + H[8]
+			x := (H[0]*c[0] + H[1]*c[1] + H[2]) / w
+			y := (H[3]*c[0] + H[4]*c[1] + H[5]) / w
+			x0, x1, y0, y1 = math.Min(x0, x), math.Max(x1, x), math.Min(y0, y), math.Max(y1, y)
+		}
+		return
+	}
+	fx0, fy0, fx1, _ := proj(coverMatrix(npCoverPose(0)))
+	nr := npCoverRect()
+	ox, oy := float64(nr.Min.X)/DPR-fx0, float64(nr.Min.Y)/DPR-fy0
+	// the mosaic's big cell, as a scale and a shift of the flat cover
+	cr := cellRect(0, 0, 2)
+	k1 := float64(cr.Dx()) / DPR / (fx1 - fx0)
+	tx1 := float64(cr.Min.X)/DPR - k1*(fx0+ox)
+	ty1 := float64(cr.Min.Y)/DPR - k1*(fy0+oy)
+	k := 1 + (k1-1)*f
+	tx, ty := tx1*f, ty1*f
+	scr := mat4{k, 0, 0, tx + k*ox, 0, k, 0, ty + k*oy, 0, 0, 1, 0, 0, 0, 0, 1}
+	m := mMul(scr, coverMatrix(npCoverPose(1-f)))
+	sc := float64(img.Bounds().Dx()) / 128
+	tm := texMap{img: img, su: sc, sv: sc, u1: 128, v1: 128}
+	if r := 0.2 * (1 - f); r > 0.001 {
+		tm.v1 = 166.4
+		tm.reflFrom, tm.reflMax, tm.reflStart = 128, r, 0.7
+	}
+	drawTex(dst, m, tm, 1)
 }

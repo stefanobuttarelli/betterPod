@@ -95,20 +95,27 @@ func (ui *IpodUI) artistView(ar *Artist) *View {
 
 func (ui *IpodUI) albumsView(albums []*Album) *View {
 	v := &View{ID: "albums", Title: "Albums", Kind: KindFull, Empty: "No albums"}
-	if albums == nil {
-		albums = ui.library().Albums
+	all := albums == nil
+	v.Build = func() []Item {
+		list := albums
+		if all {
+			list = ui.library().Albums // (again: an album deleted or added)
+		}
+		var items []Item
+		for _, al := range list {
+			// album rows: cover, title and artist; long press offers
+			// Play Next / Play Later
+			items = append(items, Item{
+				Label:     al.Name,
+				Sublabel:  al.Artist,
+				Album:     al,
+				OnSelect:  func() { ui.showView(ui.albumView(al), al.Name) },
+				LongPress: ui.albumOptions(al), // with Edit Album Info and Delete Album (ij_albuminfo.go)
+			})
+		}
+		return items
 	}
-	for _, al := range albums {
-		// album rows: cover, title and artist; long press offers
-		// Play Next / Play Later
-		v.Items = append(v.Items, Item{
-			Label:     al.Name,
-			Sublabel:  al.Artist,
-			Album:     al,
-			OnSelect:  func() { ui.showView(ui.albumView(al), al.Name) },
-			LongPress: ui.albumOptions(al), // with Edit Album Info (ij_albuminfo.go)
-		})
-	}
+	v.Items = v.Build()
 	return v
 }
 
