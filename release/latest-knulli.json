@@ -1,8 +1,8 @@
 {
-  "version": "0.72.1",
-  "path": "release/betterpod-v0.72.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.72.1-knulli.zip",
-  "sha256": "adab6946199412f2adedd2a0d5adc751a858cf519f583ac37f8cf47a78da0afd",
-  "size": 16091118,
-  "notes": "- Share: the received animation plays smoothly\n- Weather: a gear button next to the search bar opens the units and the data credits (0.72)\n- Share: a received album is in the library at once (0.71.1)\n- Share: when it's received, the cover turns over and grows (0.71)"
+  "version": "0.73",
+  "path": "release/betterpod-v0.73-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.73-knulli.zip",
+  "sha256": "fba4e0416b53c067f7a3a88c72646eb3c32aaf355b352ef444122d06e107acc9",
+  "size": 16125484,
+  "notes": "- betterPod now runs on the Miyoo Mini too (Onion OS), thanks to Emanuele Macri\n- Settings \u2192 Effects: Full or Light\n- Share checks the formats before anything moves\n- Share, Five Letters and the Weather gear allocate far less while drawing"
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.73 (2026-10-29)
 
 ### Added
 - **betterPod for the Miyoo Mini, on Onion OS.** The Miyoo Mini, Mini Plus, Mini v4 and Mini Flip get the same interface, library and apps. This version was a fork called MacriPod until now. README → Features by system lists what differs.

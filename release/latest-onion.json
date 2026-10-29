@@ -1,0 +1,8 @@
+{
+  "version": "0.73",
+  "path": "release/betterpod-v0.73-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.73-onion.zip",
+  "sha256": "4282dc83a09530a38c359c8a961059aaa551f475f65820145127816ca927a6e0",
+  "size": 28259263,
+  "notes": "- First Onion OS release in betterPod (Miyoo Mini, Mini Plus, Mini v4, Mini Flip)\n- Share with any betterPod, formats checked before anything moves\n- Settings \u2192 Effects: Light by default on the Miyoo"
+}
