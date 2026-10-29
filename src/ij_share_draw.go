@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -53,7 +54,7 @@ func (s *ShareView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 	}
 	hint := ""
 	switch {
-	case s.send && s.phase == shDone:
+	case s.send && (s.phase == shDone || s.phase == shFailed && len(s.unplayable) > 0):
 		hint = "[B] back"
 	case s.send:
 		hint = "[B] stop sharing"
@@ -115,6 +116,10 @@ func (s *ShareView) title() (string, string) {
 }
 
 func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p float64) {
+	if s.phase == shFailed && len(s.unplayable) > 0 {
+		s.renderUnplayable(ui, dst, now)
+		return
+	}
 	// the pedestal breathes while it waits (like a sleeping computer's light)
 	beam := 1.0
 	if s.phase == shWaiting || s.phase == shPreparing {
@@ -194,6 +199,10 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p flo
 
 func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p float64) {
 	W := float64(dst.Bounds().Dx())
+	if s.phase == shFailed && len(s.unplayable) > 0 {
+		s.renderUnplayable(ui, dst, now)
+		return
+	}
 	if s.egg != "" && now.Sub(s.eggAt) > 4*time.Second {
 		s.egg = "" // (the easter egg is over: the digits again)
 	}
@@ -334,15 +343,40 @@ func shHash(n int) int {
 }
 
 // shPedestal: the pedestal at cx (its top at shTop), its beam at opacity on.
+// The colour is blue (sending), green (receiving) or red (refused).
 func (ui *IpodUI) shPedestal(dst *image.RGBA, cx float64, colour string, on float64) {
-	ped := ui.asset("share_ped_" + colour)
-	beam := ui.asset("share_beam_" + colour)
+	ped := ui.shareAsset("share_ped_" + colour)
+	beam := ui.shareAsset("share_beam_" + colour)
 	if beam != nil {
 		blit(dst, beam, int(cx)-130, int(shTop)-226, on)
 	}
 	if ped != nil {
 		blit(dst, ped, int(cx)-130, int(shTop)-24, 1)
 	}
+}
+
+// shareAsset: a picture of Share's; a "…_red" one is made once from the
+// green one, its green light turned red (its greys stay as they are).
+func (ui *IpodUI) shareAsset(name string) *image.RGBA {
+	if !strings.HasSuffix(name, "_red") {
+		return ui.asset(name)
+	}
+	ui.assetsMu.Lock()
+	a, ok := ui.assets[name]
+	ui.assetsMu.Unlock()
+	if ok {
+		return a
+	}
+	g := ui.asset(strings.TrimSuffix(name, "_red") + "_green")
+	r := image.NewRGBA(g.Bounds())
+	for i := 0; i < len(g.Pix); i += 4 {
+		// (r, g, b) → (g, r, r): green becomes red, a grey stays grey
+		r.Pix[i], r.Pix[i+1], r.Pix[i+2], r.Pix[i+3] = g.Pix[i+1], g.Pix[i], g.Pix[i], g.Pix[i+3]
+	}
+	ui.assetsMu.Lock()
+	ui.assets[name] = r
+	ui.assetsMu.Unlock()
+	return r
 }
 
 func shCoverShadow(dst *image.RGBA, x, y float64, a float64) {
@@ -376,6 +410,81 @@ func (ui *IpodUI) shCover(dst *image.RGBA, s *ShareView, x, y float64, now time.
 			}
 		}
 	}
+}
+
+// renderUnplayable: the receiving betterPod can't play the songs' format (a
+// Miyoo and AAC): the share stopped before anything moved, and both screens
+// say so. The pedestal's light turns red, and on it, instead of the cover,
+// a file's tag with the format and a red "no" badge, shaken once as a
+// wrong password is.
+func (s *ShareView) renderUnplayable(ui *IpodUI, dst *image.RGBA, now time.Time) {
+	ui.shPedestal(dst, shCX, "red", 0.35) // (its light turns red, on both sides)
+	dx := 0.0
+	if el := now.Sub(s.phaseAt).Seconds(); el < 0.6 {
+		dx = 9 * math.Sin(el*38) * (1 - el/0.6)
+	}
+	shFileTag(dst, shCX+dx, shTop-24, shExtOf(s.unplayable[0]))
+
+	red := Col{200, 60, 50, 1}
+	shText(dst, "FORMAT NOT SUPPORTED", shRX, 52, W600, 15, red)
+	t, sub := s.title()
+	if t != "" {
+		shText(dst, shFit(t, W700, 20, 270), shRX, 96, W700, 20, shInk)
+	}
+	if strings.TrimSpace(strings.Trim(sub, "·")) != "" {
+		shText(dst, shFit(sub, W500, 15, 270), shRX, 120, W500, 15, shSub)
+	}
+	who := "This betterPod can't play it"
+	if s.send {
+		who = "Their betterPod can't play it"
+	}
+	shText(dst, who, shRX, 166, W600, 17, shBody)
+	names := strings.Join(s.unplayable, ", ")
+	shText(dst, shFit(names, W600, 15, 280), shRX, 196, W600, 15, red)
+	verb := "isn't"
+	if len(s.unplayable) > 1 {
+		verb = "aren't"
+	}
+	shText(dst, shFit(verb+" supported on "+s.unplayOn, W500, 14, 280), shRX, 218, W500, 14, shSub)
+	tip := Col{150, 156, 168, 1}
+	shText(dst, "MP3, FLAC, Ogg, WAV and AIFF", shRX, 262, W500, 13, tip)
+	shText(dst, "play on every betterPod", shRX, 280, W500, 13, tip)
+}
+
+// shExtOf: the extension in a format's name ("AAC / ALAC (.m4a)" → ".m4a").
+func shExtOf(name string) string {
+	i, j := strings.LastIndex(name, "("), strings.LastIndex(name, ")")
+	if i >= 0 && j > i+1 {
+		return name[i+1 : j]
+	}
+	return name
+}
+
+// shFileTag: a file's tag standing on the pedestal (its bottom at y), its
+// corner folded, with the format on it and a red "no" badge.
+func shFileTag(dst *image.RGBA, cx, y float64, ext string) {
+	const w, h, f = 116.0, 146.0, 30.0 // size, the folded corner
+	x0, y0, x1, y1 := cx-w/2, y-h, cx+w/2, y
+	for i := 4.0; i >= 1; i-- { // its shadow, under the folded corner's line
+		fillRoundedGradient(dst, x0+3-i, y0+f, x1-3+i, y1+3+i, i*2,
+			[]GradStop{{0, Col{40, 50, 70, 0}}, {1, Col{40, 50, 70, 0.06}}}, 1)
+	}
+	edge := Col{168, 175, 186, 1}
+	body := [][2]float64{{x0, y0}, {x1 - f, y0}, {x1, y0 + f}, {x1, y1}, {x0, y1}}
+	aaPoly(dst, body, Col{250, 251, 252, 1})
+	fillRoundedGradient(dst, x0+1, y1-h*0.5, x1-1, y1-1, 0, []GradStop{{0, Col{214, 219, 226, 0}}, {1, Col{214, 219, 226, 0.7}}}, 1)
+	strokePoly(dst, body, 1.2, edge)
+	fold := [][2]float64{{x1 - f, y0}, {x1 - f, y0 + f}, {x1, y0 + f}}
+	aaPoly(dst, fold, Col{222, 227, 234, 1})
+	strokePoly(dst, fold, 1.2, edge)
+	shText(dst, ext, cx, y0+h*0.46, W700, 30, shInk)
+	// the badge: a glossy red disc with a white bar
+	bx, by, r := x1-6, y1-10, 23.0
+	fillRoundedGradient(dst, bx-r, by-r+3, bx+r, by+r+3, r, []GradStop{{0, Col{60, 20, 20, 0.18}}, {1, Col{60, 20, 20, 0.18}}}, 1)
+	fillRoundedGradient(dst, bx-r, by-r, bx+r, by+r, r, []GradStop{{0, Col{255, 112, 98, 1}}, {1, Col{196, 36, 30, 1}}}, 1)
+	strokeRounded(dst, bx-r, by-r, bx+r, by+r, r, 2, colWhite, 1)
+	fillRoundedGradient(dst, bx-12, by-3.5, bx+12, by+3.5, 3.5, []GradStop{{0, colWhite}, {1, colWhite}}, 1)
+	fillRoundedGradient(dst, bx-r+4, by-r+3, bx+r-4, by-2, r-4, []GradStop{{0, Col{255, 255, 255, 0.45}}, {1, Col{255, 255, 255, 0.04}}}, 1)
 }
 
 // shLaser: a glowing line from x0 to x1 at y, with bright ends.

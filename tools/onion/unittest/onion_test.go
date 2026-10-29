@@ -6,6 +6,7 @@ package main
 
 import (
 	"archive/zip"
+	"errors"
 	"image"
 	"math/rand"
 	"net/http"
@@ -583,5 +584,30 @@ func TestAaPolyMemory(t *testing.T) {
 		if d := int(b.Pix[i]) - int(c.Pix[i]); d > 1 || d < -1 {
 			t.Fatalf("byte %d: %d, was %d", i, c.Pix[i], b.Pix[i])
 		}
+	}
+}
+
+// Share: a betterPod that can't play the songs' formats (the Miyoo and AAC)
+// refuses the offer, with a reason the sender reads back.
+func TestShareUnplayable(t *testing.T) {
+	defer func(was bool) { isOnion = was }(isOnion)
+	isOnion = true
+	if got := shareUnplayable([]string{".mp3", ".M4A", ".flac", ".mp4"}); !reflect.DeepEqual(got, []string{"AAC / ALAC (.m4a)"}) {
+		t.Errorf("Onion: %v", got)
+	}
+	r := shareUnplayableReason([]string{"AAC / ALAC (.m4a)"})
+	names, on, ok := shareParseUnplayable(errors.New("TransferError: " + r))
+	if !ok || on != "Onion OS" || !reflect.DeepEqual(names, []string{"AAC / ALAC (.m4a)"}) {
+		t.Errorf("%q read back as %v on %q (%v)", r, names, on, ok)
+	}
+	if _, _, ok := shareParseUnplayable(errors.New("TransferError: transfer rejected")); ok {
+		t.Error("an ordinary rejection read as a format one")
+	}
+	if got := shExtOf(names[0]); got != ".m4a" {
+		t.Errorf("the tag's extension: %q", got)
+	}
+	isOnion = false
+	if got := shareUnplayable([]string{".m4a", ".mp3", ".alac"}); len(got) != 0 {
+		t.Errorf("Knulli: %v", got)
 	}
 }

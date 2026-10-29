@@ -11,6 +11,7 @@
 - **Settings → Effects,** on both systems: **Full** (the default on Knulli) or **Light** (the default on the Miyoo). With Light, the covers beside the menus and the Weather icons stand still, option sheets appear at once, so a screen nobody touches isn't redrawn, and Share's screen is drawn 10 times a second while it waits and sends.
 - **GitHub releases** carry the Onion zip too, when release/ has it.
 - **About** names the system it runs on.
+- **Share checks the formats before anything moves.** The offer now carries the songs' formats, and a betterPod that can't play them (a Miyoo and AAC / ALAC `.m4a`) says no at once. Both screens show it: the pedestal's light turns red and, instead of the cover, a file's tag stands on it with the format and a red "no" badge, next to FORMAT NOT SUPPORTED, the format and the system. From an older betterPod, which doesn't say its formats, the Miyoo stops at the first song and nothing is kept.
 
 ### Fixed
 - **Share, Five Letters and the Weather gear allocate far less while they draw.** A polygon (the cover's gloss, a key's stroke, the gear) was rasterized over the whole screen, 2.4 MB at every call; now only over its own box, with a rasterizer that is reused, and the pixels are the same. On the Miyoo the garbage collector ran six times a second while Share waited for a friend.

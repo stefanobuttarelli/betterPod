@@ -87,7 +87,7 @@ The Miyoo has two slower cores and 128 MB of memory, so what would take the proc
 |---|:-:|:-:|
 | Interface, Cover Flow, Now Playing, Up Next, Search | ✓ | ✓ |
 | Apps: Brick, Solitaire, 2048, Five Letters, Guess the Song, Puzzles, Weather | ✓ | ✓ |
-| Share (send an album or a song to another betterPod) | ✓ | ✓ with Wi-Fi; with Light effects its screen is drawn 10 times a second |
+| Share (send an album or a song to another betterPod) | ✓ | ✓ with Wi-Fi; with Light effects its screen is drawn 10 times a second; AAC / ALAC albums are refused, on both screens |
 | Screensaver: Cover Flip | ✓ | ✓ (48 covers kept ready instead of 240) |
 | Screensaver: Visualizer | ✓ | — (it redraws the whole screen 30 times a second) |
 | Formats | FLAC, ALAC, AAC, WAV, AIFF, MP3, Ogg | FLAC, WAV, AIFF, MP3, Ogg (no AAC / ALAC decoder) |
