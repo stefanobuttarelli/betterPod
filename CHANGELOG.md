@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.63.3 (2026-10-29)
+
+### Fixed
+- **Visualizer: the bar at the top no longer shows the song's title.** It comes up for a moment while the brightness or the volume changes, and now shows only the clock there. The song has its own block at the bottom.
+
 ## v0.63.2 (2026-10-29)
 
 ### Changed

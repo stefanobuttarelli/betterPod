@@ -1286,7 +1286,8 @@ func (ui *IpodUI) ssClockSong(dst *image.RGBA, s *screensaver, left, off float64
 	p := ui.app.Playing
 	now := animNow()
 	in := s.songIn.Get(now)
-	if p == nil || p.Track == nil || p.State == StateStopped || in <= 0.001 {
+	// (the Visualizer has the song at the bottom instead: only the clock)
+	if s.viz != nil || p == nil || p.Track == nil || p.State == StateStopped || in <= 0.001 {
 		return
 	}
 	// paused: down out of the bar (it is clipped to it)
