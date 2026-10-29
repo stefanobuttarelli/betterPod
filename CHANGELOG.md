@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.69.2 (2026-10-29)
+
+### Fixed
+- **betterPod knows its own version again.** Since 0.67.1 it said it was 0.67, so Software Update kept offering the update you already had.
+
 ## v0.69.1 (2026-10-29)
 
 ### Changed

@@ -1,8 +1,8 @@
 {
-  "version": "0.69.1",
-  "path": "release/betterpod-v0.69.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.69.1-knulli.zip",
-  "sha256": "200e59a72e292cb9e383d00784834b3939064cabd6d9b2612340ae04dcd6b69f",
-  "size": 16082127,
-  "notes": "- Share: the laser moves slower and more smoothly\n- Share: send an album or a song to another betterPod with an 8-digit code (0.69)\n- Cover Flow loads the covers left to right (0.68.1)\n- Apps \u2192 Five Letters (0.68)"
+  "version": "0.69.2",
+  "path": "release/betterpod-v0.69.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.69.2-knulli.zip",
+  "sha256": "1511e2fa7bdaa4fbd909a9d0602ce2e95f5c1055f0a5cad2bdbd563266c79427",
+  "size": 16082450,
+  "notes": "- Fixed: betterPod shows its real version, and Software Update stops offering the update you already have\n- Share: the laser moves slower (0.69.1)\n- Share: send an album or a song to another betterPod with an 8-digit code (0.69)\n- Apps \u2192 Five Letters (0.68)"
 }
