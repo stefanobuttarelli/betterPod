@@ -1,8 +1,8 @@
 {
-  "version": "0.63.4",
-  "path": "release/betterpod-v0.63.4-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.63.4-knulli.zip",
-  "sha256": "8352094f597ac7b5175a3b6348197ec128f2b34c008650b954e37ca3c5c64b78",
-  "size": 15252522,
-  "notes": "- The Wi-Fi icon shows on more consoles (signal from iw or wpa_cli too)\n- Visualizer: the bar at the top shows no song title (0.63.3)\n- Settings in two columns (0.63)\n- Visualizer: Spectrogram and colours with A (0.62)"
+  "version": "0.64",
+  "path": "release/betterpod-v0.64-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.64-knulli.zip",
+  "sha256": "6039cb4bf211873b3cca4f56f061954e7df0edb726eb903aa112f0297aef1d01",
+  "size": 15253485,
+  "notes": "- The main menu says betterPod; Settings \u2192 Turn it Apple brings back iPod\n- Fixed a freeze when picking a song just as another one ends\n- The Wi-Fi icon shows on more consoles (0.63.4)\n- Settings in two columns (0.63)"
 }

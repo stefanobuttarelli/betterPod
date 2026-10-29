@@ -9,7 +9,7 @@ import (
 )
 
 func (ui *IpodUI) homeView() *View {
-	v := &View{ID: "home", Title: "iPod", Kind: KindSplit}
+	v := &View{ID: "home", Title: homeTitle(), Kind: KindSplit}
 	v.Build = func() []Item {
 		items := []Item{
 			{Label: "Cover Flow", Preview: PrevMusic, OnSelect: ui.openCoverFlow},
@@ -302,6 +302,7 @@ func (ui *IpodUI) settingsView() *View {
 			{Label: "Bluetooth", Preview: PrevSettings, Value: btSettingsValue(), Column: ui.btSummary, OnSelect: func() { ui.showView(ui.bluetoothView(), "") }},
 			col("Podcasts", onOff(podsInMenu), ui.podcastsMenuView),
 			col("Screensaver", saverLabel(), ui.saverSettingsView),
+			col("Turn it Apple", onOff(appleMode), ui.appleView),
 			{Label: "Software Update", Preview: PrevSettings, Column: ui.updateSummary, OnSelect: func() { ui.showView(ui.updateView(), "") }},
 		}
 	}

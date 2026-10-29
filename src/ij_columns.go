@@ -245,3 +245,53 @@ func columnShadow(full []float64) []float64 {
 	}
 	return colShadow
 }
+
+// ---- Turn it Apple ----
+
+// appleMode: the main menu says "iPod" instead of "betterPod" (kept in the
+// prefs; off by default: the name is Apple's).
+var appleMode bool
+
+func homeTitle() string {
+	if appleMode {
+		return "iPod"
+	}
+	return "betterPod"
+}
+
+// appleView: Turn it Apple, Off / On.
+func (ui *IpodUI) appleView() *View {
+	v := &View{ID: "apple", Title: "Turn it Apple", Kind: KindSplit}
+	v.Build = func() []Item {
+		var items []Item
+		for _, on := range []bool{false, true} {
+			items = append(items, Item{Label: onOff(on), Checked: appleMode == on, NoArrow: true, Preview: PrevSettings,
+				Sublabel: map[bool]string{false: "The menu says betterPod", true: "The menu says iPod"}[on],
+				OnSelect: func() { ui.setAppleMode(on) }})
+		}
+		return items
+	}
+	v.Items = v.Build()
+	for i, it := range v.Items {
+		if it.Checked {
+			v.Index = i
+		}
+	}
+	return v
+}
+
+func (ui *IpodUI) setAppleMode(on bool) {
+	if appleMode == on {
+		return
+	}
+	appleMode = on
+	ui.savePrefs()
+	for _, st := range [][]*View{ui.split, ui.full} {
+		for _, h := range st {
+			if h.ID == "home" {
+				h.Title = homeTitle()
+			}
+		}
+	}
+	ui.refreshBuilt()
+}

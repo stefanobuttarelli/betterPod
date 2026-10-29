@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.64 (2026-10-29)
+
+### Added
+- **The main menu says betterPod.** iPod is Apple's name, so the main menu now says betterPod. **Settings → Turn it Apple** brings back "iPod" with On; Off is the default.
+
+### Fixed
+- **A freeze when picking a song as another one ends.** The song picked loads in the background. If the previous one ended at that moment, or was stopped by the new one (which also says "finished"), the track end loaded the next song at the same time. Two loads that change the sample rate could hang the sound and the screen. Now songs load one at a time, and a song stopped by a new one is not a track end.
+
+### Changed
+- The README's screenshots show betterPod and the two-column Settings.
+
 ## v0.63.4 (2026-10-29)
 
 ### Fixed

@@ -60,6 +60,7 @@
 - **Screensaver:** a mosaic of album covers that turn over, the album playing big; pick one with the arrows and A to see its songs (Settings → Screensaver, or SELECT + Y).
 - **Move the music to another card** (Settings → Library → Music Folder): copied, checked file by file, then the originals deleted; a card taken out only pauses it.
 - **Updates over Wi-Fi.** betterPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
+- **betterPod, or iPod.** The main menu says betterPod; Settings → **Turn it Apple** makes it say iPod.
 - **Settings in two columns.** The right side shows the menu of the row the cursor is on (Shuffle's choices, the Screensaver's options…), under its own header. A or RIGHT move into it, B or LEFT come back; pages of their own (About, Bluetooth, Software Update) show a summary there.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
@@ -74,7 +75,7 @@
 | <img src="docs/images/albums.png" width="260" alt="Albums"><br>Albums | <img src="docs/images/coverflow-back.png" width="260" alt="Cover Flow, flipped"><br>Cover Flow track list | <img src="docs/images/np-volume.png" width="260" alt="Now Playing volume"><br>Now Playing, volume |
 | <img src="docs/images/search.png" width="260" alt="Search"><br>Search | <img src="docs/images/brick.png" width="260" alt="Brick"><br>Brick | <img src="docs/images/solitaire.png" width="260" alt="Solitaire"><br>Solitaire |
 | <img src="docs/images/weather.png" width="260" alt="Weather"><br>Weather | | |
-| <img src="docs/images/albums-dark.png" width="260" alt="Albums, dark theme"><br>Dark theme | <img src="docs/images/coverflow-dark.png" width="260" alt="Cover Flow, dark theme"><br>Cover Flow, dark | <img src="docs/images/database.png" width="260" alt="Settings, Database"><br>Settings → Database |
+| <img src="docs/images/albums-dark.png" width="260" alt="Albums, dark theme"><br>Dark theme | <img src="docs/images/coverflow-dark.png" width="260" alt="Cover Flow, dark theme"><br>Cover Flow, dark | <img src="docs/images/settings.png" width="260" alt="Settings in two columns"><br>Settings, two columns |
 
 <sub>Screenshots are real frames from the app. The albums, artists and covers are made up for the demo.</sub>
 

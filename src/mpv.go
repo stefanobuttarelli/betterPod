@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -60,8 +61,10 @@ func (app *MiyooPod) startPlaybackPoller() {
 					app.requestRedraw()
 				}
 			}
-			if state.Finished {
-				// Defer to main loop — avoids racing on Queue/Playing state
+			if state.Finished && atomic.LoadInt32(&trackLoading) == 0 {
+				// Defer to main loop — avoids racing on Queue/Playing state.
+				// (A track being loaded stops the previous one, which also
+				// says "finished": that's no track end.)
 				app.TrackEndPending = true
 				app.requestRedraw()
 			}
@@ -100,7 +103,15 @@ func (app *MiyooPod) startPlaybackPoller() {
 // trackLoading is 1 while mpvLoadFile runs (read by the playback poller).
 var trackLoading int32
 
+// audioLoadMu: mpvLoadFile, one at a time.
+var audioLoadMu sync.Mutex
+
 func (app *MiyooPod) mpvLoadFile(path string) error {
+	// one load at a time: a song picked (loaded in the background) and a
+	// track end (on the UI's loop) must never reopen the audio device
+	// together (it could hang the mixer)
+	audioLoadMu.Lock()
+	defer audioLoadMu.Unlock()
 	atomic.StoreInt32(&trackLoading, 1)
 	defer atomic.StoreInt32(&trackLoading, 0)
 	const maxRAMSize = 48 * 1024 * 1024 // 48MB (hi-res FLAC fits; the H700 has 1GB)
