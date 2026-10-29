@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.71 (2026-10-29)
+
+### Changed
+- **Share, when it's received:** the green pedestal sinks away, the cover turns over once while it rises to the middle and grows, then RECEIVED, the title and the artist, and two buttons: **Listen Now** and **Receive Another** (← → to choose, A). Listen Now says "Adding…" for the few seconds the songs take to enter the library; no more "Adding it to your library" under "Now in Music".
+
+### Fixed
+- **The keyboard:** with nothing left to delete, B closes it and goes back.
+
 ## v0.70 (2026-10-29)
 
 ### Added

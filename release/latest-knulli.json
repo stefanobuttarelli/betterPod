@@ -1,8 +1,8 @@
 {
-  "version": "0.70",
-  "path": "release/betterpod-v0.70-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.70-knulli.zip",
-  "sha256": "588b09ec79af876cc658729a2d5bf7673868d4fda7196083af09a45eec5b8cd4",
-  "size": 16085785,
-  "notes": "- Settings \u2192 Sharing: a name for your betterPod, shown to friends when you share\n- Buttons named on screen are drawn as buttons (A in a circle, START in a rounded box\u2026)\n- Share: the size, the receiving speed, the laser follows the progress; Y opens the received album\n- Fixed: the right version number (0.69.2)"
+  "version": "0.71",
+  "path": "release/betterpod-v0.71-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.71-knulli.zip",
+  "sha256": "83a938da2a9625dbca58d990aa97474f85420824b73c919a5ff5d89c637694dd",
+  "size": 16089201,
+  "notes": "- Share: when it's received, the cover turns over and grows, with Listen Now and Receive Another\n- The keyboard: with nothing left to delete, B closes it and goes back\n- Settings \u2192 Sharing: a name for your betterPod (0.70)\n- Buttons named on screen are drawn as buttons (0.70)"
 }

@@ -61,10 +61,8 @@ func (s *ShareView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 		hint = ""
 	case s.phase == shFailed:
 		hint = "[A] try again     [B] back"
-	case s.phase == shDone && s.playable:
-		hint = "[A] play     [Y] open the album     [B] back"
 	case s.phase == shDone:
-		hint = "[B] back"
+		hint = "[←] [→] choose     [A] select     [B] back"
 	default:
 		hint = "[B] cancel"
 	}
@@ -241,6 +239,10 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 		default:
 			shText(dst, "[↑] [↓] digit      [←] [→] move      [A] receive", W/2, 216, W500, 14, shSub)
 		}
+		return
+	}
+	if s.phase == shDone {
+		s.renderReceived(ui, dst, now)
 		return
 	}
 	ui.shPedestal(dst, shCX, "green", 1)
@@ -440,4 +442,100 @@ func shMilestone(n int) string {
 		return ""
 	}
 	return fmt.Sprintf("Share number %d. A true mixtape maker.", n)
+}
+
+// renderReceived: the received screen. The pedestal sinks away, the cover
+// turns over once while it rises to the middle and grows; then RECEIVED,
+// the title, the artist, and Listen Now / Receive Another.
+func (s *ShareView) renderReceived(ui *IpodUI, dst *image.RGBA, now time.Time) {
+	W := float64(dst.Bounds().Dx())
+	el := now.Sub(s.phaseAt).Seconds()
+	ease := func(a, b float64) float64 { // 0→1 between a and b seconds
+		t := math.Max(0, math.Min(1, (el-a)/(b-a)))
+		return t * t * (3 - 2*t)
+	}
+	// the pedestal goes down and fades
+	if pg := ease(0, 0.6); pg < 1 {
+		ped, beam := ui.asset("share_ped_green"), ui.asset("share_beam_green")
+		dy := int(pg * 40)
+		blit(dst, beam, int(shCX)-130, int(shTop)-226+dy, 1-pg)
+		blit(dst, ped, int(shCX)-130, int(shTop)-24+dy, 1-pg)
+	}
+	// the cover: from the pedestal to the middle, one turn on the way
+	m := ease(0.25, 1.25)
+	big := s.coverBig
+	if big == nil {
+		if s.cover != nil {
+			big = scaleImage(s.cover, shareBigPx, shareBigPx)
+			s.coverBig = big
+		} else {
+			big = ui.defaultArtSized(shareBigPx)
+		}
+	}
+	x0, y0, sz0 := shCX-shareCoverPx/2, shTop-24-shareCoverPx, float64(shareCoverPx)
+	sz1 := float64(shareBigPx)
+	x1, y1 := W/2-sz1/2, 62.0
+	size := sz0 + (sz1-sz0)*m
+	cx := x0 + sz0/2 + (x1+sz1/2-(x0+sz0/2))*m
+	cy := y0 + sz0/2 + (y1+sz1/2-(y0+sz0/2))*m
+	turn := math.Cos(m * 2 * math.Pi) // 1 → −1 → 1: once round
+	w := math.Max(2, size*math.Abs(turn))
+	if m >= 1 {
+		shBigCover(dst, big, x1, y1)
+	} else if turn > 0 {
+		img := scaleImageFast(big, int(w), int(size))
+		blit(dst, img, int(cx-w/2), int(cy-size/2), 1)
+	} else {
+		// its back: plain white, with a soft edge
+		fillRoundedGradient(dst, cx-w/2, cy-size/2, cx+w/2, cy+size/2, 2,
+			[]GradStop{{0, Col{250, 251, 253, 1}}, {1, Col{220, 225, 232, 1}}}, 1)
+		strokeRounded(dst, cx-w/2, cy-size/2, cx+w/2, cy+size/2, 2, 1, Col{190, 196, 206, 1}, 1)
+	}
+	// the words and the buttons come in
+	a := ease(1.1, 1.6)
+	if a <= 0 {
+		return
+	}
+	shText(dst, "RECEIVED", W/2, 40, W600, 15, Col{shGreen.R, shGreen.G, shGreen.B, a})
+	t, sub := s.title()
+	shText(dst, shFit(t, W700, 22, W-60), W/2, y1+sz1+26, W700, 22, Col{shInk.R, shInk.G, shInk.B, a})
+	shText(dst, shFit(sub, W500, 15, W-60), W/2, y1+sz1+50, W500, 15, Col{shSub.R, shSub.G, shSub.B, a})
+	if m := shMilestone(s.count); m != "" {
+		shText(dst, m, W/2, y1+sz1+70, W500, 13, Col{shBlue.R, shBlue.G, shBlue.B, a})
+	}
+	by := y1 + sz1 + 104
+	listen := "Listen Now"
+	if !s.playable {
+		listen = "Adding…"
+	}
+	shButton(dst, W/2-104, by, 190, listen, s.btn == 0, !s.playable, a)
+	shButton(dst, W/2+104, by, 190, "Receive Another", s.btn == 1, false, a)
+}
+
+// shBigCover: the received cover, with its shadow and gloss.
+func shBigCover(dst *image.RGBA, img *image.RGBA, x, y float64) {
+	n := float64(img.Bounds().Dx())
+	for i := 6.0; i >= 1; i-- {
+		fillRoundedGradient(dst, x+4-i*1.5, y+6-i, x+n-4+i*1.5, y+n+4+i, i*2,
+			[]GradStop{{0, Col{40, 50, 70, 0.05}}, {1, Col{40, 50, 70, 0.05}}}, 1)
+	}
+	blit(dst, img, int(x), int(y), 1)
+	aaPoly(dst, [][2]float64{{x, y}, {x + n, y}, {x + n, y + n*0.28}, {x, y + n*0.46}}, Col{255, 255, 255, 0.15})
+}
+
+// shButton: an Aqua button: blue when selected, white otherwise.
+func shButton(dst *image.RGBA, cx, cy, w float64, label string, sel, dim bool, a float64) {
+	x0, x1 := cx-w/2, cx+w/2
+	top, bot, edge, tc := Col{255, 255, 255, 1}, Col{218, 223, 230, 1}, Col{160, 168, 180, 1}, shInk
+	if sel {
+		top, bot, edge, tc = Col{120, 195, 255, 1}, Col{26, 104, 214, 1}, Col{30, 90, 180, 1}, colWhite
+	}
+	if dim {
+		tc = Col{tc.R, tc.G, tc.B, 0.6}
+	}
+	fillRoundedGradient(dst, x0, cy-19+2, x1, cy+19+2, 19, []GradStop{{0, Col{40, 50, 70, 0.12}}, {1, Col{40, 50, 70, 0.12}}}, a)
+	fillRoundedGradient(dst, x0, cy-19, x1, cy+19, 19, []GradStop{{0, top}, {1, bot}}, a)
+	fillRoundedGradient(dst, x0+3, cy-17, x1-3, cy, 10, []GradStop{{0, Col{255, 255, 255, 0.5}}, {1, Col{255, 255, 255, 0.15}}}, a)
+	strokeRounded(dst, x0, cy-19, x1, cy+19, 19, 1, edge, a)
+	shText(dst, label, cx, cy, W700, 16, Col{tc.R, tc.G, tc.B, tc.A * a})
 }

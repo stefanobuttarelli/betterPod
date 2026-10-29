@@ -50,6 +50,7 @@ const (
 	shareAppID    = "betterpod.xyz/share"
 	shareManifest = "betterpod-share.json"
 	shareCoverPx  = 150 // device px, on the pedestal
+	shareBigPx    = 200 // device px, once received
 )
 
 // shareClient: the wormhole client (the servers can be changed for tests
@@ -102,6 +103,8 @@ type ShareView struct {
 	rateBytes int64
 
 	cover     *image.RGBA // shareCoverPx square
+	coverBig  *image.RGBA // shareBigPx square (the received screen)
+	btn       int         // received: 0 Listen Now, 1 Receive Another
 	coverSent *image.RGBA // the "already sent" look of it
 	coverAt   time.Time
 	err       string
@@ -643,7 +646,8 @@ func (ui *IpodUI) sharePeek(s *ShareView, g *growingFile) {
 		case "cover.jpg":
 			if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
 				c := scaleImage(img, shareCoverPx, shareCoverPx)
-				ui.post(func() { s.cover, s.coverAt = c, time.Now(); ui.dirty = true })
+				big := scaleImage(img, shareBigPx, shareBigPx)
+				ui.post(func() { s.cover, s.coverBig, s.coverAt = c, big, time.Now(); ui.dirty = true })
 			}
 			return
 		}
@@ -769,6 +773,11 @@ func shareKeep(name string) bool {
 // ---- keys ----
 
 func (s *ShareView) OnKey(ui *IpodUI, k Key) bool {
+	if !s.send && s.phase == shDone && (k == LEFT || k == RIGHT) {
+		s.btn = 1 - s.btn
+		ui.dirty = true
+		return true
+	}
 	if !s.send && s.phase == shDone && s.playable && k == Y {
 		// the album, where it is in the library
 		if al := ui.trackAlbum(s.tracks[0]); al != nil {
@@ -815,6 +824,10 @@ func (s *ShareView) OnCenter(ui *IpodUI) {
 			s.err = ""
 		}
 		ui.shareReceive(s)
+	case !s.send && s.phase == shDone && s.btn == 1:
+		// another one: the digits again
+		*s = ShareView{bg: s.bg}
+		s.setPhase(shCode)
 	case !s.send && s.phase == shDone && s.playable:
 		ui.playSong(s.tracks, 0, true)
 	}
@@ -830,7 +843,7 @@ func (s *ShareView) Animating(now time.Time) bool {
 	case shFailed:
 		return now.Sub(s.phaseAt) < time.Second
 	case shDone:
-		return now.Sub(s.phaseAt) < 2*time.Second
+		return now.Sub(s.phaseAt) < 2500*time.Millisecond
 	}
 	return true
 }

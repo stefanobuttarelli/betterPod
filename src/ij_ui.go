@@ -568,6 +568,15 @@ func (ui *IpodUI) centerClick() {
 // menuClick: MENU button. Views with their own menu handling (Solitaire) get it first.
 func (ui *IpodUI) menuClick() {
 	if kb := ui.keyboard; kb != nil && !kb.exiting {
+		if *kb.text == "" {
+			// nothing left to delete: B closes the keyboard and goes back
+			ui.hideKeyboard()
+			if len(ui.full) > 0 || len(ui.split) > 1 {
+				ui.hideView()
+			}
+			ui.dirty = true
+			return
+		}
 		kb.backspace() // on the keyboard B deletes
 		ui.dirty = true
 		return
