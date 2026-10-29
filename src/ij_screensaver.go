@@ -1238,12 +1238,7 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 		drawPadlock(dst, left-8, 3.5, 1, []GradStop{{0, colWhite}, {1, colWhite}}, colWhite, 1)
 		left -= 16
 	}
-	if btConnected() {
-		ic := whiteIcon(ui, "bluetooth")
-		iw := float64(ic.Bounds().Dx()) / DPR
-		blit(dst, ic, px(left-iw), px(3.5), 1)
-		left -= iw + gap
-	}
+	left = ui.drawStatusIcons(dst, left, 3.5, colWhite, true)
 	if p := ui.app.Playing; p != nil && p.Track != nil && p.State != StateStopped {
 		name := "play"
 		if p.State == StatePaused {

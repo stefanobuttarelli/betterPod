@@ -265,8 +265,11 @@ var (
 	btLost  int32 // set when it stops being one (pause like an iPod)
 )
 
-func btConnected() bool { return atomic.LoadInt32(&btState) == 1 }
-func btLostTake() bool  { return atomic.SwapInt32(&btLost, 0) == 1 }
+func btConnected() bool { return atomic.LoadInt32(&btState) == 1 || fakeBT }
+
+var fakeBT = os.Getenv("MIYOOPOD_FAKE_BT") == "1" // (tests)
+
+func btLostTake() bool { return atomic.SwapInt32(&btLost, 0) == 1 }
 
 func findBin(name string) string {
 	if p, err := exec.LookPath(name); err == nil {
