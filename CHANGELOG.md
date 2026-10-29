@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.76 (2026-10-30)
+
+### Added
+- **A shift key on the keyboard,** left of Z. Pressed once, the next letter is a capital, then lower case again; pressed twice it stays on (caps lock, the arrow with a bar under it) until it is pressed again. The letters show in capitals only when they'd be typed so.
+
 ## v0.75 (2026-10-29)
 
 ### Added

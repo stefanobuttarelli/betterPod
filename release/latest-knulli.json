@@ -1,8 +1,8 @@
 {
-  "version": "0.75",
-  "path": "release/betterpod-v0.75-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.75-knulli.zip",
-  "sha256": "624cab75ec2c8e15f4a34ecd660947be42c9780ca73f6f60377f70cc359946ec",
-  "size": 16141187,
-  "notes": "- Delete Album, in an album's options\n- Cover Flip lands on Now Playing already turned when a song plays\n- Headphone buttons work with the screen off\n- Fixed: slower and slower after playing 2048; the Missing Covers count; a crash on a first scan with a playlist"
+  "version": "0.76",
+  "path": "release/betterpod-v0.76-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.76-knulli.zip",
+  "sha256": "a47016e9a9cb8b858d58c865315dc71241e6e3ce62ae152b34074e5803ffebb9",
+  "size": 16141203,
+  "notes": "- The keyboard has a shift key: one capital, or caps lock when pressed twice\n- Delete Album, in an album's options (0.75)\n- Cover Flip lands on Now Playing already turned when a song plays (0.75)\n- Fixed: slower and slower after playing 2048 (0.75)"
 }

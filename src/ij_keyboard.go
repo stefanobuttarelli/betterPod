@@ -5,10 +5,12 @@ package main
 //
 //	Q W E R T Y U I O P
 //	 A S D F G H J K L
-//	   Z X C V B N M
+//	 ⇧  Z X C V B N M
 //	123 | space | ⌫ | Search
 //
-// The 123 key (or Y) switches to digits and symbols. The keyboard edits the
+// The 123 key (or Y) switches to digits and symbols. ⇧ types the next letter
+// as a capital; pressed again it stays on (caps lock, the arrow with a bar
+// under it) until it is pressed a third time. The keyboard edits the
 // caller's text itself, with a caret:
 //
 //	d-pad   move between keys (left/right wrap round a row; up/down go to
@@ -38,6 +40,7 @@ const (
 	kbDelete
 	kbLayer
 	kbEnter
+	kbShift
 )
 
 type kbDef struct {
@@ -65,7 +68,7 @@ func kbCharRow(s string) []kbDef {
 // kbLayouts: letters, then digits and symbols; the bottom row is shared
 // (its layer key names the other layer).
 var kbLayouts = [2][][]kbDef{
-	{kbCharRow("qwertyuiop"), kbCharRow("asdfghjkl"), kbCharRow("zxcvbnm")},
+	{kbCharRow("qwertyuiop"), kbCharRow("asdfghjkl"), append([]kbDef{{"shift", kbShift, 38}}, kbCharRow("zxcvbnm")...)},
 	{kbCharRow("1234567890"), kbCharRow("-._'&!?()"), kbCharRow("@#:,/+=")},
 }
 
@@ -80,6 +83,7 @@ func kbBottomRow(layer int) []kbDef {
 // Keyboard is the on-screen keyboard and the text it edits.
 type Keyboard struct {
 	layer    int
+	shift    int // 0 lower case, 1 the next letter upper case, 2 caps lock
 	row, col int
 	anim     *Anim // 0 hidden, 1 shown
 	exiting  bool
@@ -242,7 +246,16 @@ func (kb *Keyboard) press(ui *IpodUI) {
 	k := kb.rows()[kb.row][kb.col]
 	switch k.act {
 	case kbChar:
-		kb.insert(k.label)
+		if kb.shift > 0 && kb.layer == 0 {
+			kb.insert(upperASCII(k.label))
+			if kb.shift == 1 {
+				kb.shift = 0 // (one capital, then lower case again)
+			}
+		} else {
+			kb.insert(k.label)
+		}
+	case kbShift:
+		kb.shift = (kb.shift + 1) % 3
 	case kbSpace:
 		kb.insert(" ")
 	case kbDelete:
@@ -307,7 +320,7 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 	if v <= 0.001 {
 		return
 	}
-	key := kbPanelState{kb.layer, kb.row, kb.col, th.dark}
+	key := kbPanelState{kb.layer, kb.row, kb.col, kb.shift, th.dark}
 	p := newCanvasCached(&kbPanel, px(320), px(kbPanelH))
 	if key != kbPanelKey || !kbPanelOK {
 		kbPanelKey, kbPanelOK = key, true
@@ -324,8 +337,8 @@ func (ui *IpodUI) drawKeyboard(dst *image.RGBA, now time.Time) {
 
 // the panel is drawn again only when the selected key or the layer changes
 type kbPanelState struct {
-	layer, row, col int
-	dark            bool
+	layer, row, col, shift int
+	dark                   bool
 }
 
 var (
@@ -349,7 +362,7 @@ func (kb *Keyboard) drawPanel(p *image.RGBA) {
 			x := xs[c]
 			sel := r == kb.row && c == kb.col
 			grad, border, tc := keyGrad, rgb(118, 122, 128), rgb(20, 21, 24)
-			if k.act != kbChar {
+			if k.act != kbChar && !(k.act == kbShift && kb.shift > 0) {
 				grad, border, tc = actGrad, rgb(70, 74, 80), colWhite
 			}
 			if sel {
@@ -359,10 +372,17 @@ func (kb *Keyboard) drawPanel(p *image.RGBA) {
 			fillRoundedGradient(p, x*d, (y+1)*d, (x+k.w)*d, (y+kbKeyH+1)*d, 5*d, []GradStop{{0, rgba(0, 0, 0, 0.35)}, {1, rgba(0, 0, 0, 0.35)}}, 1)
 			fillRoundedGradient(p, x*d, y*d, (x+k.w)*d, (y+kbKeyH)*d, 5*d, grad, 1)
 			strokeRounded(p, x*d, y*d, (x+k.w)*d, (y+kbKeyH)*d, 5*d, 1.5, border, 1)
+			if k.act == kbShift {
+				kbShiftGlyph(p, x+k.w/2, y+kbKeyH/2, kb.shift, tc)
+				continue
+			}
 			f := lf
 			label := k.label
 			if k.act == kbChar {
-				label = upperASCII(label)
+				// capitals shown when they'd be typed, as on a phone
+				if kb.shift > 0 || kb.layer != 0 {
+					label = upperASCII(label)
+				}
 			} else {
 				f = sf
 			}
@@ -473,4 +493,31 @@ func drawMagnifier(dst *image.RGBA, x, cy, s float64, c Col) {
 	dc.MoveTo((cx+r*math.Cos(a)+0.6)*d, (ccy+r*math.Sin(a)+0.6)*d)
 	dc.LineTo((x+s-1)*d, (cy+s*0.5-1)*d)
 	dc.Stroke()
+}
+
+// kbShiftGlyph: the shift arrow (CSS px, centred on cx, cy): an outline
+// when off, filled for one capital, filled with a bar under it for caps
+// lock.
+func kbShiftGlyph(p *image.RGBA, cx, cy float64, state int, c Col) {
+	d := DPR
+	h := 11.0
+	top := cy - h/2 - 1
+	if state == 2 {
+		top -= 1.5
+	}
+	pts := [][2]float64{
+		{cx, top}, {cx + 6, top + 6}, {cx + 3, top + 6}, {cx + 3, top + h}, {cx - 3, top + h}, {cx - 3, top + 6}, {cx - 6, top + 6},
+	}
+	for i := range pts {
+		pts[i][0] *= d
+		pts[i][1] *= d
+	}
+	if state == 0 {
+		strokePoly(p, pts, 1.6*d/2, c)
+	} else {
+		aaPoly(p, pts, c)
+	}
+	if state == 2 {
+		fillRoundedGradient(p, (cx-3)*d, (top+h+2)*d, (cx+3)*d, (top+h+3.6)*d, 0.8*d, []GradStop{{0, c}, {1, c}}, 1)
+	}
 }
