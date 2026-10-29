@@ -6,6 +6,7 @@
 # every step's frame is saved as a PNG.
 #
 #   tools/onion/smoketest.sh [OUT]   -> OUT (default build/smoketest)
+#   GODEBUG=gctrace=1 tools/onion/smoketest.sh   (the GC's trace in OUT/frames/stdout.txt)
 #
 # It checks start-up, the library scan, navigation, playback, the Onion keys
 # and quitting. It can't check the Miyoo's own SDL2 driver (video, MI_AO).
@@ -26,7 +27,7 @@ mkdir -p "$OUT/music/Podcasts/Smoke Cast" "$OUT/app/conf"
 head -c 4096 /dev/zero > "$OUT/music/Podcasts/Smoke Cast/2026-10-27 Hello.mp3"
 printf '[{"name":"Smoke Cast","author":"betterPod","feed":"http://127.0.0.1:9/feed","art":"","art600":"","files":{"smoke:hello":"2026-10-27 Hello.mp3"}}]' > "$OUT/app/conf/podcasts.json"
 
-docker run --rm --platform linux/arm/v7 \
+docker run --rm --platform linux/arm/v7 -e GODEBUG="${GODEBUG:-}" \
   -v "$PWD/$OUT/app:/app" -v "$PWD/$OUT/music:/music" -v "$PWD/$OUT/frames:/out" \
   -v "$PWD/tools/onion/smoketest/run.sh:/run.sh:ro" \
   "$IMAGE" sh /run.sh

@@ -13,12 +13,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fogleman/gg"
+	"golang.org/x/image/vector"
 )
 
 // Onion's update zip is unpacked at the root of the SD card (App/betterpod/…):
@@ -545,5 +547,41 @@ func TestOnionSleepMinutes(t *testing.T) {
 	os.Unsetenv("MIYOOPOD_SLEEP_MINUTES")
 	if got := onionSleepMinutes(); got != 5 { // no system.json here: Onion's default
 		t.Errorf("default: %d", got)
+	}
+}
+
+// A polygon (Share's gloss, Five Letters' strokes, the Weather gear) is
+// rasterized over its own box with a reused rasterizer: over the whole
+// screen it was 2.4 MB at every call, and the Miyoo's GC ran 6 times a
+// second while Share waited. The pixels are the same.
+func TestAaPolyMemory(t *testing.T) {
+	pts := [][2]float64{{60, 50}, {260, 50}, {260, 106}, {60, 142}}
+	a := image.NewRGBA(image.Rect(0, 0, 640, 480))
+	aaPoly(a, pts, Col{255, 255, 255, 0.5})
+	var m0, m1 runtime.MemStats
+	runtime.ReadMemStats(&m0)
+	for i := 0; i < 20; i++ {
+		aaPoly(a, pts, Col{255, 255, 255, 0.15})
+	}
+	runtime.ReadMemStats(&m1)
+	if per := (m1.TotalAlloc - m0.TotalAlloc) / 20; per > 16<<10 {
+		t.Errorf("aaPoly allocates %d bytes a call", per)
+	}
+	// against the whole screen rasterized, as it was
+	b := image.NewRGBA(image.Rect(0, 0, 640, 480))
+	var ras vector.Rasterizer
+	ras.Reset(640, 480)
+	ras.MoveTo(float32(pts[0][0]), float32(pts[0][1]))
+	for _, p := range pts[1:] {
+		ras.LineTo(float32(p[0]), float32(p[1]))
+	}
+	ras.ClosePath()
+	ras.Draw(b, b.Bounds(), image.NewUniform(c8(Col{255, 255, 255, 0.5})), image.Point{})
+	c := image.NewRGBA(image.Rect(0, 0, 640, 480))
+	aaPoly(c, pts, Col{255, 255, 255, 0.5})
+	for i := range b.Pix {
+		if d := int(b.Pix[i]) - int(c.Pix[i]); d > 1 || d < -1 {
+			t.Fatalf("byte %d: %d, was %d", i, c.Pix[i], b.Pix[i])
+		}
 	}
 }

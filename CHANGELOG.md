@@ -12,6 +12,9 @@
 - **GitHub releases** carry the Onion zip too, when release/ has it.
 - **About** names the system it runs on.
 
+### Fixed
+- **Share, Five Letters and the Weather gear allocate far less while they draw.** A polygon (the cover's gloss, a key's stroke, the gear) was rasterized over the whole screen, 2.4 MB at every call; now only over its own box, with a rasterizer that is reused, and the pixels are the same. On the Miyoo the garbage collector ran six times a second while Share waited for a friend.
+
 ## v0.72.1 (2026-10-29)
 
 ### Fixed
