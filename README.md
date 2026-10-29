@@ -60,6 +60,7 @@
 - **Screensaver:** a mosaic of album covers that turn over, the album playing big; pick one with the arrows and A to see its songs (Settings → Screensaver, or SELECT + Y).
 - **Move the music to another card** (Settings → Library → Music Folder): copied, checked file by file, then the originals deleted; a card taken out only pauses it.
 - **Updates over Wi-Fi.** betterPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
+- **Settings in two columns.** The right side shows the menu of the row the cursor is on (Shuffle's choices, the Screensaver's options…), under its own header. A or RIGHT move into it, B or LEFT come back; pages of their own (About, Bluetooth, Software Update) show a summary there.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
 <p align="center">
@@ -249,6 +250,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/ij_bluetooth.go` | Settings → Bluetooth (bluetoothctl): paired and new devices, their pictures |
 | `src/ij_npextra.go` | Now Playing's card (START) and options row (Shuffle, Repeat) |
 | `src/ij_visualizer.go` | The Visualizer screensaver: the sound's spectrum (FFT) and its effects |
+| `src/ij_columns.go` | Two-column menus (Settings): the right column, moving in and out of it |
 | `src/ij_vizcolors.go` | The Visualizer's colour schemes (A) and the Spectrogram |
 | `src/ij_screensaver.go` | The screensaver: the cover mosaic, its bar, the turned-over card, Settings → Screensaver |
 | `src/ij_musicdir.go`, `src/ij_movemusic_view.go` | Music Folder: moving the music to another card, and its screen |

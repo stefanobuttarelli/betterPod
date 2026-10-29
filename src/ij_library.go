@@ -284,34 +284,25 @@ func (ui *IpodUI) gamesView() *View {
 // settingsView: About, Shuffle, Repeat, Theme, Library and Database, with
 // the current values.
 func (ui *IpodUI) settingsView() *View {
-	v := &View{ID: "settings", Title: "Settings", Kind: KindSplit}
+	v := &View{ID: "settings", Title: "Settings", Kind: KindSplit, columns: true}
+	// a row whose menu shows in the right column (A / RIGHT go into it)
+	col := func(label, value string, mk func() *View) Item {
+		return Item{Label: label, Value: value, Preview: PrevSettings, Column: mk, ColumnOpen: true,
+			OnSelect: func() { ui.openColumn(mk()) }}
+	}
 	v.Build = func() []Item {
 		return []Item{
-			{Label: "About", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.aboutView(), "") }},
-			{Label: "Shuffle", Preview: PrevSettings, Value: shuffleLabel(ui.shuffleMode), OnSelect: func() { ui.showView(ui.shuffleView(), "") }},
-			{Label: "Repeat", Preview: PrevSettings, Value: repeatLabel(ui.repeatMode()), OnSelect: func() { ui.showView(ui.repeatView(), "") }},
-			{Label: "Theme", Preview: PrevSettings, Value: themeLabel(themeMode), OnSelect: func() { ui.showView(ui.themeView(), "") }},
-			{Label: "Library", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.libraryInfoView(), "") }},
-			{Label: "Database", Preview: PrevSettings, Value: dbLabel(dataDir()), OnSelect: func() { ui.showView(ui.databaseView(), "") }},
-			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
-			{Label: "Bluetooth", Preview: PrevSettings, Value: btSettingsValue(), OnSelect: func() { ui.showView(ui.bluetoothView(), "") }},
-			{Label: "Podcasts", Preview: PrevSettings, Value: onOff(podsInMenu), OnSelect: func() {
-				podsInMenu = !podsInMenu // in the main menu or not (downloaded episodes stay in Music)
-				ui.savePrefs()
-				// the main menu's cursor stays on the same entry (Settings)
-				for _, h := range ui.split {
-					if h.ID == "home" && h.Index >= 2 {
-						if podsInMenu {
-							h.Index++
-						} else {
-							h.Index--
-						}
-					}
-				}
-				ui.refreshBuilt()
-			}},
-			{Label: "Screensaver", Preview: PrevSettings, Value: saverLabel(), OnSelect: func() { ui.showView(ui.saverSettingsView(), "") }},
-			{Label: "Software Update", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.updateView(), "") }},
+			{Label: "About", Preview: PrevSettings, Column: ui.aboutSummary, OnSelect: func() { ui.showView(ui.aboutView(), "") }},
+			col("Shuffle", shuffleLabel(ui.shuffleMode), ui.shuffleView),
+			col("Repeat", repeatLabel(ui.repeatMode()), ui.repeatView),
+			col("Theme", themeLabel(themeMode), ui.themeView),
+			col("Library", "", ui.libraryInfoView),
+			col("Database", dbLabel(dataDir()), ui.databaseView),
+			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), Column: ui.youtubeSettingsView, OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
+			{Label: "Bluetooth", Preview: PrevSettings, Value: btSettingsValue(), Column: ui.btSummary, OnSelect: func() { ui.showView(ui.bluetoothView(), "") }},
+			col("Podcasts", onOff(podsInMenu), ui.podcastsMenuView),
+			col("Screensaver", saverLabel(), ui.saverSettingsView),
+			{Label: "Software Update", Preview: PrevSettings, Column: ui.updateSummary, OnSelect: func() { ui.showView(ui.updateView(), "") }},
 		}
 	}
 	v.Items = v.Build()

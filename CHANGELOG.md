@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.63 (2026-10-29)
+
+### Changed
+- **Settings in two columns.** The right side used to show the same picture for every row. Now it shows the menu of the row the cursor is on, under its own header bar. The left column lies over it, with a soft shadow falling on it.
+  - **A or RIGHT** move the cursor into the right column; the left cursor turns grey. **B or LEFT** bring it back.
+  - **Columns:** Shuffle, Repeat, Theme, Library, Database, Podcasts and Screensaver show their choices there.
+  - **Podcasts** is now a column with On / Off, instead of switching straight away.
+  - **Summaries:** About, YouTube, Bluetooth and Software Update show one there, and A opens their page as before.
+
 ## v0.62 (2026-10-29)
 
 ### Added

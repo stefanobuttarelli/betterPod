@@ -19,6 +19,11 @@ const (
 
 // Item is one row of a list (SelectableListOption in ipod.js).
 type Item struct {
+	// Column: the menu the right column shows for this row (two-column
+	// menus); ColumnOpen: A / RIGHT move into it (else A does OnSelect)
+	Column     func() *View
+	ColumnOpen bool
+
 	Label          string
 	Sublabel       string
 	Album          *Album // thumbnail (album rows)
@@ -92,6 +97,14 @@ type View struct {
 	dirty     bool
 
 	lastRender time.Time
+
+	// two columns (Settings): the right one shows the selected row's own
+	// menu (Item.Column); colParent: this menu is that column, with the
+	// cursor in it (ij_columns.go)
+	columns   bool
+	colParent *View
+	noCursor  bool // drawn without the cursor (the column it isn't in)
+	inactive  bool // its cursor grey (the cursor is in the other column)
 }
 
 // row metrics (CSS px)
@@ -181,6 +194,9 @@ func (v *View) ensureVisible(viewportH float64) {
 
 // selected row
 var selGrad = []GradStop{{0, rgb(60, 184, 255)}, {1, rgb(52, 122, 181)}}
+
+// selGradInactive: the cursor of the column the cursor isn't in
+var selGradInactive = []GradStop{{0, rgb(168, 176, 186)}, {1, rgb(122, 131, 142)}}
 var subGray = rgb(100, 100, 100)
 
 // renderList draws a list view at full device resolution into dst: rows
@@ -212,7 +228,7 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		if y+rh < 0 || y > hCSS {
 			continue
 		}
-		sel := i == v.Index
+		sel := i == v.Index && !v.noCursor
 		if it.SearchField {
 			drawSearchBar(dst, it, y, wCSS, sel)
 			continue
@@ -233,7 +249,11 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 			fillRect(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), th.stripe)
 		}
 		if sel {
-			fillVGradient(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), selGrad)
+			g := selGrad
+			if v.inactive {
+				g = selGradInactive
+			}
+			fillVGradient(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), g)
 		}
 		x := 0.0
 		if v.TrackList {

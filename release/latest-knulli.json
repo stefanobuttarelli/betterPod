@@ -1,8 +1,8 @@
 {
-  "version": "0.62",
-  "path": "release/betterpod-v0.62-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.62-knulli.zip",
-  "sha256": "10c25aaea2f97c965fdab7e3f0bdbafab1eab73f23bcac3bf72e64c021d8fb44",
-  "size": 15244243,
-  "notes": "- Visualizer: the Spectrogram, the sound scrolling as a band of heat\n- Visualizer: A changes the colours (Classic, Album, Magma, Aurora, Sunset, Ocean, Phosphor, Mono)\n- Track lists: a pause mark on the paused song (0.61.1)\n- KnulliPod is now betterPod (0.61)"
+  "version": "0.63",
+  "path": "release/betterpod-v0.63-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.63-knulli.zip",
+  "sha256": "0522f5babb2613f7c3126552d0fbe173a816cc07327c22d3420d4d0c84264bb5",
+  "size": 15250398,
+  "notes": "- Settings in two columns: the right side shows the menu of the row you're on\n- A / RIGHT move into it, B / LEFT come back\n- Visualizer: Spectrogram and colours with A (0.62)\n- KnulliPod is now betterPod (0.61)"
 }

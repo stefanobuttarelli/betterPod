@@ -327,6 +327,12 @@ func (ui *IpodUI) hideView() {
 	if len(ui.split)+len(ui.full) <= 1 {
 		return
 	}
+	if len(ui.full) == 0 {
+		if t := ui.split[len(ui.split)-1]; t.colParent != nil {
+			ui.closeColumn(t) // (the cursor back in the left column)
+			return
+		}
+	}
 	var v *View
 	if n, m := len(ui.full), len(ui.split); n > 0 {
 		v = ui.full[n-1]
@@ -363,6 +369,9 @@ func (ui *IpodUI) hideView() {
 	ui.headerTitle = top.Title
 	if t, ok := top.titleOverride(); ok {
 		ui.headerTitle = t
+	}
+	if top.colParent != nil {
+		ui.headerTitle = top.colParent.Title // (back in a right column: the menu's title stays)
 	}
 	if cf := ui.coverUp(); cf != nil {
 		// back on Cover Flow (from Up Next over its Now Playing)
@@ -723,6 +732,11 @@ func (ui *IpodUI) HandleKey(ev int) {
 		ui.dirty = true
 		return
 	}
+	// two-column menus: RIGHT into the column, LEFT back out
+	if ui.columnKey(k) {
+		ui.dirty = true
+		return
+	}
 	// a screen of its own that takes the d-pad and L/R itself (the cover's
 	// square: moving it in two directions and zooming)
 	if ui.customKey(k) {
@@ -1021,7 +1035,11 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// right half: preview
 	//
 	ph := ui.previewHide.Get(now)
-	if ph < 1 && ui.previewOnScreen() {
+	_, col, colFocused := ui.columnNow()
+	if col != nil && ph < 1 {
+		// a two-column menu: the right column instead of the preview
+		ui.drawColumn(fb, 320, col, colFocused, now)
+	} else if ph < 1 && ui.previewOnScreen() {
 		pv := newCanvasCached(&previewBuf, 320, 480)
 		ui.renderPreview(pv, now)
 		blit(fb, pv, 320+int(ph*320+0.5), 0, 1-ph)
@@ -1031,7 +1049,7 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	if lx > -1 {
 		ui.hdrActive = len(ui.full) == 0
 		ui.drawHeader(fb, leftPx, 320, now)
-		ui.drawStack(ui.split, KindSplit, leftPx, 320, now)
+		ui.drawStack(leftColumn(ui.split), KindSplit, leftPx, 320, now)
 		// panel shadow over the preview
 		sa := lx + 1
 		if sa > 0 {
