@@ -1,8 +1,8 @@
 {
-  "version": "0.76",
-  "path": "release/betterpod-v0.76-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.76-knulli.zip",
-  "sha256": "a47016e9a9cb8b858d58c865315dc71241e6e3ce62ae152b34074e5803ffebb9",
-  "size": 16141203,
-  "notes": "- The keyboard has a shift key: one capital, or caps lock when pressed twice\n- Delete Album, in an album's options (0.75)\n- Cover Flip lands on Now Playing already turned when a song plays (0.75)\n- Fixed: slower and slower after playing 2048 (0.75)"
+  "version": "0.76.1",
+  "path": "release/betterpod-v0.76.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.76.1-knulli.zip",
+  "sha256": "0be31bae6ddb8b3db607fd4c791211ef350a867caba67556c9554023fa78a939",
+  "size": 16142247,
+  "notes": "- Settings \u2192 Quit betterPod\n- The keyboard has a shift key: one capital, or caps lock when pressed twice (0.76)\n- Delete Album, in an album's options (0.75)"
 }

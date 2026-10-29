@@ -319,6 +319,7 @@ func (ui *IpodUI) settingsView() *View {
 			col("Screensaver", saverLabel(), ui.saverSettingsView),
 			col("Turn it Apple", onOff(appleMode), ui.appleView),
 			{Label: "Software Update", Preview: PrevSettings, Column: ui.updateSummary, OnSelect: func() { ui.showView(ui.updateView(), "") }},
+			{Label: "Quit betterPod", Preview: PrevSettings, NoArrow: true, OnSelect: ui.askQuit},
 		})
 	}
 	v.Items = v.Build()
@@ -511,4 +512,13 @@ func (ui *IpodUI) refreshBuilt() {
 		}
 	}
 	ui.dirty = true
+}
+
+// askQuit: Settings → Quit betterPod, after a confirmation (the music
+// stops; Knulli's or Onion's menu comes back).
+func (ui *IpodUI) askQuit() {
+	ui.showSheetTitled("Quit betterPod? The music stops.", []SheetOption{{Label: "Quit", Danger: true, OnSelect: func() {
+		logMsg("Quit from Settings")
+		ui.app.Running = false
+	}}})
 }

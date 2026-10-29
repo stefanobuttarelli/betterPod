@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.76.1 (2026-10-30)
+
+### Added
+- **Settings → Quit betterPod,** after a confirmation: the music stops and Knulli's (or Onion's) menu comes back.
+
 ## v0.76 (2026-10-30)
 
 ### Added
