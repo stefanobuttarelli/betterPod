@@ -145,6 +145,7 @@ func (c *Client) Receive(ctx context.Context, code string) (fr *IncomingMessage,
 		fr.UncompressedBytes = int(offer.Directory.NumBytes)
 		fr.UncompressedBytes64 = offer.Directory.NumBytes
 		fr.FileCount = int(offer.Directory.NumFiles)
+		fr.Info = offer.Directory.Info
 		fr.ctx = ctx
 	} else {
 		return nil, errors.New("got non-file transfer offer")
@@ -183,6 +184,9 @@ func (c *Client) Receive(ctx context.Context, code string) (fr *IncomingMessage,
 		}()
 
 		var errStr = "transfer rejected"
+		if fr.rejectReason != "" {
+			errStr = fr.rejectReason
+		}
 		answer := &genericMessage{
 			Error: &errStr,
 		}
@@ -287,8 +291,12 @@ type IncomingMessage struct {
 	// FileCount is the number of files in a TransferDirectory offer. This is sent
 	// as part of the offer from the peer and a malicious peer could lie about this.
 	FileCount int
+	// Info (betterPod) is the sender's own information about a
+	// TransferDirectory (WithOfferInfo), or nil.
+	Info []byte
 
-	textReader io.Reader
+	textReader   io.Reader
+	rejectReason string
 
 	transferInitialized bool
 	initializeTransfer  func() error
@@ -322,6 +330,13 @@ func (f *IncomingMessage) Read(p []byte) (int, error) {
 
 func (f *IncomingMessage) readText(p []byte) (int, error) {
 	return f.textReader.Read(p)
+}
+
+// RejectWith (betterPod) rejects the transfer as Reject does, with
+// reason as the error the sender gets ("TransferError: " + reason).
+func (f *IncomingMessage) RejectWith(reason string) error {
+	f.rejectReason = reason
+	return f.Reject()
 }
 
 // Reject an incoming file or directory transfer. This must be

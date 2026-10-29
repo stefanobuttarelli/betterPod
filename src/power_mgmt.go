@@ -9,7 +9,7 @@ import (
 
 // restoreBrightness sets brightness back to a visible level before app exits
 func restoreBrightness() {
-	if isKnulli {
+	if isKnulli || isOnion {
 		restoreBacklight()
 		return
 	}
@@ -91,7 +91,7 @@ func (app *MiyooPod) resetInactivityTimer() {
 
 // dimScreen reduces brightness to minimum (for locked state)
 func (app *MiyooPod) dimScreen() {
-	if isKnulli {
+	if isKnulli || isOnion {
 		setBacklightRaw(0)
 		logMsg("Screen dimmed (locked)")
 		return

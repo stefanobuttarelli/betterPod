@@ -25,6 +25,9 @@ import (
 
 // audioPrepareFor reopens the output at the sample rate of the next track.
 func audioPrepareFor(path string) {
+	if isOnion && os.Getenv("MIYOOPOD_RATE_SWITCH") != "1" {
+		return // MI_AO stays at 44.1 kHz; SDL_mixer resamples
+	}
 	rate := probeSampleRate(path)
 	if rate > 0 {
 		C.audio_set_rate(C.int(rate))
@@ -34,6 +37,9 @@ func audioPrepareFor(path string) {
 // supportedAudioExt: formats the patched SDL_mixer can play (MP3, FLAC,
 // Ogg, WAV, AIFF, ALAC and AAC in MP4).
 func supportedAudioExt(ext string) bool {
+	if _, no := onionUnsupported(ext); no {
+		return false
+	}
 	switch ext {
 	case ".mp3", ".flac", ".ogg", ".wav", ".aif", ".aiff", ".m4a", ".mp4", ".alac":
 		return true

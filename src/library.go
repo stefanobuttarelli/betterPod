@@ -243,6 +243,11 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 			scanNote(func(s *ScanStats) { s.Skipped[name]++ })
 			logMsg("[SCAN] unsupported format: " + path)
 		}
+		if name, no := onionUnsupported(ext); no {
+			scanNote(func(s *ScanStats) { s.Skipped[name]++ })
+			logMsg("[SCAN] not playable on the Miyoo: " + path)
+			return nil
+		}
 		switch ext {
 		case ".mp3", ".flac", ".ogg", ".wav", ".m4a", ".mp4", ".aif", ".aiff":
 			fname := formatName(ext)

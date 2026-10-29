@@ -1050,6 +1050,7 @@ func podSaveCover(u, path string) error {
 // then its name, and it's noted in p's entry.
 func podFinish(p podcast, e podEpisode, part, name, cover string) error {
 	ext, ok := sniffAudio(part)
+	ok = ok && supportedAudioExt(ext) // no M4A on the Miyoo (onion.go)
 	if !ok {
 		os.Remove(part)
 		if ext == "" {

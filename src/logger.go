@@ -18,6 +18,11 @@ var globalApp *MiyooPod // Global reference for checking LocalLogsEnabled
 
 func init() {
 	var err error
+	// the log is appended to on every start: past 1 MB the previous one is
+	// kept as .old, so it can't fill the SD card
+	if st, err := os.Stat(LOG_PATH); err == nil && st.Size() > 1<<20 {
+		os.Rename(LOG_PATH, LOG_PATH+".old")
+	}
 	logFile, err = os.OpenFile(LOG_PATH, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		panic(err)

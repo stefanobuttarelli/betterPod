@@ -88,13 +88,17 @@ func (ui *IpodUI) ssWarm() {
 	ssArt.big = nil
 	ssArt.Unlock()
 	albums := lib.Albums
-	if len(albums) > ssMaxWarm {
+	maxWarm := ssMaxWarm
+	if isOnion {
+		maxWarm = onionSaverWarm // (128 MB, see onion.go)
+	}
+	if len(albums) > maxWarm {
 		albums = append([]*Album(nil), albums...)
 		for i := range albums {
-			j := i + int(uint32(i*2654435761)%uint32(len(albums)-i))
+			j := i + int(uint32(i)*2654435761%uint32(len(albums)-i)) // (uint32: int is 32 bits on the Miyoo)
 			albums[i], albums[j] = albums[j], albums[i]
 		}
-		albums = albums[:ssMaxWarm]
+		albums = albums[:maxWarm]
 	}
 	go func() {
 		for _, a := range albums {

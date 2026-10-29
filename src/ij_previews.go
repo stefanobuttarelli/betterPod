@@ -51,7 +51,8 @@ func (kb *KenBurns) update(now time.Time) {
 	if len(kb.stack) == 0 {
 		return
 	}
-	// every 5 s the top cover starts fading out over the next one
+	// every 5 s the top cover starts fading out over the next one (over
+	// kbFade, see ij_effects.go)
 	if now.Sub(kb.lastCycle) >= 5*time.Second && kb.transStart.IsZero() {
 		kb.lastCycle = kb.lastCycle.Add(5 * time.Second)
 		kb.transStart = now
@@ -61,8 +62,8 @@ func (kb *KenBurns) update(now time.Time) {
 			}
 		}
 	}
-	// after the 2 s fade the top cover goes to the bottom of the stack
-	if !kb.transStart.IsZero() && now.Sub(kb.transStart) >= 2*time.Second {
+	// after the fade the top cover goes to the bottom of the stack
+	if !kb.transStart.IsZero() && now.Sub(kb.transStart) >= kbFade() {
 		top := kb.stack[0]
 		kb.stack = append(kb.stack[1:], top)
 		delete(kb.animStart, top)
@@ -72,11 +73,16 @@ func (kb *KenBurns) update(now time.Time) {
 
 func (kb *KenBurns) animating(ui *IpodUI) bool {
 	if ui.preview == PrevNowPlaying && ui.previewHide.Target() < 1 && ui.previewOnScreen() {
-		if p := ui.app.Playing; p != nil && p.Track != nil && !hold.on {
+		if p := ui.app.Playing; p != nil && p.Track != nil && !hold.on && !lightEffects() {
 			return true
 		}
 	}
-	return ui.preview == PrevMusic && ui.previewHide.Target() < 1 && len(kb.stack) > 0 && ui.previewOnScreen()
+	on := ui.preview == PrevMusic && ui.previewHide.Target() < 1 && len(kb.stack) > 0 && ui.previewOnScreen()
+	if on && lightEffects() {
+		// still covers: only a cross-fade, or the moment one starts, is drawn
+		return !kb.initialized || !kb.transStart.IsZero() || animNow().Sub(kb.lastCycle) >= 5*time.Second
+	}
+	return on
 }
 
 // Now Playing preview: the current cover, full height, panning slowly
@@ -93,7 +99,7 @@ var npPanStart, npPanShown time.Time
 
 func (ui *IpodUI) drawNowPlayingPan(dst, art *image.RGBA, now time.Time) {
 	travel := float64(art.Bounds().Dx() - dst.Bounds().Dx())
-	if travel <= 0 {
+	if travel <= 0 || lightEffects() {
 		blit(dst, art, 0, 0, 1)
 		return
 	}
@@ -145,6 +151,10 @@ func (kb *KenBurns) render(ui *IpodUI, dst *image.RGBA, now time.Time) {
 			return
 		}
 		x := float64(panelW - size)
+		if lightEffects() {
+			blit(dst, img, int(x), 0, opacity)
+			return
+		}
 		if st, ok := kb.animStart[a]; ok {
 			p := float64(now.Sub(st)) / float64(20*time.Second)
 			if p > 1 {
@@ -159,7 +169,7 @@ func (kb *KenBurns) render(ui *IpodUI, dst *image.RGBA, now time.Time) {
 	}
 	op := 1.0
 	if !kb.transStart.IsZero() {
-		op = 1 - easeCSS(float64(now.Sub(kb.transStart))/float64(2*time.Second))
+		op = 1 - easeCSS(float64(now.Sub(kb.transStart))/float64(kbFade()))
 	}
 	draw(kb.stack[0], op)
 	// get the one after ready
@@ -209,6 +219,10 @@ func blitShiftX(dst, src *image.RGBA, x float64, y int, opacity float64) {
 		op32 = 256
 	}
 	parallelRows(ya, yb, func(r0, r1 int) {
+		if cDraw {
+			cShiftX(dp, dst32, sp, sst, w, y, ix, xa, xb, r0, r1, wf, op32)
+			return
+		}
 		for sy := r0; sy < r1; sy++ {
 			srow := sp[sy*sst : sy*sst+w]
 			drow := dp[(y+sy)*dst32:]

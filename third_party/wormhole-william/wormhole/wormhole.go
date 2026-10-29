@@ -227,6 +227,10 @@ type offerDirectory struct {
 	NumBytes int64  `json:"numbytes"`
 	NumFiles int64  `json:"numfiles"`
 	ZipSize  int64  `json:"zipsize"`
+	// betterPod: the app's own information about the directory
+	// (WithOfferInfo), for the receiver to read before it accepts; other
+	// clients ignore the field.
+	Info json.RawMessage `json:"info,omitempty"`
 }
 
 type offerFile struct {

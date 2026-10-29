@@ -50,3 +50,10 @@ const (
 	MEDIA_VOLUP     Key = 0x40001012
 	MEDIA_VOLDN     Key = 0x40001013
 )
+
+// Onion (Miyoo Mini) keys read by onion.c from /dev/input/event0: the
+// volume keys of the Mini Plus. POWER comes as LOCK.
+const (
+	VOL_UP   Key = 0x40001020
+	VOL_DOWN Key = 0x40001021
+)

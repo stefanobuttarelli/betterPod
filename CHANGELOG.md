@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **betterPod for the Miyoo Mini, on Onion OS.** The Miyoo Mini, Mini Plus, Mini v4 and Mini Flip get the same interface, library and apps. This version was a fork called MacriPod until now. README → Features by system lists what differs.
+  - **Install:** unzip `betterpod-v…-onion.zip` at the root of the SD card and start betterPod from Apps. Software Update reads `release/latest-onion.json`.
+  - **The Miyoo's keys:** POWER turns the screen off with the music playing (held 5 s, it quits). The volume keys set the volume, also with the screen off, and with MENU held the brightness. MENU is back, like B.
+  - **Sleep, as in Onion:** with nothing playing, Onion's sleep timer (5 minutes by default) without a key turns the screen off, and a minute later the Miyoo powers off. Never while music plays, while charging or during a download. The screen off switches the LCD panel off too.
+  - **Off on the Miyoo,** which has two slower cores and 128 MB: YouTube, Bluetooth, Music Folder, the Visualizer and the LOSSLESS badge. AAC and ALAC can't be played there.
+- **Settings → Effects,** on both systems: **Full** (the default on Knulli) or **Light** (the default on the Miyoo). With Light, the covers beside the menus and the Weather icons stand still, option sheets appear at once, so a screen nobody touches isn't redrawn, and Share's screen is drawn 10 times a second while it waits and sends.
+- **GitHub releases** carry the Onion zip too, when release/ has it.
+- **About** names the system it runs on.
+- **Share checks the formats before anything moves.** The offer now carries the songs' formats, and a betterPod that can't play them (a Miyoo and AAC / ALAC `.m4a`) says no at once. Both screens show it: the pedestal's light turns red and, instead of the cover, a file's tag stands on it with the format and a red "no" badge, next to FORMAT NOT SUPPORTED, the format and the system. From an older betterPod, which doesn't say its formats, the Miyoo stops at the first song and nothing is kept.
+
+### Fixed
+- **Share, Five Letters and the Weather gear allocate far less while they draw.** A polygon (the cover's gloss, a key's stroke, the gear) was rasterized over the whole screen, 2.4 MB at every call; now only over its own box, with a rasterizer that is reused, and the pixels are the same. On the Miyoo the garbage collector ran six times a second while Share waited for a friend.
+
 ## v0.72.1 (2026-10-29)
 
 ### Fixed

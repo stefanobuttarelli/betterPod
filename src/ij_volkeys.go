@@ -36,7 +36,7 @@ func volKeyTake() bool { return atomic.SwapInt32(&volKeyPressed, 0) == 1 }
 func hasVolumeKeys(f *os.File) bool {
 	var bits [96]byte // KEY_MAX / 8 + 1
 	const ioRead = 2
-	req := uintptr(ioRead<<30 | len(bits)<<16 | 'E'<<8 | (0x20 + evKey))
+	req := uintptr(ioRead)<<30 | uintptr(len(bits))<<16 | 'E'<<8 | (0x20 + evKey) // uintptr: 2<<30 overflows a 32-bit int
 	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), req, uintptr(unsafe.Pointer(&bits[0])))
 	if e != 0 {
 		return false

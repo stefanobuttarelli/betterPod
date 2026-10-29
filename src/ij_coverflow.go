@@ -538,6 +538,10 @@ func drawTex(dst *image.RGBA, m mat4, t texMap, opacity float64) {
 	reflH := t.reflFrom
 	// rows in parallel; along a row the mapping is linearised every 8 px
 	parallelRows(y0, y1, func(ya, yb int) {
+		if cDraw {
+			cDrawTex(dp, dst32, x0, x1, ya, yb, sp, sst, iw, ih, Hi, t, op)
+			return
+		}
 		for py := ya; py < yb; py++ {
 			sy := (float64(py) + 0.5) / DPR
 			sx0 := (float64(x0) + 0.5) / DPR

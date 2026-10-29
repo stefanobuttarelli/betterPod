@@ -495,6 +495,11 @@ func (c *Client) SendDirectory(ctx context.Context, directoryName string, entrie
 			ZipSize:  zipInfo.zipSize,
 		},
 	}
+	for _, opt := range opts {
+		if o, ok := opt.(offerInfoOption); ok {
+			offer.Directory.Info = o.info
+		}
+	}
 
 	code, resultCh, err := c.sendFileDirectory(ctx, offer, zipInfo.file, opts...)
 	if err != nil {
@@ -669,6 +674,19 @@ type progressSendOption struct {
 func (o progressSendOption) setOption(opts *sendOptions) error {
 	opts.progressFunc = o.progressFunc
 	return nil
+}
+
+type offerInfoOption struct {
+	info []byte
+}
+
+func (o offerInfoOption) setOption(opts *sendOptions) error { return nil }
+
+// WithOfferInfo (betterPod) adds the app's own information, a JSON value,
+// to a SendDirectory offer; the receiver reads it as IncomingMessage.Info
+// before it accepts or rejects.
+func WithOfferInfo(info []byte) SendOption {
+	return offerInfoOption{info}
 }
 
 // WithProgress returns a SendOption to track the progress of the data

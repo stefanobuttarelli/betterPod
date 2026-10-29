@@ -233,7 +233,7 @@ func iaMetadata(id string) (*iaItem, error) {
 			it.Cover = name
 		}
 		g, rank := iaAudioGroup(format)
-		if g == "" {
+		if g == "" || isOnion && g == "ALAC" { // (the Miyoo can't play ALAC, see onion.go)
 			continue
 		}
 		size, _ := strconv.ParseInt(jsonString(f["size"]), 10, 64)
@@ -1121,6 +1121,9 @@ func (dv *IADownloadView) progress() float64 {
 }
 
 func (dv *IADownloadView) Animating(now time.Time) bool {
+	if isOnion && now.Sub(dv.tickAt) < onionProgressEvery {
+		return false // (at most 5 redraws a second on Onion, see onion.go)
+	}
 	if math.Abs(dv.progress()-dv.shown) > 0.002 {
 		return true
 	}

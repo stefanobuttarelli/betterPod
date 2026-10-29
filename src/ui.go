@@ -967,7 +967,7 @@ func (app *MiyooPod) drawPowerExitWarning() {
 
 // getBrightness reads the current PWM duty_cycle (brightness level)
 func getBrightness() int {
-	if isKnulli {
+	if isKnulli || isOnion {
 		return getBacklightPercent()
 	}
 	data, err := os.ReadFile("/sys/class/pwm/pwmchip0/pwm0/duty_cycle")
@@ -990,7 +990,7 @@ func setBrightness(level int) {
 	if level > 100 {
 		level = 100
 	}
-	if isKnulli {
+	if isKnulli || isOnion {
 		setBacklightPercent(level)
 		return
 	}

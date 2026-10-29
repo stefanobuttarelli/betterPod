@@ -19,16 +19,38 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 )
 
-// isKnulli is true unless MIYOOPOD_PLATFORM=miyoo is set (keeps upstream behaviour).
-var isKnulli = os.Getenv("MIYOOPOD_PLATFORM") != "miyoo"
+// isKnulli: MIYOOPOD_PLATFORM=knulli or =miyoo chooses; by default the
+// 32-bit ARM build (the Miyoo Mini) runs on Onion and the others on
+// Knulli. The Onion layer is in onion.go / onion.c.
+var isKnulli = platformIsKnulli()
 
-// otaDisabled: upstream OTA would install a Miyoo (armhf) build over this port.
-var otaDisabled = isKnulli
+// platformAbout: the system and its consoles, for About.
+func platformAbout() (string, string) {
+	if isOnion {
+		return "Onion OS", "Miyoo Mini, Mini Plus, Mini v4, Mini Flip"
+	}
+	return "Knulli", "Anbernic handhelds with the Allwinner H700"
+}
+
+func platformIsKnulli() bool {
+	switch os.Getenv("MIYOOPOD_PLATFORM") {
+	case "knulli":
+		return true
+	case "miyoo", "onion":
+		return false
+	}
+	return runtime.GOARCH != "arm"
+}
+
+// otaDisabled: upstream MiyooPod's OTA (version.go) would install MiyooPod
+// over this app. Updates come from Settings → Software Update (ij_update.go).
+var otaDisabled = true
 
 // musicRoot returns the folder scanned for music, always with a trailing slash.
 // Default on Knulli is /userdata/music; override with MIYOOPOD_MUSIC_DIR.
@@ -218,6 +240,9 @@ func readInt(path string) int {
 }
 
 func getBacklightPercent() int {
+	if isOnion {
+		return onionBacklightGet()
+	}
 	if _, err := os.Stat("/dev/disp"); err == nil {
 		brightMu.Lock()
 		cur, pending := brightCur, brightWant >= 0
@@ -275,6 +300,10 @@ func setBacklightPercent(pct int) {
 	if pct > 100 {
 		pct = 100
 	}
+	if isOnion {
+		onionBacklightSet(pct)
+		return
+	}
 	if _, err := os.Stat("/dev/disp"); err == nil {
 		if r := int(C.disp_brightness(C.int(dispRaw(pct)))); r == 0 {
 			brightMu.Lock()
@@ -325,6 +354,10 @@ func restoreBacklight() {
 	if backlightAtStart <= 0 {
 		return
 	}
+	if isOnion {
+		onionBacklightSet(backlightAtStart)
+		return
+	}
 	if t := brightnessTool(); t != "" {
 		brightMu.Lock()
 		brightWant = -1
@@ -336,7 +369,7 @@ func restoreBacklight() {
 }
 
 func init() {
-	if isKnulli {
+	if isKnulli || isOnion {
 		backlightAtStart = getBacklightPercent() // remember the starting level before anything dims it
 	}
 }

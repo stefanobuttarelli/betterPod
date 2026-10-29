@@ -297,11 +297,12 @@ func (ui *IpodUI) settingsView() *View {
 			OnSelect: func() { ui.openColumn(mk()) }}
 	}
 	v.Build = func() []Item {
-		return []Item{
+		return onionSettings([]Item{ // (no YouTube or Bluetooth on the Miyoo, see onion.go)
 			{Label: "About", Preview: PrevSettings, Column: ui.aboutSummary, OnSelect: func() { ui.showView(ui.aboutView(), "") }},
 			col("Shuffle", shuffleLabel(ui.shuffleMode), ui.shuffleView),
 			col("Repeat", repeatLabel(ui.repeatMode()), ui.repeatView),
 			col("Theme", themeLabel(themeMode), ui.themeView),
+			col("Effects", effectsLabel(effectsMode), ui.effectsView), // (Settings → Effects, ij_effects.go)
 			col("Library", "", ui.libraryInfoView),
 			col("Database", dbLabel(dataDir()), ui.databaseView),
 			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), Column: ui.youtubeSettingsView, OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
@@ -311,7 +312,7 @@ func (ui *IpodUI) settingsView() *View {
 			col("Screensaver", saverLabel(), ui.saverSettingsView),
 			col("Turn it Apple", onOff(appleMode), ui.appleView),
 			{Label: "Software Update", Preview: PrevSettings, Column: ui.updateSummary, OnSelect: func() { ui.showView(ui.updateView(), "") }},
-		}
+		})
 	}
 	v.Items = v.Build()
 	return v

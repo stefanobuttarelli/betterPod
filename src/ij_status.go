@@ -30,7 +30,9 @@ func wifiLevel() int { return int(atomic.LoadInt32(&wifiState)) }
 func startWifiWatch() {
 	go func() {
 		for {
-			atomic.StoreInt32(&wifiState, int32(readWifi()))
+			if !onionScreenOff() { // (the Miyoo with the screen off: not read, onion_sleep.go)
+				atomic.StoreInt32(&wifiState, int32(readWifi()))
+			}
 			time.Sleep(5 * time.Second)
 		}
 	}()

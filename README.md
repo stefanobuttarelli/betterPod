@@ -1,14 +1,15 @@
 <h1 align="center">betterPod</h1>
 
 <p align="center">
-  <b>An iPod-style music player for retro handhelds. This is the version for Anbernic handhelds running Knulli.</b><br>
+  <b>An iPod-style music player for retro handhelds: Anbernic handhelds running Knulli, and the Miyoo Mini running Onion OS.</b><br>
   The iPod classic interface, rebuilt natively from <a href="https://github.com/tvillarete/ipod-classic-js">iPod.js</a>.<br>
   Split-screen menus, Cover Flow, a 3D Now Playing screen, wheel-keyboard search, games and apps.<br>
-  Your own music, lossless and hi-res, played at its native sample rate.
+  Your own music, from your own card (on Knulli lossless and hi-res, played at its native sample rate).
 </p>
 
 <p align="center">
   <a href="https://github.com/stefanobuttarelli/betterPod/tree/main/release"><b>Download</b></a> ·
+  <a href="#supported-systems">Systems</a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -20,6 +21,15 @@
 </p>
 
 ---
+
+## Supported systems
+
+| System | Consoles | Inside | Where it starts |
+|---|---|---|---|
+| [Knulli](https://knulli.org) | Anbernic handhelds with the Allwinner H700 | 4 × Cortex-A53, 1 GB, aarch64 | Ports |
+| [Onion OS](https://onionui.github.io) | Miyoo Mini, Mini Plus, Mini v4, Mini Flip | 2 × Cortex-A7, 128 MB, armv7 | Apps |
+
+The interface is the same on both. What differs is listed in [Features by system](#features-by-system).
 
 ## Features
 
@@ -69,6 +79,30 @@
   <img src="docs/images/coverflow.gif" alt="Cover Flow animation" width="480">
 </p>
 
+## Features by system
+
+The Miyoo has two slower cores and 128 MB of memory, so what would take the processor away from the music is switched off or toned down there.
+
+| | Knulli (Anbernic) | Onion OS (Miyoo) |
+|---|:-:|:-:|
+| Interface, Cover Flow, Now Playing, Up Next, Search | ✓ | ✓ |
+| Apps: Brick, Solitaire, 2048, Five Letters, Guess the Song, Puzzles, Weather | ✓ | ✓ |
+| Share (send an album or a song to another betterPod) | ✓ | ✓ with Wi-Fi; with Light effects its screen is drawn 10 times a second; AAC / ALAC albums are refused, on both screens |
+| Screensaver: Cover Flip | ✓ | ✓ (48 covers kept ready instead of 240) |
+| Screensaver: Visualizer | ✓ | — (it redraws the whole screen 30 times a second) |
+| Formats | FLAC, ALAC, AAC, WAV, AIFF, MP3, Ogg | FLAC, WAV, AIFF, MP3, Ogg (no AAC / ALAC decoder) |
+| Output | each track's own rate, 24-bit | 44.1 kHz, 16-bit |
+| LOSSLESS badge | ✓ | — |
+| Internet Archive, Podcasts, Weather, covers and Album Info online, Software Update | ✓ | ✓ on the Mini Plus, v4 and Flip (Wi-Fi); Internet Archive without ALAC |
+| YouTube (optional) | ✓ | — (it needs more memory than the Miyoo has) |
+| Bluetooth headphones | ✓ | — (no Bluetooth) |
+| Headphone buttons, pause on unplug | ✓ | — |
+| Music Folder (move the music to another card) | ✓ | — (one card slot) |
+| Settings → Effects (Light / Full) | ✓ (Full by default) | ✓ (Light by default) |
+| Volume | the console's (PipeWire) | the volume keys (Mini Plus), MI_AO's hardware volume |
+| Brightness | L2 / R2 | L2 / R2, or MENU + volume keys, in Onion's steps |
+| Screen off and sleep | MENU tap; Knulli's own sleep | POWER tap; Onion's sleep timer: with nothing playing, the screen goes off and then the Miyoo powers off |
+
 ## Screenshots
 
 | | | |
@@ -82,11 +116,13 @@
 
 ## Requirements
 
-- An Anbernic handheld with the Allwinner H700 (aarch64) running [Knulli](https://knulli.org).
-- PortMaster-style ports enabled: betterPod is launched from **Ports**.
-- Your music on the console (or a card), any of the formats above.
+- **Knulli:** an Anbernic handheld with the Allwinner H700 (aarch64) running [Knulli](https://knulli.org), with PortMaster-style ports enabled: betterPod is launched from **Ports**.
+- **Onion OS:** a Miyoo Mini, Mini Plus, Mini v4 or Mini Flip running [Onion](https://github.com/OnionUI/Onion): betterPod is launched from **Apps**. The online features need Wi-Fi (Mini Plus, v4, Flip).
+- Your music on the console (or a card), in the formats of your system (see above).
 
 ## Installation
+
+### Knulli (Anbernic)
 
 1. Download the newest `betterpod-v…-knulli.zip` from the [release folder](https://github.com/stefanobuttarelli/betterPod/tree/main/release) and unzip it.
 2. Copy `betterPod.sh` and the `betterpod` folder to `/userdata/roms/ports/`.
@@ -97,7 +133,7 @@
 
 The first start scans the music folder. Later starts load the saved library instantly. Settings → Library → **Rescan now** picks up new music.
 
-### Coming from KnulliPod
+#### Coming from KnulliPod
 
 betterPod was called KnulliPod. An installation of KnulliPod gets betterPod through Software Update as usual:
 
@@ -106,6 +142,18 @@ betterPod was called KnulliPod. An installation of KnulliPod gets betterPod thro
 3. in EmulationStation, update the game lists once: Ports then shows **betterPod**.
 
 Installing by hand over KnulliPod instead: copy `betterPod.sh` and `betterpod` as above, move `knullipod/conf` to `betterpod/conf` (your library and settings), then delete `KnulliPod.sh` and the `knullipod` folder.
+
+### Onion OS (Miyoo)
+
+1. Download the newest `betterpod-v…-onion.zip` from the [release folder](https://github.com/stefanobuttarelli/betterPod/tree/main/release) and unzip it **at the root of the SD card**. It holds `App/betterpod`, which ends up next to Onion's other apps.
+2. Put your music in `Media/Music` on the card. `Artist/Album/` folders with tagged files work best.
+3. Start **betterPod** from Apps.
+
+The first start scans the music folder; later starts load the saved library at once.
+
+#### Coming from MacriPod
+
+The Miyoo version was first released as MacriPod. Copy `App/MacriPod/conf` to `App/betterpod/conf` to keep your library, settings and podcasts, then delete `App/MacriPod`.
 
 ## Controls
 
@@ -120,6 +168,12 @@ Installing by hand over KnulliPod instead: copy `betterPod.sh` and `betterpod` a
 | SELECT | Hold switch | Lock/unlock the controls and dim the screen; the music keeps playing |
 | MENU (function key) | | Tap: screen off/on. Hold 5 s: quit |
 | SELECT + START | | Quit |
+
+On the Miyoo:
+
+- **MENU** is back, like B; **POWER** turns the screen off with the music playing (hold 5 s: quit).
+- The **volume keys** of the Mini Plus set the volume, also with the screen off; with MENU held they set the brightness. L2 / R2 also set it (the Mini has no volume keys).
+- There are no sticks: the d-pad is the wheel.
 
 - **Now Playing:**
   - Y (or holding A) opens **Up Next** (also in the Music menu), the songs that will play next: A plays one at once; Y on a song offers Play Next and Remove from Up Next; Clear Up Next empties it; **Clear Now Playing**, at its end, stops the music and empties the queue (also: hold A on Now Playing in the menus);
@@ -148,6 +202,7 @@ Installing by hand over KnulliPod instead: copy `betterPod.sh` and `betterpod` a
 |---|---|
 | Shuffle, Repeat | Submenus with the options; the active one is ticked |
 | Theme | Light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00) |
+| Effects | Full, or Light: the covers beside the menus and the Weather icons stand still and option sheets appear at once, so a screen nobody touches isn't redrawn (the default on the Miyoo) |
 | Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Missing Covers** (each album's search results with thumbnails, search by hand, or all automatically), **Browse Files** (see and delete files and folders), **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
 | Database | Folder for the library, artwork, settings, statistics and game saves |
 | Software Update | Checks for a new version over Wi-Fi and installs it |
@@ -186,7 +241,7 @@ To open an item you know, type its identifier (the part of the link after `/deta
 
 <img src="docs/images/update.png" width="320" align="right" alt="Software Update">
 
-Settings → Software Update opens a full-screen page with a download bar. **Check for Updates** reads [`release/latest-knulli.json`](release/latest-knulli.json) from this repository over Wi-Fi. When a newer version is listed, the page shows what's new, and **Download and Install** does the following:
+Settings → Software Update opens a full-screen page with a download bar. **Check for Updates** reads [`release/latest-knulli.json`](release/latest-knulli.json) (on the Miyoo, `release/latest-onion.json`) from this repository over Wi-Fi. When a newer version is listed, the page shows what's new, and **Download and Install** does the following:
 
 1. downloads the release zip and checks its size and SHA-256;
 2. replaces the app's files one by one, keeping the previous binary as `betterpod/betterpod.prev`;
@@ -198,7 +253,7 @@ The database (`betterpod/conf`, or the folder chosen in Settings → Database) i
 
 ## Options
 
-Advanced switches are environment variables. Uncomment them in `betterPod.sh`:
+Advanced switches are environment variables. Uncomment them in `betterPod.sh` (on the Miyoo, in `App/betterpod/launch.sh`, which lists its own):
 
 | Variable | Effect |
 |---|---|
@@ -216,7 +271,7 @@ Advanced switches are environment variables. Uncomment them in `betterPod.sh`:
 | `MIYOOPOD_VSYNC=0` | Disable vertical sync |
 | `MIYOOPOD_CLASSIC_UI=1` | Use the original MiyooPod interface |
 
-The log is written to `betterpod/miyoopod.log`.
+The log is written to `betterpod/miyoopod.log` (on the Miyoo, `App/betterpod/miyoopod.log`).
 
 ## Building from source
 
@@ -235,6 +290,21 @@ SDL2_SYSROOT=/path/to/sysroot tools/build.sh
 ```
 
 The binary is built from the file list (`src/*.go`), not as a package, because `main.go` includes the C files (`main.c`, `audio.c`).
+
+### Onion OS (Miyoo)
+
+Everything runs in Docker (Go 1.24, zig cc for 32-bit ARM with glibc 2.28, the SDL2 headers); the binary links against the Miyoo's SDL2 in `onion/betterpod/libs`.
+
+```sh
+tools/onion/build.sh
+# -> dist/sdcard/App/betterpod/          (copy App/ to the SD card)
+#    dist/betterpod-v<version>-onion.zip  (unzip at the root of the card)
+tools/onion/unittest.sh    # update zip, curves, sleep timer, C pixel loops, Album Info, Podcasts
+tools/onion/smoketest.sh   # the ARM binary emulated, a frame per step
+tools/onion/sleeptest.sh   # the sleep timer, with a 3-second "minute"
+tools/onion/perf.sh        # drawing time and load per scenario
+tools/onion/release.sh "What's new"   # release/betterpod-v<version>-onion.zip and latest-onion.json
+```
 
 ### Source layout
 
@@ -270,9 +340,13 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/ij_update.go` | Settings → Software Update (manifest, download, install, restart) |
 | `src/duration.go` | Track lengths read from the file headers |
 | `src/knulli.go` | Knulli integration: paths, backlight, system volume, Bluetooth |
+| `src/onion.go`, `src/onion.c`, `src/onion_sleep.go` | Onion integration: keys, MI_AO volume and its queue, backlight, battery, memory, the sleep timer |
+| `src/cdraw.c`, `src/cdraw.go`, `src/ij_effects.go` | The Miyoo's hottest pixel loops in C; Settings → Effects |
 | other `src/*.go` | Player, queue, playback state and settings, inherited from MiyooPod |
-| `port/` | The package: launcher, assets, fonts, bundled libraries |
-| `tools/` | Build script and the tools used to recover the v0.20 sources |
+| `port/` | Knulli's package: launcher, assets, fonts, bundled libraries (the assets are shared) |
+| `onion/betterpod/` | Onion's app folder: `launch.sh`, `config.json`, icon, the Miyoo's SDL2 libraries |
+| `tools/` | Knulli's build script and the tools used to recover the v0.20 sources |
+| `tools/onion/` | Onion's build, tests, performance tools and release |
 
 ## How this repository came to be
 
@@ -282,14 +356,15 @@ The v0.20 source tree was lost. It was rebuilt from the surviving release binary
 
 - **[iPod.js](https://github.com/tvillarete/ipod-classic-js)** by Tanner Villarete: the interface design, layouts and assets betterPod recreates (MIT).
 - **[MiyooPod](https://github.com/danfragoso/miyoopod)** by Danilo Fragoso: the player engine, library scan and original app betterPod is built on (MIT).
+- **The Miyoo version** by Emanuele Macri, first released as MacriPod; [steward-fu's SDL2](https://github.com/steward-fu/sdl2) for the Miyoo Mini (zlib) and [Onion](https://github.com/OnionUI/Onion)'s volume, brightness and sleep sequences.
 - **[Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/)** by Simon Tatham and contributors: the puzzles in Apps → Puzzles (MIT, `src/puzzles/LICENCE`).
 - **[Inter](https://rsms.me/inter/)** by Rasmus Andersson and **[Noto Sans JP](https://github.com/notofonts/noto-cjk)** (Google, Adobe): the fonts (SIL Open Font License).
 - Apple's reference **[ALAC decoder](https://github.com/macosforge/alac)** (Apache 2.0), **[FFmpeg](https://ffmpeg.org)**'s AAC decoder (LGPL 2.1), **[SDL2 and SDL2_mixer](https://libsdl.org)** (zlib).
 
-See [THIRD_PARTY_LICENSES.md](port/betterpod/THIRD_PARTY_LICENSES.md) for the full list.
+See [THIRD_PARTY_LICENSES.md](port/betterpod/THIRD_PARTY_LICENSES.md) (and, for the Miyoo, [onion/betterpod/THIRD_PARTY_LICENSES.md](onion/betterpod/THIRD_PARTY_LICENSES.md)) for the full list.
 
 ## License
 
 betterPod is released under the [MIT License](LICENSE).
 
-iPod is a trademark of Apple Inc. This is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.
+iPod is a trademark of Apple Inc. This is an independent fan project, not affiliated with or endorsed by Apple, Anbernic, Miyoo, the Knulli project or the Onion project.

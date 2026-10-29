@@ -13,6 +13,7 @@ type ipodPrefs struct {
 	RepeatMode  string  `json:"repeatMode"`
 	HoldBright  int     `json:"holdBrightness,omitempty"`
 	Theme       string  `json:"theme,omitempty"`
+	Effects     string  `json:"effects,omitempty"`
 	YouTube     bool    `json:"youtube,omitempty"`
 	NoPodcasts  bool    `json:"hidePodcasts,omitempty"` // Podcasts taken out of the main menu
 	SaverAfter  int     `json:"screensaverMinutes,omitempty"`
@@ -39,6 +40,10 @@ func (ui *IpodUI) loadPrefs() {
 	switch p.Theme {
 	case "light", "dark", "auto":
 		themeMode = p.Theme
+	}
+	switch p.Effects {
+	case "full", "light":
+		effectsMode = p.Effects
 	}
 	ytEnabled = p.YouTube
 	appleMode = p.Apple
@@ -89,7 +94,7 @@ func (ui *IpodUI) savePrefs() {
 			rep = "all"
 		}
 	}
-	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu,
+	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu, Effects: effectsMode,
 		SaverAfter: saverAfter, SaverDim: saverDim, SaverLevel: saverLevel,
 		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName})
 	_ = os.WriteFile(ipodPrefsPath(), data, 0644)

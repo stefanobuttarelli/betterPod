@@ -47,7 +47,7 @@ func (ui *IpodUI) showSheetTitled(title string, opts []SheetOption) {
 			s.index = i
 		}
 	}
-	s.anim.To(0, durSlide, easeInOut, 0)
+	s.anim.To(0, lightDur(durSlide), easeInOut, 0) // (at once with Light effects, see ij_effects.go)
 	ui.sheets = append(ui.sheets, s)
 	ui.dirty = true
 }
@@ -57,7 +57,7 @@ func (ui *IpodUI) hideSheet() {
 		s := ui.sheets[i]
 		if !s.exiting {
 			s.exiting = true
-			s.anim.To(1, durSlide, easeInOut, 0)
+			s.anim.To(1, lightDur(durSlide), easeInOut, 0)
 			break
 		}
 	}
@@ -239,7 +239,7 @@ var toast = struct {
 func (ui *IpodUI) showToast(text string) {
 	toast.text = text
 	toast.until = time.Now().Add(1600 * time.Millisecond)
-	toast.a.To(1, 200*time.Millisecond, easeCSS, 0)
+	toast.a.To(1, lightDur(200*time.Millisecond), easeCSS, 0)
 	ui.dirty = true
 }
 
@@ -249,7 +249,7 @@ func toastAnimating() bool { return toast.a.Running() }
 // screen needn't be redrawn while it just sits there).
 func (ui *IpodUI) toastTick(now time.Time) {
 	if toast.a.Target() == 1 && now.After(toast.until) {
-		toast.a.To(0, 250*time.Millisecond, easeCSS, 0)
+		toast.a.To(0, lightDur(250*time.Millisecond), easeCSS, 0)
 		ui.dirty = true
 	}
 }

@@ -1,6 +1,7 @@
 // whtest: send or receive a file through a wormhole server (a test tool).
 //
 //	whtest send <url> <relay> <code> <file>
+//	whtest senddir <url> <relay> <code> <dir>   (OFFER_INFO='{"exts":[".m4a"]}': Share's formats in the offer)
 //	whtest recv <url> <relay> <code> <outdir>
 package main
 
@@ -52,7 +53,11 @@ func main() {
 				add(f.Name())
 			}
 		}
-		code, res, err := c.SendDirectory(ctx, name, entries, wormhole.WithCode(os.Args[4]))
+		opts := []wormhole.SendOption{wormhole.WithCode(os.Args[4])}
+		if v := os.Getenv("OFFER_INFO"); v != "" {
+			opts = append(opts, wormhole.WithOfferInfo([]byte(v)))
+		}
+		code, res, err := c.SendDirectory(ctx, name, entries, opts...)
 		if err != nil {
 			panic(err)
 		}

@@ -22,7 +22,7 @@ type VersionInfo struct {
 // checkVersion fetches the latest version from GitHub and compares with current version
 func (app *MiyooPod) checkVersion() string {
 	if otaDisabled {
-		return "Updates disabled (Knulli build)"
+		return "Updates: Settings → Software Update"
 	}
 	client := getInsecureHTTPClient(5 * time.Second)
 

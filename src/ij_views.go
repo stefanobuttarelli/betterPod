@@ -7,8 +7,6 @@ import (
 	"image"
 	"math"
 	"time"
-
-	"golang.org/x/image/vector"
 )
 
 type ViewKind int
@@ -625,21 +623,26 @@ func drawGear(dst *image.RGBA, cx, cy, R float64, c Col) {
 
 // aaPolyHole: a filled polygon with a round hole in it.
 func aaPolyHole(dst *image.RGBA, pts [][2]float64, hx, hy, hr float64, c Col) {
-	b := dst.Bounds()
-	var ras vector.Rasterizer
-	ras.Reset(b.Dx(), b.Dy())
-	ras.MoveTo(float32(pts[0][0]), float32(pts[0][1]))
+	r := polyBox(dst, pts) // (the hole is inside the polygon)
+	if r.Empty() {
+		return
+	}
+	ras := aaRaster(r)
+	defer aaRasters.Put(ras)
+	ox, oy := float64(r.Min.X), float64(r.Min.Y)
+	ras.MoveTo(float32(pts[0][0]-ox), float32(pts[0][1]-oy))
 	for _, p := range pts[1:] {
-		ras.LineTo(float32(p[0]), float32(p[1]))
+		ras.LineTo(float32(p[0]-ox), float32(p[1]-oy))
 	}
 	ras.ClosePath()
 	// the hole, the other way round (non-zero winding leaves it empty)
 	const m = 24
+	hx, hy = hx-ox, hy-oy
 	ras.MoveTo(float32(hx+hr), float32(hy))
 	for i := m - 1; i >= 1; i-- {
 		a := float64(i) / m * 2 * math.Pi
 		ras.LineTo(float32(hx+hr*math.Cos(a)), float32(hy+hr*math.Sin(a)))
 	}
 	ras.ClosePath()
-	ras.Draw(dst, b, image.NewUniform(c8(c)), image.Point{})
+	ras.Draw(dst, r.Add(dst.Bounds().Min), image.NewUniform(c8(c)), image.Point{})
 }

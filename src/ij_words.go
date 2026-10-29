@@ -23,6 +23,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/image/vector"
@@ -619,15 +620,49 @@ func wordsIcon() *image.RGBA {
 
 // aaPoly: a filled polygon, anti-aliased.
 func aaPoly(dst *image.RGBA, pts [][2]float64, c Col) {
-	b := dst.Bounds()
-	var ras vector.Rasterizer
-	ras.Reset(b.Dx(), b.Dy())
-	ras.MoveTo(float32(pts[0][0]), float32(pts[0][1]))
+	r := polyBox(dst, pts)
+	if r.Empty() {
+		return
+	}
+	ras := aaRaster(r)
+	defer aaRasters.Put(ras)
+	ox, oy := float64(r.Min.X), float64(r.Min.Y)
+	ras.MoveTo(float32(pts[0][0]-ox), float32(pts[0][1]-oy))
 	for _, p := range pts[1:] {
-		ras.LineTo(float32(p[0]), float32(p[1]))
+		ras.LineTo(float32(p[0]-ox), float32(p[1]-oy))
 	}
 	ras.ClosePath()
-	ras.Draw(dst, b, image.NewUniform(c8(c)), image.Point{})
+	ras.Draw(dst, r.Add(dst.Bounds().Min), image.NewUniform(c8(c)), image.Point{})
+}
+
+// aaRasters: the rasterizers, reused: their buffers are as big as the area
+// they draw, and a new one over the whole screen was 2.4 MB for a gloss.
+var aaRasters = sync.Pool{New: func() any { return new(vector.Rasterizer) }}
+
+// aaRaster: a rasterizer for the box r (its corner at r.Min), at least
+// 513 px wide so that it keeps to floating-point maths: vector's fixed-point
+// one, for areas up to 512 px, is up to 17% off on thin slanted edges.
+func aaRaster(r image.Rectangle) *vector.Rasterizer {
+	w := r.Dx()
+	if w <= 512 && r.Dy() <= 512 {
+		w = 513
+	}
+	ras := aaRasters.Get().(*vector.Rasterizer)
+	ras.Reset(w, r.Dy())
+	return ras
+}
+
+// polyBox: the pixels pts can cover, within dst (from its corner, like the
+// points).
+func polyBox(dst *image.RGBA, pts [][2]float64) image.Rectangle {
+	x0, y0, x1, y1 := pts[0][0], pts[0][1], pts[0][0], pts[0][1]
+	for _, p := range pts[1:] {
+		x0, y0 = math.Min(x0, p[0]), math.Min(y0, p[1])
+		x1, y1 = math.Max(x1, p[0]), math.Max(y1, p[1])
+	}
+	b := dst.Bounds()
+	r := image.Rect(int(math.Floor(x0)), int(math.Floor(y0)), int(math.Ceil(x1)), int(math.Ceil(y1)))
+	return r.Intersect(image.Rect(0, 0, b.Dx(), b.Dy()))
 }
 
 // strokeLine: a segment w pixels wide, anti-aliased.

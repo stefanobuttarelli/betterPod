@@ -31,9 +31,11 @@ const (
 // startPowerButtonMonitor reads power button and volume events directly from /dev/input/event0
 // This bypasses SDL2 which doesn't have power button mapping in the prebuilt library
 func (app *MiyooPod) startPowerButtonMonitor() {
-	if isKnulli {
+	if isKnulli || isOnion {
 		// event0 on the H700 is the gamepad/power device handled elsewhere;
-		// reading it here would steal or duplicate events.
+		// reading it here would steal or duplicate events. On Onion,
+		// onion.c reads POWER and the volume keys and queues them with
+		// the other keys (LOCK, VOL_UP, VOL_DOWN), on the main thread.
 		return
 	}
 	go func() {

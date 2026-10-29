@@ -20,6 +20,11 @@ package main
 // What is sent is one directory (zipped by the library): first a small
 // betterpod-share.json (what, from whom), then cover.jpg, then the songs,
 // so the receiver can show the album and its cover while the rest comes.
+//
+// The offer also carries the songs' formats (shareOffer): a betterPod that
+// can't play them (a Miyoo and AAC) says no before anything moves, with the
+// reason, and both screens show it. From a sender that doesn't say them
+// (before 0.73), the receiver stops at the first song's name in the zip.
 
 import (
 	"archive/zip"
@@ -38,9 +43,11 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/psanford/wormhole-william/wormhole"
@@ -74,6 +81,55 @@ type shareInfo struct {
 	Title  string `json:"title,omitempty"` // one song: its title
 	Songs  int    `json:"songs"`
 	Bytes  int64  `json:"bytes"`
+}
+
+// shareOffer: what the sender adds to the wormhole offer (WithOfferInfo),
+// read by the receiver before it accepts.
+type shareOffer struct {
+	Exts []string `json:"exts"` // the songs' formats: ".mp3", ".m4a"…
+}
+
+// shareUnplayable: the formats among exts this betterPod can't play, by
+// name ("AAC / ALAC (.m4a)").
+func shareUnplayable(exts []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, e := range exts {
+		e = strings.ToLower(e)
+		if supportedAudioExt(e) {
+			continue
+		}
+		name, ok := onionUnsupported(e)
+		if !ok {
+			name = strings.ToUpper(strings.TrimPrefix(e, ".")) + " (" + e + ")"
+		}
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// shareUnplayableReason: the rejection the sender gets, as "TransferError:
+// Can't play AAC / ALAC (.m4a) on Onion OS"; an older betterPod shows it so.
+func shareUnplayableReason(names []string) string {
+	sys, _ := platformAbout()
+	return "Can't play " + strings.Join(names, ", ") + " on " + sys
+}
+
+// shareParseUnplayable: the formats and the system of such a rejection.
+func shareParseUnplayable(err error) (names []string, on string, ok bool) {
+	m := strings.TrimPrefix(err.Error(), "TransferError: ")
+	if !strings.HasPrefix(m, "Can't play ") {
+		return nil, "", false
+	}
+	m = strings.TrimPrefix(m, "Can't play ")
+	i := strings.LastIndex(m, " on ")
+	if i <= 0 {
+		return nil, "", false
+	}
+	return strings.Split(m[:i], ", "), m[i+len(" on "):], true
 }
 
 // share phases
@@ -118,6 +174,11 @@ type ShareView struct {
 	count     int // shares done here, this one included
 	cancel    context.CancelFunc
 	bg        *image.RGBA
+	lightAt   time.Time // the last frame with Light effects (Animating)
+
+	unplayable []string    // formats the receiving betterPod can't play (by name)
+	unplayOn   string      // and its system ("Onion OS")
+	refused    atomic.Bool // receiver: stopped at the first song (sharePeek)
 }
 
 func (s *ShareView) setPhase(p int) {
@@ -160,7 +221,7 @@ func shareErrText(err error) string {
 	if err == nil {
 		return ""
 	}
-	m := err.Error()
+	m := strings.TrimPrefix(err.Error(), "TransferError: ")
 	switch {
 	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(m, "no one"):
 		return "No one is sharing with this code · check the digits"
@@ -300,8 +361,12 @@ func (ui *IpodUI) shareSend(ctx context.Context, s *ShareView, tracks []*Track, 
 			Reader: func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(coverJPG)), nil }})
 	}
 	used := map[string]bool{}
+	var offer shareOffer
 	for _, t := range tracks {
 		p := t.Path
+		if e := strings.ToLower(filepath.Ext(p)); !slices.Contains(offer.Exts, e) {
+			offer.Exts = append(offer.Exts, e)
+		}
 		name := filepath.Base(p)
 		for i := 2; used[strings.ToLower(name)]; i++ {
 			ext := filepath.Ext(p)
@@ -326,7 +391,8 @@ func (ui *IpodUI) shareSend(ctx context.Context, s *ShareView, tracks []*Track, 
 			ui.dirty = true
 		})
 	})
-	_, res, err := shareClient().SendDirectory(ctx, dir, entries, wormhole.WithCode(wormholeCode(s.code)), progress)
+	info, _ := json.Marshal(offer)
+	_, res, err := shareClient().SendDirectory(ctx, dir, entries, wormhole.WithCode(wormholeCode(s.code)), progress, wormhole.WithOfferInfo(info))
 	if err != nil {
 		ui.postSure(func() { s.fail(ctx, err) })
 		return
@@ -355,7 +421,22 @@ func (s *ShareView) fail(ctx context.Context, err error) {
 	if ctx.Err() != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return // closed by hand
 	}
+	if names, on, ok := shareParseUnplayable(err); ok {
+		s.unplayable, s.unplayOn = names, on // the receiver can't play them
+	}
 	s.err = shareErrText(err)
+	s.setPhase(shFailed)
+}
+
+// unplayableHere: this betterPod can't play the songs offered (album: the
+// shared folder's name, when nothing better is known yet).
+func (s *ShareView) unplayableHere(names []string, album string) {
+	sys, _ := platformAbout()
+	s.unplayable, s.unplayOn = names, sys
+	if s.info.Album == "" {
+		s.info.Album = album
+	}
+	s.err = shareUnplayableReason(names)
 	s.setPhase(shFailed)
 }
 
@@ -431,6 +512,8 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.egg = ""
+	s.unplayable = nil
+	s.refused.Store(false)
 	s.setPhase(shConnecting)
 	go func() {
 		// nobody there: the server would wait forever
@@ -446,6 +529,7 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 		msg, err := shareClient().Receive(ctx, wormholeCode(code))
 		close(met)
 		if err != nil {
+			logMsg("Share: receiving failed: " + err.Error())
 			if ctx.Err() != nil {
 				err = errors.New("no one")
 			}
@@ -460,6 +544,15 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 			msg.Reject()
 			ui.postSure(func() { s.err = "That wasn't music"; s.setPhase(shFailed) })
 			return
+		}
+		var offer shareOffer
+		if len(msg.Info) > 0 && json.Unmarshal(msg.Info, &offer) == nil {
+			if names := shareUnplayable(offer.Exts); len(names) > 0 {
+				msg.RejectWith(shareUnplayableReason(names))
+				logMsg("Share: refused, can't play " + strings.Join(names, ", "))
+				ui.postSure(func() { s.unplayableHere(names, msg.Name) })
+				return
+			}
 		}
 		if free := freeBytes(musicRoot()); free > 0 && msg.UncompressedBytes64 > free-64<<20 {
 			msg.Reject()
@@ -491,7 +584,11 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 	s.mu.Unlock()
 	ui.post(func() { s.setPhase(shMoving); s.info.Album = msg.Name })
 	grow := &growingFile{path: zpath}
-	go ui.sharePeek(s, grow)
+	peeked := make(chan struct{})
+	go func() {
+		ui.sharePeek(s, grow)
+		close(peeked)
+	}()
 	buf := make([]byte, 256<<10)
 	slow := os.Getenv("BETTERPOD_SHARE_SLOW") != "" // (for tests: to watch it)
 	if slow {
@@ -526,6 +623,13 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 	}
 	f.Close()
 	grow.set(n, true)
+	select { // (a small share can arrive whole before the first song's name is read)
+	case <-peeked:
+	case <-time.After(5 * time.Second):
+	}
+	if s.refused.Load() {
+		return // (sharePeek: songs this betterPod can't play)
+	}
 	ui.post(func() { s.setPhase(shSaving) })
 	dest, err := shareUnpack(zpath, msg.Name)
 	if err != nil {
@@ -589,11 +693,13 @@ func (ui *IpodUI) shareFindTracks(s *ShareView) {
 }
 
 // sharePeek reads the zip's first entries while it is still arriving: the
-// manifest (what it is) and the cover.
+// manifest (what it is), the cover, and the first song's name: a format
+// this betterPod can't play stops the share there (from a sender that
+// didn't say its formats in the offer).
 func (ui *IpodUI) sharePeek(s *ShareView, g *growingFile) {
 	// (a ByteReader, so flate reads no further than its own stream)
 	r := bufio.NewReader(&growingReader{g: g})
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		var h [30]byte
 		if _, err := io.ReadFull(r, h[:]); err != nil || binary.LittleEndian.Uint32(h[:4]) != 0x04034b50 {
 			return
@@ -607,6 +713,19 @@ func (ui *IpodUI) sharePeek(s *ShareView, g *growingFile) {
 			return
 		}
 		if _, err := io.CopyN(io.Discard, r, int64(xlen)); err != nil {
+			return
+		}
+		if base := strings.ToLower(filepath.Base(string(name))); base != shareManifest && base != "cover.jpg" {
+			if names := shareUnplayable([]string{filepath.Ext(base)}); len(names) > 0 {
+				s.refused.Store(true)
+				logMsg("Share: stopped, can't play " + strings.Join(names, ", "))
+				ui.postSure(func() {
+					s.unplayableHere(names, "")
+					if s.cancel != nil {
+						s.cancel()
+					}
+				})
+			}
 			return
 		}
 		var data []byte
@@ -656,7 +775,6 @@ func (ui *IpodUI) sharePeek(s *ShareView, g *growingFile) {
 				big := scaleImage(img, shareBigPx, shareBigPx)
 				ui.post(func() { s.cover, s.coverBig, s.coverAt = c, big, time.Now(); ui.dirty = true })
 			}
-			return
 		}
 	}
 }
@@ -795,7 +913,7 @@ func (s *ShareView) OnKey(ui *IpodUI, k Key) bool {
 	if s.send || s.phase != shCode {
 		if !s.send && s.phase == shFailed && (k == UP || k == DOWN || k == LEFT || k == RIGHT) {
 			s.setPhase(shCode) // back to the digits to fix them
-			s.err = ""
+			s.err, s.unplayable = "", nil
 			ui.dirty = true
 			return true
 		}
@@ -843,7 +961,24 @@ func (s *ShareView) OnCenter(ui *IpodUI) {
 
 func (s *ShareView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 
+// Animating: the screen moves all the time while waiting and sending, which
+// can last minutes; with Light effects (the Miyoo's default, ij_effects.go)
+// it is drawn 10 times a second instead of at every frame, leaving the
+// processor to the music and the transfer.
 func (s *ShareView) Animating(now time.Time) bool {
+	if !s.animating(now) {
+		return false
+	}
+	if lightEffects() {
+		if now.Sub(s.lightAt) < 100*time.Millisecond {
+			return false
+		}
+		s.lightAt = now
+	}
+	return true
+}
+
+func (s *ShareView) animating(now time.Time) bool {
 	switch s.phase {
 	case shCode:
 		return s.egg != "" && now.Sub(s.eggAt) < 4*time.Second

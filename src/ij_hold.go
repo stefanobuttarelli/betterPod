@@ -471,6 +471,10 @@ var briOSD struct {
 // stepBrightness: L2 (down) / R2 (up), in steps of 5% (1% at the bottom),
 // shown in the header for a moment.
 func (ui *IpodUI) stepBrightness(up bool) {
+	if isOnion {
+		ui.onionStepBrightness(up) // (Onion's eleven levels, see onion.go)
+		return
+	}
 	cur := briOSD.level
 	if briOSD.until.IsZero() || cur <= 0 { // (held: from the level just set, not read again)
 		if b := getBacklightPercent(); b > 0 {
