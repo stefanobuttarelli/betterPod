@@ -291,6 +291,14 @@ func scaleImage(src image.Image, w, h int) *image.RGBA {
 	return dst
 }
 
+// scaleImageFast is scaleImage for pictures redrawn as a key is held
+// (bilinear: quicker, a little softer).
+func scaleImageFast(src image.Image, w, h int) *image.RGBA {
+	dst := newCanvas(w, h)
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
+	return dst
+}
+
 // roundedCoverage returns how much of the device pixel centred at (pxc, pyc)
 // is inside the rounded rectangle (x0, y0)-(x1, y1) with radius r
 // (signed-distance antialiasing, 1 px wide).

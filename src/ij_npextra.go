@@ -20,22 +20,22 @@ import (
 // toggleCard turns the cover over to its album's songs, or back, as Cover
 // Flow does: from where it is (turned while playing) a half turn to the
 // back pose, the card coming in bigger and stronger.
-func (np *NowPlayingView) toggleCard(ui *IpodUI) {
+func (np *NowPlayingView) toggleCard(ui *IpodUI) bool {
 	now := animNow()
 	if np.flipped {
 		np.flipped = false
 		np.backA.To(0, 250*time.Millisecond, easeOutCubic, 0)
 		np.flip.To(0, 500*time.Millisecond, easeCSS, 0)
 		ui.dirty = true
-		return
+		return true
 	}
 	p := ui.app.Playing
 	if p == nil || p.Track == nil {
-		return
+		return false
 	}
 	al := ui.trackAlbum(p.Track)
 	if al == nil {
-		return
+		return false
 	}
 	np.back, np.backAl, np.flipped = ui.backsideList(al), al, true
 	for i, it := range np.back.Items {
@@ -48,12 +48,22 @@ func (np *NowPlayingView) toggleCard(ui *IpodUI) {
 	np.backA.Set(0)
 	np.backA.To(1, 500*time.Millisecond, easeInOut, 0)
 	ui.dirty = true
+	return true
+}
+
+// closeCardNow: the card goes at once (the screensaver takes the cover).
+func (np *NowPlayingView) closeCardNow() {
+	np.flipped = false
+	np.flip.Set(0)
+	np.backA.Set(0)
+	np.back, np.backAl = nil, nil
 }
 
 // flipFrame: turned back to the cover: the card goes.
 func (np *NowPlayingView) flipFrame(now time.Time) {
 	if !np.flipped && np.back != nil && !np.flip.Running() && !np.backA.Running() {
 		np.back, np.backAl = nil, nil
+		np.backBuf, np.backList, np.infoBuf = nil, nil, nil // (1-2 MB each)
 	}
 }
 
@@ -61,8 +71,8 @@ func (np *NowPlayingView) flipFrame(now time.Time) {
 // on the options row they pick an option.
 func (np *NowPlayingView) OnKey(ui *IpodUI, k Key) bool {
 	if k == START {
-		np.toggleCard(ui)
-		return true
+		// (no song to turn over: START plays and pauses, as elsewhere)
+		return np.toggleCard(ui)
 	}
 	if np.flipped {
 		switch k {
@@ -129,16 +139,27 @@ func (np *NowPlayingView) OnMenu(ui *IpodUI) {
 	ui.hideView()
 }
 
+// npStageKey: what the cover's picture depends on (drawn again only when
+// one of these changes).
+type npStageKey struct {
+	art, old      *image.RGBA
+	tilt, flip, k float64
+	hide, dark    bool
+}
+
 // npStage draws Now Playing's cover as Cover Flow draws its own: the 3D
 // cover at npCoverPose (turned 35° while playing, flat and smaller when
 // paused) with its reflection, cross-fading when the album changes, and
-// turning over (flip) to the card on its back (backA).
+// turning over (flip) to the card on its back (backA). The cover (with the
+// background) is kept and only drawn again when it changes; the card is
+// drawn over it.
 func (ui *IpodUI) npStage(dst *image.RGBA, np *NowPlayingView, now time.Time) {
+	W, H := dst.Bounds().Dx(), dst.Bounds().Dy()
 	p := ui.app.Playing
 	if p == nil || p.Track == nil {
+		fillRect(dst, 0, 0, W, H, th.bg)
 		return
 	}
-	t := p.Track
 	target := 0.0
 	if p.State == StatePlaying && !np.untilt {
 		target = 1
@@ -152,42 +173,66 @@ func (ui *IpodUI) npStage(dst *image.RGBA, np *NowPlayingView, now time.Time) {
 	}
 	np.lastFrame = ui.frameNo
 	f := np.flip.Get(now)
-	if !np.flyHide {
-		base := npCoverPose(np.tilt.Get(now))
-		base.A -= 360 // (a full turn back: it turns over the same way as Cover Flow's)
-		m := coverMatrix(lerpX(base, backPose(), f))
-		front := facesViewer(m)
-		draw := func(al *Album, op float64) {
-			art := ui.art(al, px(128))
-			if art == nil {
-				art = ui.artFallback(al, px(128))
+	ba := np.backA.Get(now)
+	key := npStageKey{tilt: np.tilt.Get(now), flip: f, k: 1, hide: np.flyHide || f >= 0.999 && ba >= 0.999, dark: th.dark}
+	base := npCoverPose(key.tilt)
+	base.A -= 360 // (a full turn back: it turns over the same way as Cover Flow's)
+	m := coverMatrix(lerpX(base, backPose(), f))
+	front := facesViewer(m)
+	var al, oldAl *Album
+	if !key.hide {
+		al = ui.trackAlbum(p.Track)
+		if k := np.change.Get(now); k < 1 && np.oldT != nil {
+			if o := ui.trackAlbum(np.oldT); o != al {
+				oldAl, key.k = o, k
 			}
-			if art == nil {
-				art = ui.defaultArtSized(px(128))
-			}
+		}
+		// the art only when its front shows (turned away: the plain back)
+		pic := func(a *Album) *image.RGBA {
 			if !front {
-				art = coverBackFace()
+				return coverBackFace()
 			}
+			img := ui.art(a, px(128))
+			if img == nil {
+				img = ui.artFallback(a, px(128))
+			}
+			if img == nil {
+				img = ui.defaultArtSized(px(128))
+			}
+			return img
+		}
+		key.art = pic(al)
+		if oldAl != nil {
+			key.old = pic(oldAl)
+		}
+	}
+	if np.stageBuf == nil || np.stageBuf.Bounds().Dx() != W || np.stageBuf.Bounds().Dy() != H || key != np.stageKey {
+		buf := newCanvasCached(&np.stageBuf, W, H)
+		fillRect(buf, 0, 0, W, H, th.bg)
+		draw := func(art *image.RGBA, op float64) {
 			sc := float64(art.Bounds().Dx()) / 128
 			tm := texMap{img: art, su: sc, sv: sc, u1: 128, v1: 128}
 			if r := 0.2 * (1 - f); r > 0.001 {
 				tm.v1 = 166.4
 				tm.reflFrom, tm.reflMax, tm.reflStart = 128, r, 0.7
 			}
-			drawTex(dst, m, tm, op)
+			drawTex(buf, m, tm, op)
 		}
-		al := ui.trackAlbum(t)
-		if k := np.change.Get(now); k < 1 && np.oldT != nil && ui.trackAlbum(np.oldT) != al {
-			draw(ui.trackAlbum(np.oldT), 1)
-			draw(al, k)
-		} else {
-			draw(al, 1)
+		if !key.hide {
+			if key.old != nil {
+				draw(key.old, 1)
+				draw(key.art, key.k)
+			} else {
+				draw(key.art, 1)
+			}
 		}
+		np.stageKey = key
 	}
+	blitOpaque(dst, np.stageBuf, 0, 0)
 	if np.back != nil {
 		bm := coverMatrix(backPose())
-		drawBacksideCard(dst, bm, bm, np.backA.Get(now), func(w, h float64) *image.RGBA {
-			return ui.backsideTex(&np.backBuf, np.backAl, np.back, w, h, np.backSince, now)
+		drawBacksideCard(dst, bm, bm, ba, func(w, h float64) *image.RGBA {
+			return ui.backsideTex(&np.backBuf, &np.backList, np.backAl, np.back, w, h, np.backSince, now)
 		})
 	}
 }

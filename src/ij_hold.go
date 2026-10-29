@@ -150,33 +150,18 @@ func (ui *IpodUI) holdBrightness(up bool) {
 	// steps of 5%, 1% at the bottom of the range; the level is kept for
 	// the next time Hold is turned on
 	//
-	if cur := getBacklightPercent(); cur > 0 {
-		hold.cur = cur
+	if hold.repKey == NONE { // (held: from the level just set, not read again)
+		if cur := getBacklightPercent(); cur > 0 {
+			hold.cur = cur
+		}
 	}
-	step := 5
-	if hold.cur < 10 || hold.cur == 10 && !up {
-		step = 1
-	}
-	v := hold.cur
-	if up {
-		v += step
-	} else {
-		v -= step
-	}
-	if v < 1 {
-		v = 1
-	}
-	if v > 100 {
-		v = 100
-	}
+	v := briStep(hold.cur, up)
 	hold.cur = v
 	hold.level = v
 	setBacklightPercent(v)
 	logMsg(fmt.Sprintf("Hold brightness -> %d%%", v))
 	hold.levelShown = animNow().Add(1500 * time.Millisecond)
-	if hold.repKey == NONE {
-		ui.savePrefs()
-	}
+	// saved when the key is let go (holdFilter)
 }
 
 // tickOverlays runs the Hold / volume overlay timers and reports whether
@@ -193,9 +178,17 @@ func (ui *IpodUI) tickOverlays(now time.Time) bool {
 	if hold.badge.Target() == 1 && now.After(hold.badgeUntil) {
 		hold.badge.To(0, 300*time.Millisecond, easeCSS, 0)
 	}
-	if hold.badge.Running() || hold.badge.Target() == 1 || hold.on && now.Before(hold.levelShown.Add(50*time.Millisecond)) ||
-		now.Before(briOSD.until.Add(50*time.Millisecond)) {
-		vis = true // (the brightness in the header, until it goes)
+	if hold.badge.Running() || hold.badge.Target() == 1 {
+		vis = true
+	}
+	// the brightness in the header doesn't move: one more frame when it goes
+	if hold.on && !hold.levelShown.IsZero() && now.After(hold.levelShown) {
+		hold.levelShown = time.Time{}
+		ui.dirty = true
+	}
+	if !briOSD.until.IsZero() && now.After(briOSD.until) {
+		briOSD.until = time.Time{}
+		ui.dirty = true
 	}
 	if volOSD.a.Target() == 1 && now.After(volOSD.until) {
 		volOSD.a.To(0, 300*time.Millisecond, easeCSS, 0)
@@ -478,13 +471,24 @@ var briOSD struct {
 // stepBrightness: L2 (down) / R2 (up), in steps of 5% (1% at the bottom),
 // shown in the header for a moment.
 func (ui *IpodUI) stepBrightness(up bool) {
-	cur := getBacklightPercent()
-	if cur < 0 {
-		cur = briOSD.level // (no backlight to read: the test machine)
-		if cur <= 0 {
-			cur = 50
+	cur := briOSD.level
+	if briOSD.until.IsZero() || cur <= 0 { // (held: from the level just set, not read again)
+		if b := getBacklightPercent(); b > 0 {
+			cur = b
+		} else if cur <= 0 {
+			cur = 50 // (no backlight to read: the test machine)
 		}
 	}
+	cur = briStep(cur, up)
+	setBacklightPercent(cur)
+	briOSD.level = cur
+	briOSD.until = animNow().Add(1500 * time.Millisecond)
+	ui.dirty = true
+}
+
+// briStep: the brightness a step up or down: 5%, 1% at the bottom of the
+// range (from 10% down), between 1% and 100%.
+func briStep(cur int, up bool) int {
 	step := 5
 	if cur < 10 || cur == 10 && !up {
 		step = 1
@@ -494,9 +498,5 @@ func (ui *IpodUI) stepBrightness(up bool) {
 	} else {
 		cur -= step
 	}
-	cur = min(max(cur, 1), 100)
-	setBacklightPercent(cur)
-	briOSD.level = cur
-	briOSD.until = animNow().Add(1500 * time.Millisecond)
-	ui.dirty = true
+	return min(max(cur, 1), 100)
 }

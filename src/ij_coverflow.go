@@ -276,6 +276,7 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 	} else if len(cf.albums) == 0 {
 		return
 	} else {
+		cf.backFromNP = false
 		cf.selected = cf.albums[cf.active]
 		cf.back = ui.backsideList(cf.selected)
 		cf.backAlbum = cf.selected
@@ -291,6 +292,10 @@ func (cf *CoverFlow) center(ui *IpodUI) {
 func (cf *CoverFlow) startKey(ui *IpodUI) bool {
 	switch {
 	case cf.playing && cf.selected != nil:
+		if np := cf.np; np != nil && np.opts { // (the options row goes with it)
+			np.opts, np.volEnabled = false, true
+			np.updateControls()
+		}
 		cf.backFromNP = true
 		cf.menu(ui)
 		if cf.back != nil {
@@ -341,6 +346,7 @@ func (cf *CoverFlow) menu(ui *IpodUI) {
 		cf.backAnim.To(1, 500*time.Millisecond, easeInOut, 0)
 	} else if cf.selected != nil {
 		cf.selected = nil
+		cf.backFromNP = false
 		cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
 		ui.headerTitle = "Cover Flow"
 	} else {
@@ -415,7 +421,6 @@ func (cf *CoverFlow) animating(now time.Time) bool {
 // transforms with a 500 px perspective around the screen centre.
 type mat4 [16]float64
 
-func mIdent() mat4 { return mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1} }
 func mMul(a, b mat4) mat4 {
 	var r mat4
 	for i := 0; i < 4; i++ {
@@ -759,7 +764,7 @@ func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) 
 		cf.backShown, cf.backSince = cf.backAlbum, now
 	}
 	drawBacksideCard(layer, m, final, cf.backAnim.Get(now), func(w, h float64) *image.RGBA {
-		return ui.backsideTex(&backsideBuf, cf.backAlbum, cf.back, w, h, cf.backSince, now)
+		return ui.backsideTex(&backsideBuf, &backsideList, cf.backAlbum, cf.back, w, h, cf.backSince, now)
 	})
 }
 
@@ -930,14 +935,9 @@ func drawMarqueeSync(dst *image.RGBA, f font.Face, s string, x, baseline, maxW f
 	drawText(clip, f, s, (x-off+loop)*DPR, baseline*DPR, c)
 }
 
-func (ui *IpodUI) backsideTexture(w, h float64, now time.Time) *image.RGBA {
-	cf := ui.cover
-	return ui.backsideTex(&backsideBuf, cf.backAlbum, cf.back, w, h, cf.backSince, now)
-}
-
 // backsideTex: an album's card: its name and artist on blue (scrolling
 // together when long, from since), then its songs (back).
-func (ui *IpodUI) backsideTex(buf **image.RGBA, al *Album, back *View, w, h float64, since, now time.Time) *image.RGBA {
+func (ui *IpodUI) backsideTex(buf, listBuf **image.RGBA, al *Album, back *View, w, h float64, since, now time.Time) *image.RGBA {
 	img := newCanvasCached(buf, px(w), px(h))
 	fillRect(img, 0, 0, px(w), px(h), th.bg)
 	// album info on a blue gradient, then the track list
@@ -959,9 +959,9 @@ func (ui *IpodUI) backsideTex(buf **image.RGBA, al *Album, back *View, w, h floa
 	lt := infoH + 1
 	listH := h - 1 - lt
 	if listH > 0 {
-		lst := image.NewRGBA(image.Rect(0, 0, px(inner), px(listH)))
+		lst := newCanvasCached(listBuf, px(inner), px(listH))
 		ui.renderList(back, lst)
-		blit(img, lst, px(1), px(lt), 1)
+		blitOpaque(img, lst, px(1), px(lt))
 	}
 	// 1px border
 	fillRect(img, 0, 0, px(w), px(1), th.cardBorder)
@@ -986,14 +986,14 @@ func npCoverPose(t float64) cfXform {
 		Z: -64*math.Sin(th0) + 64*math.Sin(th),
 		// paused (t = 0) the cover also shrinks to 85%
 		S1: 1, A: 35 * t, S2: 0.85 + 0.15*t,
-		// tilted, wider so it looks square, as in Now Playing (npWiden): 9 px
+		// tilted, wider so it looks square: 9 px
 		// here, where the perspective is milder (measured: 247×247 on
 		// screen, as Now Playing's)
 		W: cfNPWiden / 128 * t}
 }
 
 // backsideBuf is the reused canvas of the flipped cover's track list.
-var backsideBuf *image.RGBA
+var backsideBuf, backsideList *image.RGBA
 
 // facesViewer reports whether the cover's front faces the screen under m
 // (the projected quad keeps its winding).

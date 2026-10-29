@@ -728,9 +728,20 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 				OnSelect: func() {
 					ui.showView(ui.ytCoverEditorView(st.coverSrc, st.coverChoice, func(c ytCoverChoice) {
 						st.coverChoice = c
-						st.coverPrev.ArtImg = ytCoverPreview(st.coverSrc, c, px(48))
-						ui.artc.dropAlbum(st.coverPrev)
 						ui.refreshView(v)
+						// its little picture made away from the screen (a blurred whole
+						// picture takes a moment)
+						src, al := st.coverSrc, st.coverPrev
+						go func() {
+							img := ytCoverPreview(src, c, px(48))
+							ui.postSure(func() {
+								if st.coverChoice == c {
+									al.ArtImg = img
+									ui.artc.dropAlbum(al)
+									ui.refreshView(v)
+								}
+							})
+						}()
 					}), "")
 				}})
 		case !st.coverTried:
@@ -1079,8 +1090,9 @@ func ytRun(d *iaDownload, info *ytInfo, a ytAlbum) error {
 	setState("Making the cover…")
 	coverPath := filepath.Join(d.dir, "cover.jpg")
 	cover, _ := os.ReadFile(coverPath)
-	if a.CoverSrc != nil {
-		// the one chosen on the video's page (it replaces an earlier one)
+	if a.CoverSrc != nil && (a.CoverChoice.mode != "" || cover == nil) {
+		// the one chosen on the video's page (it replaces an earlier one);
+		// the automatic one only when there's none yet (a download going on)
 		if b, err := ytCoverMake(a.CoverSrc, a.CoverChoice); err == nil {
 			cover = b
 			_ = writeFileAtomic(coverPath, cover)

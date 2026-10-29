@@ -114,7 +114,7 @@ func (ui *IpodUI) updateTheme() bool {
 		for _, v := range st {
 			v.dirty = true
 			if np, ok := v.Custom.(*NowPlayingView); ok {
-				np.warpSrc, np.warpTrack = nil, nil
+				np.stageBuf = nil // (the cover's border and back follow the theme)
 			}
 			if a, ok := v.Custom.(*AboutView); ok {
 				a.list.dirty = true
@@ -122,7 +122,7 @@ func (ui *IpodUI) updateTheme() bool {
 		}
 	}
 	if cf := ui.cover; cf != nil && cf.np != nil {
-		cf.np.warpSrc, cf.np.warpTrack = nil, nil
+		cf.np.stageBuf = nil
 	}
 	ui.dirty = true
 	return true

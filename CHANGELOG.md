@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.58.3 (2026-10-29)
+
+A review of the last releases: bugs, cleaner code, less work per frame.
+
+### Fixed
+- **Move Music, safer:**
+  - **Never over someone else's files.** A move goes only into an empty music folder on the other card, or into one this same move started (a `.knullipod-move` note there says from where), so files already on the card aren't overwritten.
+  - **Checked before it starts.** On a FAT/exFAT card it refuses names the card can't hold, two names that differ only in upper/lower case (one would overwrite the other), and files over 4 GB (FAT32), before copying anything.
+  - **A repair now really copies again.** A copy that doesn't match is removed and copied again. Before, it could be skipped as "already there". If any had to be repaired, every file is checked once more.
+  - **Switched before anything is deleted.** The card is flushed, the music folder (and the database, if it lived inside) is switched and remembered on disk, and only then are the originals deleted. A file that changed since it was copied is kept. A file that vanished meanwhile no longer fails the whole move.
+  - **The database's folder** inside the music folder is copied when switching, not as it changes during the copy.
+  - **The same card:** a card is recognised by its UUID, so another card in the same slot doesn't count as it.
+  - **Smaller things.**
+    - Only the folders the move emptied are removed.
+    - Playlists over 16 MB stop the move instead of being cut short, and only lines starting with the old folder are rewritten.
+    - Downloads can't start during a move.
+    - Stop isn't offered while the originals are being deleted.
+    - The card is looked at every 2 s, not once per file.
+    - The space needed counts only what's left to copy, and files already there don't count in the speed.
+- **Screensaver:**
+  - The stick (wheel mode) no longer leaves a repeat running that scrolled the menus by itself after leaving.
+  - A key before it shows puts the brightness back.
+  - A song change can't leave the same album twice.
+  - A new library (a rescan) closes it.
+  - Starting it while it leaves keeps Now Playing's cover.
+  - Leaving during the fly-in flies back.
+  - Now Playing's card closes when it starts.
+  - The brightness set with L2 / R2 is saved when the key is let go, not 25 times a second.
+- **Now Playing:**
+  - The cover cross-fades from the first frame of a new album.
+  - START with no song plays and pauses as before.
+- **Cover Flow:** START on an album's back reached from the flow no longer opens Now Playing for that album. START with the options row open turns the cover over. Up and Down on the options row work as on the other Now Playing.
+- **YouTube cover:** the loading stripes move (they were still). The automatic cover no longer replaces an existing one when a download goes on.
+
+### Faster
+- **Now Playing's cover is kept and only drawn again when it changes.** Before, its 3D picture was redrawn every frame.
+  - The card's list uses a kept buffer, and the buffers are freed when the card closes.
+  - The cover isn't drawn under the card.
+  - The art isn't fetched when the cover is turned away.
+- **The screensaver:**
+  - It looks up the playing album once per song.
+  - It picks covers under one lock.
+  - Its warm-up no longer redraws the screen, and runs only when the screensaver can start by itself.
+  - The picked cover is scaled from the small picture.
+  - It doesn't work with the screen off.
+- **The brightness bar (L2 / R2, Hold)** no longer redraws the whole screen for 1.5 s. The brightness is read from the screen only when a key is first pressed.
+- **The YouTube cover's square** is made from a smaller copy of the picture as it moves, and its little picture is made away from the screen.
+- **A search's songs:** each album is sorted once.
+
+### Removed
+- The old Now Playing cover code (its own perspective drawing, now Cover Flow's) and other unused functions.
+
 ## v0.58.2 (2026-10-28)
 
 ### Fixed

@@ -41,13 +41,6 @@ func (ui *IpodUI) ssArtGet(al *Album, size int) *image.RGBA {
 	return img
 }
 
-// ssArtReady: the cover is in memory (without asking for it).
-func ssArtReady(al *Album, size int) bool {
-	ssArt.Lock()
-	defer ssArt.Unlock()
-	return ssArt.img[artKey{al, size}] != nil
-}
-
 func (ui *IpodUI) ssArtLoad(k artKey, bg bool) {
 	img := readArtDisk(k.a, k.dev)
 	if img == nil {
@@ -73,7 +66,11 @@ func (ui *IpodUI) ssArtLoad(k artKey, bg bool) {
 		}
 	}
 	ssArt.Unlock()
-	ui.post(func() { ui.dirty = true })
+	ui.post(func() {
+		if ui.saver != nil { // (the warm-up redraws nothing else)
+			ui.dirty = true
+		}
+	})
 }
 
 // ssWarm gets the covers of (up to ssMaxWarm) albums ready, one at a time,
@@ -116,19 +113,6 @@ func (ui *IpodUI) ssWarm() {
 			}
 		}
 	}()
-}
-
-// ssWarmAlbums: the albums whose covers are ready.
-func ssWarmAlbums(all []*Album) []*Album {
-	ssArt.Lock()
-	defer ssArt.Unlock()
-	var out []*Album
-	for _, a := range all {
-		if ssArt.img[artKey{a, ssCell}] != nil {
-			out = append(out, a)
-		}
-	}
-	return out
 }
 
 // drawNN draws src scaled into r (nearest pixel, opaque), darkened by dark

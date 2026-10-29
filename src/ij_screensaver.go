@@ -22,8 +22,8 @@ package main
 // turns it over in the middle of the screen with its songs, like Cover
 // Flow; choosing one plays it and the cover goes to the big square. B
 // turns it back, or leaves the screensaver. X / START play and pause,
-// L / R change song, L2 / R2 the brightness (when Dim the Screen is on;
-// shown in the bar). In Hold the keys do nothing (UP / DOWN still set
+// L / R change song, L2 / R2 the brightness (the screensaver's own when
+// Dim the Screen is on; shown in the bar). In Hold the keys do nothing (UP / DOWN still set
 // Hold's brightness, shown in the bar).
 
 import (
@@ -92,6 +92,7 @@ type screensaver struct {
 	subNext time.Time // when it changes over
 
 	npView *NowPlayingView // Now Playing under it while its cover flies (its own hidden)
+	lib    *Library        // the library its albums are from
 	hideAt time.Time       // when the flying cover takes over from Now Playing's (once it is flat)
 
 	selImg *image.RGBA // the cursor's cover, grown
@@ -100,12 +101,13 @@ type screensaver struct {
 	cardSince time.Time // the card's titles scroll from here
 	cardMarq  bool      // a title on the card is scrolling
 
-	nextFlip  time.Time
-	lastClock string
-	dimmed    bool
-	savedBri  int
-	briShown  time.Time
-	rng       *rand.Rand
+	nextFlip   time.Time
+	lastClock  string
+	dimmed     bool
+	levelDirty bool // its brightness changed: saved when L2 / R2 is let go
+	savedBri   int
+	briShown   time.Time
+	rng        *rand.Rand
 }
 
 // ---- starting and leaving ----
@@ -114,10 +116,15 @@ func (ui *IpodUI) startSaver() {
 	if ui.saver != nil && !ui.saver.exiting {
 		return
 	}
+	if old := ui.saver; old != nil && old.npView != nil {
+		ui.npFlyHide(old.npView, false) // (one still leaving: Now Playing's cover back)
+		old.npView.untilt = false
+	}
 	now := animNow()
 	s := &screensaver{fade: newAnim(0), bigFlp: newAnim(1), bigOn: newAnim(0), fly: newAnim(1),
 		selR: -1, selC: -1, selGrow: newAnim(0), songIn: newAnim(0), songChg: newAnim(1), subAlb: newAnim(0), cardOpen: newAnim(0), cardHome: newAnim(0),
 		rng: rand.New(rand.NewSource(now.UnixNano())), nextFlip: now.Add(3 * time.Second)}
+	s.lib = ui.app.Library
 	s.big = ui.saverPlaying()
 	if s.big != nil {
 		s.bigOn.Set(1)
@@ -140,7 +147,8 @@ func (ui *IpodUI) startSaver() {
 	// from Now Playing: its cover will fly into the big square
 	if s.big != nil && ui.nowPlayingOnScreen() && ui.coverUp() == nil {
 		if np, ok := ui.topScreen().Custom.(*NowPlayingView); ok {
-			s.flyFrom = npCoverRect(np, now)
+			np.closeCardNow() // (its cover, not its card, becomes the big one)
+			s.flyFrom = npCoverRect()
 			s.fly.Set(0)
 			s.npView = np
 		}
@@ -163,6 +171,7 @@ func (ui *IpodUI) startSaver() {
 		if s.savedBri > 0 && lvl < s.savedBri {
 			s.dimmed = true
 			setBacklightPercent(lvl)
+			briOSD.level = lvl
 			s.briShown = now.Add(1500 * time.Millisecond)
 		}
 	}
@@ -226,7 +235,6 @@ func (s *screensaver) flyTop(now time.Time) bool {
 // hands over to Now Playing's own cover (which fades in under it).
 func (ui *IpodUI) ssFlyDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	f := s.fly.Get(now)
-	op := 1.0
 	// (Now Playing's cover is held flat, just where the flying one lands:
 	// it takes over at the end, then turns if the song plays)
 	r := lerpRect(s.flyFrom, cellRect(0, 0, 2), f)
@@ -234,7 +242,7 @@ func (ui *IpodUI) ssFlyDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	if img == nil {
 		img = ui.ssArtGet(s.big, ssCell)
 	}
-	drawNN(dst, img, r, 0, op)
+	drawNN(dst, img, r, 0, 1)
 }
 
 // saverToNowPlaying: B with a song on: back to Now Playing, the big cover
@@ -248,25 +256,31 @@ func (ui *IpodUI) saverToNowPlaying() {
 		ui.stopSaver()
 		return
 	}
-	now := animNow()
+	np.closeCardNow()
 	np.untilt = true
 	np.tilt.Set(0)
 	ui.npFlyHide(np, true)
 	s.npView = np
-	s.flyFrom = npCoverRect(np, now)
+	s.flyFrom = npCoverRect()
 	s.fly.Set(1)
 	s.fly.To(0, 650*time.Millisecond, easeInOut, 0)
-	ui.stopSaver()
-	s.fade.To(0, 450*time.Millisecond, easeCSS, 0)
+	ui.stopSaverIn(450 * time.Millisecond)
 }
 
-func (ui *IpodUI) stopSaver() {
+func (ui *IpodUI) stopSaver() { ui.stopSaverIn(250 * time.Millisecond) }
+
+// stopSaverIn: it fades out over d (brightness back as it was).
+func (ui *IpodUI) stopSaverIn(d time.Duration) {
 	s := ui.saver
 	if s == nil || s.exiting {
 		return
 	}
 	s.exiting = true
-	s.fade.To(0, 250*time.Millisecond, easeCSS, 0)
+	s.fade.To(0, d, easeCSS, 0)
+	// still flying in from Now Playing: back to it
+	if s.npView != nil && s.fly.Target() == 1 && s.fly.Get(animNow()) < 1 {
+		s.fly.To(0, 400*time.Millisecond, easeInOut, 0)
+	}
 	if s.dimmed && !hold.on {
 		setBacklightPercent(s.savedBri)
 	}
@@ -288,6 +302,9 @@ func (ui *IpodUI) saverOnHold() int {
 // saverTick (each frame): starts it after the time without a key.
 func (ui *IpodUI) saverTick(now time.Time) {
 	if s := ui.saver; s != nil {
+		if s.lib != ui.app.Library && !s.exiting {
+			ui.stopSaver() // a new library: its albums aren't these any more
+		}
 		if s.exiting && !s.fade.Running() && !s.fly.Running() {
 			ui.saver = nil
 			ui.dirty = true
@@ -326,10 +343,9 @@ func (ui *IpodUI) saverSongPlaying() bool {
 	return p != nil && p.Track != nil && p.State == StatePlaying
 }
 
-// npCoverRect: where Now Playing's cover is on the screen (px), as a
-// square: 85% of 128 px about its centre when paused, a little bigger and
-// to the right when playing (turned).
-func npCoverRect(np *NowPlayingView, now time.Time) image.Rectangle {
+// npCoverRect: where Now Playing's cover is on the screen (px): held flat
+// while a cover flies to or from it.
+func npCoverRect() image.Rectangle {
 	// flat (it is held flat while a cover flies to or from it): 203 px,
 	// as measured on the screen
 	side := 203.0
@@ -353,8 +369,18 @@ func (ui *IpodUI) saverPlaying() *Album {
 	if p == nil || p.Track == nil || p.State == StateStopped {
 		return nil
 	}
-	return ui.trackAlbum(p.Track)
+	// (asked every frame: the album is looked up once per song)
+	if p.Track != ssPlayT || ui.app.Library != ssPlayLib {
+		ssPlayT, ssPlayLib, ssPlayAl = p.Track, ui.app.Library, ui.trackAlbum(p.Track)
+	}
+	return ssPlayAl
 }
+
+var (
+	ssPlayT   *Track
+	ssPlayLib *Library
+	ssPlayAl  *Album
+)
 
 // ---- the covers ----
 
@@ -370,16 +396,18 @@ func (s *screensaver) pick(ui *IpodUI, i int) *Album {
 		}
 	}
 	var ready, other []*Album
+	ssArt.Lock() // (once, not per album)
 	for _, a := range all {
 		if shown[a] {
 			continue
 		}
-		if ssArtReady(a, ssCell) {
+		if ssArt.img[artKey{a, ssCell}] != nil {
 			ready = append(ready, a)
 		} else {
 			other = append(other, a)
 		}
 	}
+	ssArt.Unlock()
 	switch {
 	case len(ready) > 0:
 		return ready[s.rng.Intn(len(ready))]
@@ -439,16 +467,12 @@ func (s *screensaver) follow(ui *IpodUI) {
 		s.bigFlp.Set(0)
 		s.bigFlp.To(1, 700*time.Millisecond, easeInOut, 0)
 		for i, t := range s.tiles {
-			if t.al == al && !s.covered(i/ssCols, i%ssCols) {
+			if (t.al == al || t.next == al) && !s.covered(i/ssCols, i%ssCols) {
 				s.turn(ui, i, old, 150*time.Millisecond)
 			}
 		}
 	}
-	if al != nil {
-		s.big = al
-	} else {
-		s.big = nil
-	}
+	s.big = al
 }
 
 // ---- keys ----
@@ -471,12 +495,20 @@ func (ui *IpodUI) saverKey(ev int) bool {
 		// doesn't count as a long press)
 		delete(ui.pressStart, k)
 		delete(ui.longFired, k)
+		if (k == L2 || k == R2) && s.levelDirty {
+			s.levelDirty = false
+			ui.savePrefs()
+		}
 		return true // presses only
 	}
 	now := animNow()
 	k := Key(ev)
 	if !s.ready {
-		ui.saver = nil // not shown yet: a key leaves it
+		// not shown yet: a key leaves it (the brightness back as it was)
+		if s.dimmed && !hold.on {
+			setBacklightPercent(s.savedBri)
+		}
+		ui.saver = nil
 		return true
 	}
 	if s.card != nil {
@@ -490,7 +522,9 @@ func (ui *IpodUI) saverKey(ev int) bool {
 			k = LEFT
 		}
 		s.moveSel(k, now)
-		ui.repeatKey, ui.repeatStart, ui.repeatLast = Key(ev), now, now
+		if Key(ev) != WHEEL_CW && Key(ev) != WHEEL_CCW { // (the wheel never releases: no repeat)
+			ui.repeatKey, ui.repeatStart, ui.repeatLast = Key(ev), now, now
+		}
 	case A:
 		if s.selR < 0 {
 			s.moveSel(NONE, now)
@@ -549,10 +583,7 @@ func (ui *IpodUI) saverRepeat(k Key) {
 // the first cover); the big cover counts as one.
 func (s *screensaver) moveSel(k Key, now time.Time) {
 	if s.selR < 0 {
-		s.selR, s.selC = 0, 0
-		if s.big == nil || s.bigOn.Target() == 0 {
-			s.selR, s.selC = 0, 0
-		}
+		s.selR, s.selC = 0, 0 // (the first cover, or the big one)
 	} else {
 		dr, dc := 0, 0
 		switch k {
@@ -609,21 +640,12 @@ func (ui *IpodUI) saverBrightness(up bool) {
 	if !s.dimmed {
 		s.savedBri, s.dimmed = cur, true
 	}
-	step := 5
-	if cur < 10 || cur == 10 && !up {
-		step = 1
-	}
-	if up {
-		cur += step
-	} else {
-		cur -= step
-	}
-	cur = min(max(cur, 1), 100)
+	cur = briStep(cur, up)
 	setBacklightPercent(cur)
 	saverLevel = cur
 	briOSD.level = cur
 	s.briShown = animNow().Add(1500 * time.Millisecond)
-	ui.savePrefs()
+	s.levelDirty = true // (saved when the key is let go)
 }
 
 // ---- the cover turned over ----
@@ -889,8 +911,8 @@ func (ui *IpodUI) ssCover(dst *image.RGBA, al *Album, r image.Rectangle, turn, o
 	drawNN(dst, img, image.Rect(x, r.Min.Y, x+w, r.Max.Y), (1-k)*0.55, op)
 }
 
-// faceOf: during a flip the old album shows the first half, the new one
-// the second (t 0 → 1, the turn 0 → 1 with edge-on at 0.5).
+// flipFace: during a flip the old album shows the first half (edge-on at
+// t = 0.5), the new one the second.
 func flipFace(from, to *Album, t float64) (*Album, float64) {
 	if t < 0.5 {
 		return from, t
@@ -977,9 +999,11 @@ func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 		if al != nil && g >= 1 {
 			// grown: scaled properly once
 			if s.selImg == nil || s.selFor != al || s.selImg.Bounds().Dx() != r.Dx() {
-				src := ui.ssArtGet(al, 2*ssCell)
-				if src == nil {
-					src = ui.ssArtGet(al, ssCell)
+				src := ui.ssArtGet(al, ssCell)
+				if t == nil { // (the big one: its own size)
+					if b := ui.ssArtGet(al, 2*ssCell); b != nil {
+						src = b
+					}
 				}
 				if src != nil {
 					s.selImg, s.selFor = scaleImage(src, r.Dx(), r.Dy()), al
@@ -1165,9 +1189,9 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	}
 	// left: the clock, or the brightness for a moment after it changes
 	if now.Before(s.briShown) || hold.on && now.Before(hold.levelShown) {
-		lvl := getBacklightPercent()
-		if lvl < 0 {
-			lvl = briOSD.level
+		lvl := briOSD.level // (set with the brightness: not read from the screen each frame)
+		if lvl <= 0 {
+			lvl = getBacklightPercent()
 		}
 		if hold.on {
 			lvl = hold.cur

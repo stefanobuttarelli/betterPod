@@ -10,22 +10,29 @@ package main
 //
 // Moving the music, in the background, in steps that can't lose anything:
 //
-//  1. Counting: every file under the music folder (hidden ones too: the
-//     database may live there), grouped by album folder for the screen.
+//  0. Before anything: the destination must be empty or this same move's
+//     (a .knullipod-move file there says which folder it comes from), so
+//     nothing of the card's own is overwritten; on a FAT/exFAT card, names
+//     it can't hold (or two that differ only in upper/lower case) and files
+//     over 4 GB (FAT32) stop it before it starts.
+//  1. Counting: every file under the music folder (hidden ones too, but
+//     not the database's folder when it lives there: it goes on changing),
+//     grouped by album folder for the screen.
 //  2. Copying, folder by folder, into <card>/music: each file through
 //     name.kpart, synced, then renamed, with its CRC-32 taken on the way
-//     and its date kept. A file already there with the same size is
-//     skipped (a move that stopped goes on). Playlists' lines with the old
-//     folder are rewritten with the new one. A card taken out pauses it
-//     until the card is back; a full card stops it.
-//  3. Checking: each copied file is read back from the card (dropped from
-//     the cache first, so it's really the card) and its CRC compared; a
-//     file that doesn't match is copied again once.
-//  4. Only then, when moving (not copying): the originals are deleted, and
-//     the empty folders (not the music folder itself).
-//  5. The music folder becomes the new one (and the database with it, if
-//     it was inside), Now Playing is cleared (its files moved) and the
-//     library is scanned again.
+//     and its date kept. A file already there with the same size (a move
+//     that stopped) is checked against the original instead. Playlists'
+//     lines starting with the old folder get the new one. A card taken out
+//     pauses it until that card (its UUID) is back; a full card stops it.
+//  3. Checking: each file is read back from the card (dropped from the
+//     cache first, so it's really the card) and its CRC compared; a file
+//     that doesn't match is copied again. If any was, every file is checked
+//     once more (a repair can't undo another unseen).
+//  4. The card is flushed, then the music folder becomes the new one (and
+//     the database with it, copied, if it was inside), remembered on disk.
+//  5. Only then, when moving (not copying): the originals are deleted, but
+//     not one changed since it was copied, and the folders they leave empty.
+//     Now Playing is cleared (its files moved) and the library scanned.
 //
 // The screen (ij_movemusic_view.go) shows it as the albums travelling
 // from one card's pile to the other's.
@@ -166,9 +173,6 @@ func cardName(dev, mnt string) string {
 	case strings.HasPrefix(dev, "/dev/mmcblk1"):
 		return "SD 2"
 	}
-	if os.Getenv("MIYOOPOD_FAKE_CARDS") != "" {
-		return filepath.Base(mnt) // (tests)
-	}
 	return filepath.Base(mnt)
 }
 
@@ -221,7 +225,8 @@ type moveFile struct {
 	size int64
 	mod  time.Time
 	crc  uint32
-	have bool // already there (same size): not copied, checked
+	have bool // already there (same size): not copied, checked against the original
+	gone bool // gone from the music folder since it was counted: left out
 }
 
 type moveUnit struct {
@@ -249,10 +254,14 @@ type moveJob struct {
 	err      string
 	speed    float64 // bytes/s (smoothed)
 	stop     chan struct{}
-	started  time.Time
 	songs    int
 	cardRoot string // the destination card's folder (its mount point)
 	cardDev  string // its device: a card taken out leaves an empty folder there
+	cardUUID string // its filesystem's UUID: another card in the same slot isn't it
+	fsType   string // its filesystem (vfat, exfat…: limits on names and sizes)
+	dataRel  string // the database's folder, when inside the music folder (relative)
+	okAt     time.Time
+	ok       bool
 }
 
 var moveCur *moveJob // the one running or just ended (UI goroutine)
@@ -261,6 +270,13 @@ func (j *moveJob) set(f func()) {
 	j.mu.Lock()
 	f()
 	j.mu.Unlock()
+}
+
+// snapPhase: the phase (read under the lock: the worker writes it).
+func (j *moveJob) snapPhase() string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.phase
 }
 
 func (j *moveJob) stopped() bool {
@@ -278,8 +294,11 @@ func (ui *IpodUI) startMusicMove(c musicCard, move bool) {
 	from := filepath.Clean(MUSIC_ROOT)
 	to := musicDest(c)
 	_, fromDev := mountOf(from)
+	if r, err := filepath.EvalSymlinks(from); err == nil {
+		from = r // (a music folder that is a link: its real place)
+	}
 	j := &moveJob{from: from, to: to, fromName: cardName(fromDev, from), toName: c.Name, move: move,
-		phase: "count", stop: make(chan struct{}), started: time.Now()}
+		phase: "count", stop: make(chan struct{})}
 	if os.Getenv("MIYOOPOD_FAKE_CARDS") != "" {
 		j.fromName = filepath.Base(filepath.Dir(from))
 	}
@@ -289,6 +308,11 @@ func (ui *IpodUI) startMusicMove(c musicCard, move bool) {
 	j.cardRoot = filepath.Dir(to)
 	if os.Getenv("MIYOOPOD_FAKE_CARDS") == "" {
 		_, j.cardDev = mountOf(j.cardRoot)
+		j.cardUUID = uuidOf(j.cardDev)
+		j.fsType = fsTypeOf(j.cardRoot)
+	}
+	if d := filepath.Clean(dataDir()); strings.HasPrefix(d+"/", from+"/") && d != from {
+		j.dataRel, _ = filepath.Rel(from, d)
 	}
 	moveCur = j
 	dbBusy = true // no library scans meanwhile
@@ -314,15 +338,7 @@ func (ui *IpodUI) startMusicMove(c musicCard, move bool) {
 			dbBusy = false
 			switch {
 			case err == nil:
-				oldData := dataDir()
-				if err2 := setMusicRoot(j.to); err2 != nil {
-					j.set(func() { j.phase, j.err = "failed", "Couldn't switch: "+err2.Error() })
-					return
-				}
-				if strings.HasPrefix(oldData+"/", j.from+"/") {
-					// the database was in the music folder: it moved with it
-					_ = setDataDir(filepath.Join(j.to, strings.TrimPrefix(oldData, j.from)))
-				}
+				// (the music folder was switched by run, before deleting)
 				ui.clearNowPlaying()
 				ui.rescanLibrary()
 				logMsg("Move Music: done, the music is in " + j.to)
@@ -339,11 +355,17 @@ func (ui *IpodUI) startMusicMove(c musicCard, move bool) {
 }
 
 func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
+	// 0. the destination: empty, or this same move's
+	if err := j.checkDest(); err != nil {
+		return err
+	}
 	// 1. counting
 	units := map[string]*moveUnit{}
 	other := &moveUnit{dir: ""}
 	var all int64
 	nfiles := 0
+	var limits []string
+	lower := map[string]string{}
 	err := filepath.Walk(j.from, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // an unreadable folder: left out
@@ -351,13 +373,20 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 		if j.stopped() {
 			return errIACancelled
 		}
-		if info.IsDir() || !info.Mode().IsRegular() {
-			return nil
-		}
-		if strings.HasSuffix(p, ".kpart") {
-			return nil
-		}
 		rel, _ := filepath.Rel(j.from, p)
+		if info.IsDir() {
+			if j.dataRel != "" && rel == j.dataRel {
+				return filepath.SkipDir // the database: copied when switching
+			}
+			return nil
+		}
+		if !info.Mode().IsRegular() || strings.HasSuffix(p, ".kpart") {
+			return nil
+		}
+		if why := j.fsLimit(rel, info.Size(), lower); why != "" {
+			limits = append(limits, why)
+			return nil
+		}
 		f := &moveFile{rel: rel, size: info.Size(), mod: info.ModTime()}
 		d := filepath.Dir(p)
 		u := other
@@ -376,6 +405,13 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 	if err != nil {
 		return err
 	}
+	if len(limits) > 0 {
+		more := ""
+		if len(limits) > 1 {
+			more = fmt.Sprintf(" (and %d more)", len(limits)-1)
+		}
+		return fmt.Errorf("%s%s: nothing was copied", limits[0], more)
+	}
 	var list []*moveUnit
 	for _, u := range units {
 		list = append(list, u)
@@ -387,8 +423,16 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 	if nfiles == 0 {
 		return errors.New("There's no music to move")
 	}
-	if free, _, ok := diskSpace(filepath.Dir(j.to)); ok && free < all-j.alreadyThere(list)+64<<20 {
-		return fmt.Errorf("Not enough space on %s: %s free, %s needed", j.toName, humanBytes(free), humanBytes(all))
+	need := all - j.alreadyThere(list)
+	if free, _, ok := diskSpace(filepath.Dir(j.to)); ok && free < need+64<<20 {
+		return fmt.Errorf("Not enough space on %s: %s free, %s needed", j.toName, humanBytes(free), humanBytes(need))
+	}
+	// this move's: a stopped one goes on, and nothing else is ever overwritten
+	if err := os.MkdirAll(j.to, 0755); err != nil {
+		return err
+	}
+	if err := writeFileAtomic(filepath.Join(j.to, moveMarker), []byte(j.from+"\n")); err != nil {
+		return err
 	}
 	j.set(func() { j.units, j.all, j.files, j.songs, j.phase = list, all, nfiles, songs, "copy" })
 	// the covers load now, so they show as the albums go
@@ -415,7 +459,7 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 			fileDone, fileU := done, udone // a try that fails counts again from here
 			for {
 				done, udone = fileDone, fileU
-				err := j.copyFile(f, buf, func(n int64) {
+				err := j.copyFile(f, buf, false, func(n int64) {
 					udone += n
 					done += n
 					now := time.Now()
@@ -433,6 +477,10 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 					})
 				})
 				if err == nil {
+					if f.have || f.gone {
+						// not copied: not part of the speed
+						j.set(func() { lastB += f.size })
+					}
 					break
 				}
 				if errors.Is(err, errIACancelled) {
@@ -441,89 +489,278 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 				if errors.Is(err, syscall.ENOSPC) {
 					return fmt.Errorf("%s is full", j.toName)
 				}
-				if errors.Is(err, errCardGone) || !j.cardOK() {
-					// the card was taken out: wait for it
-					j.set(func() { j.phase = "paused" })
-					for {
-						if j.stopped() {
-							return errIACancelled
-						}
-						time.Sleep(time.Second)
-						if j.cardOK() {
-							break
-						}
+				if errors.Is(err, errCardGone) || !j.cardOK(true) {
+					if err := j.waitCard(); err != nil {
+						return err
 					}
-					j.set(func() { j.phase = "copy" })
-					// the file's bytes were counted: count them again
-					continue
+					continue // the file's bytes were counted: count them again
 				}
 				return fmt.Errorf("%s: %v", f.rel, err)
 			}
 		}
 	}
-	// 3. checking
+
+	// 3. checking (all again if any had to be copied again)
+	for pass := 0; ; pass++ {
+		repaired, err := j.checkAll(list, buf, pass == 0)
+		if err != nil {
+			return err
+		}
+		if repaired == 0 {
+			break
+		}
+		if pass == 1 {
+			return errors.New("The copies keep changing: is the card all right?")
+		}
+	}
+
+	// 4. the card flushed, then the music folder switched (and the
+	// database, if it was inside), before anything is deleted
+	syscall.Sync()
+	if err := j.switchTo(ui); err != nil {
+		return fmt.Errorf("Couldn't switch to %s: %v", j.toName, err)
+	}
+
+	// 5. deleting the originals (not one changed since it was copied)
+	if j.move {
+		j.set(func() { j.phase, j.checked = "delete", 0 })
+		n, kept := 0, 0
+		dirs := map[string]bool{}
+		for _, u := range list {
+			for _, f := range u.files {
+				n++
+				j.set(func() { j.checked = n })
+				if f.gone {
+					continue
+				}
+				src := filepath.Join(j.from, f.rel)
+				if st, err := os.Stat(src); err != nil || st.Size() != f.size || !st.ModTime().Equal(f.mod) {
+					if err == nil {
+						kept++
+						logMsg("Move Music: kept (changed since copied): " + f.rel)
+					}
+					continue
+				}
+				if err := os.Remove(src); err != nil && !os.IsNotExist(err) {
+					logMsg("Move Music: " + err.Error())
+				}
+				dirs[filepath.Dir(src)] = true
+			}
+		}
+		if j.dataRel != "" {
+			os.RemoveAll(filepath.Join(j.from, j.dataRel)) // (copied when switching)
+			dirs[filepath.Dir(filepath.Join(j.from, j.dataRel))] = true
+		}
+		removeEmptyDirs(j.from, dirs)
+		if kept > 0 {
+			logMsg(fmt.Sprintf("Move Music: %d changed files kept in %s", kept, j.from))
+		}
+	}
+	os.Remove(filepath.Join(j.to, moveMarker))
+	j.set(func() { j.phase = "done" })
+	return nil
+}
+
+// moveMarker: in the destination while a move goes into it: the folder it
+// comes from.
+const moveMarker = ".knullipod-move"
+
+// checkDest: the destination is empty (but for hidden files), or holds
+// this same move's files (its marker names this music folder).
+func (j *moveJob) checkDest() error {
+	if b, err := os.ReadFile(filepath.Join(j.to, moveMarker)); err == nil && strings.TrimSpace(string(b)) == j.from {
+		return nil
+	}
+	busy := false
+	filepath.Walk(j.to, func(p string, info os.FileInfo, err error) error {
+		if err != nil || busy {
+			return nil
+		}
+		if info.Mode().IsRegular() && !strings.HasPrefix(info.Name(), ".") && !strings.HasSuffix(p, ".kpart") {
+			busy = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if busy {
+		return fmt.Errorf("%s already has music in %s: use the music already there, or empty that folder first", j.toName, j.to)
+	}
+	return nil
+}
+
+// fsLimit: why the card can't hold this file (FAT/exFAT names, FAT32's
+// 4 GB), or "". lower keeps the names seen, by folder and lower case.
+func (j *moveJob) fsLimit(rel string, size int64, lower map[string]string) string {
+	fat := j.fsType == "vfat" || j.fsType == "msdos" || j.fsType == "fat" || j.fsType == "exfat"
+	if !fat {
+		return ""
+	}
+	if j.fsType != "exfat" && size >= 4<<30 {
+		return fmt.Sprintf("%s is over 4 GB, too big for %s", rel, j.toName)
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if strings.ContainsAny(part, `:*?"<>|\`) || strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") {
+			return fmt.Sprintf("%s has a name %s can't hold", rel, j.toName)
+		}
+	}
+	k := strings.ToLower(rel)
+	if o, ok := lower[k]; ok && o != rel {
+		return fmt.Sprintf("%s and %s differ only in upper/lower case, which %s can't tell apart", o, rel, j.toName)
+	}
+	lower[k] = rel
+	return ""
+}
+
+// waitCard: paused until the card (the same one) is back.
+func (j *moveJob) waitCard() error {
+	phase := ""
+	j.set(func() { phase, j.phase = j.phase, "paused" })
+	for {
+		if j.stopped() {
+			return errIACancelled
+		}
+		time.Sleep(time.Second)
+		if j.cardOK(true) {
+			break
+		}
+	}
+	j.set(func() { j.phase = phase })
+	return nil
+}
+
+// checkAll reads every copy back and copies again those that don't match
+// (repair: false on the second pass, which only reports them).
+func (j *moveJob) checkAll(list []*moveUnit, buf []byte, repair bool) (int, error) {
 	j.set(func() { j.phase, j.cur, j.checked = "verify", 0, 0 })
-	checked := 0
+	checked, repaired := 0, 0
 	for k, u := range list {
 		j.set(func() { j.cur = k })
 		for _, f := range u.files {
 			if j.stopped() {
-				return errIACancelled
+				return 0, errIACancelled
 			}
-			for !j.cardOK() { // taken out while checking: wait for it
-				j.set(func() { j.phase = "paused" })
-				if j.stopped() {
-					return errIACancelled
+			if !j.cardOK(false) {
+				if err := j.waitCard(); err != nil {
+					return 0, err
 				}
-				time.Sleep(time.Second)
 			}
-			j.set(func() { j.phase = "verify" })
-			ok, err := j.check(f, buf)
-			if err != nil || !ok {
-				// once more from the start
-				if cerr := j.copyFile(&moveFile{rel: f.rel, size: f.size, mod: f.mod}, buf, func(int64) {}); cerr != nil {
-					return fmt.Errorf("%s: %v", f.rel, cerr)
+			if !f.gone {
+				ok, err := j.check(f, buf)
+				if errors.Is(err, os.ErrNotExist) && !fileExists(filepath.Join(j.from, f.rel)) {
+					f.gone, ok, err = true, true, nil // gone from the music folder meanwhile
 				}
-				f.have = false
-				if ok, err = j.check(f, buf); err != nil || !ok {
-					return fmt.Errorf("%s doesn't match its copy", f.rel)
+				if err != nil || !ok {
+					repaired++
+					if !repair {
+						return repaired, nil
+					}
+					// once more from the start (the old copy removed first,
+					// or it would be taken as already there)
+					os.Remove(filepath.Join(j.to, f.rel))
+					f.have = false
+					if st, err := os.Stat(filepath.Join(j.from, f.rel)); err == nil {
+						f.size, f.mod = st.Size(), st.ModTime()
+					}
+					if cerr := j.copyFile(f, buf, true, func(int64) {}); cerr != nil {
+						return 0, fmt.Errorf("%s: %v", f.rel, cerr)
+					}
 				}
 			}
 			checked++
 			j.set(func() { j.checked = checked })
 		}
 	}
-	// 4. deleting the originals
-	if j.move {
-		j.set(func() { j.phase, j.checked = "delete", 0 })
-		n := 0
-		for _, u := range list {
-			for _, f := range u.files {
-				if err := os.Remove(filepath.Join(j.from, f.rel)); err != nil && !os.IsNotExist(err) {
-					logMsg("Move Music: " + err.Error())
-				}
-				n++
-				j.set(func() { j.checked = n })
+	return repaired, nil
+}
+
+// switchTo makes the copy the music folder, on the UI goroutine: the
+// database first (copied, when it was inside the music folder), then the
+// folder, both remembered on disk.
+func (j *moveJob) switchTo(ui *IpodUI) error {
+	res := make(chan error, 1)
+	ui.postSure(func() {
+		if j.dataRel != "" {
+			ui.savePrefs()
+			from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
+			if err := copyDatabase(from, to, false, nil); err != nil {
+				res <- err
+				return
+			}
+			if err := setDataDir(to); err != nil {
+				res <- err
+				return
 			}
 		}
-		removeEmptyDirs(j.from)
-	}
-	j.set(func() { j.phase = "done" })
-	return nil
+		res <- setMusicRoot(j.to)
+	})
+	return <-res
 }
 
 // cardOK: the destination card is in, and it's the same card (not the
-// empty folder a card taken out leaves, on the system card).
-func (j *moveJob) cardOK() bool {
+// empty folder a card taken out leaves, on the system card, nor another
+// card in the same slot). Looked at again at most every 2 s unless full.
+func (j *moveJob) cardOK(full bool) bool {
+	if !full && time.Since(j.okAt) < 2*time.Second {
+		return j.ok
+	}
+	ok := j.cardCheck()
+	j.ok, j.okAt = ok, time.Now()
+	return ok
+}
+
+func (j *moveJob) cardCheck() bool {
 	if _, err := os.Stat(j.cardRoot); err != nil {
 		return false
 	}
 	if j.cardDev != "" {
-		if _, dev := mountOf(j.cardRoot); dev != j.cardDev {
+		_, dev := mountOf(j.cardRoot)
+		if dev != j.cardDev {
+			return false
+		}
+		if j.cardUUID != "" && uuidOf(dev) != j.cardUUID {
 			return false
 		}
 	}
 	return checkWritable(j.cardRoot) == nil
+}
+
+// uuidOf: the UUID of the filesystem on dev ("" if not known).
+func uuidOf(dev string) string {
+	if dev == "" {
+		return ""
+	}
+	want, err := filepath.EvalSymlinks(dev)
+	if err != nil {
+		want = dev
+	}
+	es, err := os.ReadDir("/dev/disk/by-uuid")
+	if err != nil {
+		return ""
+	}
+	for _, e := range es {
+		if t, err := filepath.EvalSymlinks(filepath.Join("/dev/disk/by-uuid", e.Name())); err == nil && t == want {
+			return e.Name()
+		}
+	}
+	return ""
+}
+
+// fsTypeOf: the filesystem type of the mount holding path ("" if unknown).
+func fsTypeOf(path string) string {
+	mnt, _ := mountOf(path)
+	f, err := os.Open("/proc/mounts")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		fs := strings.Fields(sc.Text())
+		if len(fs) >= 3 && strings.ReplaceAll(fs[1], `\040`, " ") == mnt {
+			return fs[2]
+		}
+	}
+	return ""
 }
 
 // alreadyThere: the bytes of files already on the card (same size).
@@ -541,23 +778,29 @@ func (j *moveJob) alreadyThere(units []*moveUnit) int64 {
 
 // copyFile copies one file through .kpart (progress gets the bytes as they
 // go); a file already there with its size is left (f.have).
-func (j *moveJob) copyFile(f *moveFile, buf []byte, progress func(int64)) error {
+func (j *moveJob) copyFile(f *moveFile, buf []byte, force bool, progress func(int64)) error {
 	src := filepath.Join(j.from, f.rel)
 	dst := filepath.Join(j.to, f.rel)
-	if !j.cardOK() {
+	if !j.cardOK(false) {
 		return errCardGone
 	}
-	isList := strings.EqualFold(filepath.Ext(f.rel), ".m3u") || strings.EqualFold(filepath.Ext(f.rel), ".m3u8")
-	if st, err := os.Stat(dst); err == nil && st.Size() == f.size && !isList {
-		f.have = true
+	isList := isPlaylistFile(f.rel)
+	if st, err := os.Stat(dst); !force && err == nil && st.Size() == f.size && !isList {
+		f.have = true // (checked against the original, not taken on trust)
 		progress(f.size)
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+	in, err := os.Open(src)
+	if os.IsNotExist(err) {
+		f.gone = true // gone from the music folder since it was counted
+		progress(f.size)
+		return nil
+	}
+	if err != nil {
 		return err
 	}
-	in, err := os.Open(src)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		in.Close()
 		return err
 	}
 	defer in.Close()
@@ -569,15 +812,19 @@ func (j *moveJob) copyFile(f *moveFile, buf []byte, progress func(int64)) error 
 	h := crc32.NewIEEE()
 	var r io.Reader = in
 	if isList {
-		// playlists: lines with the old folder get the new one
-		b, err := io.ReadAll(io.LimitReader(in, 16<<20))
+		// playlists: lines starting with the old folder get the new one
+		if f.size > 16<<20 {
+			out.Close()
+			os.Remove(part)
+			return errors.New("a playlist over 16 MB")
+		}
+		b, err := io.ReadAll(in)
 		if err != nil {
 			out.Close()
 			os.Remove(part)
 			return err
 		}
-		b = bytes.ReplaceAll(b, []byte(j.from+"/"), []byte(j.to+"/"))
-		r = bytes.NewReader(b)
+		r = bytes.NewReader(rewritePlaylist(b, j.from, j.to))
 	}
 	for {
 		if j.stopped() {
@@ -629,6 +876,23 @@ func (j *moveJob) copyFile(f *moveFile, buf []byte, progress func(int64)) error 
 	return nil
 }
 
+func isPlaylistFile(rel string) bool {
+	e := strings.ToLower(filepath.Ext(rel))
+	return e == ".m3u" || e == ".m3u8"
+}
+
+// rewritePlaylist: the lines starting with from/ start with to/ instead.
+func rewritePlaylist(b []byte, from, to string) []byte {
+	lines := bytes.SplitAfter(b, []byte("\n"))
+	old, neu := []byte(from+"/"), []byte(to+"/")
+	for i, l := range lines {
+		if bytes.HasPrefix(l, old) {
+			lines[i] = append(append([]byte{}, neu...), l[len(old):]...)
+		}
+	}
+	return bytes.Join(lines, nil)
+}
+
 // check reads the copy back from the card and compares it (with the
 // original, for a file that was already there).
 func (j *moveJob) check(f *moveFile, buf []byte) (bool, error) {
@@ -646,7 +910,7 @@ func (j *moveJob) check(f *moveFile, buf []byte) (bool, error) {
 		return h.Sum32(), n, err
 	}
 	want := f.crc
-	isList := strings.EqualFold(filepath.Ext(f.rel), ".m3u") || strings.EqualFold(filepath.Ext(f.rel), ".m3u8")
+	isList := isPlaylistFile(f.rel)
 	if f.have {
 		c, n, err := sum(filepath.Join(j.from, f.rel), false)
 		if err != nil {
@@ -671,21 +935,20 @@ var errCardGone = errors.New("the card isn't there")
 
 // fadviseDontNeed drops a file's pages from the cache.
 func fadviseDontNeed(f *os.File) {
-	_ = f.Sync()
 	syscall.Syscall6(syscall.SYS_FADVISE64, f.Fd(), 0, 0, 4 /* POSIX_FADV_DONTNEED */, 0, 0)
 }
 
-// removeEmptyDirs removes the empty folders under root (not root).
-func removeEmptyDirs(root string) {
-	var dirs []string
-	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err == nil && info.IsDir() && p != root {
-			dirs = append(dirs, p)
+// removeEmptyDirs removes the folders the moved files left empty, and
+// their parents that are empty then, up to root (not root).
+func removeEmptyDirs(root string, dirs map[string]bool) {
+	var list []string
+	for d := range dirs {
+		for ; strings.HasPrefix(d, root+"/"); d = filepath.Dir(d) {
+			list = append(list, d)
 		}
-		return nil
-	})
-	sort.Slice(dirs, func(a, b int) bool { return len(dirs[a]) > len(dirs[b]) })
-	for _, d := range dirs {
+	}
+	sort.Slice(list, func(a, b int) bool { return len(list[a]) > len(list[b]) })
+	for _, d := range list {
 		os.Remove(d) // only when empty
 	}
 }
@@ -707,7 +970,7 @@ func (ui *IpodUI) musicFolderView() *View {
 		if musicDirMissing != "" {
 			items = append(items, Item{Label: "Chosen folder not found", Sublabel: musicDirMissing + " · is the card in?", NoArrow: true})
 		}
-		if j := moveCur; j != nil && j.phase != "done" && j.phase != "failed" && j.phase != "stopped" {
+		if j := moveCur; j != nil && moveRunning(j.snapPhase()) {
 			items = append(items, Item{Label: "Moving the music…", Sublabel: "Press A to see it", OnSelect: func() {
 				ui.showView(&View{ID: "moveMusic", Title: "Moving Music", Kind: KindFull, Custom: &moveView{job: j}}, "")
 			}})

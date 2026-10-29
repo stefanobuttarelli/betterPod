@@ -68,8 +68,16 @@ func (m *moveView) OnCenter(ui *IpodUI) {
 
 // OnMenu: B asks before stopping (nothing copied is lost, nothing deleted).
 func (m *moveView) OnMenu(ui *IpodUI) {
-	if !moveRunning(m.snap().phase) {
+	ph := m.snap().phase
+	if !moveRunning(ph) {
 		ui.hideView()
+		return
+	}
+	if ph == "delete" {
+		// the copies are checked and in use: deleting the originals can't stop
+		ui.showSheetTitled("Deleting the originals: the music is already on "+m.snap().toName+".", []SheetOption{
+			{Label: "Hide (it goes on)", OnSelect: func() { ui.hideView() }},
+		})
 		return
 	}
 	ui.showSheetTitled("Stop moving the music? What's copied stays; nothing is deleted.", []SheetOption{

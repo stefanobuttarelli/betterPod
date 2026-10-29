@@ -748,6 +748,11 @@ func (ui *IpodUI) startIADownload(it *iaItem, format string, files []iaFile) {
 // startDownloadJob shows the download screen for d and runs run in the
 // background (Internet Archive, YouTube); again restarts it (Try Again).
 func (ui *IpodUI) startDownloadJob(d *iaDownload, run func() error, again func()) {
+	// not into a music folder being moved to another card
+	if j := moveCur; j != nil && moveRunning(j.snapPhase()) {
+		ui.showToast("Wait for the music to be moved")
+		return
+	}
 	d.again = again
 	iaCur = d
 	ui.showView(ui.iaDownloadView(), "")

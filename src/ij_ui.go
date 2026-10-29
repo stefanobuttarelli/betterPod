@@ -646,7 +646,7 @@ func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) {
 
 func (ui *IpodUI) onTrackChanged() {
 	// the screensaver's big cover of the new album, ready before it shows
-	if a := ui.saverPlaying(); a != nil {
+	if a := ui.saverPlaying(); a != nil && (saverAfter > 0 || ui.saver != nil) {
 		ui.ssArtGet(a, 2*ssCell)
 	}
 	ui.preloadPlaying() // and Now Playing's (this song's and its neighbours')
@@ -713,6 +713,15 @@ func (ui *IpodUI) HandleKey(ev int) {
 			return
 		}
 	}
+	// Cover Flow's Now Playing: the options row takes the arrows as on the
+	// other Now Playing
+	if cf := ui.coverUp(); k != START && cf != nil && cf.playing && cf.np != nil && ui.activeSheet() == nil && cf.np.OnKey(ui, k) {
+		if k == UP || k == DOWN || k == LEFT || k == RIGHT {
+			ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
+		}
+		ui.dirty = true
+		return
+	}
 	// a screen of its own that takes the d-pad and L/R itself (the cover's
 	// square: moving it in two directions and zooming)
 	if ui.customKey(k) {
@@ -754,7 +763,8 @@ func (ui *IpodUI) HandleKey(ev int) {
 }
 
 // customKey offers a key to the screen on top when it takes keys itself
-// (OnKey), with nothing over it (a sheet, the keyboard) and not sliding.
+// (OnKey), with nothing over it (a sheet, the keyboard, Cover Flow) and not
+// leaving.
 func (ui *IpodUI) customKey(k Key) bool {
 	if ui.keyboard != nil || len(ui.sheets) > 0 || len(ui.full) == 0 || ui.coverUp() != nil {
 		return false
@@ -767,8 +777,9 @@ func (ui *IpodUI) customKey(k Key) bool {
 	return ok && ck.OnKey(ui, k)
 }
 
-// checkRepeat repeats a held d-pad direction (after 300 ms, faster after 1.5 s).
-// Only UP/DOWN/LEFT/RIGHT repeat; A and B act on release instead.
+// checkRepeat repeats a held key (after 300 ms, faster after 1.5 s): the
+// d-pad, L2 / R2 (brightness), and L / R where a screen takes them (the
+// cover's square); A and B act on release instead.
 func (ui *IpodUI) checkRepeat(now time.Time) {
 	if ui.repeatKey == NONE || now.Sub(ui.repeatStart) < 300*time.Millisecond {
 		return
@@ -790,6 +801,10 @@ func (ui *IpodUI) checkRepeat(now time.Time) {
 		return
 	}
 	if ui.customKey(ui.repeatKey) {
+		ui.dirty = true
+		return
+	}
+	if cf := ui.coverUp(); cf != nil && cf.playing && cf.np != nil && len(ui.sheets) == 0 && cf.np.OnKey(ui, ui.repeatKey) {
 		ui.dirty = true
 		return
 	}
@@ -1434,7 +1449,7 @@ func (ui *IpodUI) Run() {
 		}
 		ui.tickOverlays(now)
 		ui.saverTick(now)
-		if ui.saver != nil && !ui.saver.exiting {
+		if ui.saver != nil && !ui.saver.exiting && !app.Locked {
 			ui.saverFrame(now)
 		}
 		ui.checkLongPress(now)

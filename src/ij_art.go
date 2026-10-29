@@ -196,6 +196,24 @@ func (ui *IpodUI) loadArtBG(a *Album, devSize int) *image.RGBA {
 // artFallback: a cover to show while the one at devSize is being made:
 // the same album at another size already in memory, scaled (not kept).
 func (ui *IpodUI) artFallback(a *Album, devSize int) *image.RGBA {
+	// (asked each frame until the real one comes: made once)
+	if a == artFbAl && devSize == artFbSize && artFbImg != nil {
+		return artFbImg
+	}
+	img := ui.artFallbackMake(a, devSize)
+	if img != nil {
+		artFbAl, artFbSize, artFbImg = a, devSize, img
+	}
+	return img
+}
+
+var (
+	artFbAl   *Album
+	artFbSize int
+	artFbImg  *image.RGBA
+)
+
+func (ui *IpodUI) artFallbackMake(a *Album, devSize int) *image.RGBA {
 	c := ui.artc
 	var best *image.RGBA
 	c.mu.Lock()
@@ -297,7 +315,11 @@ func (ui *IpodUI) prefetchArt(lib *Library) {
 	}
 	ui.post(func() { ui.onArtLoaded() })
 	// then the screensaver's covers, so it never waits for them
-	ui.post(ui.ssWarm)
+	ui.post(func() {
+		if saverAfter > 0 { // (only when it may start by itself; by hand it gets them then)
+			ui.ssWarm()
+		}
+	})
 }
 
 // artOrDefault: the artwork, or the default cover while it loads.

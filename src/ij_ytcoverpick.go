@@ -161,22 +161,21 @@ type ytCoverEditor struct {
 	choice ytCoverChoice // being edited (definite)
 	done   func(ytCoverChoice)
 
-	fit             *image.RGBA // the picture scaled into its box
-	fitW, fitH      int
-	prev            *image.RGBA // the cover as chosen now
-	prevFor         ytCoverChoice
-	lastW, lastH    int
-	boxX, boxY, scl float64 // where the picture is (px) and its scale
+	fit        *image.RGBA // the picture scaled into its box
+	fitW, fitH int
+	prev       *image.RGBA // the cover as chosen now
+	prevFor    ytCoverChoice
+	small      *image.RGBA // the picture smaller (the square's cover is made from it as it moves)
+	smallK     float64     // its scale
 
 	// the picture is got ready away from the screen (scaling a big picture
 	// and finding its cover take a moment); meanwhile the stripes move
 	ready   bool // choice resolved
 	working bool // a goroutine is making fit or prev
-	opened  time.Time
 }
 
 func (ui *IpodUI) ytCoverEditorView(src image.Image, cur ytCoverChoice, done func(ytCoverChoice)) *View {
-	ed := &ytCoverEditor{src: src, choice: cur, done: done, opened: time.Now()}
+	ed := &ytCoverEditor{src: src, choice: cur, done: done}
 	return &View{ID: "ytCover", Title: "Cover", Kind: KindFull, Custom: ed}
 }
 
@@ -188,13 +187,21 @@ func (ed *ytCoverEditor) prepare(ui *IpodUI, fw, fh, prevPx int) {
 	ed.working = true
 	src, ready, choice := ed.src, ed.ready, ed.choice
 	needFit := ed.fit == nil || ed.fitW != fw || ed.fitH != fh
+	needSmall := ed.small == nil
 	go func() {
 		if !ready {
 			choice = ytCoverResolve(src, choice)
 		}
-		var fit *image.RGBA
+		var fit, small *image.RGBA
+		var smallK float64
 		if needFit {
 			fit = scaleImage(src, fw, fh)
+		}
+		if needSmall {
+			// twice the cover's size on its short side: enough for any square
+			b := src.Bounds()
+			smallK = math.Min(1, float64(2*prevPx)/float64(min(b.Dx(), b.Dy())))
+			small = scaleImage(src, max(1, int(float64(b.Dx())*smallK)), max(1, int(float64(b.Dy())*smallK)))
 		}
 		prev := ytCoverPreview(src, choice, prevPx)
 		ui.postSure(func() {
@@ -205,10 +212,28 @@ func (ed *ytCoverEditor) prepare(ui *IpodUI, fw, fh, prevPx int) {
 			if fit != nil {
 				ed.fit, ed.fitW, ed.fitH = fit, fw, fh
 			}
+			if small != nil {
+				ed.small, ed.smallK = small, smallK
+			}
 			ed.prev, ed.prevFor = prev, choice
 			ui.dirty = true
 		})
 	}()
+}
+
+// squarePreview: the square's cover at size px, from the smaller picture
+// when it's ready (the full one otherwise).
+func (ed *ytCoverEditor) squarePreview(size int) *image.RGBA {
+	if ed.small == nil || ed.smallK <= 0 {
+		return ytCoverPreview(ed.src, ed.choice, size)
+	}
+	r, b := ed.choice.rect.Sub(ed.src.Bounds().Min), ed.small.Bounds()
+	k := ed.smallK
+	sr := image.Rect(int(float64(r.Min.X)*k), int(float64(r.Min.Y)*k), int(float64(r.Max.X)*k), int(float64(r.Max.Y)*k)).Intersect(b)
+	if sr.Empty() {
+		return ytCoverPreview(ed.src, ed.choice, size)
+	}
+	return scaleImageFast(ed.small.SubImage(sr), size, size)
 }
 
 // drawLoadStripes: the old iPod's moving 45° stripes, over x,y,w,h (px).
@@ -220,7 +245,7 @@ func drawLoadStripes(dst *image.RGBA, x, y, w, h int, now time.Time) {
 	}
 	period := px(24)
 	half := period / 2
-	off := int(now.Sub(time.Time{}).Seconds()*float64(px(28))) % period
+	off := int(now.UnixMilli()*int64(px(28))/1000) % period
 	fillRect(dst, x, y, w, h, a)
 	for yy := y; yy < y+h; yy++ {
 		// the band start on this row: moving right, slanted 45°
@@ -376,8 +401,9 @@ func (ed *ytCoverEditor) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.T
 	scl := math.Min(boxW/float64(b.Dx()), boxH/float64(b.Dy()))
 	fw, fh := int(float64(b.Dx())*scl*DPR+0.5), int(float64(b.Dy())*scl*DPR+0.5)
 	if ed.ready && ed.choice.mode == "crop" && (ed.prev == nil || ed.prevFor != ed.choice) {
-		// a square is quick: made at once, so moving it never flickers
-		ed.prev, ed.prevFor = ytCoverPreview(ed.src, ed.choice, px(prevS)), ed.choice
+		// a square is quick (from the smaller picture): made at once, so
+		// moving it never flickers
+		ed.prev, ed.prevFor = ed.squarePreview(px(prevS)), ed.choice
 	}
 	if !ed.working && (!ed.ready || ed.fit == nil || ed.fitW != fw || ed.fitH != fh || ed.prev == nil || ed.prevFor != ed.choice) {
 		ed.prepare(ui, fw, fh, px(prevS))

@@ -35,27 +35,22 @@ type NowPlayingView struct {
 	backSince time.Time
 	flipped   bool
 	backBuf   *image.RGBA
+	backList  *image.RGBA
 	infoBuf   *image.RGBA
+	stageBuf  *image.RGBA // the cover as last drawn (redrawn only when it changes)
+	stageKey  npStageKey
 	H         float64
-	hideArt   bool
-	warpTemp  bool // the cover drawn is a stand-in (another size) until the real one is ready
-	flyHide   bool // the cover is flying to or from the screensaver: not drawn here (the rest is)
-	untilt    bool // held flat (the screensaver's cover flies from / lands on a flat one)
-	warpTrack *Track
-	warpArt   *image.RGBA
-	warpReady bool
+	hideArt   bool  // Cover Flow's Now Playing: only the lines and the rows (the flow draws the cover)
+	flyHide   bool  // the cover is flying to or from the screensaver: not drawn here (the rest is)
+	untilt    bool  // held flat (the screensaver's cover flies from / lands on a flat one)
 	tilt      *Anim // 1 playing (cover tilted), 0 paused (flat)
 	tiltInit  bool
-	warpTilt  float64
-	warpSrc   *image.RGBA
-	warpSrcT  *Track
 	lastFrame int
 	// song change: the old song slides out while the new one comes in
-	shownT  *Track
-	oldT    *Track
-	oldWarp *image.RGBA
-	change  *Anim
-	dir     float64
+	shownT *Track
+	oldT   *Track
+	change *Anim
+	dir    float64
 	// long lines scroll while playing (from since); marqOn while they do
 	since    time.Time
 	marqOn   bool
@@ -258,157 +253,6 @@ func (ui *IpodUI) applyVolume() {
 	audioSetVolume(int(ui.volume*100 + 0.5))
 }
 
-// buildWarp renders the cover (with its 1px border) in perspective,
-// rotated tilt×35° about its vertical axis like the iPod's Now Playing,
-// with a fading reflection below; the result is kept in np.warpArt.
-//
-// The card is 128 CSS px wide (+18 at full tilt, see npWiden), its centre
-// 84 px from the left edge; the
-// view is a 1000 px perspective from x = 160 at the height of the text
-// block's centre. Each output pixel is mapped back onto the card plane and
-// sampled bilinearly.
-// The warp is cached per (track, tilt) and rebuilt only when either changes.
-// npWiden: how much wider the card is when tilted (CSS px, growing to the
-// right): in perspective its far side shrinks, so a square card looked
-// taller than wide; 18 px more makes it look square. Flat (paused) it is
-// square.
-const npWiden = 18.0
-
-func (np *NowPlayingView) buildWarp(ui *IpodUI, t *Track, tilt float64) bool {
-	widen := npWiden * tilt
-	cw := 128 + widen // the card's width now
-	hw := cw / 2
-	const srcW = 128 + npWiden
-	if np.warpSrcT != t || np.warpSrc == nil || np.warpTemp {
-		album := ui.trackAlbum(t)
-		art := ui.art(album, px(128))
-		temp := false
-		if art == nil {
-			// not ready yet: the same cover at another size meanwhile
-			// (made again when the real one comes)
-			if art = ui.artFallback(album, px(128)); art == nil {
-				return false
-			}
-			temp = true
-		}
-		np.warpTemp = temp
-		// cover with a 1px border, at the widest (sampled narrower)
-		src := newCanvas(px(srcW), px(128))
-		fillRect(src, 0, 0, src.Bounds().Dx(), src.Bounds().Dy(), th.artBorder)
-		inner := scaleImage(art, px(srcW-2), px(126))
-		blit(src, inner, px(1), px(1), 1)
-		np.warpSrc, np.warpSrcT = src, t
-	}
-	src := np.warpSrc
-	// output: the left 170 CSS px of the screen, the height of the view
-	W := px(320)
-	npMetaH := np.H * 0.7
-	H := px(np.H)
-	out := newCanvasCached(&np.warpArt, W, H)
-	lim := px(170 + npWiden)
-	for y := 0; y < H; y++ {
-		row := out.Pix[y*out.Stride : y*out.Stride+lim*4]
-		clear(row)
-	}
-	//
-	//
-	//
-	th := 35 * tilt * math.Pi / 180
-	th0 := 35 * math.Pi / 180
-	scl := 0.85 + 0.15*tilt
-	sinT, cosT := math.Sin(th), math.Cos(th)
-	const pv = 1000.0
-	ox, oy := 160.0, npMetaH/2
-	cx, cy := 84.0+widen/2, npMetaH/2
-	// the card's left edge (x, z) at the resting angle th0, then rotated
-	// by th about it
-	//
-	//
-	xr, zr := cx+hw*math.Cos(th0), -hw*math.Sin(th0)
-	ax := xr - hw*cosT
-	bz := zr + hw*sinT
-	parallelRows(0, H, func(r0, r1 int) {
-		for dy := r0; dy < r1; dy++ {
-			py := float64(dy) + 0.5
-			for dx := 0; dx < lim; dx++ {
-				fx := float64(dx) + 0.5
-				A := fx/DPR - ox
-				den := pv*cosT - A*sinT
-				if den <= 0 {
-					continue
-				}
-				X := ((ax-ox)*pv - (pv-bz)*A) / (sinT*A - pv*cosT)
-				k := pv / (pv - bz + X*sinT)
-				Y := oy + (py/DPR-oy)/k - cy
-				// paused (tilt 0) the cover is 85% of its size, about
-				// its centre
-				u := X/scl + hw
-				v := Y/scl + 64
-				if u < 0 || u >= cw || v < 0 || v >= 256 {
-					continue
-				}
-				alpha := 1.0
-				vv := v
-				if v >= 128 {
-					// reflection: mirrored, fading out over the top 30%
-					//
-					vv = 256 - v
-					r := vv / 128
-					if r < 0.7 {
-						continue
-					}
-					alpha = (vv/128 - 0.7) * 0.2 / 0.3
-				}
-				c := sampleBilinear(src, u*srcW/cw*DPR-0.5, vv*DPR-0.5)
-				o := out.PixOffset(dx, dy)
-				a := float64(c[3]) / 255 * alpha
-				out.Pix[o] = uint8(float64(c[0]) * alpha)
-				out.Pix[o+1] = uint8(float64(c[1]) * alpha)
-				out.Pix[o+2] = uint8(float64(c[2]) * alpha)
-				out.Pix[o+3] = uint8(a * 255)
-			}
-		}
-	})
-	np.warpTrack = t
-	np.warpTilt = tilt
-	return true
-}
-
-func sampleBilinear(img *image.RGBA, x, y float64) [4]uint8 {
-	b := img.Bounds()
-	if x < 0 {
-		x = 0
-	}
-	if y < 0 {
-		y = 0
-	}
-	x0, y0 := int(x), int(y)
-	fx, fy := x-float64(x0), y-float64(y0)
-	x1, y1 := x0+1, y0+1
-	if x1 >= b.Dx() {
-		x1 = b.Dx() - 1
-	}
-	if y1 >= b.Dy() {
-		y1 = b.Dy() - 1
-	}
-	if x0 >= b.Dx() {
-		x0 = b.Dx() - 1
-	}
-	if y0 >= b.Dy() {
-		y0 = b.Dy() - 1
-	}
-	var out [4]uint8
-	for c := 0; c < 4; c++ {
-		p00 := float64(img.Pix[img.PixOffset(x0, y0)+c])
-		p10 := float64(img.Pix[img.PixOffset(x1, y0)+c])
-		p01 := float64(img.Pix[img.PixOffset(x0, y1)+c])
-		p11 := float64(img.Pix[img.PixOffset(x1, y1)+c])
-		v := p00*(1-fx)*(1-fy) + p10*fx*(1-fy) + p01*(1-fx)*fy + p11*fx*fy
-		out[c] = uint8(v + 0.5)
-	}
-	return out
-}
-
 func formatPlaybackTime(sec float64) string {
 	if sec < 0 {
 		sec = 0
@@ -418,8 +262,8 @@ func formatPlaybackTime(sec float64) string {
 }
 
 // Render: the cover is drawn as Cover Flow draws its Now Playing (the same
-// 3D cover, turning over to the same card: npStage), the song's lines and
-// the rows over it (renderBody), fading out while the card shows.
+// 3D cover, turning over to the same card: npStage), then the song's lines
+// and the rows over it (renderBody), fading out while the card shows.
 // Cover Flow's own Now Playing (hideArt) is only the lines and the rows.
 func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	if np.hideArt {
@@ -427,10 +271,9 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		return
 	}
 	W, H := dst.Bounds().Dx(), dst.Bounds().Dy()
-	fillRect(dst, 0, 0, W, H, th.bg)
+	np.trackChange(ui, now) // (before the cover: it cross-fades from this frame)
 	ui.npStage(dst, np, now)
 	a := 1 - np.backA.Get(now)
-	np.hideArt = true
 	if a >= 0.999 {
 		np.renderBody(ui, v, dst, now)
 	} else if a > 0.002 {
@@ -439,58 +282,40 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		np.renderBody(ui, v, tmp, now)
 		blit(dst, tmp, 0, 0, a)
 	} else {
+		// hidden under the card: nothing of it moves
 		np.drawnAt = ui.frameNo
+		np.barsOn, np.marqOn = false, false
 	}
-	np.hideArt = false
 	np.flipFrame(now)
 }
 
-func (np *NowPlayingView) renderBody(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
-	W := dst.Bounds().Dx()
-	if !np.hideArt {
-		fillRect(dst, 0, 0, W, dst.Bounds().Dy(), th.bg)
+// trackChange: a new song: its lines slide in (and the cover cross-fades)
+// when the view was on screen.
+func (np *NowPlayingView) trackChange(ui *IpodUI, now time.Time) {
+	p := ui.app.Playing
+	if p == nil || p.Track == nil || p.Track == np.shownT {
+		return
 	}
+	t := p.Track
+	if np.shownT != nil && now.Sub(np.lastDraw) < 200*time.Millisecond {
+		np.oldT, np.dir = np.shownT, skipDir
+		np.change.Set(0)
+		np.change.To(1, 420*time.Millisecond, easeLinear, 0) // changePhases eases each phase
+	}
+	np.shownT, np.since = t, now
+}
+
+// renderBody: the song's lines (title, artist, album) and the rows under
+// them (progress, volume, scrubber, options).
+func (np *NowPlayingView) renderBody(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	p := ui.app.Playing
 	var t *Track
 	if p != nil {
 		t = p.Track
 	}
 	npMetaH := np.H * 0.7
-	// cover (tilted while playing) and track info
 	if t != nil {
-		if !np.hideArt {
-			target := 0.0
-			if p.State == StatePlaying && !np.untilt {
-				target = 1
-			}
-			// snap when the view was not drawn on the previous frame
-			if !np.tiltInit || np.lastFrame != ui.frameNo-1 {
-				np.tiltInit = true
-				np.tilt.Set(target)
-			} else if np.tilt.Target() != target {
-				np.tilt.To(target, 700*time.Millisecond, easeInOut, 0)
-			}
-			np.lastFrame = ui.frameNo
-			tv := np.tilt.Get(now)
-			if t != np.shownT && np.shownT != nil && np.lastFrame == ui.frameNo && np.warpArt != nil {
-				// keep the old cover for the change animation
-				np.oldWarp = cloneRGBA(np.oldWarp, np.warpArt)
-			}
-			if np.warpTrack != t || np.warpArt == nil || np.warpTilt != tv || np.warpTemp && ui.artCached(ui.trackAlbum(t), px(128)) != nil {
-				np.buildWarp(ui, t, tv)
-			}
-		}
-		// song change: start the slide when the view was on screen
-		if t != np.shownT {
-			if np.shownT != nil && now.Sub(np.lastDraw) < 200*time.Millisecond {
-				np.oldT, np.dir = np.shownT, skipDir
-				np.change.Set(0)
-				np.change.To(1, 420*time.Millisecond, easeLinear, 0) // changePhases eases each phase
-			} else {
-				np.oldWarp = nil
-			}
-			np.shownT, np.since = t, now
-		}
+		np.trackChange(ui, now)
 		paused := p.State != StatePlaying
 		if np.wasPause && !paused {
 			np.since = now // scrolling starts again from the beginning
@@ -501,26 +326,11 @@ func (np *NowPlayingView) renderBody(ui *IpodUI, v *View, dst *image.RGBA, now t
 		np.marqOn = false
 		np.barsOn = false
 		if k < 1 && np.oldT != nil {
-			if !np.hideArt && !np.flyHide {
-				// the cover cross-fades only when the album changes
-				sameArt := ui.trackAlbum(np.oldT) == ui.trackAlbum(t)
-				if np.oldWarp != nil && !sameArt {
-					blit(dst, np.oldWarp, 0, 0, 1)
-					if np.warpArt != nil {
-						blit(dst, np.warpArt, 0, 0, k)
-					}
-				} else if np.warpArt != nil {
-					blit(dst, np.warpArt, 0, 0, 1)
-				}
-			}
 			// the old lines leave, then the new ones come in
 			out, in := changePhases(k)
 			ui.drawNPInfo(dst, np, np.oldT, npMetaH, -off*out, 1-out, false, now)
 			ui.drawNPInfo(dst, np, t, npMetaH, off*(1-in), in, false, now)
 		} else {
-			if !np.hideArt && !np.flyHide && np.warpArt != nil {
-				blit(dst, np.warpArt, 0, 0, 1)
-			}
 			ui.drawNPInfo(dst, np, t, npMetaH, 0, 1, !paused, now)
 		}
 		np.lastDraw = now
@@ -650,40 +460,6 @@ func changePhases(k float64) (out, in float64) {
 	return easeInOut(out), easeInOut(in)
 }
 
-// cloneRGBA copies src into buf (reused when it has the right size).
-func cloneRGBA(buf, src *image.RGBA) *image.RGBA {
-	if buf == nil || buf.Bounds() != src.Bounds() {
-		buf = image.NewRGBA(src.Bounds())
-	}
-	copy(buf.Pix, src.Pix)
-	return buf
-}
-
-func (ui *IpodUI) drawNPStatus(dst *image.RGBA) {
-	q := ui.app.Queue
-	if q == nil {
-		return
-	}
-	var icons []string
-	if q.Shuffle {
-		icons = append(icons, "emoji_shuffle")
-	}
-	switch q.Repeat {
-	case RepeatOne:
-		icons = append(icons, "emoji_repeat_one")
-	case RepeatAll:
-		icons = append(icons, "emoji_repeat")
-	}
-	x := 308.0
-	for i := len(icons) - 1; i >= 0; i-- {
-		img := ui.asset(icons[i])
-		w := float64(img.Bounds().Dx())
-		x -= w / DPR
-		blit(dst, img, px(x), px(8), 0.8)
-		x -= 8
-	}
-}
-
 // drawProgressBar draws a glossy bar (iPod style) w CSS px wide, filled
 // to percent, with the scrubber diamond instead of the fill if scrubber.
 func (ui *IpodUI) drawProgressBar(dst *image.RGBA, x, y, w, percent float64, scrubber bool) {
@@ -743,34 +519,6 @@ func reflectBar(dst *image.RGBA, x0, x1, yTop, h int) {
 				dst.Pix[do+k+c] = v
 			}
 			dst.Pix[do+k+3] = al
-		}
-	}
-}
-
-// reflectStrip is the older reflection (fading in from the bottom).
-func reflectStrip(dst *image.RGBA, x0, x1, yTop, h int) {
-	b := dst.Bounds()
-	for i := 0; i < h; i++ {
-		// t: 1 at the row next to the edge, 0 at the far one
-		t := (float64(h-1-i) + 0.5) / float64(h)
-		if t < 0.6 {
-			continue
-		}
-		a := (t - 0.6) * 0.1 / 0.4
-		sy := yTop + h - 1 - i
-		dy := yTop + h + i
-		if dy >= b.Max.Y || sy < b.Min.Y {
-			continue
-		}
-		for x := x0; x < x1; x++ {
-			if x < b.Min.X || x >= b.Max.X {
-				continue
-			}
-			so := dst.PixOffset(x, sy)
-			do := dst.PixOffset(x, dy)
-			for c := 0; c < 3; c++ {
-				dst.Pix[do+c] = uint8(float64(dst.Pix[do+c])*(1-a) + float64(dst.Pix[so+c])*a)
-			}
 		}
 	}
 }
