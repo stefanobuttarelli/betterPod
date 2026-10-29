@@ -137,6 +137,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 		})
 	}
 	startBluetoothWatch()
+	startWifiWatch()
 	if isKnulli {
 		startVolumeKeyWatch()
 	}
@@ -1138,13 +1139,7 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		batX -= 16
 		iconsLeft = batX - gap
 	}
-	if btConnected() {
-		ic := ui.themed("bluetooth")
-		iw := float64(ic.Bounds().Dx()) / DPR
-		blit(sub, ic, px(iconsLeft-iw), px(3.5), 1)
-		batX -= iw + gap
-		iconsLeft = batX - gap
-	}
+	iconsLeft = ui.drawStatusIcons(sub, iconsLeft, 3.5, th.headerText, false)
 	p := ui.app.Playing
 	if p != nil && p.Track != nil && p.State != StateStopped {
 		name := "play"
@@ -1345,7 +1340,7 @@ func (ui *IpodUI) Run() {
 	lastState := PlayState(-1)
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
-	lastBT := false
+	lastStatus := -1
 	var lastWall time.Time
 	wasAnim := false // an animation was running at the last frame
 	var prefetched *Library
@@ -1407,8 +1402,8 @@ func (ui *IpodUI) Run() {
 			ui.onResume()
 		}
 		lastWall = wall
-		if bt := btConnected(); bt != lastBT {
-			lastBT = bt
+		if k := statusKey(); k != lastStatus { // (headphones, Wi-Fi)
+			lastStatus = k
 			ui.dirty = true
 		}
 		if btLostTake() {

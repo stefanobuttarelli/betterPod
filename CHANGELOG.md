@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.60 (2026-10-29)
+
+### Added
+- **Status icons in the bar at the top, beside the battery, grey like the Bluetooth mark:**
+  - **Headphones:** shown when the sound goes to headphones, Bluetooth ones (with the Bluetooth mark beside them) or wired ones in the jack.
+  - **Wi-Fi:** shown while connected. Its three arcs fill with the signal (strong, medium, weak; only the dot when it is very weak). It is read every 5 seconds from the system, without running programs.
+  - The screensaver's bar shows them too, in white.
+
 ## v0.59.3 (2026-10-29)
 
 ### Changed
