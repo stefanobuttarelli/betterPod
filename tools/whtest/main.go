@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/psanford/wormhole-william/wormhole"
 )
@@ -64,8 +65,23 @@ func main() {
 			panic(err)
 		}
 		out, _ := os.Create(filepath.Join(os.Args[5], m.Name))
-		n, err := io.Copy(out, m)
+		var r io.Reader = m
+		if os.Getenv("SLOW") != "" {
+			r = &slowReader{m}
+		}
+		n, err := io.Copy(out, r)
 		out.Close()
 		fmt.Println("got", m.Name, n, err)
 	}
+}
+
+// slowReader: small reads with pauses, to watch the sender's progress.
+type slowReader struct{ r io.Reader }
+
+func (s *slowReader) Read(p []byte) (int, error) {
+	if len(p) > 16<<10 {
+		p = p[:16<<10]
+	}
+	time.Sleep(40 * time.Millisecond)
+	return s.r.Read(p)
 }
