@@ -11,7 +11,7 @@ package main
 // Moving the music, in the background, in steps that can't lose anything:
 //
 //  0. Before anything: the destination must be empty or this same move's
-//     (a .knullipod-move file there says which folder it comes from), so
+//     (a .betterpod-move file there says which folder it comes from), so
 //     nothing of the card's own is overwritten; on a FAT/exFAT card, names
 //     it can't hold (or two that differ only in upper/lower case) and files
 //     over 4 GB (FAT32) stop it before it starts.
@@ -557,19 +557,25 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 		}
 	}
 	os.Remove(filepath.Join(j.to, moveMarker))
+	os.Remove(filepath.Join(j.to, legacyMoveMarker))
 	j.set(func() { j.phase = "done" })
 	return nil
 }
 
 // moveMarker: in the destination while a move goes into it: the folder it
 // comes from.
-const moveMarker = ".knullipod-move"
+const moveMarker = ".betterpod-move"
+
+// legacyMoveMarker: the same, written before the app was called betterPod.
+const legacyMoveMarker = ".knullipod-move"
 
 // checkDest: the destination is empty (but for hidden files), or holds
 // this same move's files (its marker names this music folder).
 func (j *moveJob) checkDest() error {
-	if b, err := os.ReadFile(filepath.Join(j.to, moveMarker)); err == nil && strings.TrimSpace(string(b)) == j.from {
-		return nil
+	for _, mk := range []string{moveMarker, legacyMoveMarker} {
+		if b, err := os.ReadFile(filepath.Join(j.to, mk)); err == nil && strings.TrimSpace(string(b)) == j.from {
+			return nil
+		}
 	}
 	busy := false
 	filepath.Walk(j.to, func(p string, info os.FileInfo, err error) error {

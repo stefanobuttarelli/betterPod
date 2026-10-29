@@ -4,7 +4,7 @@ package main
 //
 // For lossless files (FLAC, ALAC, WAV, AIFF): five small rounded bars, a
 // level meter that moves softly while the song plays, and LOSSLESS. It is
-// KnulliPod's own
+// betterPod's own
 // design, drawn in the theme's secondary text colour (light and dark).
 // The format comes from the file headers, read once per track in the
 // background.

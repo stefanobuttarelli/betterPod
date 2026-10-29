@@ -45,7 +45,7 @@ func meteoAPIBase() string {
 
 func meteoGet(u string, v any) error {
 	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+	req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 	resp, err := updateClient(20 * time.Second).Do(req)
 	if err != nil {
 		return err

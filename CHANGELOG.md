@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.61 (2026-10-29)
+
+### Changed
+- **KnulliPod is now betterPod.** betterPod is the product; this is its version for Knulli, and versions for other systems can follow.
+  - The name changes in the app (About, Software Update), in the documentation and in the files.
+  - The installation moves once to its new name: `ports/knullipod` becomes `ports/betterpod`, `KnulliPod.sh` becomes `betterPod.sh`, and the binary is `betterpod`.
+    - The update reaches KnulliPod as usual and restarts it. The next time it is started from Ports, its launcher moves it, with the database.
+    - In EmulationStation, update the game lists once: Ports then shows **betterPod**.
+  - A database folder chosen in Settings → Database takes the new name too: `.knullipod` in the music folder becomes `.betterpod`, and `knullipod` on a card becomes `betterpod`. New ones are made with the new name.
+  - A music move that was stopped goes on as before.
+- **Software Update** reads `release/latest-knulli.json`, one manifest per system. It looks in the repository `betterpod`, then under its old name `knullipod`, so updates keep coming before and after the repository is renamed.
+
 ## v0.60.2 (2026-10-29)
 
 ### Changed

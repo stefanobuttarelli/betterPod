@@ -3,7 +3,7 @@ package main
 // ij_volkeys.go — the console's volume keys, read straight from the input
 // devices that have them (gpio-keys on the H700).
 //
-// Knulli itself changes the volume when they are pressed; KnulliPod only
+// Knulli itself changes the volume when they are pressed; betterPod only
 // watches, so the device is opened read-only and never grabbed. A press
 // shows the volume overlay at once (also at 0% or 100%, when the volume does
 // not change) and asks the volume watcher to read the new level, so the

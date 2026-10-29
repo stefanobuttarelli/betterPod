@@ -1,7 +1,7 @@
 #!/bin/bash
-# KnulliPod - an iPod-style music player for Knulli (PortMaster-style port)
+# betterPod - an iPod-style music player, the version for Knulli (PortMaster-style port)
 # UI recreated from iPod.js by Tanner Villarete (MIT); player engine from MiyooPod by Danilo Fragoso (MIT)
-# https://github.com/stefanobuttarelli/knullipod
+# https://github.com/stefanobuttarelli/betterpod
 
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 
@@ -19,14 +19,14 @@ source $controlfolder/control.txt
 [ -f "${controlfolder}/mod_${CFW_NAME}.txt" ] && source "${controlfolder}/mod_${CFW_NAME}.txt"
 get_controls
 
-GAMEDIR="/$directory/ports/knullipod"
+GAMEDIR="${BETTERPOD_DIR:-/$directory/ports/betterpod}"
 cd "$GAMEDIR"
 
 > "$GAMEDIR/log.txt" && exec > >(tee "$GAMEDIR/log.txt") 2>&1
 
 # --- Music folder ----------------------------------------------------------
 # On Knulli the standard folder is /userdata/music (the "music" network share).
-# If it doesn't exist, knullipod/music inside the ports folder is used.
+# If it doesn't exist, betterpod/music inside the ports folder is used.
 if [ -d "/userdata/music" ]; then
   export MIYOOPOD_MUSIC_DIR="/userdata/music"
 else
@@ -67,12 +67,14 @@ export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 
 export LD_LIBRARY_PATH="$GAMEDIR/libs:$LD_LIBRARY_PATH"
 
-$ESUDO chmod +x "$GAMEDIR/MiyooPod"
+BIN=betterpod
+[ -f "$GAMEDIR/$BIN" ] || BIN=MiyooPod # (not moved yet from KnulliPod)
+$ESUDO chmod +x "$GAMEDIR/$BIN"
 if [ "$(type -t pm_platform_helper)" = "function" ]; then
-  pm_platform_helper "$GAMEDIR/MiyooPod"
+  pm_platform_helper "$GAMEDIR/$BIN"
 fi
 
-./MiyooPod
+./$BIN
 
 if [ "$(type -t pm_finish)" = "function" ]; then
   pm_finish

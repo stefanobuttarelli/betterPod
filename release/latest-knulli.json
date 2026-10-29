@@ -1,0 +1,8 @@
+{
+  "version": "0.61",
+  "path": "release/betterpod-v0.61-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.61-knulli.zip",
+  "sha256": "d3d6c6e887500cc424824bc5f2ac17e1621fa9881a9b6d5c549d8f7025b86b51",
+  "size": 15236772,
+  "notes": "- KnulliPod is now betterPod: new name in the app, the docs and the files\n- Software Update: one manifest per system, the repository found by its new and old name\n- The album's songs are the back of the cover (0.60.2)\n- Bar at the top: headphones and Wi-Fi icons (0.60)"
+}

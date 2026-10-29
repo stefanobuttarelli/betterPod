@@ -34,7 +34,7 @@ type songTags struct {
 	Track, TrackTotal, Disc, Year            int
 }
 
-var errNoTags = errors.New("this kind of file has no tags KnulliPod can write")
+var errNoTags = errors.New("this kind of file has no tags betterPod can write")
 
 // canWriteTags: the formats writeTags handles.
 func canWriteTags(path string) bool {
@@ -505,7 +505,7 @@ func (vc *vorbisComment) set(t songTags, mask tagMask) {
 		}
 	}
 	if vc.vendor == "" {
-		vc.vendor = "KnulliPod"
+		vc.vendor = "betterPod"
 	}
 }
 

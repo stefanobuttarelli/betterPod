@@ -1,4 +1,4 @@
-# KnulliPod
+# betterPod
 
 An iPod-style music player for Anbernic handhelds running Knulli, launched from Ports. It plays your own music, stored on the console.
 
@@ -13,16 +13,16 @@ Sizes, colours, icons and animation timings come from the original code.
 
 Playback and the library scan come from [MiyooPod](https://github.com/danfragoso/miyoopod) by Danilo Fragoso. Both projects are MIT-licensed (see `LICENSE.ipod.js` and `LICENSE.MiyooPod`). The Inter and Noto Sans JP fonts are under the SIL Open Font License. The Apple Lossless decoder is Apple's reference implementation (Apache 2.0). See `THIRD_PARTY_LICENSES.md`.
 
-Source code, screenshots and updates: https://github.com/stefanobuttarelli/knullipod
+Source code, screenshots and updates: https://github.com/stefanobuttarelli/betterpod
 
 ## Installation
 
-1. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
+1. Copy `betterPod.sh` and the `betterpod` folder to `/userdata/roms/ports/`.
 2. Put your music in `/userdata/music`, the `music` share on the network.
    - **Formats:** FLAC, ALAC and AAC (iTunes / Apple Music `.m4a`, including HE-AAC), WAV, AIFF, MP3 and OGG. DRM-protected `.m4a` files (old iTunes purchases) can't be played.
    - **Folders and tags:** use `Artist/Album/` folders with tagged files. For untagged files (usually WAV), artist, album and track number come from the folders and the file name.
    - **Cover art:** embedded art is read automatically (JPEG, PNG and WebP). Files without it use an image in the album folder (`cover.jpg`, `folder.jpg`, `front.png`…).
-3. In EmulationStation, update the game lists and start **KnulliPod** from Ports.
+3. In EmulationStation, update the game lists and start **betterPod** from Ports.
 
 ## Controls
 
@@ -51,7 +51,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 **Hold:** press SELECT to put the iPod in your pocket.
 
 - All buttons are ignored and a padlock shows in the status bar. The screen dims while the music keeps playing.
-- Up/down set the brightness (a small bar shows), and KnulliPod remembers it for next time. The default is a fifth of the normal brightness.
+- Up/down set the brightness (a small bar shows), and betterPod remembers it for next time. The default is a fifth of the normal brightness.
 - An accidental press shows the "Hold" badge.
 - After 5 seconds in Hold, the Now Playing screen comes up, with the clock in the middle of the status bar.
 - Press SELECT again to unlock. SELECT + START quits even in Hold.
@@ -82,7 +82,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 - Unplugging the headphones, or a Bluetooth disconnect, pauses the music, as on the iPod.
 - With Bluetooth headphones connected, a Bluetooth icon shows in the status bar.
 
-## Options (in `KnulliPod.sh`)
+## Options (in `betterPod.sh`)
 
 - `MIYOOPOD_SWAP_AB=0`: swap A and B, if they are reversed on your console.
 - `MIYOOPOD_STICK_WHEEL=1`: turn the stick like the iPod click wheel instead of using it as arrows. Spinning faster scrolls faster.
@@ -100,21 +100,21 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/knull
 
 ## Notes
 
-- **Where data is kept:** the library, settings (volume, shuffle, repeat), artwork and the Solitaire game are kept in `knullipod/conf`, unless you choose another folder in Settings → Database.
+- **Where data is kept:** the library, settings (volume, shuffle, repeat), artwork and the Solitaire game are kept in `betterpod/conf`, unless you choose another folder in Settings → Database.
 - **Settings → Database:** chooses the database folder (library, artwork, settings, statistics, saves). The quick choices are:
   - the port folder (default);
-  - the music folder (`/userdata/music/.knullipod`, hidden so the scan skips it);
-  - a `knullipod` folder on each card or drive mounted under `/media`.
+  - the music folder (`/userdata/music/.betterpod`, hidden so the scan skips it);
+  - a `betterpod` folder on each card or drive mounted under `/media`.
 
-  "Choose a folder…" browses to any folder, where you can also create a new `knullipod` folder.
+  "Choose a folder…" browses to any folder, where you can also create a new `betterpod` folder.
 
   - If there's no database in the chosen folder, the current one is moved there ("Move database here").
   - If there already is one (for example a card used on another console), you can use it as it is ("Use database there") or replace it with the current one ("Replace with current").
 
-  The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up (card removed), KnulliPod uses the port folder and says so on the same screen.
-- **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts KnulliPod. Your library, settings and saves are not touched, and the previous binary is kept as `knullipod/MiyooPod.prev`. KnulliPod also checks once a day by itself: when a new version is out, the main menu shows "Update Available".
+  The choice is stored in `betterpod/conf/datadir.txt`. If the folder is missing at start-up (card removed), betterPod uses the port folder and says so on the same screen.
+- **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts betterPod. Your library, settings and saves are not touched, and the previous binary is kept as `betterpod/MiyooPod.prev`. betterPod also checks once a day by itself: when a new version is out, the main menu shows "Update Available".
 - **Music → Internet Archive:** with Wi-Fi on, search archive.org; every result shows its license. An item offers a download for each format it has (FLAC, ALAC, WAV, AIFF or MP3), or a single track; downloads go to `Internet Archive/<creator>/<title>/` in the music folder and appear in the library when they finish. An item's identifier (the part of the link after `/details/`) can be typed to open it directly. Download only what you have the right to.
-- **Log:** the app log is `knullipod/miyoopod.log`.
+- **Log:** the app log is `betterpod/miyoopod.log`.
 - **Settings → Theme:** light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00).
 - **Shuffle and Repeat:** in Settings they open a submenu, with a tick on the active option.
 - **Settings → Library** shows:

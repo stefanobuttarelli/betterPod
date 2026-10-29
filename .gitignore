@@ -3,9 +3,9 @@
 /dist/
 *.o
 # the binary is built into the package by tools/build.sh
-port/knullipod/MiyooPod
+port/betterpod/betterpod
 # runtime data and logs from local test runs
-port/knullipod/conf/*
-!port/knullipod/conf/.gitkeep
-port/knullipod/*.log
+port/betterpod/conf/*
+!port/betterpod/conf/.gitkeep
+port/betterpod/*.log
 port/log.txt

@@ -1,24 +1,30 @@
 package main
 
-// ij_update.go — Settings → Software Update: KnulliPod updates itself over
+// ij_update.go — Settings → Software Update: betterPod updates itself over
 // Wi-Fi from its GitHub repository.
 //
-// The repository carries a small manifest, release/latest.json:
+// The repository carries a small manifest per system, for Knulli
+// release/latest-knulli.json:
 //
-//	{"version": "0.22", "path": "release/knullipod-v0.22-knulli.zip",
-//	 "url": "https://raw.githubusercontent.com/…/knullipod-v0.22-knulli.zip",
+//	{"version": "0.61", "path": "release/betterpod-v0.61-knulli.zip",
+//	 "url": "https://raw.githubusercontent.com/…/betterpod-v0.61-knulli.zip",
 //	 "sha256": "…", "size": 6012345, "notes": "…"}
 //
 // Both are read through GitHub's API (current right after a push), with
-// raw.githubusercontent.com as the fallback.
+// raw.githubusercontent.com as the fallback; the repository is looked for
+// under its name, then under the one it had before (knullipod).
 //
 // "Check for updates" reads it; when the version is newer, "Install"
 // downloads the zip (checking size and SHA-256), unpacks it next to the
 // port, replaces the files of the installation one by one (each with an
 // atomic rename, so even the running binary can be replaced) and restarts
-// the app. The database (knullipod/conf and any folder chosen in Settings →
+// the app. The database (betterpod/conf and any folder chosen in Settings →
 // Database) is never touched. The previous binary is kept as
-// knullipod/MiyooPod.prev.
+// betterpod/betterpod.prev.
+//
+// (release/latest.json is the manifest of the versions called KnulliPod,
+// in ports/knullipod: it names the bridge, a zip in their layout whose
+// KnulliPod.sh moves the installation to ports/betterpod once.)
 //
 // HTTPS is verified against the system roots plus the Mozilla bundle in
 // assets/cacert.pem; if the console's clock is behind (no network time
@@ -49,19 +55,33 @@ import (
 	"golang.org/x/image/font"
 )
 
-// KNULLIPOD_VERSION is the version shown in About and compared with the
-// manifest; knulliPodBuildDate is the earliest date certificates are
+// BETTERPOD_VERSION is the version shown in About and compared with the
+// manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	KNULLIPOD_VERSION  = "0.60.2"
-	knulliPodBuildDate = "2026-10-27"
-	updateManifestURL  = "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/latest.json"
-	// GitHub's API serves the current files at once; raw.githubusercontent
-	// keeps "main" pointing at the previous commit for up to 5 minutes
-	// after a push (it is the fallback, e.g. over the API's rate limit)
-	updateAPIBase     = "https://api.github.com/repos/stefanobuttarelli/knullipod/contents/"
-	updateManifestRel = "release/latest.json"
+	BETTERPOD_VERSION  = "0.61"
+	betterPodBuildDate = "2026-10-29"
+	// the system this build is for (its manifest and zip)
+	updateDistro      = "knulli"
+	updateManifestRel = "release/latest-" + updateDistro + ".json"
+	// the installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod
+	appDir    = "betterpod"
+	appScript = "betterPod.sh"
+	appBin    = "betterpod"
 )
+
+// updateRepos: the repository, by its name and by the one it had before
+// (GitHub sends the old one on to the new one; both are tried in turn).
+var updateRepos = []string{"stefanobuttarelli/betterpod", "stefanobuttarelli/knullipod"}
+
+// GitHub's API serves the current files at once; raw.githubusercontent
+// keeps "main" pointing at the previous commit for up to 5 minutes after a
+// push (it is the fallback, e.g. over the API's rate limit).
+func apiBase(repo string) string { return "https://api.github.com/repos/" + repo + "/contents/" }
+func rawBase(repo string) string { return "https://raw.githubusercontent.com/" + repo + "/main/" }
+
+// updRepo: the repository the manifest came from (the zip is read there).
+var updRepo = updateRepos[0]
 
 type updateManifest struct {
 	Version string `json:"version"`
@@ -103,7 +123,7 @@ func (ui *IpodUI) updateView() *View {
 	return &View{ID: "update", Title: "Software Update", Kind: KindFull, Custom: &UpdateView{}}
 }
 
-// UpdateView is the Software Update screen: white, with the KnulliPod name
+// UpdateView is the Software Update screen: white, with the betterPod name
 // and the state at the top, the download bar (blue, glossy, with its
 // reflection, like Now Playing's) in the middle, the release notes when a
 // new version is found, and the buttons at the bottom (the wheel moves
@@ -217,8 +237,8 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	blit(dst, logo, (W-logo.Bounds().Dx())/2, px(14), 1)
 	_, asc16 := lineBox(16)
 	_, asc13 := lineBox(13)
-	center(face(W700, 16), "KnulliPod", 14+32+8+asc16, th.text)
-	status, sub := "Version "+KNULLIPOD_VERSION, ""
+	center(face(W700, 16), "betterPod", 14+32+8+asc16, th.text)
+	status, sub := "Version "+BETTERPOD_VERSION, ""
 	m := upd.manifest
 	switch upd.state {
 	case updIdle:
@@ -226,7 +246,7 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	case updChecking:
 		status = "Checking for updates…"
 	case updUpToDate:
-		sub = "KnulliPod is up to date"
+		sub = "betterPod is up to date"
 		if !upd.checked.IsZero() {
 			sub += " · checked " + checkedWhen(upd.checked, now)
 		}
@@ -403,7 +423,7 @@ func (ui *IpodUI) autoCheckTick(now time.Time) {
 		f := readUpdCheck()
 		last := time.Unix(f.Checked, 0)
 		autoUpd.next = now.Add(30 * time.Second)
-		if f.Checked > 0 && now.Sub(last) < 24*time.Hour && !(f.Available != "" && isNewerVersion(KNULLIPOD_VERSION, f.Available)) {
+		if f.Checked > 0 && now.Sub(last) < 24*time.Hour && !(f.Available != "" && isNewerVersion(BETTERPOD_VERSION, f.Available)) {
 			autoUpd.next = last.Add(24 * time.Hour)
 		}
 		if f.Checked > 0 {
@@ -432,7 +452,7 @@ func (ui *IpodUI) autoCheckTick(now time.Time) {
 			autoUpd.next = time.Now().Add(24 * time.Hour)
 			rec := updCheckFile{Checked: time.Now().Unix()}
 			upd.checked = time.Now()
-			if isNewerVersion(KNULLIPOD_VERSION, m.Version) {
+			if isNewerVersion(BETTERPOD_VERSION, m.Version) {
 				rec.Available = m.Version
 				if upd.state != updDownloading && upd.state != updInstalling {
 					upd.state, upd.manifest = updAvailable, m
@@ -448,7 +468,7 @@ func (ui *IpodUI) autoCheckTick(now time.Time) {
 
 // updateAvailable: a newer version was found (the main menu shows it).
 func updateAvailable() bool {
-	return upd.manifest != nil && isNewerVersion(KNULLIPOD_VERSION, upd.manifest.Version) &&
+	return upd.manifest != nil && isNewerVersion(BETTERPOD_VERSION, upd.manifest.Version) &&
 		upd.state != updUpToDate && upd.state != updIdle
 }
 
@@ -466,7 +486,7 @@ func (ui *IpodUI) checkForUpdate() {
 			case err != nil:
 				upd.state, upd.err = updFailed, updateErrText(err)
 				logMsg("Update check failed: " + err.Error())
-			case isNewerVersion(KNULLIPOD_VERSION, m.Version):
+			case isNewerVersion(BETTERPOD_VERSION, m.Version):
 				upd.state, upd.manifest = updAvailable, m
 				logMsg("Update available: v" + m.Version)
 				writeUpdCheck(updCheckFile{Checked: time.Now().Unix(), Available: m.Version})
@@ -570,7 +590,7 @@ var (
 
 func newSharedTransport() *http.Transport {
 	roots := updateRoots()
-	build, _ := time.Parse("2006-01-02", knulliPodBuildDate)
+	build, _ := time.Parse("2006-01-02", betterPodBuildDate)
 	cfg := &tls.Config{
 		InsecureSkipVerify: true, // replaced by VerifyConnection below
 		VerifyConnection: func(cs tls.ConnectionState) error {
@@ -599,12 +619,20 @@ func fetchManifest() (*updateManifest, error) {
 	if u := os.Getenv("MIYOOPOD_UPDATE_URL"); u != "" {
 		return fetchManifestFrom(u, false)
 	}
-	m, err := fetchManifestFrom(updateAPIBase+updateManifestRel, true)
-	if err == nil {
-		return m, nil
+	var last error
+	for _, repo := range updateRepos {
+		m, err := fetchManifestFrom(apiBase(repo)+updateManifestRel, true)
+		if err != nil {
+			logMsg("Update check through the API (" + repo + ") failed (" + err.Error() + "), trying raw")
+			m, err = fetchManifestFrom(rawBase(repo)+updateManifestRel, false)
+		}
+		if err == nil {
+			updRepo = repo
+			return m, nil
+		}
+		last = err
 	}
-	logMsg("Update check through the API failed (" + err.Error() + "), trying raw")
-	return fetchManifestFrom(updateManifestURL, false)
+	return nil, last
 }
 
 // githubGet requests url; through the API it asks for the raw file.
@@ -614,7 +642,7 @@ func githubGet(url string, api bool, timeout time.Duration) (*http.Response, err
 		return nil, err
 	}
 	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+	req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 	if api {
 		req.Header.Set("Accept", "application/vnd.github.raw")
 	}
@@ -644,7 +672,7 @@ func fetchManifestFrom(url string, api bool) (*updateManifest, error) {
 // manifest names its path, else (or if that fails) from its URL.
 func openDownload(m *updateManifest) (*http.Response, error) {
 	if m.Path != "" && os.Getenv("MIYOOPOD_UPDATE_URL") == "" {
-		resp, err := githubGet(updateAPIBase+m.Path, true, 10*time.Minute)
+		resp, err := githubGet(apiBase(updRepo)+m.Path, true, 10*time.Minute)
 		if err == nil && resp.StatusCode == 200 {
 			return resp, nil
 		}
@@ -667,8 +695,8 @@ func openDownload(m *updateManifest) (*http.Response, error) {
 
 // --- install ---------------------------------------------------------------
 
-// installDirs: the port folder (…/ports/knullipod, where the binary is) and
-// the ports folder above it (where KnulliPod.sh is).
+// installDirs: the port folder (…/ports/betterpod, where the binary is) and
+// the ports folder above it (where betterPod.sh is).
 func installDirs() (string, string, error) {
 	exe, err := startExe()
 	if err != nil {
@@ -699,7 +727,12 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 	if err != nil {
 		return err
 	}
-	stage := filepath.Join(ports, ".knullipod-update")
+	if filepath.Base(port) != appDir {
+		// just updated from KnulliPod: KnulliPod.sh moves it to its new
+		// folder the next time it starts
+		return errors.New("Quit and start betterPod again first: it moves to its new folder")
+	}
+	stage := filepath.Join(ports, ".betterpod-update")
 	os.RemoveAll(stage)
 	if err := os.MkdirAll(stage, 0755); err != nil {
 		return err
@@ -739,12 +772,12 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 	if err != nil {
 		return err
 	}
-	newBin := filepath.Join(stage, "new", "knullipod", "MiyooPod")
+	newBin := filepath.Join(stage, "new", appDir, appBin)
 	if err := checkBinary(newBin); err != nil {
 		return err
 	}
-	// keep the running binary as MiyooPod.prev
-	if cur := filepath.Join(port, "MiyooPod"); fileExists(cur) {
+	// keep the running binary as betterpod.prev
+	if cur := filepath.Join(port, appBin); fileExists(cur) {
 		copyFileMode(cur, cur+".prev", 0755)
 	}
 	// replace the files, each with an atomic rename
@@ -772,7 +805,7 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 	return nil
 }
 
-// unpackUpdate extracts KnulliPod.sh and knullipod/… (never knullipod/conf)
+// unpackUpdate extracts betterPod.sh and betterpod/… (never betterpod/conf)
 // into dir and returns their relative paths.
 func unpackUpdate(zipPath, dir string) ([]string, error) {
 	zr, err := zip.OpenReader(zipPath)
@@ -789,17 +822,17 @@ func unpackUpdate(zipPath, dir string) ([]string, error) {
 		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
 			return nil, errors.New("bad path in the update")
 		}
-		if name != "KnulliPod.sh" && !strings.HasPrefix(name, "knullipod"+string(filepath.Separator)) {
+		if name != appScript && !strings.HasPrefix(name, appDir+string(filepath.Separator)) {
 			continue
 		}
-		if strings.HasPrefix(name, filepath.Join("knullipod", "conf")+string(filepath.Separator)) {
+		if strings.HasPrefix(name, filepath.Join(appDir, "conf")+string(filepath.Separator)) {
 			continue
 		}
 		mode := f.Mode().Perm()
 		if mode == 0 {
 			mode = 0644
 		}
-		if name == "KnulliPod.sh" || name == filepath.Join("knullipod", "MiyooPod") {
+		if name == appScript || name == filepath.Join(appDir, appBin) {
 			mode = 0755
 		}
 		dst := filepath.Join(dir, name)
@@ -829,11 +862,11 @@ func unpackUpdate(zipPath, dir string) ([]string, error) {
 	return files, nil
 }
 
-// checkBinary: the new MiyooPod is an executable for this machine.
+// checkBinary: the new binary is an executable for this machine.
 func checkBinary(path string) error {
 	nf, err := elf.Open(path)
 	if err != nil {
-		return errors.New("the update has no valid MiyooPod")
+		return errors.New("the update has no valid betterPod")
 	}
 	defer nf.Close()
 	if exe, err := startExe(); err == nil {

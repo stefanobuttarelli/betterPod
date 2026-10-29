@@ -605,7 +605,7 @@ func m4aUdta(t m4aTags) []byte {
 	text("aART", t.AlbumArtist)
 	text("\xa9alb", t.Album)
 	text("\xa9day", t.Year)
-	text("\xa9too", "KnulliPod")
+	text("\xa9too", "betterPod")
 	if t.Track > 0 {
 		items = append(items, mp4Make("trkn", mp4Make("data", u32(0), u32(0),
 			u16(0), u16(uint16(t.Track)), u16(uint16(t.Tracks)), u16(0))))

@@ -1,8 +1,8 @@
 # Third-party licenses
 
-KnulliPod is licensed under the [MIT License](https://github.com/stefanobuttarelli/knullipod/blob/main/LICENSE). It includes and depends on the components below. Each is distributed under its own license, and the copyright notices stay with their authors.
+betterPod is licensed under the [MIT License](https://github.com/stefanobuttarelli/betterpod/blob/main/LICENSE). It includes and depends on the components below. Each is distributed under its own license, and the copyright notices stay with their authors.
 
-## Projects KnulliPod is based on
+## Projects betterPod is based on
 
 | Project | Author | License | Used for |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ KnulliPod is licensed under the [MIT License](https://github.com/stefanobuttarel
 | Apple ALAC decoder (inside SDL2_mixer) | Apache 2.0 (`libs/LICENSE.ALAC-Apache-2.0.txt`) | See below |
 | FFmpeg AAC decoder (`libavcodec_kp.so.60`, `libavutil_kp.so.58`) | LGPL 2.1 (`libs/LICENSE.FFmpeg-LGPL-2.1.txt`) | See below |
 
-SDL2 itself is not bundled: KnulliPod uses the one provided by Knulli.
+SDL2 itself is not bundled: betterPod uses the one provided by Knulli.
 
 ### Apple Lossless (ALAC) decoder
 
@@ -65,4 +65,4 @@ The full license texts are in each project's repository.
 
 ## Trademarks
 
-iPod is a trademark of Apple Inc. KnulliPod is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.
+iPod is a trademark of Apple Inc. betterPod is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.

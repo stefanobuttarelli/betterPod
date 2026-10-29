@@ -41,7 +41,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-const coverUA = "KnulliPod/" + KNULLIPOD_VERSION + " ( https://github.com/stefanobuttarelli/knullipod )"
+const coverUA = "betterPod/" + BETTERPOD_VERSION + " ( https://github.com/stefanobuttarelli/betterpod )"
 
 // mbBase / caaBase can point elsewhere for tests (MIYOOPOD_MB_BASE,
 // MIYOOPOD_CAA_BASE).

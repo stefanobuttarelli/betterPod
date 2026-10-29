@@ -1,7 +1,7 @@
 package main
 
 // ij_bluetooth.go — Settings → Bluetooth: connect the headphones without
-// leaving KnulliPod.
+// leaving betterPod.
 //
 //	Bluetooth                 On
 //	▣ Sony WH-1000XM4         Connected · 80%

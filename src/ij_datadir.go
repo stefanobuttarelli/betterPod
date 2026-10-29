@@ -29,7 +29,7 @@ func dbLabel(dir string) string {
 
 // musicDataDir is the suggested folder inside the music folder (hidden, so
 // the library scan skips it).
-func musicDataDir() string { return filepath.Join(MUSIC_ROOT, ".knullipod") }
+func musicDataDir() string { return filepath.Join(MUSIC_ROOT, ".betterpod") }
 
 // externalRoots lists mounted cards and drives under /media.
 func externalRoots() []string {
@@ -65,13 +65,13 @@ func (ui *IpodUI) databaseView() *View {
 			pick("Music folder", musicDataDir(), musicDataDir()),
 		)
 		for _, r := range externalRoots() {
-			d := filepath.Join(r, "knullipod")
+			d := filepath.Join(r, "betterpod")
 			items = append(items, pick(filepath.Base(r), d, d))
 		}
 		// a folder chosen with the browser
 		known := cur == defaultDataDir() || cur == musicDataDir()
 		for _, r := range externalRoots() {
-			known = known || cur == filepath.Join(r, "knullipod")
+			known = known || cur == filepath.Join(r, "betterpod")
 		}
 		if !known {
 			items = append(items, pick(filepath.Base(cur), cur, cur))
@@ -97,10 +97,10 @@ func (ui *IpodUI) folderBrowserView(dir string) *View {
 	v.Build = func() []Item {
 		items := []Item{{Label: "Use this folder", Sublabel: dir, NoArrow: true, Preview: PrevSettings,
 			OnSelect: func() { ui.chooseDataDir(dir) }}}
-		if _, err := os.Stat(filepath.Join(dir, "knullipod")); err != nil && dir != "/" {
-			items = append(items, Item{Label: "New folder “knullipod”", NoArrow: true, Preview: PrevSettings,
+		if _, err := os.Stat(filepath.Join(dir, "betterpod")); err != nil && dir != "/" {
+			items = append(items, Item{Label: "New folder “betterpod”", NoArrow: true, Preview: PrevSettings,
 				OnSelect: func() {
-					nd := filepath.Join(dir, "knullipod")
+					nd := filepath.Join(dir, "betterpod")
 					if err := os.MkdirAll(nd, 0755); err != nil {
 						dbStatus = "Can't create the folder: " + err.Error()
 						ui.refreshBuilt()
@@ -113,7 +113,7 @@ func (ui *IpodUI) folderBrowserView(dir string) *View {
 		entries, _ := os.ReadDir(dir)
 		var names []string
 		for _, e := range entries {
-			if e.IsDir() && (!strings.HasPrefix(e.Name(), ".") || e.Name() == ".knullipod") {
+			if e.IsDir() && (!strings.HasPrefix(e.Name(), ".") || e.Name() == ".betterpod" || e.Name() == ".knullipod") {
 				names = append(names, e.Name())
 			}
 		}
@@ -122,7 +122,7 @@ func (ui *IpodUI) folderBrowserView(dir string) *View {
 			sub := filepath.Join(dir, n)
 			it := Item{Label: n, Preview: PrevSettings, OnSelect: func() { ui.showView(ui.folderBrowserView(sub), "") }}
 			if hasDatabase(sub) {
-				it.Sublabel = "contains a KnulliPod database"
+				it.Sublabel = "contains a betterPod database"
 			}
 			items = append(items, it)
 		}

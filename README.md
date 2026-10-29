@@ -1,14 +1,14 @@
-<h1 align="center">KnulliPod</h1>
+<h1 align="center">betterPod</h1>
 
 <p align="center">
-  <b>An iPod-style music player for Anbernic handhelds running Knulli.</b><br>
+  <b>An iPod-style music player for retro handhelds. This is the version for Anbernic handhelds running Knulli.</b><br>
   The iPod classic interface, rebuilt natively from <a href="https://github.com/tvillarete/ipod-classic-js">iPod.js</a>.<br>
   Split-screen menus, Cover Flow, a 3D Now Playing screen, wheel-keyboard search and games.<br>
   Your own music, lossless and hi-res, played at its native sample rate.
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.31.1-knulli.zip"><b>Download v0.31.1</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/betterpod/raw/main/release/betterpod-v0.61-knulli.zip"><b>Download v0.61</b></a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
   <a href="#building-from-source">Build</a> ·
@@ -16,14 +16,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="KnulliPod: main menu, Cover Flow and Now Playing" width="100%">
+  <img src="docs/images/hero.png" alt="betterPod: main menu, Cover Flow and Now Playing" width="100%">
 </p>
 
 ---
 
 ## Features
 
-- **The iPod classic interface, faithfully.** KnulliPod redraws iPod.js natively at 640×480:
+- **The iPod classic interface, faithfully.** betterPod redraws iPod.js natively at 640×480:
   - split-screen menus with live previews and a Ken Burns pan over the album art;
   - the list styles and the slide transitions.
 
@@ -52,14 +52,14 @@
 - **Missing covers found online.** Settings → Library → Missing Covers lists the albums without one: choose one to see what MusicBrainz, iTunes, Deezer and Wikipedia find (with thumbnails and the source) and pick, or search by hand; Search All Automatically fetches them from the Cover Art Archive (MusicBrainz), or else from iTunes, Deezer or Wikipedia, with the same checks. For a soundtrack ripped from a game, which has no album cover of its own, Wikipedia gives the game's box.
 - **Internet Archive.** Search archive.org, see each item's license, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
 - **Album Info.** Hold A (or press Y) on an album, in the lists or in Cover Flow, and choose Edit Album Info; Settings → Library → **Missing Info** lists the albums without an artist or track numbers. **Find Info Online** asks MusicBrainz, iTunes, Deezer and Wikipedia; choosing a result fills in album, album artist, year and genre and pairs its songs with yours (titles, artists, numbers). For a game rip, Wikipedia gives the composer or the game's developer. Every field can also be typed. **Save Changes** writes the tags into the MP3, FLAC and Ogg Vorbis files and scans the library again.
-- **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field. Only the files KnulliPod downloaded count as downloaded and get deleted. The search goes to Apple; feeds and episodes come from each podcast's own servers, which see the console's IP address, like any podcast app.
+- **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field. Only the files betterPod downloaded count as downloaded and get deleted. The search goes to Apple; feeds and episodes come from each podcast's own servers, which see the console's IP address, like any podcast app.
 - **Bluetooth headphones** connect from Settings → Bluetooth (paired ones with A, new ones with Find New Devices), without going back to Knulli.
 - **Now Playing:** START turns the cover over to the album's songs (like Cover Flow); A, A again shows Shuffle and Repeat buttons.
 - **L2 / R2 set the brightness** anywhere, shown in the header.
 - **Screensaver — Visualizer:** bars, waves, tunnel and stars that move with the music (Settings → Screensaver → Style; LEFT / RIGHT change the effect, START a big clock, UP / DOWN the song).
 - **Screensaver:** a mosaic of album covers that turn over, the album playing big; pick one with the arrows and A to see its songs (Settings → Screensaver, or SELECT + Y).
 - **Move the music to another card** (Settings → Library → Music Folder): copied, checked file by file, then the originals deleted; a card taken out only pauses it.
-- **Updates over Wi-Fi.** KnulliPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
+- **Updates over Wi-Fi.** betterPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **Your data where you want it.** Settings → Database moves the library, artwork and settings to another folder, such as an SD card shared between consoles.
 
 <p align="center">
@@ -80,19 +80,29 @@
 ## Requirements
 
 - An Anbernic handheld with the Allwinner H700 (aarch64) running [Knulli](https://knulli.org).
-- PortMaster-style ports enabled: KnulliPod is launched from **Ports**.
+- PortMaster-style ports enabled: betterPod is launched from **Ports**.
 - Your music on the console (or a card), any of the formats above.
 
 ## Installation
 
-1. Download [`knullipod-v0.31.1-knulli.zip`](https://github.com/stefanobuttarelli/knullipod/raw/main/release/knullipod-v0.31.1-knulli.zip) and unzip it.
-2. Copy `KnulliPod.sh` and the `knullipod` folder to `/userdata/roms/ports/`.
+1. Download [`betterpod-v0.61-knulli.zip`](https://github.com/stefanobuttarelli/betterpod/raw/main/release/betterpod-v0.61-knulli.zip) and unzip it.
+2. Copy `betterPod.sh` and the `betterpod` folder to `/userdata/roms/ports/`.
 3. Put your music in `/userdata/music`, the `music` share on the network.
    - `Artist/Album/` folders with tagged files work best.
    - DRM-protected `.m4a` files, such as old iTunes purchases, can't be played.
-4. In EmulationStation, update the game lists and start **KnulliPod** from Ports.
+4. In EmulationStation, update the game lists and start **betterPod** from Ports.
 
 The first start scans the music folder. Later starts load the saved library instantly. Settings → Library → **Rescan now** picks up new music.
+
+### Coming from KnulliPod
+
+betterPod was called KnulliPod. An installation of KnulliPod gets betterPod through Software Update as usual:
+
+1. the update installs betterPod and restarts it;
+2. the next time it is started from Ports, it moves itself to its new name, once: `ports/knullipod` becomes `ports/betterpod` and `KnulliPod.sh` becomes `betterPod.sh`. The database goes with it, and a database folder chosen in Settings → Database (`.knullipod` in the music folder, `knullipod` on a card) takes the new name too;
+3. in EmulationStation, update the game lists once: Ports then shows **betterPod**.
+
+Installing by hand over KnulliPod instead: copy `betterPod.sh` and `betterpod` as above, move `knullipod/conf` to `betterpod/conf` (your library and settings), then delete `KnulliPod.sh` and the `knullipod` folder.
 
 ## Controls
 
@@ -118,7 +128,7 @@ The first start scans the music folder. Later starts load the saved library inst
   - X types a space, Y switches to 123 (digits and symbols);
   - L / R move the cursor in the text, START searches.
 - **Hold:**
-  - up/down set the brightness, and KnulliPod remembers it;
+  - up/down set the brightness, and betterPod remembers it;
   - after 5 seconds the Now Playing screen comes up, with the clock in the status bar.
 - **Solitaire:**
   - the wheel moves the hand, and A picks up or drops cards;
@@ -141,21 +151,21 @@ The first start scans the music folder. Later starts load the saved library inst
 
 ### Database folder
 
-By default everything is kept in `knullipod/conf`. Settings → Database offers:
+By default everything is kept in `betterpod/conf`. Settings → Database offers:
 
-- **Port folder:** the default, `knullipod/conf`.
-- **Music folder:** `/userdata/music/.knullipod`, which is hidden so the library scan skips it.
-- **A `knullipod` folder** on each card or drive mounted under `/media`.
-- **Choose a folder…:** browse to any folder, or create a new `knullipod` folder.
+- **Port folder:** the default, `betterpod/conf`.
+- **Music folder:** `/userdata/music/.betterpod`, which is hidden so the library scan skips it.
+- **A `betterpod` folder** on each card or drive mounted under `/media`.
+- **Choose a folder…:** browse to any folder, or create a new `betterpod` folder.
 
 What happens depends on the folder:
 
-- **No database there:** KnulliPod moves the current one ("Move database here").
+- **No database there:** betterPod moves the current one ("Move database here").
 - **A database already there**, for example from another console:
   - **Use database there** loads it as it is;
   - **Replace with current** overwrites it with this console's database.
 
-The choice is stored in `knullipod/conf/datadir.txt`. If the folder is missing at start-up, for example because the card was removed, KnulliPod falls back to the port folder and says so on the Database screen.
+The choice is stored in `betterpod/conf/datadir.txt`. If the folder is missing at start-up, for example because the card was removed, betterPod falls back to the port folder and says so on the Database screen.
 
 ### Internet Archive
 
@@ -173,19 +183,19 @@ To open an item you know, type its identifier (the part of the link after `/deta
 
 <img src="docs/images/update.png" width="320" align="right" alt="Software Update">
 
-Settings → Software Update opens a full-screen page with a download bar. **Check for Updates** reads [`release/latest.json`](release/latest.json) from this repository over Wi-Fi. When a newer version is listed, the page shows what's new, and **Download and Install** does the following:
+Settings → Software Update opens a full-screen page with a download bar. **Check for Updates** reads [`release/latest-knulli.json`](release/latest-knulli.json) from this repository over Wi-Fi. When a newer version is listed, the page shows what's new, and **Download and Install** does the following:
 
 1. downloads the release zip and checks its size and SHA-256;
-2. replaces the app's files one by one, keeping the previous binary as `knullipod/MiyooPod.prev`;
-3. restarts KnulliPod.
+2. replaces the app's files one by one, keeping the previous binary as `betterpod/betterpod.prev`;
+3. restarts betterPod.
 
-KnulliPod also checks by itself once a day (30 s after start-up, when a day has passed since the last check). When a new version is out, the main menu shows **Update Available**, a shortcut to this page. Nothing is downloaded without asking.
+betterPod also checks by itself once a day (30 s after start-up, when a day has passed since the last check). When a new version is out, the main menu shows **Update Available**, a shortcut to this page. Nothing is downloaded without asking.
 
-The database (`knullipod/conf`, or the folder chosen in Settings → Database) is never touched. You can also update by hand at any time: copy the new zip over the old installation.
+The database (`betterpod/conf`, or the folder chosen in Settings → Database) is never touched. You can also update by hand at any time: copy the new zip over the old installation.
 
 ## Options
 
-Advanced switches are environment variables. Uncomment them in `KnulliPod.sh`:
+Advanced switches are environment variables. Uncomment them in `betterPod.sh`:
 
 | Variable | Effect |
 |---|---|
@@ -203,7 +213,7 @@ Advanced switches are environment variables. Uncomment them in `KnulliPod.sh`:
 | `MIYOOPOD_VSYNC=0` | Disable vertical sync |
 | `MIYOOPOD_CLASSIC_UI=1` | Use the original MiyooPod interface |
 
-The log is written to `knullipod/miyoopod.log`.
+The log is written to `betterpod/miyoopod.log`.
 
 ## Building from source
 
@@ -213,11 +223,12 @@ You need:
 - [zig](https://ziglang.org), installed with `pip install ziglang`, used as the aarch64 C compiler with glibc 2.28;
 - the SDL2 headers and `libSDL2-2.0.so` for aarch64, in a folder with `include/SDL2` and `lib/`.
 
-`SDL2_mixer` (with the ALAC, AAC and 24-bit patches) is linked against the copy shipped in `port/knullipod/libs`.
+`SDL2_mixer` (with the ALAC, AAC and 24-bit patches) is linked against the copy shipped in `port/betterpod/libs`.
 
 ```sh
 SDL2_SYSROOT=/path/to/sysroot tools/build.sh
-# -> dist/knullipod.zip   (KnulliPod.sh + knullipod/, binary: knullipod/MiyooPod)
+# -> dist/betterpod-knulli.zip   (betterPod.sh + betterpod/, binary: betterpod/betterpod)
+#    dist/betterpod-knulli-bridge.zip   (for installations still called betterPod)
 ```
 
 The binary is built from the file list (`src/*.go`), not as a package, because `main.go` includes the C files (`main.c`, `audio.c`).
@@ -260,15 +271,15 @@ The v0.20 source tree was lost. It was rebuilt from the surviving release binary
 
 ## Credits
 
-- **[iPod.js](https://github.com/tvillarete/ipod-classic-js)** by Tanner Villarete: the interface design, layouts and assets KnulliPod recreates (MIT).
-- **[MiyooPod](https://github.com/danfragoso/miyoopod)** by Danilo Fragoso: the player engine, library scan and original app KnulliPod is built on (MIT).
+- **[iPod.js](https://github.com/tvillarete/ipod-classic-js)** by Tanner Villarete: the interface design, layouts and assets betterPod recreates (MIT).
+- **[MiyooPod](https://github.com/danfragoso/miyoopod)** by Danilo Fragoso: the player engine, library scan and original app betterPod is built on (MIT).
 - **[Inter](https://rsms.me/inter/)** by Rasmus Andersson and **[Noto Sans JP](https://github.com/notofonts/noto-cjk)** (Google, Adobe): the fonts (SIL Open Font License).
 - Apple's reference **[ALAC decoder](https://github.com/macosforge/alac)** (Apache 2.0), **[FFmpeg](https://ffmpeg.org)**'s AAC decoder (LGPL 2.1), **[SDL2 and SDL2_mixer](https://libsdl.org)** (zlib).
 
-See [THIRD_PARTY_LICENSES.md](port/knullipod/THIRD_PARTY_LICENSES.md) for the full list.
+See [THIRD_PARTY_LICENSES.md](port/betterpod/THIRD_PARTY_LICENSES.md) for the full list.
 
 ## License
 
-KnulliPod is released under the [MIT License](LICENSE).
+betterPod is released under the [MIT License](LICENSE).
 
 iPod is a trademark of Apple Inc. This is an independent fan project, not affiliated with or endorsed by Apple, Anbernic or the Knulli project.

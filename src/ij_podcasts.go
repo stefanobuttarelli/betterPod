@@ -70,7 +70,7 @@ type podcast struct {
 	Genre  string `json:"genre,omitempty"`
 	Count  int    `json:"-"` // episodes, as the search says
 
-	// what KnulliPod downloaded into dir(): episode key → file name, and
+	// what betterPod downloaded into dir(): episode key → file name, and
 	// whether cover.jpg is its own. Never changed in place (copied on
 	// write), so a copy read on the UI goroutine stays as it was.
 	Files map[string]string `json:"files,omitempty"`
@@ -795,7 +795,7 @@ func (ui *IpodUI) playPodEpisode(path string) {
 
 // ---- deleting ----
 
-// deletePodcastEpisodes deletes what KnulliPod downloaded from p (its
+// deletePodcastEpisodes deletes what betterPod downloaded from p (its
 // episodes, the unfinished ones and its cover.jpg; nothing else in the
 // folder), after asking; the folder goes too if that leaves it empty.
 func (ui *IpodUI) deletePodcastEpisodes(p podcast, after func()) {
@@ -1241,7 +1241,7 @@ func podGet(d *iaDownload, u, part string, base int64, size *int64) error {
 		return retry(msg)
 	}
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
-	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+	req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 	if have > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
 		req.Header.Set("If-Range", info.validator())

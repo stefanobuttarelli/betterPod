@@ -80,7 +80,7 @@ func jsonString(raw json.RawMessage) string {
 
 func iaGet(u string, timeout time.Duration, v any) error {
 	req, _ := http.NewRequest("GET", u, nil)
-	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+	req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 	resp, err := updateClient(timeout).Do(req)
 	if err != nil {
 		return err
@@ -563,7 +563,7 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 		}
 		it := st.item
 		if len(it.Groups) == 0 {
-			return append(items, Item{Label: "No audio files KnulliPod can play", NoArrow: true})
+			return append(items, Item{Label: "No audio files betterPod can play", NoArrow: true})
 		}
 		for _, g := range iaGroupOrder {
 			fs := it.Groups[g]
@@ -820,7 +820,7 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		watchdog := time.AfterFunc(iaStall, func() { stalled.Store(true); cancel() })
 		defer watchdog.Stop()
 		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
-		req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+		req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 		if have > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
 		}

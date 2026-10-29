@@ -55,6 +55,7 @@ func readDataDirPointer() string {
 	if d == "" || d == "." || !filepath.IsAbs(d) {
 		return ""
 	}
+	d = renameLegacyDataDir(d)
 	// the chosen folder must still be there (an SD card may be missing):
 	// otherwise fall back to the default one for this run
 	if st, err := os.Stat(d); err != nil || !st.IsDir() {
@@ -121,7 +122,7 @@ func checkWritable(dir string) error {
 		}
 		d = parent
 	}
-	f, err := os.CreateTemp(d, ".knullipod-test-*")
+	f, err := os.CreateTemp(d, ".betterpod-test-*")
 	if err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func checkWritable(dir string) error {
 	return os.Remove(name)
 }
 
-// hasDatabase reports whether dir already holds a KnulliPod library.
+// hasDatabase reports whether dir already holds a betterPod library.
 func hasDatabase(dir string) bool {
 	st, err := os.Stat(filepath.Join(dir, ".miyoopod_library.json"))
 	return err == nil && st.Size() > 0
@@ -275,4 +276,36 @@ func databaseSize(dir string) int64 {
 		}
 	}
 	return n
+}
+
+// renameLegacyDataDir: a database folder made before the app was called
+// betterPod (".knullipod" in the music folder, "knullipod" on a card or
+// anywhere chosen) takes the new name once, if nothing has that name yet;
+// the pointer follows. Anything that fails leaves it where it is.
+func renameLegacyDataDir(d string) string {
+	base := filepath.Base(d)
+	var nb string
+	switch base {
+	case ".knullipod":
+		nb = ".betterpod"
+	case "knullipod":
+		nb = "betterpod"
+	default:
+		return d
+	}
+	nd := filepath.Join(filepath.Dir(d), nb)
+	if _, err := os.Lstat(nd); err == nil {
+		return d
+	}
+	if st, err := os.Stat(d); err != nil || !st.IsDir() {
+		return d
+	}
+	if err := os.Rename(d, nd); err != nil {
+		return d
+	}
+	if err := writeFileAtomic(filepath.Join(defaultDataDir(), dataDirPointer), []byte(nd+"\n")); err != nil {
+		os.Rename(nd, d) // (the pointer could not follow: back as it was)
+		return d
+	}
+	return nd
 }

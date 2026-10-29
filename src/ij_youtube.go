@@ -5,7 +5,7 @@ package main
 //
 // The work is done by yt-dlp (github.com/yt-dlp/yt-dlp), which needs a
 // JavaScript runtime for YouTube: QuickJS-ng (small) or, failing that,
-// Deno. Neither ships with KnulliPod: the settings page downloads them
+// Deno. Neither ships with betterPod: the settings page downloads them
 // into the data folder (tools/) the first time YouTube is turned on, and
 // can update or remove them. MIYOOPOD_YTDLP / MIYOOPOD_YTJS point at other
 // programs (tests).
@@ -132,7 +132,7 @@ func ytGetVersion() string {
 // the server's.
 func fetchFile(url, path string, progress func(done, total int64)) (string, error) {
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "KnulliPod/"+KNULLIPOD_VERSION)
+	req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 	resp, err := updateClient(10 * time.Minute).Do(req)
 	if err != nil {
 		return "", err

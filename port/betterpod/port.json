@@ -1,18 +1,18 @@
 {
   "version": 4,
-  "name": "knullipod.zip",
+  "name": "betterpod.zip",
   "items": [
-    "KnulliPod.sh",
-    "knullipod"
+    "betterPod.sh",
+    "betterpod"
   ],
   "items_opt": [
-    "knullipod/conf",
-    "knullipod/music"
+    "betterpod/conf",
+    "betterpod/music"
   ],
   "attr": {
-    "title": "KnulliPod",
+    "title": "betterPod",
     "porter": [
-      "KnulliPod"
+      "betterPod"
     ],
     "desc": "iPod-style music player: split-screen menus, Cover Flow, 3D Now Playing, search and games. Plays your own music, including lossless and hi-res. Interface based on iPod.js by Tanner Villarete; player engine from MiyooPod.",
     "inst": "Put your music (FLAC, ALAC, AAC, WAV, AIFF, MP3, OGG) in /userdata/music.",

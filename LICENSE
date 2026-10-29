@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Stefano Buttarelli (KnulliPod)
+Copyright (c) 2026 Stefano Buttarelli (betterPod)
 Copyright (c) 2026 Danilo Fragoso (MiyooPod)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -24,5 +24,5 @@ SOFTWARE.
 ---
 
 The interface is a recreation of iPod.js (https://github.com/tvillarete/ipod-classic-js),
-Copyright (c) Tanner Villarete, MIT License: see port/knullipod/LICENSE.ipod.js.
-Third-party components: see port/knullipod/THIRD_PARTY_LICENSES.md.
+Copyright (c) Tanner Villarete, MIT License: see port/betterpod/LICENSE.ipod.js.
+Third-party components: see port/betterpod/THIRD_PARTY_LICENSES.md.
