@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.63.2 (2026-10-29)
+
+### Changed
+- **Settings: a lighter shadow on the right column.** It is about a third as dark and half as wide as before.
+
 ## v0.63.1 (2026-10-29)
 
 ### Changed

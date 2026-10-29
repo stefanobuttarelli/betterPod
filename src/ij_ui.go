@@ -1054,8 +1054,11 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		sa := lx + 1
 		if sa > 0 {
 			prof := ui.shadow
+			if col != nil {
+				prof = columnShadow(ui.shadow) // (lighter on a right column)
+			}
 			if sa < 1 {
-				prof = scaleProfile(ui.shadow, sa)
+				prof = scaleProfile(prof, sa)
 			}
 			darkenColumns(fb, leftPx+320, 0, 480, prof)
 		}

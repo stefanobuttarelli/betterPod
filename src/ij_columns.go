@@ -230,3 +230,18 @@ func leftColumn(st []*View) []*View {
 	}
 	return st
 }
+
+// columnShadow: the left panel's shadow, lighter and narrower over a right
+// column (made once).
+var colShadow []float64
+
+func columnShadow(full []float64) []float64 {
+	if colShadow == nil {
+		n := max(1, len(full)/2)
+		colShadow = make([]float64, n)
+		for i := range colShadow {
+			colShadow[i] = full[i*len(full)/n] * 0.35
+		}
+	}
+	return colShadow
+}
