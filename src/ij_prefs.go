@@ -20,6 +20,7 @@ type ipodPrefs struct {
 	SaverLevel  int     `json:"screensaverBrightness,omitempty"`
 	SaverStyle  string  `json:"screensaverStyle,omitempty"`
 	SaverEffect int     `json:"screensaverEffect,omitempty"`
+	SaverColors int     `json:"screensaverColors,omitempty"`
 }
 
 func ipodPrefsPath() string { return dataPath("ipodjs_settings.json") }
@@ -45,6 +46,9 @@ func (ui *IpodUI) loadPrefs() {
 	}
 	if p.SaverEffect >= 0 && p.SaverEffect < len(vizNames) {
 		saverEffect = p.SaverEffect
+	}
+	if p.SaverColors >= 0 && p.SaverColors < len(vizSchemes) {
+		saverColors = p.SaverColors
 	}
 	if p.SaverLevel >= 1 && p.SaverLevel <= 100 {
 		saverLevel = p.SaverLevel
@@ -83,6 +87,6 @@ func (ui *IpodUI) savePrefs() {
 	}
 	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu,
 		SaverAfter: saverAfter, SaverDim: saverDim, SaverLevel: saverLevel,
-		SaverStyle: saverStyle, SaverEffect: saverEffect})
+		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors})
 	_ = os.WriteFile(ipodPrefsPath(), data, 0644)
 }

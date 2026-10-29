@@ -56,7 +56,7 @@
 - **Bluetooth headphones** connect from Settings → Bluetooth (paired ones with A, new ones with Find New Devices), without going back to Knulli.
 - **Now Playing:** START turns the cover over to the album's songs (like Cover Flow); A, A again shows Shuffle and Repeat buttons.
 - **L2 / R2 set the brightness** anywhere, shown in the header.
-- **Screensaver — Visualizer:** bars, waves, tunnel and stars that move with the music (Settings → Screensaver → Style; LEFT / RIGHT change the effect, START a big clock, UP / DOWN the song).
+- **Screensaver — Visualizer:** bars, waves, tunnel, stars and a spectrogram that move with the music (Settings → Screensaver → Style; LEFT / RIGHT change the effect, A the colours, START a big clock, UP / DOWN the song).
 - **Screensaver:** a mosaic of album covers that turn over, the album playing big; pick one with the arrows and A to see its songs (Settings → Screensaver, or SELECT + Y).
 - **Move the music to another card** (Settings → Library → Music Folder): copied, checked file by file, then the originals deleted; a card taken out only pauses it.
 - **Updates over Wi-Fi.** betterPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
@@ -249,6 +249,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/ij_bluetooth.go` | Settings → Bluetooth (bluetoothctl): paired and new devices, their pictures |
 | `src/ij_npextra.go` | Now Playing's card (START) and options row (Shuffle, Repeat) |
 | `src/ij_visualizer.go` | The Visualizer screensaver: the sound's spectrum (FFT) and its effects |
+| `src/ij_vizcolors.go` | The Visualizer's colour schemes (A) and the Spectrogram |
 | `src/ij_screensaver.go` | The screensaver: the cover mosaic, its bar, the turned-over card, Settings → Screensaver |
 | `src/ij_musicdir.go`, `src/ij_movemusic_view.go` | Music Folder: moving the music to another card, and its screen |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |

@@ -1,8 +1,8 @@
 {
-  "version": "0.61.1",
-  "path": "release/betterpod-v0.61.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.61.1-knulli.zip",
-  "sha256": "8326d062c18f3e0bf6685cfd65bc6ba9cf03d5851c635b3ca42dea055de240d6",
-  "size": 15237177,
-  "notes": "- Track lists: the current song shows a pause mark while paused\n- KnulliPod is now betterPod (0.61)\n- The album's songs are the back of the cover (0.60.2)\n- Bar at the top: headphones and Wi-Fi icons (0.60)"
+  "version": "0.62",
+  "path": "release/betterpod-v0.62-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/betterpod-v0.62-knulli.zip",
+  "sha256": "10c25aaea2f97c965fdab7e3f0bdbafab1eab73f23bcac3bf72e64c021d8fb44",
+  "size": 15244243,
+  "notes": "- Visualizer: the Spectrogram, the sound scrolling as a band of heat\n- Visualizer: A changes the colours (Classic, Album, Magma, Aurora, Sunset, Ocean, Phosphor, Mono)\n- Track lists: a pause mark on the paused song (0.61.1)\n- KnulliPod is now betterPod (0.61)"
 }

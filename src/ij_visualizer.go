@@ -45,7 +45,7 @@ const (
 	vizTop   = 0 // (no bar over it: the whole screen)
 )
 
-var vizNames = []string{"Bars", "Waves", "Tunnel", "Stars"}
+var vizNames = []string{"Bars", "Waves", "Tunnel", "Stars", "Spectrogram"}
 
 // saverEffect: the effect chosen (kept in the prefs).
 var saverEffect = 0
@@ -88,6 +88,17 @@ type visualizer struct {
 	bar     *image.RGBA // a bar, light at its top (Bars)
 	barRefl *image.RGBA // its reflection
 	palette [1024][3]uint8
+
+	// the colours (ij_vizcolors.go)
+	heat                   [256][3]uint8
+	barBottom, barTop      Col
+	barCap                 Col
+	colorsFor              int
+	colorsAl               *Album
+	colorsArt, colorsInit  bool
+	pill                   string // what the pill at the top says (the effect, the colours)
+	rowLo, rowHi, specPrev [vizH]float64
+	rowsRate               int
 }
 
 func newVisualizer() *visualizer {
@@ -116,14 +127,11 @@ func newVisualizer() *visualizer {
 	}
 	v.spec = make([]complex128, vizN)
 	v.setRate(int(C.audio_vis_rate()))
-	for i := range v.palette {
-		r, g, b := hsvRGB(float64(i)/1024, 0.85, 1)
-		v.palette[i] = [3]uint8{r, g, b}
-	}
 	v.buf = make([]byte, vizW*vizH*4)
 	v.buf2 = make([]byte, vizW*vizH*4)
 	v.makeMaps()
-	v.makeBars()
+	v.applyColors(nil) // (Classic until the frame picks the scheme)
+	v.pill = "‹  " + vizNames[saverEffect] + "  ›"
 	return v
 }
 
@@ -261,6 +269,7 @@ func (v *visualizer) animating(now time.Time) bool {
 func (ui *IpodUI) renderViz(dst *image.RGBA, s *screensaver, now time.Time) {
 	v := s.viz
 	v.analyse(now)
+	ui.vizColorsFrame(v)
 	fillRect(dst, 0, vizTop, 640, 480-vizTop, colBlack)
 	switch saverEffect {
 	case 0:
@@ -271,9 +280,13 @@ func (ui *IpodUI) renderViz(dst *image.RGBA, s *screensaver, now time.Time) {
 	case 2:
 		v.drawTunnel(now)
 		v.double(dst)
-	default:
+	case 3:
 		v.drawStars()
 		v.double(dst)
+	default:
+		v.drawSpectro()
+		v.double(dst)
+		v.spectroScale(dst)
 	}
 	// nothing playing: a word in the middle
 	if !v.fresh && v.energy() < 0.01 {
@@ -286,7 +299,7 @@ func (ui *IpodUI) renderViz(dst *image.RGBA, s *screensaver, now time.Time) {
 	if el := now.Sub(v.nameAt).Seconds(); el < 1.8 {
 		op := math.Min(1, (1.8-el)/0.5)
 		f := face(W700, 15)
-		name := "‹  " + vizNames[saverEffect] + "  ›"
+		name := v.pill
 		_, a := lineBox(15)
 		tw := textWidth(f, name)
 		y := 30 * DPR // (at the top: the song can come up at the bottom)
@@ -301,6 +314,7 @@ func (ui *IpodUI) vizEffect(d int) {
 	saverEffect = (saverEffect + d + len(vizNames)) % len(vizNames)
 	if v := ui.saver.viz; v != nil {
 		v.nameAt = time.Now()
+		v.pill = "‹  " + vizNames[saverEffect] + "  ›"
 		clear(v.buf)
 		clear(v.buf2)
 		v.parts = v.parts[:0]
@@ -321,7 +335,7 @@ const (
 func (v *visualizer) makeBars() {
 	v.bar = image.NewRGBA(image.Rect(0, 0, vizBarW, vizBarMax))
 	v.barRefl = image.NewRGBA(image.Rect(0, 0, vizBarW, vizReflH))
-	bottom, top := Col{30, 110, 230, 1}, Col{150, 230, 255, 1}
+	bottom, top := v.barBottom, v.barTop
 	for y := 0; y < vizBarMax; y++ {
 		t := 1 - float64(y)/vizBarMax // 1 at the top
 		c := lerpCol(bottom, top, t*t)
@@ -359,7 +373,7 @@ func (v *visualizer) drawBars(dst *image.RGBA) {
 		}
 		// the cap, falling slower
 		py := vizBase - int(v.peaks[b]*vizBarMax) - 5
-		fillRect(dst, x, py, vizBarW, 3, Col{230, 245, 255, 1})
+		fillRect(dst, x, py, vizBarW, 3, v.barCap)
 	}
 }
 
@@ -622,7 +636,7 @@ func hsvRGB(h, s, v float64) (uint8, uint8, uint8) {
 
 // vizKey: LEFT / RIGHT the effect, START the big clock, UP / DOWN the song
 // at the bottom, B leaves (to Now Playing while a song plays), X plays and
-// pauses, L / R change song, L2 / R2 the brightness.
+// pauses, L / R change song, L2 / R2 the brightness, A the colours.
 func (ui *IpodUI) vizKey(s *screensaver, k Key, now time.Time) bool {
 	toggle := func(a *Anim) {
 		if a.Target() > 0.5 {
@@ -636,6 +650,8 @@ func (ui *IpodUI) vizKey(s *screensaver, k Key, now time.Time) bool {
 		ui.vizEffect(-1)
 	case RIGHT, WHEEL_CW:
 		ui.vizEffect(1)
+	case A:
+		ui.vizNextColors()
 	case START:
 		toggle(s.clockA)
 	case UP, DOWN:

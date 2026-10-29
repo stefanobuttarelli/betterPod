@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.62 (2026-10-29)
+
+### Added
+- **Visualizer: the Spectrogram.** A fifth effect, after Stars. The sound scrolls from right to left as a band of heat, with low notes at the bottom and high ones at the top, on the same 40 Hz–16 kHz scale as the bars. Small marks show 100, 1k and 10k. A frame of sound takes a column, and the screen holds about 5 seconds.
+- **Visualizer: A changes the colours**, for every effect. Each press shows the name for a moment, and the choice is kept.
+  - **Classic:** each effect's own colours (blue bars, rainbow hues, a magma heat).
+  - **Album:** made from the cover of the song that plays, and it follows the song.
+  - **Magma, Aurora, Sunset, Ocean, Phosphor, Mono.**
+
 ## v0.61.1 (2026-10-29)
 
 ### Fixed
