@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.63.4 (2026-10-29)
+
+### Fixed
+- **The Wi-Fi icon shows on more consoles.** It looked only at /proc/net/wireless, which some Wi-Fi drivers leave empty. Now:
+  - the wireless interface is found by name, and "connected" means it has a link;
+  - the signal is read from /proc/net/wireless, else from `iw`, else from `wpa_cli`;
+  - when the console is connected but no signal can be read, the icon shows full.
+- The log says what was found when it changes ("Wi-Fi: wlan0:up/1 signal 3/3"), to check a console where the icon still doesn't show.
+
 ## v0.63.3 (2026-10-29)
 
 ### Fixed
