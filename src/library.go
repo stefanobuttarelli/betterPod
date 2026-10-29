@@ -536,6 +536,12 @@ func (app *MiyooPod) decodeArtwork(artData []byte, artExt string) image.Image {
 // decodeAlbumArt decodes raw art bytes into images for all albums
 // NOW: Only decode on-demand to save memory and startup time
 func (app *MiyooPod) decodeAlbumArt() {
+	if useIpodUI {
+		// these 200 px covers are the classic UI's: the iPod UI scales its
+		// own (ij_art.go), so here they only took 160 KB an album for good
+		// and decoded each new cover once more
+		return
+	}
 	start := time.Now()
 
 	size := COVER_CENTER_SIZE
@@ -692,8 +698,8 @@ func (app *MiyooPod) deferredArtExtraction() {
 			album.ArtExt = pic.Ext
 
 			// Save to disk for next time
-			if err := app.saveAlbumArtwork(album); err == nil {
-				// Also generate RGBA cache
+			if err := app.saveAlbumArtwork(album); err == nil && !useIpodUI {
+				// Also generate RGBA cache (the classic UI's, as in decodeAlbumArt)
 				rgbaPath := app.rgbaCachePath(album)
 				if rgbaPath != "" {
 					reader := bytes.NewReader(pic.Data)

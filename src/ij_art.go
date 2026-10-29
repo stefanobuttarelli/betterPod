@@ -6,13 +6,13 @@ package main
 // once within a per-frame budget, and the list thumbnails are prefetched.
 
 import (
-	"bytes"
 	"container/list"
 	"fmt"
 	"hash/fnv"
 	"image"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,18 +42,19 @@ type artEntry struct {
 }
 
 // 128 MB of scaled images (16 MB on the Miyoo), at most 2 decoded at the
-// same time
+// same time (1 on the Miyoo: Go has one core there, so a second decode
+// only adds its picture to the memory)
 func newArtCache() *artCache {
-	budget := 128 << 20
+	budget, decoders := 128<<20, 2
 	if isOnion {
-		budget = int(onionArtBudget())
+		budget, decoders = int(onionArtBudget()), 1
 	}
 	return &artCache{
 		imgs:    map[artKey]*list.Element{},
 		lru:     list.New(),
 		budget:  budget,
 		pending: map[artKey]bool{},
-		sem:     make(chan struct{}, 2),
+		sem:     make(chan struct{}, decoders),
 	}
 }
 
@@ -128,11 +129,14 @@ func decodeAlbumSource(a *Album) image.Image {
 	if a.ArtPath == "" {
 		return nil
 	}
-	data, err := os.ReadFile(a.ArtPath)
+	// decoded as the file is read (a big cover is several MB, not read
+	// whole first)
+	f, err := os.Open(a.ArtPath)
 	if err != nil {
 		return nil
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
+	defer f.Close()
+	img, _, err := image.Decode(f)
 	if err != nil {
 		return nil
 	}
@@ -299,6 +303,10 @@ func (ui *IpodUI) loadArt(a *Album, devSize int) *image.RGBA {
 	if src == nil {
 		return scaleImage(ui.defaultArt(), devSize, devSize)
 	}
+	// one smaller copy for all the sizes below: the full picture (a 3000 px
+	// cover is 13 MB decoded) can go now
+	big := max(devSize, slices.Max(prefetchSizes))
+	src = shrinkImage(src, big, big)
 	out := scaleImage(src, devSize, devSize)
 	writeArtDisk(a, devSize, out)
 	// the other common sizes from the same decode, for next time
