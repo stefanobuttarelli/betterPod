@@ -712,7 +712,11 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 		}
 		sc := float64(art.Bounds().Dx()) / 128
 		tm := texMap{img: art, su: sc, sv: sc, u1: 128, v1: 128}
-		if selected {
+		onBack := it.i == cf.active && cf.back != nil && cf.albums[it.i] == cf.backAlbum && !facesViewer(m)
+		if onBack {
+			// turned away: its back is the album's card
+			ui.drawBackside(layer, m, coverMatrix(backPose()), cardGrow(x.A), aa*op, now)
+		} else if selected {
 			// the reflection of the selected cover fades with Now
 			// Playing
 			//
@@ -726,10 +730,6 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 			tm.v1 = 166.4
 			tm.reflFrom, tm.reflMax, tm.reflStart = 128, 0.2, 0.7
 			drawTex(layer, m, tm, aa*op)
-		}
-		if it.i == cf.active && cf.albums[it.i] == cf.backAlbum {
-			bm := coverMatrix(backPose())
-			ui.drawBackside(layer, bm, bm, now)
 		}
 	}
 	// Now Playing (track info and controls) over the flow
@@ -761,7 +761,7 @@ func absInt(x int) int {
 }
 
 // drawBackside draws the back of the flipped cover (album info, tracks).
-func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) {
+func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, g, alpha float64, now time.Time) {
 	cf := ui.cover
 	if cf.back == nil {
 		return
@@ -769,7 +769,7 @@ func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) 
 	if cf.backShown != cf.backAlbum {
 		cf.backShown, cf.backSince = cf.backAlbum, now
 	}
-	drawBacksideCard(layer, m, final, cf.backAnim.Get(now), func(w, h float64) *image.RGBA {
+	drawBacksideCard(layer, m, final, alpha, g, func(w, h float64) *image.RGBA {
 		return ui.backsideTex(&backsideBuf, &backsideList, cf.backAlbum, cf.back, w, h, cf.backSince, now)
 	})
 }
@@ -777,33 +777,37 @@ func (ui *IpodUI) drawBackside(layer *image.RGBA, m, final mat4, now time.Time) 
 // drawBacksideCard draws an album's card on the back of a cover (Cover
 // Flow's, and Now Playing's turned over), s: 0 → 1 as it comes (bigger
 // and stronger). tex makes the card's picture at w×h (CSS px).
-func drawBacksideCard(layer *image.RGBA, m, final mat4, s float64, texFn func(w, h float64) *image.RGBA) {
-	if s <= 0.001 {
+func drawBacksideCard(layer *image.RGBA, m, final mat4, alpha, g float64, texFn func(w, h float64) *image.RGBA) {
+	if alpha <= 0.001 {
 		return
 	}
-	scale := 0.7 + 0.3*s
-	// the card, in the cover's plane coordinates (it is wider than the
+	// the card, in the cover's plane coordinates (wider than the cover and
+	// centred on it); its height comes from where its bottom edge lands on
+	// the screen once the flip has finished
 	bu0, bv0 := -64.0, -35.84
 	bw := 256.0
-	// cover and centred on it); its height comes from where its bottom
-	// edge lands on the screen once the flip has finished
-	//
 	bh := backsideHeight(final, bu0, bv0, bw)
 	tex := texFn(bw, bh)
-	cxu, cyv := bu0+bw/2, bv0+bh/2
-	// mirrored horizontally (we see it from behind), scaled about its
-	// centre while it flips
-	k := float64(tex.Bounds().Dx()) / bw
+	// it is the back of the cover: just turned (g = 0) it is the cover's
+	// own square, growing to the whole card as it turns to face us
+	l := func(a, b float64) float64 { return a + (b-a)*g }
+	u0, u1 := l(0, bu0), l(128, bu0+bw)
+	v0, v1 := l(0, bv0), l(128, bv0+bh)
+	tw, th := float64(tex.Bounds().Dx()), float64(tex.Bounds().Dy())
+	// mirrored horizontally (we see it from behind)
 	tm := texMap{
 		img: tex,
-		su:  -k / scale, ou: (cxu/scale + cxu - bu0) * k,
-		sv: k / scale, ov: (-cyv/scale + cyv - bv0) * k}
-	// only the card's own area: the texture is the card, the rest of the
-	// cover plane stays transparent
-	//
-	tm.u0, tm.u1 = cxu-bw/2*scale, cxu+bw/2*scale
-	tm.v0, tm.v1 = cyv-bh/2*scale, cyv+bh/2*scale
-	drawTex(layer, m, tm, s)
+		su:  -tw / (u1 - u0), ou: u1 * tw / (u1 - u0),
+		sv: th / (v1 - v0), ov: -v0 * th / (v1 - v0)}
+	tm.u0, tm.u1 = u0, u1
+	tm.v0, tm.v1 = v0, v1
+	drawTex(layer, m, tm, alpha)
+}
+
+// cardGrow: how far the back of a cover at angle a (degrees) has turned
+// to face us: 0 edge-on, 1 facing us.
+func cardGrow(a float64) float64 {
+	return math.Max(0, -math.Cos(a*math.Pi/180))
 }
 
 // backsideInfoH: height of the album / artist block on the back.

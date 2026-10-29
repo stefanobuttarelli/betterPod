@@ -275,7 +275,7 @@ func (np *NowPlayingView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	ui.npStage(dst, np, now)
 	// the song's info goes as the cover starts to turn, and comes back as
 	// it lands: never with the card's text
-	a := math.Max(0, 1-2*math.Max(np.flip.Get(now), np.backA.Get(now)))
+	a := math.Max(0, 1-2*np.flip.Get(now))
 	if a >= 0.999 {
 		np.renderBody(ui, v, dst, now)
 	} else if a > 0.002 {
