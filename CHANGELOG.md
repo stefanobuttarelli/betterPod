@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.59.1 (2026-10-29)
+
+### Changed
+- **Visualizer: the whole screen, no bar at the top.** The effects fill 640×480. The bar shows only for a moment while the brightness (L2 / R2) or the volume changes. The effect's name now shows at the top, so the song can come up at the bottom.
+
 ## v0.59 (2026-10-29)
 
 ### Added

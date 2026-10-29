@@ -970,7 +970,11 @@ func (ui *IpodUI) renderSaver(dst *image.RGBA, now time.Time) {
 	if s.viz != nil {
 		ui.renderViz(dst, s, now)
 		ui.vizOverlays(dst, s, now)
-		ui.ssBarDraw(dst, s, now)
+		// no bar over it: only for a moment, while the brightness or the
+		// volume changes (shown there)
+		if now.Before(s.briShown) || hold.on && now.Before(hold.levelShown) || volOSD.a.Get(now) > 0.001 {
+			ui.ssBarDraw(dst, s, now)
+		}
 		return
 	}
 	fillRect(dst, 0, 0, 640, 480, colBlack)

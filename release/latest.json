@@ -1,8 +1,8 @@
 {
-  "version": "0.59",
-  "path": "release/knullipod-v0.59-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.59-knulli.zip",
-  "sha256": "58b127e2080b3526a7a0a38b1d3851fcf64e3fdd7bbe40aa3e80dea893b66f85",
-  "size": 15224324,
-  "notes": "- Screensaver: the Visualizer (Bars, Waves, Tunnel, Stars) moving with the music\n- Visualizer: LEFT/RIGHT change effect, START big clock, UP/DOWN the song at the bottom\n- Settings → Screensaver → Style: Cover Flip or Visualizer\n- Move Music safer; fixes and speed-ups (0.58.3)"
+  "version": "0.59.1",
+  "path": "release/knullipod-v0.59.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/knullipod/main/release/knullipod-v0.59.1-knulli.zip",
+  "sha256": "c1a85fbfa300df7c59c81fac5b1ea8403737b2664d153b4607cb1f1b2301b40f",
+  "size": 15225378,
+  "notes": "- Visualizer: the whole screen, no bar at the top\n- Screensaver: the Visualizer (Bars, Waves, Tunnel, Stars) moving with the music (0.59)\n- Visualizer: LEFT/RIGHT change effect, START big clock, UP/DOWN the song (0.59)\n- Move Music safer; fixes and speed-ups (0.58.3)"
 }

@@ -18,7 +18,7 @@ package main
 //     the middle (like the old Infinity).
 //   - Stars: sparks thrown from the middle on the beats.
 //
-// The last three draw at half size (320×220) into a picture that fades each
+// The last three draw at half size (320×240) into a picture that fades each
 // frame (the trails), then doubled onto the screen. 30 frames a second;
 // nothing is drawn while nothing plays.
 
@@ -41,8 +41,8 @@ const (
 	vizN     = 1024 // samples per frame
 	vizBands = 40
 	vizW     = 320 // the half-size picture (the area under the bar, halved)
-	vizH     = 220
-	vizTop   = 40 // the bar's height (px)
+	vizH     = 240
+	vizTop   = 0 // (no bar over it: the whole screen)
 )
 
 var vizNames = []string{"Bars", "Waves", "Tunnel", "Stars"}
@@ -289,7 +289,7 @@ func (ui *IpodUI) renderViz(dst *image.RGBA, s *screensaver, now time.Time) {
 		name := "‹  " + vizNames[saverEffect] + "  ›"
 		_, a := lineBox(15)
 		tw := textWidth(f, name)
-		y := 480 - 34*DPR
+		y := 30 * DPR // (at the top: the song can come up at the bottom)
 		fillRoundedGradient(dst, 320-tw/2-14*DPR, y-12*DPR, 320+tw/2+14*DPR, y+12*DPR, 12*DPR,
 			[]GradStop{{0, Col{0, 0, 0, 0.55}}, {1, Col{0, 0, 0, 0.55}}}, op)
 		drawText(dst, f, name, 320-tw/2, y+a*DPR/2-1, Col{255, 255, 255, op})
@@ -313,8 +313,8 @@ func (ui *IpodUI) vizEffect(d int) {
 const (
 	vizBarW   = 11
 	vizBarGap = 4
-	vizBarMax = 270 // px
-	vizBase   = vizTop + 30 + vizBarMax
+	vizBarMax = 280 // px
+	vizBase   = vizTop + 50 + vizBarMax
 	vizReflH  = 480 - vizBase
 )
 
