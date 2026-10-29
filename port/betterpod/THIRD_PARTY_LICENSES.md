@@ -8,6 +8,8 @@ betterPod is licensed under the [MIT License](https://github.com/stefanobuttarel
 | --- | --- | --- | --- |
 | [iPod.js](https://github.com/tvillarete/ipod-classic-js) | Tanner Villarete | MIT (`LICENSE.ipod.js`) | Interface design, layouts, icons and images in `assets/ipod` |
 | [MiyooPod](https://github.com/danfragoso/miyoopod) | Danilo Fragoso | MIT (`LICENSE.MiyooPod`) | Player engine, library scan, original app |
+| [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/) | Simon Tatham and contributors | MIT (`LICENSE.puzzles`) | Apps → Puzzles: twelve of its puzzles, compiled in |
+| [2048](https://github.com/gabrielecirulli/2048) | Gabriele Cirulli | MIT | Apps → 2048: the game's rules (the code is betterPod's own) |
 
 ## Fonts (`assets/`)
 

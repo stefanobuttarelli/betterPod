@@ -4,7 +4,7 @@ package main
 // the tiles, two equal ones merge, a new 2 (or 4) comes after each move.
 // The game is kept when you leave (and the best score), so it goes on.
 //
-//	arrows  slide            X  new game
+//	arrows  slide            START  new game
 //	A       play again / keep going (on the messages)
 //	B       back (the game is kept)
 
@@ -268,7 +268,7 @@ func (g *Game2048) OnKey(ui *IpodUI, k Key) bool {
 		g.move(dr, dc)
 		ui.dirty = true
 		return true
-	case X:
+	case START:
 		g.newGame()
 		ui.dirty = true
 		return true
@@ -430,7 +430,7 @@ func (g *Game2048) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	box(g48Y0+92, "BEST", g.best)
 	hf := face(W600, 11)
 	_, ha := lineBox(11)
-	for i, l := range []string{"Arrows  slide", "X  new game", "B  back"} {
+	for i, l := range []string{"Arrows  slide", "START  new game", "B  back"} {
 		drawText(dst, hf, l, 452, (g48Y0+g48Size-76+float64(i)*30)+ha*DPR/2, Col{90, 98, 112, 1})
 	}
 	// a message over the board
@@ -439,7 +439,7 @@ func (g *Game2048) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 			[]GradStop{{0, Col{255, 255, 255, 0.72}}, {1, Col{255, 255, 255, 0.72}}}, 1)
 		title, sub := "No more moves", "A: play again"
 		if m == "won" {
-			title, sub = "You made 2048!", "A: keep going · X: new game"
+			title, sub = "You made 2048!", "A: keep going · START: new game"
 		}
 		tf := face(W700, 22)
 		_, ta := lineBox(22)

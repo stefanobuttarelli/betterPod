@@ -250,6 +250,8 @@ func (ui *IpodUI) renderPreview(dst *image.RGBA, now time.Time) {
 		ui.drawImgPreview(dst, brickIcon(), "Brick", "")
 	case PrevSolitaire:
 		ui.drawImgPreview(dst, ui.solitaireIcon(), "Solitaire", "")
+	case PrevPuzzles:
+		ui.drawImgPreview(dst, pzIcon(), "Puzzles", "")
 	case PrevQuiz:
 		ui.drawImgPreview(dst, quizIcon(), "Guess the Song", "")
 	case Prev2048:
@@ -340,4 +342,5 @@ const (
 	PrevWeather
 	Prev2048
 	PrevQuiz
+	PrevPuzzles
 )

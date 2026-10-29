@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.67 (2026-10-29)
+
+### Added
+- **Apps → Puzzles:** twelve puzzles from Simon Tatham's Portable Puzzle Collection (MIT). Their own code runs inside betterPod, drawn as big as the screen allows.
+  - **The puzzles:** Mines, Sudoku, Net, Flood, Same Game, Fifteen, Light Up, Unruly, Towers, Keen, Pattern (nonogram) and Tents.
+  - **Keys:**
+    - the arrows move the cursor (in Fifteen they slide);
+    - A does the puzzle's action, Y the second one (flag, mark, turn back);
+    - L undoes, R redoes, START starts a new puzzle.
+  - **Sudoku, Towers and Keen:** R chooses the digit (or "clear"), A places it, Y turns pencil marks on and off.
+  - The line under the puzzle shows its keys and its own state (time, mines marked, moves).
+  - Each puzzle is kept when you leave, and comes back as it was.
+
+### Fixed
+- **X is play / pause again in 2048.** It started a new game there; now START does.
+
 ## v0.66 (2026-10-29)
 
 ### Added
