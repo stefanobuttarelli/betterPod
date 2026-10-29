@@ -1420,51 +1420,46 @@ func saverLabel() string {
 	return strconv.Itoa(saverAfter) + " min"
 }
 
+// saverSettingsView: a page (Settings' rule: more than a few choices).
+// What it does first, then when it starts.
 func (ui *IpodUI) saverSettingsView() *View {
-	v := &View{ID: "screensaver", Title: "Screensaver", Kind: KindSplit}
+	v := &View{ID: "screensaver", Title: "Screensaver", Kind: KindFull}
 	v.Build = func() []Item {
-		var items []Item
-		for _, m := range []int{0, 1, 2, 5, 10} {
-			m := m
-			l := "Never"
-			if m > 0 {
-				l = "After " + strconv.Itoa(m) + " min"
+		style, sub := "Cover Flip", "Covers turning over"
+		if saverStyle == "viz" {
+			style, sub = "Visualizer", "Moves with the music · [◀] [▶] change it"
+		}
+		items := []Item{
+			{Label: "Start Now", Sublabel: "Anywhere: [SELECT] + [Y]", NoArrow: true, OnSelect: func() { ui.startSaver() }},
+			{Label: "Style", Value: style, Sublabel: sub, NoArrow: true, OnSelect: func() {
+				if saverStyle == "viz" {
+					saverStyle = "cover"
+				} else {
+					saverStyle = "viz"
+				}
+				ui.savePrefs()
+				ui.refreshBuilt()
+			}},
+			{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "[L2] / [R2] set it while it shows", NoArrow: true, OnSelect: func() {
+				saverDim = !saverDim
+				ui.savePrefs()
+				ui.refreshBuilt()
+			}},
+		}
+		for _, m := range []int{1, 2, 5, 10, 0} {
+			l := "Start After " + strconv.Itoa(m) + " min"
+			if m == 0 {
+				l = "Never Start by Itself"
 			}
-			items = append(items, Item{Label: l, Sublabel: map[bool]string{true: "[SELECT] + [Y] still starts it"}[m == 0], Checked: saverAfter == m, NoArrow: true, Preview: PrevSettings, OnSelect: func() {
+			items = append(items, Item{Label: l, Checked: saverAfter == m, NoArrow: true, OnSelect: func() {
 				saverAfter = m
 				ui.savePrefs()
 				ui.refreshBuilt()
 			}})
 		}
-		style, sub := "Cover Flip", "The covers, turning over · press [A] for the Visualizer"
-		if saverStyle == "viz" {
-			style, sub = "Visualizer", "Moves with the music · [◀] [▶] change the effect · press [A] for Cover Flip"
-		}
-		items = append(items, Item{Label: "Style", Value: style, Sublabel: sub, NoArrow: true, Preview: PrevSettings, OnSelect: func() {
-			if saverStyle == "viz" {
-				saverStyle = "cover"
-			} else {
-				saverStyle = "viz"
-			}
-			ui.savePrefs()
-			ui.refreshBuilt()
-		}})
-		items = append(items,
-			Item{Label: "Dim the Screen", Value: onOff(saverDim), Sublabel: "[L2] / [R2] set the brightness while it shows", NoArrow: true, Preview: PrevSettings, OnSelect: func() {
-				saverDim = !saverDim
-				ui.savePrefs()
-				ui.refreshBuilt()
-			}},
-			Item{Label: "Start Now", Sublabel: "Or [SELECT] + [Y]", NoArrow: true, Preview: PrevSettings, OnSelect: func() { ui.startSaver() }},
-		)
 		return onionSaverSettings(items) // (no Visualizer on the Miyoo, see onion.go)
 	}
 	v.Items = v.Build()
-	for i, it := range v.Items {
-		if it.Checked {
-			v.Index = i
-		}
-	}
 	return v
 }
 

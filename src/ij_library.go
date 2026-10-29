@@ -303,23 +303,29 @@ func (ui *IpodUI) settingsView() *View {
 		return Item{Label: label, Value: value, Preview: PrevSettings, Column: mk, ColumnOpen: true,
 			OnSelect: func() { ui.openColumn(mk()) }}
 	}
+	// a row that opens a page of its own; the right column sums it up
+	page := func(label, value string, summary func() *View, open func() *View) Item {
+		return Item{Label: label, Value: value, Preview: PrevSettings, Column: summary, OnSelect: func() { ui.showView(open(), "") }}
+	}
+	// A few choices show in the right column; more open a page (Settings'
+	// rule since 0.77).
 	v.Build = func() []Item {
 		return onionSettings([]Item{ // (no YouTube or Bluetooth on the Miyoo, see onion.go)
-			{Label: "About", Preview: PrevSettings, Column: ui.aboutSummary, OnSelect: func() { ui.showView(ui.aboutView(), "") }},
+			page("About", "", ui.aboutSummary, ui.aboutView),
+			page("Software Update", updateLabel(), ui.updateSummary, ui.updateView),
 			col("Shuffle", shuffleLabel(ui.shuffleMode), ui.shuffleView),
 			col("Repeat", repeatLabel(ui.repeatMode()), ui.repeatView),
 			col("Theme", themeLabel(themeMode), ui.themeView),
 			col("Effects", effectsLabel(effectsMode), ui.effectsView), // (Settings → Effects, ij_effects.go)
-			col("Library", "", ui.libraryInfoView),
-			col("Database", dbLabel(dataDir()), ui.databaseView),
-			{Label: "YouTube", Preview: PrevSettings, Value: onOff(ytEnabled), Column: ui.youtubeSettingsView, OnSelect: func() { ui.showView(ui.youtubeSettingsView(), "") }},
-			{Label: "Bluetooth", Preview: PrevSettings, Value: btSettingsValue(), Column: ui.btSummary, OnSelect: func() { ui.showView(ui.bluetoothView(), "") }},
-			col("Podcasts", onOff(podsInMenu), ui.podcastsMenuView),
-			col("Sharing", shareNameLabel(), ui.sharingSettingsView),
-			col("Screensaver", saverLabel(), ui.saverSettingsView),
+			page("Screensaver", saverLabel(), ui.saverSummary, ui.saverSettingsView),
 			col("Turn it Apple", onOff(appleMode), ui.appleView),
-			{Label: "Software Update", Preview: PrevSettings, Column: ui.updateSummary, OnSelect: func() { ui.showView(ui.updateView(), "") }},
-			{Label: "Quit betterPod", Preview: PrevSettings, NoArrow: true, OnSelect: ui.askQuit},
+			page("Library", "", ui.librarySummary, ui.libraryInfoView),
+			page("Database", dbLabel(dataDir()), ui.databaseSummary, ui.databaseView),
+			col("Podcasts", onOff(podsInMenu), ui.podcastsMenuView),
+			page("YouTube", onOff(ytEnabled), ui.youtubeSettingsView, ui.youtubeSettingsView),
+			page("Bluetooth", btSettingsValue(), ui.btSummary, ui.bluetoothView),
+			col("Sharing", shareNameLabel(), ui.sharingSettingsView),
+			col("Quit betterPod", "", ui.quitView),
 		})
 	}
 	v.Items = v.Build()
@@ -514,11 +520,13 @@ func (ui *IpodUI) refreshBuilt() {
 	ui.dirty = true
 }
 
-// askQuit: Settings → Quit betterPod, after a confirmation (the music
-// stops; Knulli's or Onion's menu comes back).
-func (ui *IpodUI) askQuit() {
-	ui.showSheetTitled("Quit betterPod? The music stops.", []SheetOption{{Label: "Quit", Danger: true, OnSelect: func() {
-		logMsg("Quit from Settings")
-		ui.app.Running = false
-	}}})
+// quitView: Settings → Quit betterPod, one row: A quits (the music stops;
+// Knulli's or Onion's menu comes back).
+func (ui *IpodUI) quitView() *View {
+	return &View{ID: "quit", Title: "Quit betterPod", Kind: KindSplit, Items: []Item{{
+		Label: "Quit Now", Sublabel: "The music stops", NoArrow: true, Preview: PrevSettings,
+		OnSelect: func() {
+			logMsg("Quit from Settings")
+			ui.app.Running = false
+		}}}}
 }

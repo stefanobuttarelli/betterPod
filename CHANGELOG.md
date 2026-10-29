@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.77 (2026-10-30)
+
+### Changed
+- **Settings, reordered and tidied.** A setting with a few choices shows them in the right column; one with more opens a page of its own, summed up in the right column. Software Update comes second, under About.
+- **Screensaver** is a page: Start Now, Style and Dim the Screen first, then when it starts by itself.
+- **Database** is a page: the folders by name, the current one checked.
+- **Quit betterPod** shows one row in the right column, Quit Now: A on it quits, without a sheet.
+- **A row's value never cuts its label:** the value is shortened instead, or left out when there's no room.
+- The right column's summaries lose their "Press [A]" lines.
+
 ## v0.76.1 (2026-10-30)
 
 ### Added

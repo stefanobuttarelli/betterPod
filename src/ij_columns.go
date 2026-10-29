@@ -6,7 +6,7 @@ package main
 //
 //	A / RIGHT on a row with a column: the cursor moves into it (the left
 //	cursor turns grey); B / LEFT: back to the left column.
-//	Rows that open a page of their own (About, Bluetooth, Software Update)
+//	Rows that open a page of their own (About, Software Update, Screensaver…)
 //	show a summary there; A opens the page as before.
 //
 // The column is an ordinary menu pushed on the split stack (colParent set),
@@ -14,6 +14,7 @@ package main
 // rows' actions and refreshBuilt work as for any menu.
 
 import (
+	"fmt"
 	"image"
 	"time"
 
@@ -198,22 +199,59 @@ func (ui *IpodUI) aboutSummary() *View {
 func (ui *IpodUI) btSummary() *View {
 	switch v := btSettingsValue(); v {
 	case "":
-		return summaryView("Bluetooth", Item{Label: "Bluetooth", Sublabel: "Press [A] to connect headphones"})
+		return summaryView("Bluetooth", Item{Label: "No headphones connected"})
 	case "On", "Off":
-		return summaryView("Bluetooth", Item{Label: "Bluetooth", Value: v}, Item{Label: "No headphones connected", Sublabel: "Press [A] to connect them"})
+		return summaryView("Bluetooth", Item{Label: "Bluetooth", Value: v}, Item{Label: "No headphones connected"})
 	default:
 		return summaryView("Bluetooth", Item{Label: "Bluetooth", Value: "On"}, Item{Label: v, Sublabel: "Connected"})
 	}
 }
 
+// updateLabel: the Software Update row's value (a new version, once seen).
+func updateLabel() string {
+	if upd.manifest != nil && isNewerVersion(BETTERPOD_VERSION, upd.manifest.Version) {
+		return upd.manifest.Version
+	}
+	return ""
+}
+
 func (ui *IpodUI) updateSummary() *View {
 	items := []Item{{Label: "Version", Value: BETTERPOD_VERSION}}
-	if upd.manifest != nil && isNewerVersion(BETTERPOD_VERSION, upd.manifest.Version) {
-		items = append(items, Item{Label: "Update Available", Value: upd.manifest.Version, Sublabel: "Press [A] to install it"})
-	} else {
-		items = append(items, Item{Label: "Check for Updates", Sublabel: "Press [A]"})
+	if v := updateLabel(); v != "" {
+		items = append(items, Item{Label: "Update Available", Value: v})
+	} else if upd.state == updUpToDate {
+		items = append(items, Item{Label: "Up to Date"})
 	}
 	return summaryView("Software Update", items...)
+}
+
+func (ui *IpodUI) saverSummary() *View {
+	style := "Cover Flip"
+	if saverStyle == "viz" && !isOnion {
+		style = "Visualizer"
+	}
+	items := []Item{{Label: "Starts", Value: saverLabel()}, {Label: "Style", Value: style}, {Label: "Dim the Screen", Value: onOff(saverDim)}}
+	return summaryView("Screensaver", items...)
+}
+
+func (ui *IpodUI) librarySummary() *View {
+	lib := ui.library()
+	items := []Item{
+		{Label: "Songs", Value: fmt.Sprint(len(lib.Tracks))},
+		{Label: "Albums", Value: fmt.Sprint(len(lib.Albums))},
+		{Label: "Artists", Value: fmt.Sprint(len(lib.Artists))},
+	}
+	if ui.app.LibScanRunning {
+		items = append(items, Item{Label: "Scanning…"})
+	} else if n := len(ui.missingCovers()); n > 0 {
+		items = append(items, Item{Label: "Missing Covers", Value: fmt.Sprint(n)})
+	}
+	return summaryView("Library", items...)
+}
+
+func (ui *IpodUI) databaseSummary() *View {
+	cur := dataDir()
+	return summaryView("Database", Item{Label: dbLabel(cur), Sublabel: cur})
 }
 
 // leftColumn: the split stack without the menus shown in a right column

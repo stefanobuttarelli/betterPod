@@ -1,8 +1,8 @@
 {
-  "version": "0.76.1",
-  "path": "release/betterpod-v0.76.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.76.1-onion.zip",
-  "sha256": "f2949f5ec7e3d018e456b57880a90c99050681b363f5debc35354fb9af2df5a2",
-  "size": 28276309,
-  "notes": "- Settings \u2192 Quit betterPod\n- The keyboard has a shift key: one capital, or caps lock when pressed twice (0.76)\n- Delete Album, in an album's options (0.75)"
+  "version": "0.77",
+  "path": "release/betterpod-v0.77-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77-onion.zip",
+  "sha256": "daeaab39040e6df25c865cc7a29fc083499a1553da043bb1bcdab8fc37164beb",
+  "size": 28278176,
+  "notes": "- Settings reordered: few choices in the right column, more on a page of their own\n- Software Update second, under About\n- Screensaver and Database are pages\n- Quit betterPod: one row, A quits\n- A row's value never cuts its label"
 }

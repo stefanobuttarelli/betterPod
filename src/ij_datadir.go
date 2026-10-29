@@ -64,7 +64,7 @@ func externalRoots() []string {
 }
 
 func (ui *IpodUI) databaseView() *View {
-	v := &View{ID: "database", Title: "Database", Kind: KindSplit}
+	v := &View{ID: "database", Title: "Database", Kind: KindFull} // (a page, Settings' rule)
 	v.Build = func() []Item {
 		cur := dataDir()
 		pick := func(label, sub, dir string) Item {
@@ -79,7 +79,7 @@ func (ui *IpodUI) databaseView() *View {
 		} else if dataDirMissing != "" {
 			items = append(items, Item{Label: "Folder not found", Sublabel: dataDirMissing, NoArrow: true, Preview: PrevSettings})
 		}
-		items = append(items, Item{Label: "Current folder", Sublabel: cur, NoArrow: true, Preview: PrevSettings})
+		// (the current folder is the checked row)
 		items = append(items,
 			pick(portFolderLabel(), defaultDataDir(), defaultDataDir()),
 			pick("Music folder", musicDataDir(), musicDataDir()),
@@ -110,7 +110,7 @@ func (ui *IpodUI) databaseView() *View {
 
 // folderBrowserView lists the subfolders of dir.
 func (ui *IpodUI) folderBrowserView(dir string) *View {
-	v := &View{ID: "dbBrowse", Title: filepath.Base(dir), Kind: KindSplit}
+	v := &View{ID: "dbBrowse", Title: filepath.Base(dir), Kind: KindFull}
 	if dir == "/" {
 		v.Title = "/"
 	}
@@ -156,16 +156,13 @@ func (ui *IpodUI) folderBrowserView(dir string) *View {
 // sheet's action, while the sheet is still sliding away: hideView would only
 // close the sheet, so the browser views are taken off the stack here.
 func (ui *IpodUI) backToDatabase() {
-	if len(ui.full) > 0 {
-		return
-	}
 	var visible *View
-	for len(ui.split) > 1 && ui.split[len(ui.split)-1].ID == "dbBrowse" {
-		v := ui.split[len(ui.split)-1]
+	for len(ui.full) > 1 && ui.full[len(ui.full)-1].ID == "dbBrowse" {
+		v := ui.full[len(ui.full)-1]
 		if visible == nil {
 			visible = v
 		}
-		ui.split = ui.split[:len(ui.split)-1]
+		ui.full = ui.full[:len(ui.full)-1]
 	}
 	if visible == nil {
 		return
@@ -173,7 +170,7 @@ func (ui *IpodUI) backToDatabase() {
 	visible.enter.To(1, durSlide, easeInOut, 0)
 	visible.exiting = true
 	ui.gone = append(ui.gone, visible)
-	top := ui.split[len(ui.split)-1]
+	top := ui.full[len(ui.full)-1]
 	top.hide.To(0, durSlide, easeCSS, 0)
 	if top.Build != nil {
 		top.Items = top.Build()

@@ -286,9 +286,15 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		valueW := 0.0
 		vfont := face(W400, 14)
 		if it.Value != "" {
+			// the label is never cut for the value: the value takes what
+			// the label leaves, shortened, and goes when too little is left
 			valueW = textWidth(vfont, it.Value)/DPR + 12
-			if valueW > (right-x)*0.6 {
-				valueW = (right - x) * 0.6
+			room := right - x - textWidth(lfont, it.Label)/DPR - 16
+			if valueW > room {
+				valueW = room
+				if valueW < 40 { // (too little for "Ab…")
+					valueW = 0
+				}
 			}
 			right -= valueW
 		}
@@ -372,7 +378,7 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 				blit(dst, ui.asset(ck), px(rx), px(y+(rh-14)/2), 1)
 				rx -= 8
 			}
-			if it.Value != "" {
+			if it.Value != "" && valueW > 0 {
 				vc := th.sub
 				if sel {
 					vc = colWhite
