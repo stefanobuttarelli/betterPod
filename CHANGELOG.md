@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.71.1 (2026-10-29)
+
+### Fixed
+- **A received album is in the library at once**, without scanning the whole music folder: only its own folder (Shared/<album> in the music folder) is read and added, and the library is saved. Listen Now is ready in a moment.
+
 ## v0.71 (2026-10-29)
 
 ### Changed

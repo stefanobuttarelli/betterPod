@@ -546,8 +546,13 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 		s.dest, s.have = dest, have
 		s.setPhase(shDone)
 		s.count = shareCountUp()
-		ui.rescanLibrary()
-		go ui.shareFindTracks(s)
+		go func() {
+			// just this folder into the library (no full scan)
+			if !ui.addFolderToLibrary(dest) {
+				ui.post(ui.rescanLibrary)
+			}
+			ui.shareFindTracks(s)
+		}()
 	})
 }
 
