@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.66 (2026-10-29)
+
+### Added
+- **Apps → 2048**, after Gabriele Cirulli's game (MIT).
+  - The arrows slide the tiles; two equal tiles merge.
+  - Glossy tiles, from white through orange, red and yellow to green, blue and purple, with slide, merge and appear animations.
+  - Score and best score.
+  - X starts a new game; B goes back, and the game is kept for next time.
+- **Apps → Guess the Song**, a quiz on your own music.
+  - A part from the middle of one of your songs plays; pick its title among four with UP / DOWN and A.
+  - Ten rounds, 15 seconds each: the faster the answer, the more points (up to 100). The cover, the right title and the artist show after each answer. The best score is kept.
+  - What you were listening to is put aside and comes back where it was, playing or paused, when you leave.
+  - Podcast episodes are left out.
+
 ## v0.65 (2026-10-29)
 
 ### Changed

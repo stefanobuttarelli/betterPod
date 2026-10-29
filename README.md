@@ -34,7 +34,7 @@
 - **Japanese titles too.** Latin, Greek and Cyrillic come from Inter, kana and kanji from Noto Sans JP.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **YouTube (optional):** turn it on in Settings → YouTube and search in Music → Search → YouTube. A video with chapters becomes an album with a track per chapter, a playlist an album with a track per video. Tracks are tagged M4A with a square cover made from the video's picture. The tools (yt-dlp, QuickJS) are downloaded from their official GitHub releases when you turn it on, checked (SHA-256 where published, CPU, a test run) and not shipped. YouTube's terms don't allow downloading: use it for your own or freely licensed videos.
-- **Apps:** Brick and Solitaire, the classic iPod games (Solitaire saves your game), and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
+- **Apps:** Brick and Solitaire, the classic iPod games (Solitaire saves your game); **2048** (after Gabriele Cirulli's game, MIT; your game is kept); **Guess the Song**, a quiz on your own music (a clip plays, pick its title among four, ten rounds); and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
 - **Audio quality:**
   - every track plays at its own sample rate (44.1, 48, 96, 192 kHz…), with 32-bit float mixing;
   - 24-bit FLAC and ALAC reach the system mixer untouched;
@@ -251,6 +251,7 @@ The binary is built from the file list (`src/*.go`), not as a package, because `
 | `src/ij_bluetooth.go` | Settings → Bluetooth (bluetoothctl): paired and new devices, their pictures |
 | `src/ij_npextra.go` | Now Playing's card (START) and options row (Shuffle, Repeat) |
 | `src/ij_visualizer.go` | The Visualizer screensaver: the sound's spectrum (FFT) and its effects |
+| `src/ij_2048.go`, `src/ij_quiz.go` | Apps: 2048 and Guess the Song |
 | `src/ij_columns.go` | Two-column menus (Settings): the right column, moving in and out of it |
 | `src/ij_vizcolors.go` | The Visualizer's colour schemes (A) and the Spectrogram |
 | `src/ij_screensaver.go` | The screensaver: the cover mosaic, its bar, the turned-over card, Settings → Screensaver |

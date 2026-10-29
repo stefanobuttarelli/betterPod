@@ -276,6 +276,8 @@ func (ui *IpodUI) gamesView() *View {
 	v.Items = []Item{
 		{Label: "Brick", Preview: PrevBrick, OnSelect: func() { ui.openBrick() }},
 		{Label: "Solitaire", Preview: PrevSolitaire, OnSelect: func() { ui.openSolitaire() }},
+		{Label: "2048", Preview: Prev2048, OnSelect: func() { ui.open2048() }},
+		{Label: "Guess the Song", Preview: PrevQuiz, OnSelect: func() { ui.openQuiz() }},
 		{Label: "Weather", Preview: PrevWeather, OnSelect: func() { ui.openWeather() }},
 	}
 	return v
