@@ -428,6 +428,9 @@ func (app *MiyooPod) scanTrack(path string) {
 		track.Album = "Unknown Album"
 	}
 
+	// a song put into another album (Album Info → Add to Another Album)
+	applyAlbumMerge(track)
+
 	// Register track
 	scanLib.Tracks = append(scanLib.Tracks, track)
 	scanLib.TracksByPath[path] = track

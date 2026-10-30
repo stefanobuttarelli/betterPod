@@ -361,6 +361,7 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 			row("Genre", "genre", func(g *songTags) string { return g.Genre }, func(g *songTags, x string) { g.Genre = x }, false),
 			Item{Label: "Songs", Sublabel: fmt.Sprintf("%d %s", len(e.songs), pluralize(len(e.songs), "song", "songs")),
 				OnSelect: func() { ui.showView(ui.songsInfoView(e, v), "") }})
+		items = append(items, ui.mergeItems(e, nil, func() { ui.closeAlbumInfo(e) })...) // (ij_albummerge.go)
 		if n, w := e.changed(); n > 0 {
 			sub := e.summary()
 			if n > w {
@@ -594,6 +595,17 @@ func (ui *IpodUI) saveAlbumEdit(e *albumEdit, v *View) {
 			ui.showToast(fmt.Sprintf("Saved %d %s", saved, pluralize(saved, "song", "songs")))
 		})
 	}()
+}
+
+// closeAlbumInfo: back to where Album Info was opened from (only its own
+// screens close).
+func (ui *IpodUI) closeAlbumInfo(e *albumEdit) {
+	for e.views[ui.topScreen()] && ui.keyboard == nil && ui.activeSheet() == nil {
+		top := ui.topScreen()
+		if ui.hideView(); ui.topScreen() == top {
+			break
+		}
+	}
 }
 
 // ---- Find Info Online ----

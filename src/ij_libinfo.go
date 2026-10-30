@@ -23,13 +23,13 @@ var discDirRe = regexp.MustCompile(`(?i)^(cd|disc|disk|disco)[ _.\-]*\d+\b`)
 // albumKeyFor groups tracks by folder + album name, so an album stays whole
 // even when its tracks carry different artists (features, compilations,
 // missing "album artist" tags). Per-disc subfolders (CD1, Disc 2…) count as
-// their parent folder.
+// their parent folder. A song put into another album by Album Info →
+// Add to Another Album goes with that one (ij_albummerge.go).
 func albumKeyFor(t *Track) string {
-	dir := filepath.Dir(t.Path)
-	if discDirRe.MatchString(filepath.Base(dir)) {
-		dir = filepath.Dir(dir)
+	if k := mergedKey(t.Path); k != "" {
+		return k
 	}
-	return dir + "|" + strings.ToLower(strings.TrimSpace(t.Album))
+	return ownAlbumDir(t) + "|" + strings.ToLower(strings.TrimSpace(t.Album))
 }
 
 // finishAlbums picks each album's artist and rebuilds the artist index.

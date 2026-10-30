@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.78 (2026-10-30)
+
+### Added
+- **Album Info → Add to Another Album:** puts the album's songs (or one song, from Songs) into another album, when the library sees two albums where there is one: another folder, another spelling, a bonus disc tagged apart. Pick the album (the same artist's first, or search); the files stay as they are, so it works with every format, and the database remembers where the songs belong, through rescans. When their track numbers are taken, they come after the album's own as the next disc. **Separate Added Songs** (or Back to Its Own Album, on a song) sends them back.
+
 ## v0.77.2 (2026-10-30)
 
 ### Added
