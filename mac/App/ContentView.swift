@@ -20,9 +20,16 @@ let pedCX: CGFloat = 180
 let textCX: CGFloat = 468
 let coverSide: CGFloat = 150
 
-func resourceImage(_ name: String) -> NSImage? {
-    guard let url = Bundle.main.url(forResource: name, withExtension: "png") else { return nil }
-    return NSImage(contentsOf: url)
+/// A picture of the app's, drawn at scale× its size in points (the
+/// pedestal and its light are 3×: sharp on a Retina screen, see
+/// tools/share/pedestal.py).
+func resourceImage(_ name: String, scale: CGFloat = 1) -> NSImage? {
+    guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+          let img = NSImage(contentsOf: url) else { return nil }
+    if scale != 1, let rep = img.representations.first {
+        img.size = NSSize(width: CGFloat(rep.pixelsWide) / scale, height: CGFloat(rep.pixelsHigh) / scale)
+    }
+    return img
 }
 
 struct ContentView: View {
@@ -102,12 +109,12 @@ struct Stage: View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: !animating)) { tl in
             let t = tl.date.timeIntervalSince(start)
             ZStack(alignment: .topLeading) {
-                if let beam = resourceImage("share_beam_blue") {
+                if let beam = resourceImage("share_beam_blue", scale: 3) {
                     Image(nsImage: beam)
                         .opacity(beamLevel(t))
                         .position(x: pedCX, y: pedTop - 226 + 120)
                 }
-                if let ped = resourceImage("share_ped_blue") {
+                if let ped = resourceImage("share_ped_blue", scale: 3) {
                     Image(nsImage: ped)
                         .position(x: pedCX, y: pedTop - 24 + 75)
                 }

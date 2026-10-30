@@ -1,5 +1,7 @@
 **betterPod Share for Mac** sends songs and albums from your Mac to a betterPod, over the internet or the same Wi-Fi, with an 8-digit code. It works with every betterPod from 0.69 on (Knulli and Miyoo).
 
+**1.0.3:** the pedestal and its light are drawn sharp on a Retina screen.
+
 **1.0.2:** betterPod Share updates itself. When a new version is out, the window offers it (or App menu → Check for Updates…): it is downloaded, checked against GitHub's checksum, put in place of the old one and started. From 1.0 or 1.0.1, download this version by hand once.
 
 **1.0.1:** the Choose… button and the name field can be read with the Mac in Dark mode (they showed white text on the light window). The window stays light, as the betterPod's screen.
