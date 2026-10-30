@@ -315,14 +315,17 @@ func errText(err error) string {
 		return "The code was typed wrong on the betterPod. Share again for a new code."
 	case strings.Contains(m, "crowded"):
 		return "This code is in use. Share again for a new one."
+	case strings.Contains(m, "write tcp") || strings.Contains(m, "read tcp") || strings.Contains(m, "broken pipe") ||
+		strings.Contains(m, "connection reset") || strings.Contains(m, "i/o timeout") || strings.Contains(m, "EOF"):
+		return "The connection dropped on the way. Share again."
 	case strings.Contains(m, "rejected") || strings.Contains(m, "transfer rejected"):
 		return "The betterPod said no (not enough space, or it was cancelled)."
 	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(m, "dial") || strings.Contains(m, "lookup") ||
 		strings.Contains(m, "network") || strings.Contains(m, "websocket"):
 		return "Couldn't reach the share service. Check the internet connection."
 	}
-	if len(m) > 90 {
-		m = m[:90] + "…"
+	if r := []rune(m); len(r) > 70 {
+		m = string(r[:70]) + "…"
 	}
 	return "It didn't work: " + m
 }

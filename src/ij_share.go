@@ -238,6 +238,10 @@ func shareErrText(err error) string {
 		return "Wrong code, or the share has ended"
 	case strings.Contains(m, "crowded"):
 		return "This code is in use · try again"
+	case strings.Contains(m, "write tcp") || strings.Contains(m, "read tcp") || strings.Contains(m, "broken pipe") ||
+		strings.Contains(m, "connection reset") || strings.Contains(m, "i/o timeout") || strings.Contains(m, "EOF") ||
+		strings.Contains(m, "use of closed"):
+		return "The connection dropped on the way · try again"
 	case strings.Contains(m, "dial") || strings.Contains(m, "lookup") || strings.Contains(m, "network") || strings.Contains(m, "websocket"):
 		return "Couldn't reach the share service · check the Wi-Fi"
 	case strings.Contains(m, "space"):

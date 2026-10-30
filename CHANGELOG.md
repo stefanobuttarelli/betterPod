@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.81.4 (2026-10-30)
+
+### Changed
+- **Share looks busy while it goes:** sending and receiving, brighter bands of light rise through the pedestal's beam, one after another; sending, bits of the cover leave the laser's line and drift up, slowly, fading, so something moves even when the share is slow. Waiting stays calm.
+
+### Fixed
+- **A failed share's message fits the screen:** at most two lines, and a connection dropped on the way says so ("The connection dropped on the way · try again") instead of the network's own error.
+
 ## v0.81.3 (2026-10-30)
 
 ### Added

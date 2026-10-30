@@ -127,6 +127,39 @@ func (s *ShareView) laserAt(p float64, now time.Time) float64 {
 	return s.lineP
 }
 
+// shRising: sending, bits of the cover leave the laser's line and drift
+// up, slowly, fading (so something moves even when the share is slow):
+// short strips of the row just cut, one every 0.15 s, each for 2.4 s.
+func shRising(dst *image.RGBA, c *image.RGBA, x, y float64, cut int, now time.Time) {
+	if c == nil || cut <= 0 {
+		return
+	}
+	const every, life, speed = 0.15, 2.4, 16.0 // s, s, px/s
+	t := float64(now.UnixMilli()) / 1000
+	k0 := int(t / every)
+	for k := k0 - int(life/every); k <= k0; k++ {
+		age := t - float64(k)*every
+		if age < 0 || age > life {
+			continue
+		}
+		h := uint32(k)*2654435761 + 977
+		h ^= h >> 13
+		w := 12 + int(h%40)
+		sx := int((h >> 8) % uint32(shareCoverPx-w))
+		row := cut - 1 - int((h>>16)%3)
+		if row < 0 {
+			row = 0
+		}
+		yy := y + float64(cut) - 2 - age*speed
+		if yy < y-60 {
+			continue
+		}
+		drift := math.Sin(float64(k)*1.7+age*1.3) * 3
+		a := (1 - age/life) * 0.85
+		blit(dst, c.SubImage(image.Rect(sx, row, sx+w, row+2)).(*image.RGBA), int(x)+sx+int(drift), int(yy), a)
+	}
+}
+
 // shCoverSlice: the rows y0..y1 of a cover, with the shadow of that part
 // only: the laser cuts it clean.
 func shCoverSlice(dst *image.RGBA, c *image.RGBA, x, y float64, y0, y1 int) {
@@ -176,6 +209,29 @@ func shMarquee(dst *image.RGBA, s string, cx, cy float64, w FontWeight, size, ma
 	drawMarqueeSync(dst, f, s, (cx-maxW/2)/DPR, base/DPR, maxW/DPR, c, since, now, 0)
 }
 
+// shLines: s centred in at most two lines of maxW (device px), the second
+// shortened with "…" if it is still too long.
+func shLines(dst *image.RGBA, s string, cx, cy float64, w FontWeight, size, maxW float64, c Col) {
+	f := face(w, size/DPR)
+	if textWidth(f, s) <= maxW {
+		shText(dst, s, cx, cy, w, size, c)
+		return
+	}
+	words := strings.Fields(s)
+	first := ""
+	i := 0
+	for ; i < len(words); i++ {
+		try := strings.TrimSpace(first + " " + words[i])
+		if first != "" && textWidth(f, try) > maxW {
+			break
+		}
+		first = try
+	}
+	rest := strings.Join(words[i:], " ")
+	shText(dst, shFit(first, w, size, maxW), cx, cy, w, size, c)
+	shText(dst, shFit(rest, w, size, maxW), cx, cy+size+4, w, size, c)
+}
+
 // shFit: s shortened to w device px at that size.
 func shFit(s string, w FontWeight, size, maxW float64) string {
 	return ellipsize(face(w, size/DPR), s, maxW)
@@ -208,13 +264,19 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp
 	if s.phase == shDone {
 		beam = 0.5
 	}
-	ui.shPedestal(dst, shCX, "blue", beam)
+	if s.phase == shMoving {
+		ui.shPedestalAt(dst, shCX, "blue", beam, now)
+	} else {
+		ui.shPedestal(dst, shCX, "blue", beam)
+	}
 	cx0, cy0 := shCX-shareCoverPx/2, shTop-24-shareCoverPx
 	switch {
 	case s.phase == shMoving && s.cover != nil:
 		// what has gone is gone: the laser cuts the cover clean, and only
 		// what is still to go stays under it
-		shCoverSlice(dst, s.cover, cx0, cy0, int(lp*shareCoverPx), shareCoverPx)
+		cut := int(lp * shareCoverPx)
+		shCoverSlice(dst, s.cover, cx0, cy0, cut, shareCoverPx)
+		shRising(dst, s.cover, cx0, cy0, cut, now)
 		shLaser(dst, cx0, cx0+shareCoverPx, cy0+lp*shareCoverPx, Col{40, 150, 255, 1})
 	case s.phase == shDone && s.coverSent != nil:
 		// sent: its ghost comes back, pale
@@ -288,7 +350,7 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp
 		shText(dst, line, shRX, 222, W600, 15, shBody)
 		shText(dst, shMilestone(s.count), shRX, 246, W500, 13, shBlue)
 	case shFailed:
-		shText(dst, s.err, shRX, 222, W500, 14, Col{200, 60, 50, 1})
+		shLines(dst, s.err, shRX, 222, W500, 14, 270, Col{200, 60, 50, 1})
 	}
 }
 
@@ -339,7 +401,7 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p,
 		case s.phase == shConnecting:
 			shText(dst, "Looking for your friend's betterPod…", W/2, 216, W600, 15, shBody)
 		case s.phase == shFailed:
-			shText(dst, s.err, W/2, 216, W600, 15, Col{200, 60, 50, 1})
+			shLines(dst, s.err, W/2, 216, W600, 15, W-80, Col{200, 60, 50, 1})
 		default:
 			shText(dst, "[↑] [↓] digit      [←] [→] move      [A] receive", W/2, 216, W500, 14, shSub)
 		}
@@ -349,7 +411,11 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p,
 		s.renderReceived(ui, dst, now)
 		return
 	}
-	ui.shPedestal(dst, shCX, "green", 1)
+	if s.phase == shMoving {
+		ui.shPedestalAt(dst, shCX, "green", 1, now)
+	} else {
+		ui.shPedestal(dst, shCX, "green", 1)
+	}
 	cx0, cy0 := shCX-shareCoverPx/2, shTop-24-shareCoverPx
 	built := shareCoverPx
 	if s.phase == shMoving {
@@ -416,17 +482,42 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p,
 			shText(dst, "Adding it to your library…", shRX, 232, W500, 14, shSub)
 		}
 	case shFailed:
-		shText(dst, s.err, shRX, 172, W500, 14, Col{200, 60, 50, 1})
+		shLines(dst, s.err, shRX, 172, W500, 14, 270, Col{200, 60, 50, 1})
 	}
 }
 
 // shPedestal: the pedestal at cx (its top at shTop), its beam at opacity on.
 // The colour is blue (sending), green (receiving) or red (refused).
 func (ui *IpodUI) shPedestal(dst *image.RGBA, cx float64, colour string, on float64) {
+	ui.shPedestalAt(dst, cx, colour, on, time.Time{})
+}
+
+// shPedestalAt: as shPedestal; with now set (sending, receiving) the light
+// is busy: brighter bands rise through it from the disc, one after another.
+func (ui *IpodUI) shPedestalAt(dst *image.RGBA, cx float64, colour string, on float64, now time.Time) {
 	ped := ui.shareAsset("share_ped_" + colour)
 	beam := ui.shareAsset("share_beam_" + colour)
 	if beam != nil {
-		blit(dst, beam, int(cx)-130, int(shTop)-226, on)
+		x0, y0 := int(cx)-130, int(shTop)-226
+		blit(dst, beam, x0, y0, on)
+		if !now.IsZero() {
+			bh := beam.Bounds().Dy()
+			t := float64(now.UnixMilli()) / 1000
+			for k := 0; k < 3; k++ {
+				// a band 36 px high, from the disc to the top in 2.4 s,
+				// three of them a third apart; it fades as it rises
+				f := math.Mod(t/2.4+float64(k)/3, 1)
+				yc := float64(bh-14) - f*float64(bh-30)
+				for r := -18; r < 18; r += 3 {
+					y := int(yc) + r
+					if y < 0 || y+3 > bh {
+						continue
+					}
+					a := (1 - math.Abs(float64(r))/18) * (1 - f) * 0.9
+					blit(dst, beam.SubImage(image.Rect(0, y, beam.Bounds().Dx(), y+3)).(*image.RGBA), x0, y0+y, a)
+				}
+			}
+		}
 	}
 	if ped != nil {
 		blit(dst, ped, int(cx)-130, int(shTop)-24, 1)

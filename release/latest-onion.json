@@ -1,8 +1,8 @@
 {
-  "version": "0.81.3",
-  "path": "release/betterpod-v0.81.3-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.3-onion.zip",
-  "sha256": "1ae770f72448d718acbed0a6d3fd40dcee37407833c15fc4fc495c0c8e14e318",
-  "size": 28319469,
-  "notes": "- Share: Sending to / Receiving from, with the other betterPod's name\n- About how long is left"
+  "version": "0.81.4",
+  "path": "release/betterpod-v0.81.4-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.4-onion.zip",
+  "sha256": "a02f35b2bc438199fea4185c621f8f8c2635317f43d8b83f81e0c3e201b98b6f",
+  "size": 28320881,
+  "notes": "- Share: the light rises through the beam while it goes; bits of the cover drift up while sending\n- A failed share's message fits in two lines"
 }

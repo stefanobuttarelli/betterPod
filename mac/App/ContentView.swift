@@ -113,16 +113,38 @@ struct Stage: View {
                     Image(nsImage: beam)
                         .opacity(beamLevel(t))
                         .position(x: pedCX, y: pedTop - 226 + 120)
+                    if sending {
+                        // sending: brighter bands rise through the light
+                        Image(nsImage: beam)
+                            .mask(Canvas { ctx, size in
+                                for k in 0..<3 {
+                                    let f = (t / 2.4 + Double(k) / 3).truncatingRemainder(dividingBy: 1)
+                                    let yc = (size.height - 14) - f * (size.height - 30)
+                                    let r = CGRect(x: 0, y: yc - 18, width: size.width, height: 36)
+                                    ctx.opacity = (1 - f) * 0.9
+                                    ctx.fill(Path(r), with: .linearGradient(
+                                        Gradient(colors: [.clear, .black, .clear]),
+                                        startPoint: CGPoint(x: 0, y: r.minY), endPoint: CGPoint(x: 0, y: r.maxY)))
+                                }
+                            })
+                            .position(x: pedCX, y: pedTop - 226 + 120)
+                    }
                 }
                 if let ped = resourceImage("share_ped_blue", scale: 3) {
                     Image(nsImage: ped)
                         .position(x: pedCX, y: pedTop - 24 + 75)
                 }
                 cover(t)
+                if sending, let img = model.cover {
+                    Rising(image: img, cut: model.progress * coverSide, t: t)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .frame(width: 640, height: 480, alignment: .topLeading)
     }
+
+    var sending: Bool { model.stage == .sharing && model.status?.phase == "moving" }
 
     var animating: Bool {
         switch model.stage {
@@ -354,6 +376,7 @@ struct Panel: View {
                         .font(.system(size: 15, weight: .semibold)).foregroundColor(bodyInk).lineLimit(1)
                 default:
                     Text(s?.error ?? "It didn't work").font(.system(size: 13, weight: .medium)).foregroundColor(shareRed)
+                        .lineLimit(3).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -572,5 +595,43 @@ struct Marquee: View {
                 start = Date()
             }
         }
+    }
+}
+
+/// Sending: bits of the cover leave the laser's line and drift up, slowly,
+/// fading, so something moves even when the share is slow (as on the
+/// betterPod): short strips of the row just cut, one every 0.15 s, each for
+/// 2.4 s.
+struct Rising: View {
+    let image: NSImage
+    let cut: CGFloat // the laser's line, from the cover's top (pt)
+    let t: Double
+
+    var body: some View {
+        Canvas { ctx, _ in
+            guard cut > 0 else { return }
+            let x0 = pedCX - coverSide / 2, y0 = pedTop - 24 - coverSide
+            let every = 0.15, life = 2.4, speed = 16.0
+            let resolved = ctx.resolve(Image(nsImage: image).resizable())
+            let k0 = Int(t / every)
+            for k in (k0 - Int(life / every))...k0 {
+                let age = t - Double(k) * every
+                if age < 0 || age > life { continue }
+                var h = UInt32(truncatingIfNeeded: k) &* 2654435761 &+ 977
+                h ^= h >> 13
+                let w = CGFloat(12 + Int(h % 40))
+                let sx = CGFloat(Int((h >> 8) % UInt32(Int(coverSide) - Int(w))))
+                let row = max(0, cut - 1 - CGFloat(Int((h >> 16) % 3)))
+                let yy = y0 + cut - 2 - CGFloat(age * speed)
+                let drift = CGFloat(sin(Double(k) * 1.7 + age * 1.3) * 3)
+                ctx.drawLayer { l in
+                    l.opacity = (1 - age / life) * 0.85
+                    l.clip(to: Path(CGRect(x: x0 + sx + drift, y: yy, width: w, height: 2)))
+                    // the cover placed so that its row lands on the strip
+                    l.draw(resolved, in: CGRect(x: x0 + drift, y: yy - row, width: coverSide, height: coverSide))
+                }
+            }
+        }
+        .frame(width: 640, height: 480)
     }
 }

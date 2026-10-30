@@ -1,8 +1,8 @@
 {
-  "version": "0.81.3",
-  "path": "release/betterpod-v0.81.3-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.3-knulli.zip",
-  "sha256": "f9503b3d008e555d731aa7a247d7517176e83cf579012df7495775fc6f13666e",
-  "size": 16185893,
-  "notes": "- Share: Sending to / Receiving from, with the other betterPod's name\n- About how long is left"
+  "version": "0.81.4",
+  "path": "release/betterpod-v0.81.4-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.4-knulli.zip",
+  "sha256": "fe8fbb2c49995b07d6d915af8c7434058d29a7692bbfbddbdd7ffa159208bbf7",
+  "size": 16186441,
+  "notes": "- Share: the light rises through the beam while it goes; bits of the cover drift up while sending\n- A failed share's message fits in two lines"
 }
