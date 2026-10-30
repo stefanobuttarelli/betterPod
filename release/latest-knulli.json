@@ -1,8 +1,8 @@
 {
-  "version": "0.79",
-  "path": "release/betterpod-v0.79-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.79-knulli.zip",
-  "sha256": "cccfb9c34bc3c652289298c02729e716a82c8d75f1cd2f317d6dd97992b21d56",
-  "size": 16159390,
-  "notes": "- START opens a game's menu: its options and Quit\n- Five Letters: A sends a full row, B deletes a letter\n- Brick pauses while its menu shows"
+  "version": "0.79.1",
+  "path": "release/betterpod-v0.79.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.79.1-knulli.zip",
+  "sha256": "3516586d1c0301a270f9c6b72fea9bbd2d4b835848952581375807c9e02c4d31",
+  "size": 16167867,
+  "notes": "- Big covers no longer stall the Miyoo: each is decoded once and shrunk before scaling\n- 13 MB less memory: the classic fonts are read once, with a small glyph cache"
 }

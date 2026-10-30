@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.79.1 (2026-10-30)
 
 ### Fixed
 - **On the Miyoo, the menus and Cover Flow stalled for a while after big albums came in.** A new album's cover was decoded at full size three times: twice for the classic interface, whose covers the iPod interface never shows (they also took 160 KB an album for good), then for the iPod interface. Scaling a big picture also took a buffer as wide as the new cover and as tall as the picture: 46 MB for the 480 px cover beside the Music menu from a 3000 px scan, and that cover is made again whenever it comes back. Now a cover is decoded once, as its file is read, and averaged down to about twice the size it is wanted at before Catmull-Rom does the last step; to the eye the pixels are as before. On the Miyoo one cover is decoded at a time. For a 3000 px cover, a new album now allocates 26 MB in 166 ms instead of 102 MB in 876 ms, and the Music menu's cover 22 MB instead of 63 MB (on a PC, with the Miyoo's memory settings).

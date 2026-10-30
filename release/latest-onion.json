@@ -1,8 +1,8 @@
 {
-  "version": "0.79",
-  "path": "release/betterpod-v0.79-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.79-onion.zip",
-  "sha256": "bd5cefceb356abebf9a33e0681663b02ef7e43cc829561239b0ff38aae26579e",
-  "size": 28295747,
-  "notes": "- START opens a game's menu: its options and Quit\n- Five Letters: A sends a full row, B deletes a letter\n- Brick pauses while its menu shows"
+  "version": "0.79.1",
+  "path": "release/betterpod-v0.79.1-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.79.1-onion.zip",
+  "sha256": "6b156fcf22d2644e048854ed0136e73af6046287519346483ce0175bee79983d",
+  "size": 28239500,
+  "notes": "- Big covers no longer stall the Miyoo: each is decoded once and shrunk before scaling\n- 13 MB less memory: the classic fonts are read once, with a small glyph cache"
 }
