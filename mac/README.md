@@ -4,6 +4,7 @@ Sends songs and albums from a Mac to a betterPod with an 8-digit code, as a bett
 
 - `core/`: the engine, in Go: it reads the songs (tags, covers), groups them by album and sends them with magic-wormhole (the vendored wormhole-william, app id `betterpod.xyz/share`). It is the same protocol as `src/ij_share.go`; keep the two in step. Built as a C archive for the app; `go run ./mac/core <files…>` sends from the command line, for tests (`BETTERPOD_WORMHOLE_URL`, `BETTERPOD_WORMHOLE_RELAY`, `BETTERPOD_SHARE_CODE`, `BETTERPOD_SHARE_FROM`).
 - `App/`: the app, in SwiftUI (macOS 13+): the same studio, pedestal, laser and digit tiles as the console, at the console's size.
+- `App/Updater.swift`: the app updates itself, as Software Update does on the consoles. At start (and from App → Check for Updates…) it looks for the newest `mac-v…` release on GitHub; Update downloads its zip, checks its size and SHA-256 (the digest GitHub gives for each release file), unpacks it, checks its signature, puts it in place of the app and starts it. So the zip keeps its name, `betterPod-Share-mac-v<version>.zip`. When the app can't replace itself (opened from Downloads, where macOS runs a copy, or in a folder it can't write to), it offers the release's page instead.
 - `build.sh`: builds it on a Mac (Go and Xcode's command line tools): a universal app, signed ad hoc (not notarized: macOS asks before the first launch), and its zip.
 - `VERSION`: the app's version. `.github/workflows/mac.yml` builds it on each change and makes the GitHub release `mac-v<version>` with `NOTES.md`.
 

@@ -27,6 +27,7 @@ func resourceImage(_ name: String) -> NSImage? {
 
 struct ContentView: View {
     @ObservedObject var model: Model
+    @ObservedObject var updater: Updater
     @State private var targeted = false
 
     var body: some View {
@@ -39,6 +40,11 @@ struct ContentView: View {
             if model.stage != .sharing {
                 NameField(model: model)
                     .position(x: 320, y: 452)
+            }
+            if updater.state != .idle {
+                UpdateStrip(updater: updater, sharing: model.stage == .sharing)
+                    .frame(maxWidth: 560)
+                    .position(x: 320, y: 30)
             }
             if targeted {
                 RoundedRectangle(cornerRadius: 10)
@@ -444,6 +450,50 @@ struct AlbumList: View {
                 }
             }
         }
+    }
+}
+
+/// A new version of the app, or how the update goes, at the top of the
+/// studio.
+struct UpdateStrip: View {
+    @ObservedObject var updater: Updater
+    let sharing: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            switch updater.state {
+            case .idle:
+                EmptyView()
+            case .checking:
+                ProgressView().controlSize(.small)
+                Text("Checking for updates…").foregroundColor(bodyInk)
+            case .upToDate:
+                Text("betterPod Share \(Updater.current) is the newest version.").foregroundColor(bodyInk)
+            case .available(let v):
+                Text(sharing ? "betterPod Share \(v) is out: update after this share."
+                     : "betterPod Share \(v) is out.").foregroundColor(bodyInk)
+                Button("Update") { updater.install() }
+                    .disabled(sharing)
+            case .updating(let v):
+                ProgressView().controlSize(.small)
+                Text("Updating to \(v)…").foregroundColor(bodyInk)
+            case .failed(let e):
+                Text(e).foregroundColor(shareRed).fixedSize(horizontal: false, vertical: true)
+                if let page = updater.page {
+                    Button("Download") { NSWorkspace.shared.open(page) }
+                }
+                Button("OK") { updater.dismiss() }
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+        .multilineTextAlignment(.leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.94))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.black.opacity(0.1), lineWidth: 1))
+                .shadow(color: .black.opacity(0.1), radius: 5, y: 2)
+        )
     }
 }
 
