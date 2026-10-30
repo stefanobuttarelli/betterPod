@@ -49,7 +49,7 @@ struct ContentView: View {
                     .position(x: 320, y: 452)
             }
             if updater.state != .idle {
-                UpdateStrip(updater: updater, sharing: model.stage == .sharing)
+                UpdateStrip(updater: updater, sharing: model.shareGoing)
                     .frame(maxWidth: 560)
                     .position(x: 320, y: 30)
             }

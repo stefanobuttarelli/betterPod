@@ -119,6 +119,14 @@ final class Model: ObservableObject {
         status = nil
     }
 
+    /// A share is under way (not once it's sent or has failed): the app
+    /// doesn't update itself meanwhile.
+    var shareGoing: Bool {
+        guard stage == .sharing else { return false }
+        let p = status?.phase ?? "preparing"
+        return p != "done" && p != "failed"
+    }
+
     var progress: Double {
         guard let s = status, s.total > 0 else { return 0 }
         if s.phase == "done" { return 1 }
