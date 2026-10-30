@@ -47,10 +47,11 @@ func (s *ShareView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 		p = math.Min(1, float64(done)/float64(total))
 	}
 	s.updateRate(done, now)
+	lp := s.laserAt(p, now)
 	if s.send {
-		s.renderSend(ui, dst, now, p)
+		s.renderSend(ui, dst, now, p, lp)
 	} else {
-		s.renderReceive(ui, dst, now, p)
+		s.renderReceive(ui, dst, now, p, lp)
 	}
 	hint := ""
 	switch {
@@ -70,6 +71,47 @@ func (s *ShareView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 	if hint != "" {
 		shText(dst, hint, float64(W)/2, float64(H)-22, W600, 15, shSub)
 	}
+}
+
+// laserAt: where the laser is (0 the cover's top, 1 its bottom): it follows
+// the progress p slowly and smoothly, never back up (the progress comes in
+// steps, a chunk at a time).
+func (s *ShareView) laserAt(p float64, now time.Time) float64 {
+	if s.phase != shMoving {
+		if s.phase == shDone || s.phase == shSaving {
+			s.lineP = 1
+		} else {
+			s.lineP = 0
+		}
+		s.lineAt = now
+		return s.lineP
+	}
+	dt := 0.0
+	if !s.lineAt.IsZero() {
+		dt = math.Min(0.25, now.Sub(s.lineAt).Seconds())
+	}
+	s.lineAt = now
+	if p > s.lineP {
+		// about two thirds of the way in 0.6 s
+		s.lineP += (p - s.lineP) * (1 - math.Exp(-dt/0.6))
+		if p-s.lineP < 0.001 {
+			s.lineP = p
+		}
+	}
+	return s.lineP
+}
+
+// shCoverSlice: the rows y0..y1 of a cover, with the shadow of that part
+// only: the laser cuts it clean.
+func shCoverSlice(dst *image.RGBA, c *image.RGBA, x, y float64, y0, y1 int) {
+	if c == nil || y1 <= y0 {
+		return
+	}
+	for i := 6.0; i >= 1; i-- {
+		fillRoundedGradient(dst, x+4-i*1.5, y+float64(y0)+6-i, x+shareCoverPx-4+i*1.5, y+float64(y1)+4+i, i*2,
+			[]GradStop{{0, Col{40, 50, 70, 0.05}}, {1, Col{40, 50, 70, 0.05}}}, 1)
+	}
+	blit(dst, c.SubImage(image.Rect(0, y0, shareCoverPx, y1)).(*image.RGBA), int(x), int(y)+y0, 1)
 }
 
 func (s *ShareView) updateRate(done int64, now time.Time) {
@@ -115,7 +157,7 @@ func (s *ShareView) title() (string, string) {
 	return t, sub
 }
 
-func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p float64) {
+func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp float64) {
 	if s.phase == shFailed && len(s.unplayable) > 0 {
 		s.renderUnplayable(ui, dst, now)
 		return
@@ -130,24 +172,23 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p flo
 	}
 	ui.shPedestal(dst, shCX, "blue", beam)
 	cx0, cy0 := shCX-shareCoverPx/2, shTop-24-shareCoverPx
-	ui.shCover(dst, s, cx0, cy0, now)
-	// the laser: up and down over the cover; what it has sent turns pale
-	if s.cover != nil && (s.phase == shMoving || s.phase == shWaiting || s.phase == shPreparing) {
-		if s.phase == shMoving {
-			sentH := int(p * shareCoverPx)
-			if sentH > 0 && s.coverSent != nil {
-				sub := s.coverSent.SubImage(image.Rect(0, 0, shareCoverPx, sentH)).(*image.RGBA)
-				blit(dst, sub, int(cx0), int(cy0), 1)
-			}
+	switch {
+	case s.phase == shMoving && s.cover != nil:
+		// what has gone is gone: the laser cuts the cover clean, and only
+		// what is still to go stays under it
+		shCoverSlice(dst, s.cover, cx0, cy0, int(lp*shareCoverPx), shareCoverPx)
+		shLaser(dst, cx0, cx0+shareCoverPx, cy0+lp*shareCoverPx, Col{40, 150, 255, 1})
+	case s.phase == shDone && s.coverSent != nil:
+		// sent: its ghost comes back, pale
+		a := math.Min(1, now.Sub(s.phaseAt).Seconds()/0.6)
+		shCoverShadow(dst, cx0, cy0, a*0.5)
+		blit(dst, s.coverSent, int(cx0), int(cy0), a)
+	default:
+		ui.shCover(dst, s, cx0, cy0, now)
+		// waiting: the laser rests on the cover's top edge
+		if s.cover != nil && (s.phase == shWaiting || s.phase == shPreparing) {
+			shLaser(dst, cx0, cx0+shareCoverPx, cy0, Col{40, 150, 255, 1})
 		}
-		// waiting: a slow sweep up and down; sending: it stays on the edge
-		// between what's gone (pale) and what's still to go
-		y := cy0 + p*shareCoverPx
-		if s.phase != shMoving {
-			t := math.Mod(float64(now.UnixMilli())/1000/7.0, 1)
-			y = cy0 + shareCoverPx*(0.5-0.5*math.Cos(t*2*math.Pi))
-		}
-		shLaser(dst, cx0, cx0+shareCoverPx, y, Col{40, 150, 255, 1})
 	}
 	// the code
 	label, lc := "YOUR CODE", shSub
@@ -197,7 +238,7 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p flo
 	}
 }
 
-func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p float64) {
+func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp float64) {
 	W := float64(dst.Bounds().Dx())
 	if s.phase == shFailed && len(s.unplayable) > 0 {
 		s.renderUnplayable(ui, dst, now)
@@ -259,7 +300,7 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 	built := shareCoverPx
 	if s.phase == shMoving {
 		// the cover is built along with the whole transfer (it comes first)
-		built = int(math.Min(1, 0.06+p*0.94) * shareCoverPx)
+		built = int(lp * shareCoverPx)
 	}
 	if s.cover == nil {
 		// not here yet: its outline
@@ -270,20 +311,8 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 	} else if built >= shareCoverPx {
 		ui.shCover(dst, s, cx0, cy0, now)
 	} else {
-		shCoverShadow(dst, cx0, cy0, 0.5)
-		blit(dst, s.cover.SubImage(image.Rect(0, 0, shareCoverPx, built)).(*image.RGBA), int(cx0), int(cy0), 1)
-		// the next lines arriving, every other one, fading out
-		for k := 0; k < 16 && built+k < shareCoverPx; k += 2 {
-			a := 1 - float64(k)/16
-			if shHash(built+k)%100 > int(a*100) {
-				continue
-			}
-			blit(dst, s.cover.SubImage(image.Rect(0, built+k, shareCoverPx, built+k+1)).(*image.RGBA), int(cx0), int(cy0)+built+k, a)
-		}
-		strokeRounded(dst, cx0, cy0, cx0+shareCoverPx, cy0+shareCoverPx, 0, 1, Col{40, 190, 110, 0.45}, 1)
-		for y := float64(built + 18); y < shareCoverPx; y += 8 {
-			fillRect(dst, int(cx0)+1, int(cy0+y), shareCoverPx-2, 1, Col{40, 190, 110, 0.12})
-		}
+		// what has come, cut clean by the laser; nothing of the rest
+		shCoverSlice(dst, s.cover, cx0, cy0, 0, built)
 		shLaser(dst, cx0, cx0+shareCoverPx, cy0+float64(built), Col{40, 200, 110, 1})
 	}
 	label := "RECEIVING"
@@ -334,12 +363,6 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p 
 	case shFailed:
 		shText(dst, s.err, shRX, 172, W500, 14, Col{200, 60, 50, 1})
 	}
-}
-
-func shHash(n int) int {
-	x := uint32(n)*2654435761 + 12345
-	x ^= x >> 13
-	return int(x % 1000)
 }
 
 // shPedestal: the pedestal at cx (its top at shTop), its beam at opacity on.

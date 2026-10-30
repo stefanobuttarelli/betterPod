@@ -176,6 +176,9 @@ type ShareView struct {
 	bg        *image.RGBA
 	lightAt   time.Time // the last frame with Light effects (Animating)
 
+	lineP  float64   // where the laser is (0..1), easing after the progress
+	lineAt time.Time // its last step
+
 	unplayable []string    // formats the receiving betterPod can't play (by name)
 	unplayOn   string      // and its system ("Onion OS")
 	refused    atomic.Bool // receiver: stopped at the first song (sharePeek)

@@ -1,8 +1,8 @@
 {
-  "version": "0.80.1",
-  "path": "release/betterpod-v0.80.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.80.1-onion.zip",
-  "sha256": "df56259b9e973b7ed6b80fe3c6a470bd6152a9f52ad9bce2bb374a8eca6b295e",
-  "size": 28302067,
-  "notes": "- The Wi-Fi and headphones icons line up with the play / pause sign and the battery\n- Five Letters: Y sends the row"
+  "version": "0.81",
+  "path": "release/betterpod-v0.81-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81-onion.zip",
+  "sha256": "72b71f35f4316c1e3cc71ecd31de6ef35e8572d384b8429c8b7c25c0d826db2d",
+  "size": 28302380,
+  "notes": "- Share: the laser cuts the cover clean, sending and receiving\n- It rests on the top while waiting, then glides down with the progress"
 }

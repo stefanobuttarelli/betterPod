@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.81 (2026-10-30)
+
+### Changed
+- **Share: the laser cuts the cover clean.** Sending, what has gone is gone: only what is still to go stays under the laser. Receiving, only what has come shows above it, and nothing of the rest (no more faint lines). The laser no longer sweeps while it waits: it rests on the cover's top edge, then glides down with the progress, slowly, never back up. Once sent, the cover's ghost comes back, pale. The same in betterPod Share for Mac 1.0.5.
+
 ## v0.80.1 (2026-10-30)
 
 ### Changed
