@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.77.2 (2026-10-30)
+
+### Added
+- **betterPod Share for Mac** (its own download, [mac-v1.0](https://github.com/stefanobuttarelli/betterPod/releases/tag/mac-v1.0)): drop songs or albums on its window and give the 8-digit code; the betterPod receives them with Music → Receive, as from another betterPod (from 0.69 on). Songs of several albums go with one code: a folder "From <your Mac>" with a subfolder per album, each with its cover, and a collage of the covers on the betterPod's screen.
+
+### Fixed
+- **Receive:** AIFF songs are kept (they were left out of a share), and Listen Now plays several albums received together one after the other.
+
 ## v0.77.1 (2026-10-30)
 
 ### Changed

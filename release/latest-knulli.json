@@ -1,8 +1,8 @@
 {
-  "version": "0.77.1",
-  "path": "release/betterpod-v0.77.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77.1-knulli.zip",
-  "sha256": "fbc5d364c8f8b25c7908d4c0e511b2b0ac73c26a0404d61f0e4805e602f747be",
-  "size": 16145175,
-  "notes": "- Quit betterPod: Quit Now without a second line"
+  "version": "0.77.2",
+  "path": "release/betterpod-v0.77.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.77.2-knulli.zip",
+  "sha256": "8be7b8e441e6e217f303cd41be91875f7950a90418e3caa6bf8ae495e24a8f39",
+  "size": 16145240,
+  "notes": "- Receive keeps AIFF songs\n- Several albums received together play one after the other\n- New: betterPod Share for Mac sends songs and albums to a betterPod"
 }

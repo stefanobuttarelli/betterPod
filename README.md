@@ -45,6 +45,7 @@ The interface is the same on both. What differs is listed in [Features by system
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **YouTube (optional):** turn it on in Settings → YouTube and search in Music → Search → YouTube. A video with chapters becomes an album with a track per chapter, a playlist an album with a track per video. Tracks are tagged M4A with a square cover made from the video's picture. The tools (yt-dlp, QuickJS) are downloaded from their official GitHub releases when you turn it on, checked (SHA-256 where published, CPU, a test run) and not shipped. YouTube's terms don't allow downloading: use it for your own or freely licensed videos.
 - **Share:** send an album or a song to a friend's betterPod with an 8-digit code (an album's or a song's options → Share; on the other one Music → Receive). It works over the internet or the same Wi-Fi, encrypted from one console to the other, through [magic-wormhole](https://magic-wormhole.readthedocs.io)'s public servers; the songs land in `Shared/` in the music folder. The cover stands on a pedestal while a laser sends it, and is built line by line on the other.
+- **betterPod Share for Mac:** a small Mac app that sends songs and albums to a betterPod the same way: drop them on its window, give your friend the 8-digit code. Songs of several albums go with one code and arrive as their albums. [Download it](https://github.com/stefanobuttarelli/betterPod/releases/tag/mac-v1.0) (macOS 13+, Apple silicon or Intel; not signed by Apple yet, see the release for how to open it the first time).
 - **Apps:** Brick and Solitaire, the classic iPod games (Solitaire saves your game); **2048** (after Gabriele Cirulli's game, MIT; your game is kept); **Five Letters**, guess a five-letter word in six tries with an on-screen keyboard (words from SCOWL and ENABLE); **Guess the Song**, a quiz on your own music (a clip plays, pick its title among four, ten rounds); **Puzzles**, twelve from [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/) (MIT): Mines, Sudoku, Net, Flood, Same Game, Fifteen, Light Up, Unruly, Towers, Keen, Pattern and Tents, played with the arrows and kept when you leave; and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
 - **Audio quality:**
   - every track plays at its own sample rate (44.1, 48, 96, 192 kHz…), with 32-bit float mixing;
@@ -203,9 +204,13 @@ On the Miyoo:
 | Shuffle, Repeat | Submenus with the options; the active one is ticked |
 | Theme | Light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00) |
 | Effects | Full, or Light: the covers beside the menus and the Weather icons stand still and option sheets appear at once, so a screen nobody touches isn't redrawn (the default on the Miyoo) |
+| About, Software Update | betterPod's version and credits; checking for a new version over Wi-Fi and installing it |
 | Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Missing Covers** (each album's search results with thumbnails, search by hand, or all automatically), **Browse Files** (see and delete files and folders), **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
 | Database | Folder for the library, artwork, settings, statistics and game saves |
-| Software Update | Checks for a new version over Wi-Fi and installs it |
+| Screensaver | Start Now, its style, dimming the screen, and after how long it starts |
+| Quit betterPod | Quit Now: the music stops and the system's menu comes back |
+
+A setting with a few choices shows them in the right column; one with more opens a page, summed up in the right column.
 
 ### Database folder
 
@@ -325,6 +330,7 @@ tools/onion/release.sh "What's new"   # release/betterpod-v<version>-onion.zip a
 | `src/ij_2048.go`, `src/ij_quiz.go` | Apps: 2048 and Guess the Song |
 | `src/ij_words.go`, `src/words/` | Apps: Five Letters and its word lists |
 | `src/ij_share.go`, `src/ij_share_draw.go`, `third_party/` | Share and Receive (magic-wormhole: wormhole-william, a SPAKE2) |
+| `mac/` | betterPod Share for Mac: the Go engine (`core/`) and the SwiftUI app (`App/`), built by `.github/workflows/mac.yml` |
 | `src/ij_puzzles.go`, `src/pz_*.go`, `src/puzzles/` | Apps → Puzzles: the front end (`puzzles/pzfe.c` records the drawing, Go replays it) and the puzzles' own C code |
 | `src/ij_columns.go` | Two-column menus (Settings): the right column, moving in and out of it |
 | `src/ij_vizcolors.go` | The Visualizer's colour schemes (A) and the Spectrogram |

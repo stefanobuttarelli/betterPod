@@ -678,6 +678,10 @@ func (ui *IpodUI) shareFindTracks(s *ShareView) {
 		}
 		sort.SliceStable(out, func(i, j int) bool {
 			a, b := out[i], out[j]
+			// (several albums, from the Mac app: one after the other)
+			if da, db := filepath.Dir(a.Path), filepath.Dir(b.Path); da != db {
+				return da < db
+			}
 			if a.DiscNum != b.DiscNum {
 				return a.DiscNum < b.DiscNum
 			}
@@ -888,7 +892,7 @@ func shareUnpack(zpath, name string) (string, error) {
 
 func shareKeep(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
-	case ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wav", ".wma", ".ape", ".wv", ".mpc",
+	case ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wav", ".aif", ".aiff", ".wma", ".ape", ".wv", ".mpc",
 		".jpg", ".jpeg", ".png", ".webp", ".lrc", ".cue":
 		return true
 	}
