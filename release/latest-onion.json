@@ -1,8 +1,8 @@
 {
-  "version": "0.81.1",
-  "path": "release/betterpod-v0.81.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.1-onion.zip",
-  "sha256": "fc5b4a85f4f7e383ab1ccb4db619b21684b8b2dc569b29cd58d121469ffe60e2",
-  "size": 28316273,
-  "notes": "- Share: the pedestals have smooth edges, as on the web page and the Mac app"
+  "version": "0.81.2",
+  "path": "release/betterpod-v0.81.2-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.2-onion.zip",
+  "sha256": "6b929e8d098dd8d2ed1027e1b91d374b84ba3ba54e03a0bee4fc7e3b120abb3d",
+  "size": 28317059,
+  "notes": "- Share: the laser sweeps the cover while waiting\n- Bigger code digits\n- Long titles scroll"
 }

@@ -138,6 +138,18 @@ func shText(dst *image.RGBA, s string, cx, cy float64, w FontWeight, size float6
 	drawText(dst, f, s, cx-textWidth(f, s)/2, cy+lineCapHeight(size/DPR)*DPR/2, c)
 }
 
+// shMarquee: centred text as shText, and when it is wider than maxW
+// (device px) it scrolls, as the lists' long titles do (from since).
+func shMarquee(dst *image.RGBA, s string, cx, cy float64, w FontWeight, size, maxW float64, c Col, since, now time.Time) {
+	f := face(w, size/DPR)
+	if textWidth(f, s) <= maxW {
+		shText(dst, s, cx, cy, w, size, c)
+		return
+	}
+	base := cy + lineCapHeight(size/DPR)*DPR/2
+	drawMarqueeSync(dst, f, s, (cx-maxW/2)/DPR, base/DPR, maxW/DPR, c, since, now, 0)
+}
+
 // shFit: s shortened to w device px at that size.
 func shFit(s string, w FontWeight, size, maxW float64) string {
 	return ellipsize(face(w, size/DPR), s, maxW)
@@ -185,9 +197,10 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp
 		blit(dst, s.coverSent, int(cx0), int(cy0), a)
 	default:
 		ui.shCover(dst, s, cx0, cy0, now)
-		// waiting: the laser rests on the cover's top edge
+		// waiting: a slow sweep up and down over the cover
 		if s.cover != nil && (s.phase == shWaiting || s.phase == shPreparing) {
-			shLaser(dst, cx0, cx0+shareCoverPx, cy0, Col{40, 150, 255, 1})
+			t := math.Mod(float64(now.UnixMilli())/1000/7.0, 1)
+			shLaser(dst, cx0, cx0+shareCoverPx, cy0+shareCoverPx*(0.5-0.5*math.Cos(t*2*math.Pi)), Col{40, 150, 255, 1})
 		}
 	}
 	// the code
@@ -203,19 +216,19 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp
 	shText(dst, label, shRX, 52, W600, 15, lc)
 	// the digits flip into place when the code appears
 	for i, d := range s.code {
-		x := 348 + float64(i)*29
+		x := 332 + float64(i)*33 // (8 tiles of 30, 3 apart, 10 between the halves)
 		if i >= 4 {
-			x += 8
+			x += 10
 		}
 		ch := d
 		if el := now.Sub(s.phaseAt); s.phase == shPreparing && el < time.Duration(300+i*90)*time.Millisecond {
 			ch = int(now.UnixMilli()/60+int64(i*3)) % 10
 		}
-		shDigit(dst, x, 68, 26, 40, fmt.Sprint(ch), false, false)
+		shDigit(dst, x, 66, 30, 46, fmt.Sprint(ch), false, false)
 	}
 	t, sub := s.title()
-	shText(dst, shFit(t, W700, 20, 270), shRX, 148, W700, 20, shInk)
-	shText(dst, shFit(sub, W500, 15, 270), shRX, 172, W500, 15, shSub)
+	shMarquee(dst, t, shRX, 150, W700, 20, 270, shInk, s.phaseAt, now)
+	shMarquee(dst, sub, shRX, 174, W500, 15, 270, shSub, s.phaseAt, now)
 	switch s.phase {
 	case shPreparing:
 		shText(dst, "Getting ready…", shRX, 222, W500, 15, shBody)
@@ -330,8 +343,8 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p,
 	}
 	shText(dst, label, shRX, 62, W600, 15, lc)
 	t, sub := s.title()
-	shText(dst, shFit(t, W700, 20, 270), shRX, 104, W700, 20, shInk)
-	shText(dst, shFit(sub, W500, 15, 270), shRX, 128, W500, 15, shSub)
+	shMarquee(dst, t, shRX, 104, W700, 20, 270, shInk, s.phaseAt, now)
+	shMarquee(dst, sub, shRX, 128, W500, 15, 270, shSub, s.phaseAt, now)
 	from := "from a friend's betterPod"
 	if s.info.From != "" {
 		from = "from " + s.info.From
@@ -630,8 +643,8 @@ func (s *ShareView) renderReceived(ui *IpodUI, dst *image.RGBA, now time.Time) {
 	}
 	shText(dst, "RECEIVED", W/2, 40, W600, 15, Col{shGreen.R, shGreen.G, shGreen.B, a})
 	t, sub := s.title()
-	shText(dst, shFit(t, W700, 22, W-60), W/2, y1+sz1+26, W700, 22, Col{shInk.R, shInk.G, shInk.B, a})
-	shText(dst, shFit(sub, W500, 15, W-60), W/2, y1+sz1+50, W500, 15, Col{shSub.R, shSub.G, shSub.B, a})
+	shMarquee(dst, t, W/2, y1+sz1+26, W700, 22, W-60, Col{shInk.R, shInk.G, shInk.B, a}, s.phaseAt, now)
+	shMarquee(dst, sub, W/2, y1+sz1+50, W500, 15, W-60, Col{shSub.R, shSub.G, shSub.B, a}, s.phaseAt, now)
 	if m := shMilestone(s.count); m != "" {
 		shText(dst, m, W/2, y1+sz1+70, W500, 13, Col{shBlue.R, shBlue.G, shBlue.B, a})
 	}

@@ -1,8 +1,8 @@
 {
-  "version": "0.81.1",
-  "path": "release/betterpod-v0.81.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.1-knulli.zip",
-  "sha256": "8d00b3eb476a05d0333ab5e01a9062d293dde58a507e35792ca5d9fe4f2d4dd8",
-  "size": 16178627,
-  "notes": "- Share: the pedestals have smooth edges, as on the web page and the Mac app"
+  "version": "0.81.2",
+  "path": "release/betterpod-v0.81.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.2-knulli.zip",
+  "sha256": "5fb8edb1bc85133d252480ad3d07ef712b7c0659f4abb281e0b508cca1e35947",
+  "size": 16181396,
+  "notes": "- Share: the laser sweeps the cover while waiting\n- Bigger code digits\n- Long titles scroll"
 }

@@ -1022,7 +1022,7 @@ func (s *ShareView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 // it is drawn 10 times a second instead of at every frame, leaving the
 // processor to the music and the transfer.
 func (s *ShareView) Animating(now time.Time) bool {
-	if !s.animating(now) {
+	if !s.animating(now) && !marqSyncNeedsFrame(now) { // (a long title scrolling)
 		return false
 	}
 	if lightEffects() {

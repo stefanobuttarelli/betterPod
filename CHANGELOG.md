@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.81.2 (2026-10-30)
+
+### Changed
+- **Share:** while it waits for a friend, the laser sweeps the cover up and down again (sending and receiving, it stays on the edge and glides). The code's digits are bigger. A long title or artist scrolls, as in the lists, instead of ending in "…" (on the Share, Receive and received screens).
+
 ## v0.81.1 (2026-10-30)
 
 ### Changed
