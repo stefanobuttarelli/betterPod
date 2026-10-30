@@ -73,7 +73,8 @@ final class Model: ObservableObject {
         stage = .sharing
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll() }
+            guard let model = self else { return }
+            Task { @MainActor in model.poll() }
         }
     }
 
