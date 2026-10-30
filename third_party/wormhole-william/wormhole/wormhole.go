@@ -252,6 +252,10 @@ type appVersionsMsg struct {
 type answerMsg struct {
 	MessageAck string `json:"message_ack,omitempty"`
 	FileAck    string `json:"file_ack,omitempty"`
+	// BetterPod (betterPod): the receiver's own information, a JSON value
+	// (IncomingMessage.AnswerInfo), for the sender (WithAnswerInfo); other
+	// wormhole programs ignore it
+	BetterPod json.RawMessage `json:"betterpod,omitempty"`
 }
 
 func (m *answerMsg) Type() collectType {

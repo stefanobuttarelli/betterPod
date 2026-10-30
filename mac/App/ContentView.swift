@@ -341,12 +341,17 @@ struct Panel: View {
                     Text("On their betterPod: Music → Receive,\nand these eight digits")
                         .font(.system(size: 13, weight: .medium)).foregroundColor(subInk)
                 case "moving":
-                    Text("Sending…").font(.system(size: 15, weight: .medium)).foregroundColor(bodyInk)
+                    Text(s?.to.map { "Sending to \($0)" } ?? "Sending…")
+                        .font(.system(size: 15, weight: .medium)).foregroundColor(bodyInk).lineLimit(1)
                     ProgressBar(value: model.progress).frame(width: 216, height: 12)
                     Text("\(Int(model.progress * 100))% · \(humanBytes(Int64(s?.rate ?? 0)))/s")
                         .font(.system(size: 14, weight: .medium)).foregroundColor(subInk)
+                    if let left = model.timeLeft {
+                        Text(left).font(.system(size: 13, weight: .medium)).foregroundColor(subInk)
+                    }
                 case "done":
-                    Text("Sent! It's on their betterPod now.").font(.system(size: 15, weight: .semibold)).foregroundColor(bodyInk)
+                    Text(s?.to.map { "Sent! It's on \($0) now." } ?? "Sent! It's on their betterPod now.")
+                        .font(.system(size: 15, weight: .semibold)).foregroundColor(bodyInk).lineLimit(1)
                 default:
                     Text(s?.error ?? "It didn't work").font(.system(size: 13, weight: .medium)).foregroundColor(shareRed)
                         .fixedSize(horizontal: false, vertical: true)

@@ -73,6 +73,32 @@ func (s *ShareView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 	}
 }
 
+// timeLeft: about how long the rest takes, at the speed of now ("" until
+// the speed is known): seconds by fives under a minute, then minutes.
+func (s *ShareView) timeLeft(now time.Time) string {
+	s.mu.Lock()
+	done, total := s.done, s.total
+	s.mu.Unlock()
+	if s.rate <= 0 || total <= 0 || done >= total || now.Sub(s.phaseAt) < 2*time.Second {
+		return ""
+	}
+	return etaText(float64(total-done) / s.rate)
+}
+
+func etaText(sec float64) string {
+	switch {
+	case sec < 10:
+		return "A few seconds left"
+	case sec < 60:
+		return fmt.Sprintf("About %d s left", (int(sec)+4)/5*5)
+	case sec < 90:
+		return "About a minute left"
+	case sec < 3600:
+		return fmt.Sprintf("About %d min left", int(sec/60+0.5))
+	}
+	return fmt.Sprintf("About %d h %d min left", int(sec/3600), int(sec/60)%60)
+}
+
 // laserAt: where the laser is (0 the cover's top, 1 its bottom): it follows
 // the progress p slowly and smoothly, never back up (the progress comes in
 // steps, a chunk at a time).
@@ -240,11 +266,26 @@ func (s *ShareView) renderSend(ui *IpodUI, dst *image.RGBA, now time.Time, p, lp
 			shText(dst, "Still here. The music is patient.", shRX, 290, W500, 14, Col{150, 156, 168, 1})
 		}
 	case shMoving:
-		shText(dst, "Sending…", shRX, 222, W500, 15, shBody)
+		s.mu.Lock()
+		peer := s.peer
+		s.mu.Unlock()
+		line := "Sending…"
+		if peer != "" {
+			line = shFit("Sending to "+peer, W500, 15, 270)
+		}
+		shText(dst, line, shRX, 222, W500, 15, shBody)
 		shAquaBar(dst, 360, 240, 216, p, false)
 		shText(dst, fmt.Sprintf("%d%% · %s/s", int(p*100), humanBytes(int64(s.rate))), shRX, 268, W500, 15, shSub)
+		shText(dst, s.timeLeft(now), shRX, 290, W500, 14, shSub)
 	case shDone:
-		shText(dst, "Sent! It's on their betterPod now.", shRX, 222, W600, 15, shBody)
+		s.mu.Lock()
+		peer := s.peer
+		s.mu.Unlock()
+		line := "Sent! It's on their betterPod now."
+		if peer != "" {
+			line = shFit("Sent! It's on "+peer+" now.", W600, 15, 280)
+		}
+		shText(dst, line, shRX, 222, W600, 15, shBody)
 		shText(dst, shMilestone(s.count), shRX, 246, W500, 13, shBlue)
 	case shFailed:
 		shText(dst, s.err, shRX, 222, W500, 14, Col{200, 60, 50, 1})
@@ -345,19 +386,20 @@ func (s *ShareView) renderReceive(ui *IpodUI, dst *image.RGBA, now time.Time, p,
 	t, sub := s.title()
 	shMarquee(dst, t, shRX, 104, W700, 20, 270, shInk, s.phaseAt, now)
 	shMarquee(dst, sub, shRX, 128, W500, 15, 270, shSub, s.phaseAt, now)
-	from := "from a friend's betterPod"
+	from := "Receiving from a friend's betterPod"
 	if s.info.From != "" {
-		from = "from " + s.info.From
+		from = "Receiving from " + s.info.From
 	}
 	switch s.phase {
 	case shMoving:
-		shText(dst, from, shRX, 172, W500, 15, shBody)
+		shText(dst, shFit(from, W500, 15, 270), shRX, 172, W500, 15, shBody)
 		shAquaBar(dst, 360, 190, 216, p, true)
 		line := fmt.Sprintf("%d%% · %s/s", int(p*100), humanBytes(int64(s.rate)))
 		if s.info.Songs > 1 {
 			line = fmt.Sprintf("Song %d of %d · %d%% · %s/s", min(s.info.Songs, 1+int(p*float64(s.info.Songs))), s.info.Songs, int(p*100), humanBytes(int64(s.rate)))
 		}
 		shText(dst, line, shRX, 218, W500, 15, shSub)
+		shText(dst, s.timeLeft(now), shRX, 240, W500, 14, shSub)
 	case shSaving:
 		shText(dst, "Putting it in your Music…", shRX, 172, W500, 15, shBody)
 	case shDone:

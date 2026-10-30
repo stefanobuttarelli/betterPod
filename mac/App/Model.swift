@@ -127,6 +127,20 @@ final class Model: ObservableObject {
         return p != "done" && p != "failed"
     }
 
+    /// About how long the rest takes, at the speed of now (as the
+    /// betterPod says it).
+    var timeLeft: String? {
+        guard let s = status, s.phase == "moving", s.rate > 0, s.total > s.done else { return nil }
+        let sec = Double(s.total - s.done) / s.rate
+        switch sec {
+        case ..<10: return "A few seconds left"
+        case ..<60: return "About \((Int(sec) + 4) / 5 * 5) s left"
+        case ..<90: return "About a minute left"
+        case ..<3600: return "About \(Int(sec / 60 + 0.5)) min left"
+        default: return "About \(Int(sec / 3600)) h \(Int(sec / 60) % 60) min left"
+        }
+    }
+
     var progress: Double {
         guard let s = status, s.total > 0 else { return 0 }
         if s.phase == "done" { return 1 }

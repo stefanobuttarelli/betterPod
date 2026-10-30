@@ -1,8 +1,8 @@
 {
-  "version": "0.81.2",
-  "path": "release/betterpod-v0.81.2-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.2-onion.zip",
-  "sha256": "6b929e8d098dd8d2ed1027e1b91d374b84ba3ba54e03a0bee4fc7e3b120abb3d",
-  "size": 28317059,
-  "notes": "- Share: the laser sweeps the cover while waiting\n- Bigger code digits\n- Long titles scroll"
+  "version": "0.81.3",
+  "path": "release/betterpod-v0.81.3-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.3-onion.zip",
+  "sha256": "1ae770f72448d718acbed0a6d3fd40dcee37407833c15fc4fc495c0c8e14e318",
+  "size": 28319469,
+  "notes": "- Share: Sending to / Receiving from, with the other betterPod's name\n- About how long is left"
 }

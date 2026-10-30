@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.81.3 (2026-10-30)
+
+### Added
+- **Share says who is on the other side:** the sender reads "Sending to Marco's RG35XX" (then "Sent! It's on Marco's RG35XX now."), the receiver "Receiving from Stefano's MacBook", above the bar. The receiving betterPod tells its name when it accepts (from this version on; with an older one the sender still says "Sending…").
+- **About how long is left,** under the percentage and the speed, sending and receiving ("About 40 s left", "About 3 min left").
+
 ## v0.81.2 (2026-10-30)
 
 ### Changed

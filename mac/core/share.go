@@ -105,6 +105,7 @@ type Share struct {
 	err        string
 	unplayable []string
 	unplayOn   string
+	to         string // the receiver's name, once it accepts
 	cancel     context.CancelFunc
 }
 
@@ -117,6 +118,7 @@ type Status struct {
 	Rate       float64  `json:"rate"`
 	Error      string   `json:"error,omitempty"`
 	Unplayable []string `json:"unplayable,omitempty"`
+	To         string   `json:"to,omitempty"` // the receiving betterPod's name (from 0.81.3)
 	On         string   `json:"on,omitempty"`
 }
 
@@ -124,7 +126,7 @@ func (s *Share) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return Status{Phase: s.phase, Code: s.Code, Done: s.done, Total: s.total, Rate: s.rate,
-		Error: s.err, Unplayable: s.unplayable, On: s.unplayOn}
+		Error: s.err, Unplayable: s.unplayable, On: s.unplayOn, To: s.to}
 }
 
 func (s *Share) set(phase string) {
@@ -233,7 +235,21 @@ func (s *Share) run(ctx context.Context, sel *Selection, from string) {
 	})
 	offerJSON, _ := json.Marshal(offer)
 	_, res, err := shareClient().SendDirectory(ctx, dir, entries, wormhole.WithCode(s.Code[:3]+"-"+s.Code[3:]),
-		progress, wormhole.WithOfferInfo(offerJSON))
+		progress, wormhole.WithOfferInfo(offerJSON), wormhole.WithAnswerInfo(func(b []byte) {
+			// the receiver says its name when it accepts (betterPod 0.81.3 on)
+			var a struct {
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(b, &a) == nil {
+				n := strings.TrimSpace(a.Name)
+				if len([]rune(n)) > 32 {
+					n = string([]rune(n)[:32])
+				}
+				s.mu.Lock()
+				s.to = n
+				s.mu.Unlock()
+			}
+		}))
 	if err != nil {
 		s.fail(ctx, err)
 		return

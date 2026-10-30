@@ -83,6 +83,11 @@ type shareInfo struct {
 	Bytes  int64  `json:"bytes"`
 }
 
+// shareAnswer: what the receiver says back when it accepts (its name).
+type shareAnswer struct {
+	Name string `json:"name,omitempty"`
+}
+
 // shareOffer: what the sender adds to the wormhole offer (WithOfferInfo),
 // read by the receiver before it accepts.
 type shareOffer struct {
@@ -176,6 +181,7 @@ type ShareView struct {
 	bg        *image.RGBA
 	lightAt   time.Time // the last frame with Light effects (Animating)
 
+	peer   string    // sender: the receiver's name, once it accepts (s.mu)
 	lineP  float64   // where the laser is (0..1), easing after the progress
 	lineAt time.Time // its last step
 
@@ -441,7 +447,20 @@ func (ui *IpodUI) shareSend(ctx context.Context, s *ShareView, tracks []*Track, 
 		})
 	})
 	info, _ := json.Marshal(offer)
-	_, res, err := shareClient().SendDirectory(ctx, dir, entries, wormhole.WithCode(wormholeCode(s.code)), progress, wormhole.WithOfferInfo(info))
+	// the receiver says its name when it accepts (betterPod 0.81.3 on)
+	answer := wormhole.WithAnswerInfo(func(b []byte) {
+		var a shareAnswer
+		if json.Unmarshal(b, &a) == nil && strings.TrimSpace(a.Name) != "" {
+			n := strings.TrimSpace(a.Name)
+			if len([]rune(n)) > 32 {
+				n = string([]rune(n)[:32])
+			}
+			s.mu.Lock()
+			s.peer = n
+			s.mu.Unlock()
+		}
+	})
+	_, res, err := shareClient().SendDirectory(ctx, dir, entries, wormhole.WithCode(wormholeCode(s.code)), progress, wormhole.WithOfferInfo(info), answer)
 	if err != nil {
 		ui.postSure(func() { s.fail(ctx, err) })
 		return
@@ -614,6 +633,7 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 			})
 			return
 		}
+		msg.AnswerInfo, _ = json.Marshal(shareAnswer{Name: shareFrom()}) // (the sender shows "Sending to …")
 		ui.shareReceiveData(ctx, s, msg)
 	}()
 }

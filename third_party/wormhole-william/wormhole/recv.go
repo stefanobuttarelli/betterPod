@@ -215,7 +215,8 @@ func (c *Client) Receive(ctx context.Context, code string) (fr *IncomingMessage,
 
 		answer := &genericMessage{
 			Answer: &answerMsg{
-				FileAck: "ok",
+				FileAck:   "ok",
+				BetterPod: fr.AnswerInfo,
 			},
 		}
 		ctx := context.Background()
@@ -297,6 +298,10 @@ type IncomingMessage struct {
 
 	textReader   io.Reader
 	rejectReason string
+
+	// AnswerInfo (betterPod): a JSON value sent back with the accept (the
+	// first Read), for a sender WithAnswerInfo.
+	AnswerInfo []byte
 
 	transferInitialized bool
 	initializeTransfer  func() error

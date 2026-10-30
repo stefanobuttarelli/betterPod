@@ -351,6 +351,9 @@ func (c *Client) sendFileDirectory(ctx context.Context, offer *offerMsg, r io.Re
 			sendErr(fmt.Errorf("unexpected answer"))
 			return
 		}
+		if options.answerFunc != nil {
+			options.answerFunc(answer.BetterPod)
+		}
 
 		conn, err := transport.acceptConnection(ctx)
 		if err != nil {
@@ -626,6 +629,7 @@ func readSeekerSize(r io.ReadSeeker) (int64, error) {
 type sendOptions struct {
 	code         string
 	progressFunc progressFunc
+	answerFunc   func([]byte)
 }
 
 type SendOption interface {
@@ -687,6 +691,21 @@ func (o offerInfoOption) setOption(opts *sendOptions) error { return nil }
 // before it accepts or rejects.
 func WithOfferInfo(info []byte) SendOption {
 	return offerInfoOption{info}
+}
+
+type answerInfoOption struct {
+	f func([]byte)
+}
+
+func (o answerInfoOption) setOption(opts *sendOptions) error {
+	opts.answerFunc = o.f
+	return nil
+}
+
+// WithAnswerInfo (betterPod) calls f with the receiver's own information
+// (IncomingMessage.AnswerInfo, nil from others) once it accepts.
+func WithAnswerInfo(f func(info []byte)) SendOption {
+	return answerInfoOption{f}
 }
 
 // WithProgress returns a SendOption to track the progress of the data

@@ -43,7 +43,7 @@ func main() {
 	last := ""
 	for {
 		st := s.Status()
-		line := fmt.Sprintf("%s code %s %d/%d %.0f B/s %s", st.Phase, st.Code, st.Done, st.Total, st.Rate, st.Error)
+		line := fmt.Sprintf("%s code %s %d/%d %.0f B/s to %q %s", st.Phase, st.Code, st.Done, st.Total, st.Rate, st.To, st.Error)
 		if st.Phase != last {
 			fmt.Println(line)
 			last = st.Phase

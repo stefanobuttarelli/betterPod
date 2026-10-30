@@ -36,6 +36,7 @@ struct ShareStatus: Decodable {
     let error: String?
     let unplayable: [String]?
     let on: String?
+    let to: String? // the receiving betterPod's name
 }
 
 enum Engine {
