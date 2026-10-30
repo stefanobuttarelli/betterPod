@@ -13,6 +13,20 @@
   main { text-align: center; padding: 16px; max-width: 520px; }
   a { color: #2f7fd0; }
   .note { color: #5c6370; font-size: 14px; }
+  h1 { margin: 6px 0 4px; font-size: 30px; }
+  .lead { margin: 0 0 22px; color: #3c414a; }
+  /* the button, as the betterPod's own (Listen Now): a glossy blue pill */
+  .cta { position: relative; display: inline-block; min-width: 230px; padding: 11px 30px 12px; border-radius: 999px;
+         color: #fff; text-decoration: none; font-weight: 700; font-size: 18px; letter-spacing: 0.1px;
+         background: linear-gradient(#78c3ff, #1a68d6); border: 1px solid #1e5ab4;
+         box-shadow: 0 2px 0 rgba(40, 50, 70, 0.12), 0 6px 16px rgba(26, 104, 214, 0.28);
+         text-shadow: 0 -1px 0 rgba(0, 40, 110, 0.35); overflow: hidden; transition: filter 0.15s, transform 0.15s; }
+  .cta::before { content: ""; position: absolute; left: 3px; right: 3px; top: 2px; height: 48%; border-radius: 999px 999px 14px 14px;
+                 background: linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.15)); pointer-events: none; }
+  .cta:hover { filter: brightness(1.06); }
+  .cta:active { transform: translateY(1px); filter: brightness(0.95); }
+  .cta small { display: block; font-weight: 500; font-size: 12px; opacity: 0.9; margin-top: 1px; }
+  .note { margin-top: 20px; }
   /* the share studio, as on the betterPod and in the app: the pedestal and
      its light, a cover floating over it, the laser sweeping it */
   .stage { position: relative; width: 260px; height: 352px; margin: 4px auto 8px; }
@@ -37,7 +51,6 @@
 </head>
 <body>
 <main>
-  <h1>betterPod Share for Mac</h1>
   <div class="stage" aria-hidden="true">
     <img class="beam" src="beam.png" alt="">
     <img class="ped" src="ped.png" alt="">
@@ -46,8 +59,10 @@
       <div class="laser"><i></i><i></i></div>
     </div>
   </div>
-  <p id="msg">Looking for the newest version…</p>
-  <p class="note">macOS 13 or later, Apple silicon or Intel. The app isn't signed by Apple yet: the first time, open it, then System Settings → Privacy &amp; Security → Open Anyway (on macOS 13 and 14: right-click it → Open). After that it updates itself.</p>
+  <h1>betterPod Share for Mac</h1>
+  <p class="lead">Send songs and albums from your Mac to a betterPod with an 8&#8209;digit code.</p>
+  <a class="cta" id="cta" href="https://github.com/stefanobuttarelli/betterPod/releases?q=mac-v&amp;expanded=true">Download for Mac<small id="ver">macOS 13 or later</small></a>
+  <p class="note">For Apple silicon and Intel. The app isn't signed by Apple yet: the first time, open it, then System Settings → Privacy &amp; Security → Open Anyway (on macOS 13 and 14: right-click it → Open). After that it updates itself.</p>
   <p class="note"><a href="https://github.com/stefanobuttarelli/betterPod/releases?q=mac-v&amp;expanded=true">All versions</a> · <a href="https://github.com/stefanobuttarelli/betterPod">betterPod on GitHub</a></p>
 </main>
 <script>
@@ -61,28 +76,27 @@
     covers[i].classList.add("on");
   }, 8000);
 })();
-// the newest release tagged mac-v…, then its zip (the consoles' releases are in between)
+// the button: the newest release tagged mac-v… and its zip (the consoles'
+// releases are in between); without GitHub, it leads to the releases
 (async () => {
-  const msg = document.getElementById("msg");
-  const all = "https://github.com/stefanobuttarelli/betterPod/releases?q=mac-v&expanded=true";
   try {
     for (let page = 1; page <= 5; page++) {
       const r = await fetch(`https://api.github.com/repos/stefanobuttarelli/betterPod/releases?per_page=100&page=${page}`);
-      if (!r.ok) throw new Error(r.status);
+      if (!r.ok) return;
       const list = await r.json();
       const rel = list.find(x => x.tag_name.startsWith("mac-v") && !x.draft && !x.prerelease);
       if (rel) {
         const v = rel.tag_name.slice(5);
         const a = rel.assets.find(x => x.name === `betterPod-Share-mac-v${v}.zip`);
-        if (!a) break;
-        msg.innerHTML = `Downloading betterPod Share ${v}… <a href="${a.browser_download_url}">Click here</a> if it doesn't start.`;
-        location.href = a.browser_download_url;
+        if (a) {
+          document.getElementById("cta").href = a.browser_download_url;
+          document.getElementById("ver").textContent = `Version ${v} · macOS 13 or later`;
+        }
         return;
       }
-      if (list.length < 100) break;
+      if (list.length < 100) return;
     }
   } catch (e) {}
-  msg.innerHTML = `Get it from <a href="${all}">its releases on GitHub</a>.`;
 })();
 </script>
 </body>
