@@ -1,8 +1,8 @@
 {
-  "version": "0.79.1",
-  "path": "release/betterpod-v0.79.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.79.1-onion.zip",
-  "sha256": "6b156fcf22d2644e048854ed0136e73af6046287519346483ce0175bee79983d",
-  "size": 28239500,
-  "notes": "- Big covers no longer stall the Miyoo: each is decoded once and shrunk before scaling\n- 13 MB less memory: the classic fonts are read once, with a small glyph cache"
+  "version": "0.80",
+  "path": "release/betterpod-v0.80-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.80-onion.zip",
+  "sha256": "fd31c85736c40e957611b7cc2d273653b4cb34645233a1cb191b1b2a44594718",
+  "size": 28302227,
+  "notes": "- Share and Receive ask for this betterPod's name first, when it has none"
 }

@@ -280,6 +280,52 @@ func (ui *IpodUI) sharingSettingsView() *View {
 	return v
 }
 
+// needShareName: before sharing or receiving, a betterPod without a name
+// (Settings → Sharing) is asked for one first; next runs once it's set.
+// B on the empty keyboard leaves, as anywhere.
+func (ui *IpodUI) needShareName(next func()) bool {
+	if strings.TrimSpace(shareName) != "" {
+		return false
+	}
+	edit := ""
+	v := &View{ID: "shareName", Title: "Name This betterPod", Kind: KindFull}
+	finish := func() {
+		n := strings.TrimSpace(edit)
+		if n == "" {
+			return
+		}
+		if len([]rune(n)) > 32 {
+			n = string([]rune(n)[:32])
+		}
+		shareName = n
+		ui.savePrefs()
+		ui.hideKeyboard()
+		ui.hideView()
+		ui.refreshBuilt()
+		next()
+	}
+	open := func() {
+		ui.showKeyboard(&edit, func() { ui.refreshView(v) }, finish)
+		ui.refreshView(v)
+	}
+	v.Build = func() []Item {
+		name := edit
+		if ui.keyboardEditing(&edit) {
+			name = ui.withCaret(&edit)
+		} else if name == "" {
+			name = "Type a name"
+		}
+		items := []Item{{Label: name, Sublabel: "The name your friends see when you share", NoArrow: true, OnSelect: open}}
+		if strings.TrimSpace(edit) != "" {
+			items = append(items, Item{Label: "Continue", Sublabel: "Or [START] on the keyboard", OnSelect: finish})
+		}
+		return items
+	}
+	ui.showView(v, "")
+	open()
+	return true
+}
+
 func shareFrom() string {
 	if n := strings.TrimSpace(shareName); n != "" {
 		return n
@@ -296,7 +342,7 @@ func shareFrom() string {
 
 // shareTracks opens Share for an album's or a song's tracks.
 func (ui *IpodUI) shareTracks(tracks []*Track) {
-	if len(tracks) == 0 {
+	if len(tracks) == 0 || ui.needShareName(func() { ui.shareTracks(tracks) }) {
 		return
 	}
 	s := &ShareView{send: true, code: shareCode()}
@@ -488,6 +534,9 @@ func shareCountUp() int {
 // ---- receiving ----
 
 func (ui *IpodUI) openReceive() {
+	if ui.needShareName(ui.openReceive) {
+		return
+	}
 	s := &ShareView{}
 	s.setPhase(shCode)
 	v := &View{ID: "receive", Title: "Receive", Kind: KindFull, Custom: s}

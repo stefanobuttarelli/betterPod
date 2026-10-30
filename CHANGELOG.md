@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.80 (2026-10-30)
+
+### Added
+- **Share and Receive ask for this betterPod's name first,** when it has none: the name your friends see when you share (Settings → Sharing changes it). Type it, then Continue (or START on the keyboard); B on the empty keyboard goes back.
+
 ## v0.79.1 (2026-10-30)
 
 ### Fixed
