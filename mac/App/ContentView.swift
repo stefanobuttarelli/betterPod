@@ -191,11 +191,12 @@ struct Stage: View {
             // (the progress comes in steps: the cut and the laser glide)
             .animation(moving ? .linear(duration: 0.6) : nil, value: p)
             if model.stage == .sharing && phase != "done" && phase != "failed" {
-                // waiting: the laser rests on the cover's top edge; sending:
-                // it goes down with the progress, slowly, never back up
+                // waiting: a slow sweep up and down; sending: it goes down
+                // with the progress, slowly, never back up
+                let sweep = 0.5 - 0.5 * cos(t.truncatingRemainder(dividingBy: 7) / 7 * 2 * .pi)
                 Laser()
                     .frame(width: coverSide + 36, height: 14)
-                    .position(x: x0 + coverSide / 2, y: y0 + (moving ? p : 0) * coverSide)
+                    .position(x: x0 + coverSide / 2, y: y0 + (moving ? p : sweep) * coverSide)
                     .animation(moving ? .linear(duration: 0.6) : nil, value: p)
             }
         }
@@ -278,8 +279,8 @@ struct Panel: View {
     }
 
     @ViewBuilder var titleBlock: some View {
-        Text(model.scan?.title ?? "").font(.system(size: 20, weight: .bold)).foregroundColor(ink).lineLimit(1)
-        Text(subtitle).font(.system(size: 15, weight: .medium)).foregroundColor(subInk).lineLimit(1)
+        Marquee(text: model.scan?.title ?? "", font: .system(size: 20, weight: .bold), color: ink, width: 290)
+        Marquee(text: subtitle, font: .system(size: 15, weight: .medium), color: subInk, width: 290)
     }
 
     var readyPanel: some View {
@@ -391,7 +392,7 @@ struct Digits: View {
                         return String(chars[i])
                     }()
                     DigitTile(digit: ch)
-                        .padding(.leading, i == 4 ? 8 : 0)
+                        .padding(.leading, i == 4 ? 10 : 0)
                 }
             }
         }
@@ -408,9 +409,9 @@ struct DigitTile: View {
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(Color(red: 0.76, green: 0.78, blue: 0.81), lineWidth: 1)
             Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
-            Text(digit).font(.system(size: 28, weight: .semibold, design: .rounded)).foregroundColor(ink)
+            Text(digit).font(.system(size: 32, weight: .semibold, design: .rounded)).foregroundColor(ink)
         }
-        .frame(width: 26, height: 40)
+        .frame(width: 30, height: 46)
         .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
     }
 }
@@ -519,6 +520,52 @@ struct NameField: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 12))
                 .frame(width: 200)
+        }
+    }
+}
+
+/// A line of text, centred; when it is wider than width it scrolls, as the
+/// betterPod's long titles do: 1.5 s still, then two copies 40 pt apart go
+/// left at 32 pt/s.
+struct Marquee: View {
+    let text: String
+    let font: Font
+    let color: Color
+    let width: CGFloat
+    @State private var textW: CGFloat = 0
+    @State private var start = Date()
+
+    private struct WidthKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+    }
+
+    var body: some View {
+        let over = textW > width
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !over)) { tl in
+            let loop = textW + 40
+            let cycle = loop / 32 + 1.5
+            let t = tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: cycle)
+            let off = over && t > 1.5 ? min((t - 1.5) * 32, loop) : 0
+            HStack(spacing: 40) {
+                Text(text).font(font).foregroundColor(color).fixedSize()
+                if over {
+                    Text(text).font(font).foregroundColor(color).fixedSize()
+                }
+            }
+            .offset(x: -off)
+            .frame(width: width, alignment: over ? .leading : .center)
+            .clipped()
+        }
+        .background(
+            Text(text).font(font).fixedSize().hidden()
+                .background(GeometryReader { g in Color.clear.preference(key: WidthKey.self, value: g.size.width) })
+        )
+        .onPreferenceChange(WidthKey.self) { w in
+            if w != textW {
+                textW = w
+                start = Date()
+            }
         }
     }
 }
