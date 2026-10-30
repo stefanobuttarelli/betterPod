@@ -8,18 +8,25 @@ import SwiftUI
 struct BetterPodShareApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var model = Model()
+    @StateObject private var updater = Updater()
 
     var body: some Scene {
         Window("betterPod Share", id: "main") {
-            ContentView(model: model)
+            ContentView(model: model, updater: updater)
                 // the studio is drawn light, as on the console: the
                 // buttons and the name field stay light too (with the Mac
                 // in Dark mode they showed white text on the light studio)
                 .preferredColorScheme(.light)
-                .onAppear { delegate.model = model }
+                .onAppear {
+                    delegate.model = model
+                    updater.checkAtStart()
+                }
         }
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.check(byHand: true) }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Choose Songs…") { model.choose() }
                     .keyboardShortcut("o")
