@@ -8,6 +8,8 @@ import (
 	"archive/zip"
 	"errors"
 	"image"
+	"image/color"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +23,7 @@ import (
 	"time"
 
 	"github.com/fogleman/gg"
+	"golang.org/x/image/draw"
 	"golang.org/x/image/vector"
 )
 
@@ -609,5 +612,81 @@ func TestShareUnplayable(t *testing.T) {
 	isOnion = false
 	if got := shareUnplayable([]string{".m4a", ".mp3", ".alac"}); len(got) != 0 {
 		t.Errorf("Knulli: %v", got)
+	}
+}
+
+// A big cover is averaged down before Catmull-Rom (shrinkImage): what comes
+// out looks as Catmull-Rom alone, an edge stays where it was, and the 480 px
+// preview of a 3000 px cover no longer takes a 46 MB buffer.
+func TestShrinkImage(t *testing.T) {
+	const W, H = 3001, 2999
+	ycc := image.NewYCbCr(image.Rect(0, 0, W, H), image.YCbCrSubsampleRatio420)
+	rgba := image.NewRGBA(ycc.Rect)
+	nrgba := image.NewNRGBA(ycc.Rect)
+	gray := image.NewGray(ycc.Rect)
+	for y := 0; y < H; y++ {
+		for x := 0; x < W; x++ {
+			// rings and a gradient, and a sharp edge at x = 1700
+			v := 128 + 60*math.Sin(math.Hypot(float64(x-1200), float64(y-1400))/40) + float64(y)/50
+			if x >= 1700 {
+				v = 250
+			}
+			c := uint8(v)
+			ycc.Y[ycc.YOffset(x, y)] = c
+			ycc.Cb[ycc.COffset(x, y)] = uint8(x / 12)
+			ycc.Cr[ycc.COffset(x, y)] = uint8(255 - y/12)
+			rgba.SetRGBA(x, y, color.RGBA{c, uint8(x / 12), uint8(y / 12), 255})
+			nrgba.SetNRGBA(x, y, color.NRGBA{c, uint8(x / 12), uint8(y / 12), 255})
+			gray.SetGray(x, y, color.Gray{c})
+		}
+	}
+	for _, src := range []image.Image{ycc, rgba, nrgba, gray} {
+		for _, w := range []int{96, 256, 480} {
+			ref := newCanvas(w, w)
+			draw.CatmullRom.Scale(ref, ref.Bounds(), src, src.Bounds(), draw.Src, nil)
+			runtime.GC()
+			var m0, m1 runtime.MemStats
+			runtime.ReadMemStats(&m0)
+			got := scaleImage(src, w, w)
+			runtime.ReadMemStats(&m1)
+			var sum, worst float64
+			for i := range ref.Pix {
+				d := math.Abs(float64(ref.Pix[i]) - float64(got.Pix[i]))
+				sum += d
+				worst = math.Max(worst, d)
+			}
+			mean := sum / float64(len(ref.Pix))
+			if mean > 1 {
+				t.Errorf("%T at %d px: %.2f from Catmull-Rom alone on average (at most %.0f)", src, w, mean, worst)
+			}
+			if a := m1.TotalAlloc - m0.TotalAlloc; a > 12<<20 {
+				t.Errorf("%T at %d px: %d MB allocated", src, w, a>>20)
+			}
+			// the edge at x = 1700: where the middle row crosses 210 (between
+			// the rings' grey there and the white), within a quarter pixel
+			// of Catmull-Rom alone
+			cross := func(img *image.RGBA) float64 {
+				y, e := w/2, 1700*w/W
+				for x := e - 2; x <= e+3; x++ {
+					a, b := float64(img.Pix[img.PixOffset(x-1, y)]), float64(img.Pix[img.PixOffset(x, y)])
+					if a < 210 && b >= 210 {
+						return float64(x-1) + (210-a)/(b-a)
+					}
+				}
+				return -1
+			}
+			if r, g := cross(ref), cross(got); math.Abs(r-g) > 0.25 {
+				t.Errorf("%T at %d px: the edge at %.2f, %.2f alone", src, w, g, r)
+			}
+		}
+	}
+	// small pictures and other types are scaled as they were
+	small := image.NewYCbCr(image.Rect(0, 0, 500, 500), image.YCbCrSubsampleRatio420)
+	if shrinkImage(small, 256, 256) != image.Image(small) {
+		t.Error("a 500 px picture was shrunk for 256 px")
+	}
+	pal := image.NewPaletted(ycc.Rect, color.Palette{color.Black, color.White})
+	if shrinkImage(pal, 96, 96) != image.Image(pal) {
+		t.Error("a paletted picture was shrunk")
 	}
 }

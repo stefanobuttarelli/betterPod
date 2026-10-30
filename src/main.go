@@ -20,6 +20,8 @@ import (
 	"unsafe"
 
 	"github.com/fogleman/gg"
+	"github.com/golang/freetype/truetype"
+	"golang.org/x/image/font"
 )
 
 func init() {
@@ -138,18 +140,34 @@ func (app *MiyooPod) loadFonts() {
 	fontPath := "./assets/ui_font.ttf"
 	scale := fontScaleFactor(app.FontSize)
 
-	var err error
-	app.FontHeader, err = gg.LoadFontFace(fontPath, FONT_SIZE_HEADER*scale)
+	// the file read and parsed once for the seven faces (gg.LoadFontFace
+	// read it for each: 800 KB a face)
+	data, err := os.ReadFile(fontPath)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load font: %v", err))
 	}
-
-	app.FontMenu, _ = gg.LoadFontFace(fontPath, FONT_SIZE_MENU*scale)
-	app.FontTitle, _ = gg.LoadFontFace(fontPath, FONT_SIZE_TITLE*scale)
-	app.FontArtist, _ = gg.LoadFontFace(fontPath, FONT_SIZE_ARTIST*scale)
-	app.FontAlbum, _ = gg.LoadFontFace(fontPath, FONT_SIZE_ALBUM*scale)
-	app.FontTime, _ = gg.LoadFontFace(fontPath, FONT_SIZE_TIME*scale)
-	app.FontSmall, _ = gg.LoadFontFace(fontPath, FONT_SIZE_SMALL*scale)
+	f, err := truetype.Parse(data)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load font: %v", err))
+	}
+	// These faces are the classic UI's: the iPod UI draws its own text
+	// (ij_fonts.go) and reaches them only in a few spots, so there each
+	// keeps 32 glyphs ready instead of freetype's 512 (512 of a face's
+	// largest glyph: 8 MB for the seven, a sixth of the Miyoo's 48)
+	cache := 0
+	if useIpodUI {
+		cache = 32
+	}
+	face := func(points float64) font.Face {
+		return truetype.NewFace(f, &truetype.Options{Size: points, GlyphCacheEntries: cache})
+	}
+	app.FontHeader = face(FONT_SIZE_HEADER * scale)
+	app.FontMenu = face(FONT_SIZE_MENU * scale)
+	app.FontTitle = face(FONT_SIZE_TITLE * scale)
+	app.FontArtist = face(FONT_SIZE_ARTIST * scale)
+	app.FontAlbum = face(FONT_SIZE_ALBUM * scale)
+	app.FontTime = face(FONT_SIZE_TIME * scale)
+	app.FontSmall = face(FONT_SIZE_SMALL * scale)
 }
 
 func (app *MiyooPod) RunUI() {

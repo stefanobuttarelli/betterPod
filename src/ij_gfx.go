@@ -294,10 +294,135 @@ func boxShadowProfile(blurDevice, maxAlpha float64) []float64 {
 	return out
 }
 
-// scaleImage resamples src to w x h (Catmull-Rom, like a browser).
+// scaleImage resamples src to w x h (Catmull-Rom, like a browser). A much
+// bigger src is box-filtered down first (shrinkImage).
 func scaleImage(src image.Image, w, h int) *image.RGBA {
+	src = shrinkImage(src, w, h)
 	dst := newCanvas(w, h)
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
+	return dst
+}
+
+// shrinkImage averages src over blocks of whole pixels, so that Catmull-Rom
+// has only the last step to do. On its own, Catmull-Rom from a big picture
+// (a cover scanned at 3000 px) is slow, and its buffer is w times the
+// source's height in float64s: 46 MB for a 480 px preview, more than the
+// Miyoo has to spare. The blocks are the biggest that keep src at least
+// twice w x h (Catmull-Rom then gives what it gives alone, to the eye),
+// or at least w x h above 320 px: those sizes aren't kept on disk
+// (artDiskPath), so they are made again each time they show, and twice
+// would still leave Catmull-Rom 15 MB or more. src comes back as it is
+// when it is small enough, or of a type without a fast path here.
+func shrinkImage(src image.Image, w, h int) image.Image {
+	b := src.Bounds()
+	gap := 2
+	if w*h > 320*320 {
+		gap = 1
+	}
+	kx, ky := max(b.Dx()/(gap*max(w, 1)), 1), max(b.Dy()/(gap*max(h, 1)), 1)
+	if kx*ky < 2 {
+		return src
+	}
+	// the blocks' edges, spread evenly (k or k-1 pixels each), so that
+	// the smaller picture covers the same area as src
+	dw, dh := (b.Dx()+kx-1)/kx, (b.Dy()+ky-1)/ky
+	edges := func(size, n int) []int {
+		e := make([]int, n+1)
+		for i := range e {
+			e[i] = i * size / n
+		}
+		return e
+	}
+	ex, ey := edges(b.Dx(), dw), edges(b.Dy(), dh)
+	sums := make([]uint32, 4*dw) // one block row: R G B A, or Y Cb Cr
+	// add adds the source row y into sums, block by block
+	var add func(y int)
+	ycc := false
+	switch m := src.(type) {
+	case *image.YCbCr:
+		ycc = true
+		add = func(y int) {
+			j, next := 0, ex[1]
+			for x := 0; x < b.Dx(); x++ {
+				if x == next {
+					j, next = j+4, ex[j/4+2]
+				}
+				ci := m.COffset(b.Min.X+x, y)
+				sums[j] += uint32(m.Y[m.YOffset(b.Min.X+x, y)])
+				sums[j+1] += uint32(m.Cb[ci])
+				sums[j+2] += uint32(m.Cr[ci])
+			}
+		}
+	case *image.RGBA:
+		add = func(y int) {
+			p := m.Pix[m.PixOffset(b.Min.X, y):]
+			j, next := 0, ex[1]
+			for x := 0; x < b.Dx(); x++ {
+				if x == next {
+					j, next = j+4, ex[j/4+2]
+				}
+				q := p[4*x : 4*x+4]
+				sums[j] += uint32(q[0])
+				sums[j+1] += uint32(q[1])
+				sums[j+2] += uint32(q[2])
+				sums[j+3] += uint32(q[3])
+			}
+		}
+	case *image.NRGBA:
+		// premultiplied, as RGBA (sums of colour × alpha / 255)
+		add = func(y int) {
+			p := m.Pix[m.PixOffset(b.Min.X, y):]
+			j, next := 0, ex[1]
+			for x := 0; x < b.Dx(); x++ {
+				if x == next {
+					j, next = j+4, ex[j/4+2]
+				}
+				q := p[4*x : 4*x+4]
+				a := uint32(q[3])
+				sums[j] += (uint32(q[0])*a + 127) / 255
+				sums[j+1] += (uint32(q[1])*a + 127) / 255
+				sums[j+2] += (uint32(q[2])*a + 127) / 255
+				sums[j+3] += a
+			}
+		}
+	case *image.Gray:
+		add = func(y int) {
+			p := m.Pix[m.PixOffset(b.Min.X, y):]
+			j, next := 0, ex[1]
+			for x := 0; x < b.Dx(); x++ {
+				if x == next {
+					j, next = j+4, ex[j/4+2]
+				}
+				v := uint32(p[x])
+				sums[j] += v
+				sums[j+1] += v
+				sums[j+2] += v
+				sums[j+3] += 255
+			}
+		}
+	default:
+		return src
+	}
+	dst := newCanvas(dw, dh)
+	for dy := 0; dy < dh; dy++ {
+		clear(sums)
+		for y := ey[dy]; y < ey[dy+1]; y++ {
+			add(b.Min.Y + y)
+		}
+		row := dst.Pix[dy*dst.Stride:]
+		for dx := 0; dx < dw; dx++ {
+			n := uint32((ex[dx+1] - ex[dx]) * (ey[dy+1] - ey[dy]))
+			s, o := sums[4*dx:4*dx+4], row[4*dx:4*dx+4]
+			if ycc {
+				o[0], o[1], o[2] = color.YCbCrToRGB(uint8((s[0]+n/2)/n), uint8((s[1]+n/2)/n), uint8((s[2]+n/2)/n))
+				o[3] = 255
+				continue
+			}
+			for i := range o {
+				o[i] = uint8((s[i] + n/2) / n)
+			}
+		}
+	}
 	return dst
 }
 
