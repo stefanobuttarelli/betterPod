@@ -12,6 +12,10 @@ struct BetterPodShareApp: App {
     var body: some Scene {
         Window("betterPod Share", id: "main") {
             ContentView(model: model)
+                // the studio is drawn light, as on the console: the
+                // buttons and the name field stay light too (with the Mac
+                // in Dark mode they showed white text on the light studio)
+                .preferredColorScheme(.light)
                 .onAppear { delegate.model = model }
         }
         .windowResizability(.contentSize)

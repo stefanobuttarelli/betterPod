@@ -1,5 +1,7 @@
 **betterPod Share for Mac** sends songs and albums from your Mac to a betterPod, over the internet or the same Wi-Fi, with an 8-digit code. It works with every betterPod from 0.69 on (Knulli and Miyoo).
 
+**1.0.1:** the Choose… button and the name field can be read with the Mac in Dark mode (they showed white text on the light window). The window stays light, as the betterPod's screen.
+
 1. Drop songs or album folders on the window (or on the app's icon), or click Choose….
 2. Click Share: an 8-digit code shows.
 3. On the betterPod: Music → Receive, and the eight digits.
