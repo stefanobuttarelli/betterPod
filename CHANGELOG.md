@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.79 (2026-10-30)
+
+### Changed
+- **START opens a game's menu,** in every game: its options and Quit. 2048: New Game; Brick: New Game (the game pauses while the menu shows); Five Letters: New Word, once the word is found; Guess the Song: New Game; Puzzles: New Game and Undo; Solitaire: its pause menu.
+- **Five Letters types like a keyboard:** A types the key under the cursor and, with the row full, sends it; B deletes a letter (it no longer leaves the game: START → Quit does).
+
 ## v0.78 (2026-10-30)
 
 ### Added

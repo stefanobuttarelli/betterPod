@@ -268,9 +268,8 @@ func (g *Game2048) OnKey(ui *IpodUI, k Key) bool {
 		g.move(dr, dc)
 		ui.dirty = true
 		return true
-	case START:
-		g.newGame()
-		ui.dirty = true
+	case START: // the game's menu (every game: START)
+		ui.gameMenu("2048", SheetOption{Label: "New Game", OnSelect: func() { g.newGame(); ui.dirty = true }})
 		return true
 	}
 	return false
@@ -430,7 +429,7 @@ func (g *Game2048) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	box(g48Y0+92, "BEST", g.best)
 	hf := face(W600, 11)
 	_, ha := lineBox(11)
-	for i, l := range []string{"[DPAD] slide", "[START] new game", "[B] back"} {
+	for i, l := range []string{"[DPAD] slide", "[START] menu", "[B] back"} {
 		drawText(dst, hf, l, 452, (g48Y0+g48Size-76+float64(i)*30)+ha*DPR/2, Col{90, 98, 112, 1})
 	}
 	// a message over the board
@@ -439,7 +438,7 @@ func (g *Game2048) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 			[]GradStop{{0, Col{255, 255, 255, 0.72}}, {1, Col{255, 255, 255, 0.72}}}, 1)
 		title, sub := "No more moves", "[A] play again"
 		if m == "won" {
-			title, sub = "You made 2048!", "[A] keep going · [START] new game"
+			title, sub = "You made 2048!", "[A] keep going · [START] menu"
 		}
 		tf := face(W700, 22)
 		_, ta := lineBox(22)

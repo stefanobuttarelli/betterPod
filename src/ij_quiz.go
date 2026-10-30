@@ -229,6 +229,18 @@ func (q *QuizGame) OnKey(ui *IpodUI, k Key) bool {
 		return true
 	case LEFT, RIGHT:
 		return true
+	case START: // the game's menu (every game: START)
+		var opts []SheetOption
+		if q.phase != "empty" {
+			opts = append(opts, SheetOption{Label: "New Game", OnSelect: func() {
+				q.round, q.score = 0, 0
+				q.used = map[*Track]bool{}
+				q.next()
+				ui.dirty = true
+			}})
+		}
+		ui.gameMenu("Guess the Song", opts...)
+		return true
 	}
 	return false
 }
@@ -283,7 +295,7 @@ func (q *QuizGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 			msg = "A new best!"
 		}
 		center(ff(W600, 14), msg, 320, 250, sub)
-		center(ff(W500, 13), "[A] play again · [B] back", 320, 330, sub)
+		center(ff(W500, 13), "[A] play again · [START] menu", 320, 330, sub)
 		return
 	}
 	// the round and the score

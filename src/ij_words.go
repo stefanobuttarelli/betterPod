@@ -292,12 +292,12 @@ func (g *WordGame) OnKey(ui *IpodUI, k Key) bool {
 		g.kc = (g.kc + 1) % len(wlRows[g.kr])
 	case Y:
 		g.del()
-	case START:
+	case START: // the game's menu (every game: START)
+		var opts []SheetOption
 		if g.over {
-			g.newGame()
-		} else {
-			g.submit()
+			opts = append(opts, SheetOption{Label: "New Word", OnSelect: func() { g.newGame(); ui.dirty = true }})
 		}
+		ui.gameMenu("Five Letters", opts...)
 	default:
 		return false
 	}
@@ -305,12 +305,24 @@ func (g *WordGame) OnKey(ui *IpodUI, k Key) bool {
 	return true
 }
 
+// OnCenter: A types the key, as on a keyboard; with the row full, A on a
+// letter sends it.
 func (g *WordGame) OnCenter(ui *IpodUI) {
-	if g.over && !g.revealing(time.Now()) {
+	ch := wlRows[g.kr][g.kc]
+	switch {
+	case g.over && !g.revealing(time.Now()):
 		g.newGame()
-	} else {
-		g.typeKey(wlRows[g.kr][g.kc])
+	case len(g.typed) == wlLen && ch != '-':
+		g.submit()
+	default:
+		g.typeKey(ch)
 	}
+	ui.dirty = true
+}
+
+// OnMenu: B deletes a letter (it doesn't leave: START → Quit does).
+func (g *WordGame) OnMenu(ui *IpodUI) {
+	g.del()
 	ui.dirty = true
 }
 
@@ -522,9 +534,9 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	// the hint at the side of the board
 	hf := face(W600, 10)
 	_, ha := lineBox(10)
-	hints := []string{"[A] type", "[Y] delete", "[START] send", "[B] back"}
+	hints := []string{"[A] type", "[A] full row: send", "[B] delete", "[START] menu"}
 	if g.over {
-		hints = []string{"[A] new word", "", "", "[B] back"}
+		hints = []string{"[A] new word", "", "", "[START] menu"}
 	}
 	for i, l := range hints {
 		drawText(dst, hf, l, 452, 40+float64(i)*28+ha*DPR/2, Col{110, 118, 132, 1})

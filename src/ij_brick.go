@@ -224,6 +224,15 @@ func (g *BrickGame) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	g.pvel = math.Max(-maxV, math.Min(maxV, g.pvel))
 }
 
+// OnKey: START opens the game's menu (and pauses it, see Render).
+func (g *BrickGame) OnKey(ui *IpodUI, k Key) bool {
+	if k != START {
+		return false
+	}
+	ui.gameMenu("Brick", SheetOption{Label: "New Game", OnSelect: func() { g.reset() }})
+	return true
+}
+
 func (g *BrickGame) OnCenter(ui *IpodUI) {
 	switch g.phase {
 	case "gameOver":
@@ -247,6 +256,9 @@ func (g *BrickGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 	// never more than 10 steps behind
 	if g.acc > 10*brickStep {
 		g.acc = 10 * brickStep
+	}
+	if ui.activeSheet() != nil { // the menu (START) pauses the game
+		g.acc = 0
 	}
 	for g.acc >= brickStep {
 		g.step()

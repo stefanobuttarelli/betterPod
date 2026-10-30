@@ -188,10 +188,12 @@ On the Miyoo:
 - **Hold:**
   - up/down set the brightness, and betterPod remembers it;
   - after 5 seconds the Now Playing screen comes up, with the clock in the status bar.
+- **Games:** START opens the game's menu, with its options (New Game…) and Quit.
 - **Solitaire:**
   - the wheel moves the hand, and A picks up or drops cards;
-  - holding A undoes a move, and B opens the pause menu.
-- **Brick:** left/right move the paddle, and A launches the ball.
+  - holding A undoes a move, and B (or START) opens the pause menu.
+- **Brick:** left/right move the paddle, and A launches the ball; START pauses it, with its menu.
+- **Five Letters:** A types the key under the cursor, as on a keyboard; with the row full, A sends it. B deletes a letter.
 - **Weather:**
   - in the list, Search for a Place opens the keyboard; choosing a result saves the place;
   - in a forecast, the wheel or d-pad picks the day, A updates the forecast and B goes back;

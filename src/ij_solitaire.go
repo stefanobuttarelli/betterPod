@@ -407,6 +407,24 @@ func (g *Solitaire) OnLongPress(ui *IpodUI) {
 	g.save()
 }
 
+// OnKey: START opens or closes the game's menu (every game: START).
+func (g *Solitaire) OnKey(ui *IpodUI, k Key) bool {
+	if k != START || g.anims.animating() {
+		return k == START
+	}
+	switch g.sel.phase {
+	case PhMenu:
+		g.sel.phase = PhBrowsing
+	case PhBrowsing:
+		g.sel.phase = PhMenu
+		g.menuIx = 0
+	default:
+		return true // (holding cards, won, lost: B, or its own buttons)
+	}
+	ui.dirty = true
+	return true
+}
+
 // OnMenu cancels a move, closes the menu or opens it.
 func (g *Solitaire) OnMenu(ui *IpodUI) {
 	if g.anims.animating() {

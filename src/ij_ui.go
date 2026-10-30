@@ -799,6 +799,13 @@ func (ui *IpodUI) HandleKey(ev int) {
 	ui.dirty = true
 }
 
+// gameMenu: START in a game: its own options, then Quit (the game's
+// screen closes; it keeps its state as when B left it).
+func (ui *IpodUI) gameMenu(name string, opts ...SheetOption) {
+	opts = append(opts, SheetOption{Label: "Quit " + name, OnSelect: func() { ui.hideView() }})
+	ui.showSheetTitled(name, opts)
+}
+
 // customKey offers a key to the screen on top when it takes keys itself
 // (OnKey), with nothing over it (a sheet, the keyboard, Cover Flow) and not
 // leaving.
