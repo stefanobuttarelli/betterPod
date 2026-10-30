@@ -168,30 +168,35 @@ struct Stage: View {
         } else {
             let p = model.progress
             let phase = model.status?.phase ?? ""
+            let moving = model.stage == .sharing && phase == "moving"
             ZStack(alignment: .top) {
                 coverImage
-                if model.stage == .sharing && (phase == "moving" || phase == "done") {
-                    // what has gone turns pale
-                    Rectangle()
-                        .fill(Color.white.opacity(0.62))
-                        .frame(height: coverSide * p)
-                        .frame(maxHeight: .infinity, alignment: .top)
+                if model.stage == .sharing && phase == "done" {
+                    // sent: its ghost, pale
+                    Rectangle().fill(Color.white.opacity(0.62))
                 }
             }
             .frame(width: coverSide, height: coverSide)
-            .clipped()
+            // sending: what has gone is gone, cut clean by the laser
+            .mask(
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: moving ? coverSide * p : 0)
+                    Color.black
+                }
+                .frame(width: coverSide, height: coverSide)
+            )
             .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
             .opacity(phase == "failed" ? 0.5 : 1)
             .position(x: pedCX, y: y0 + coverSide / 2)
+            // (the progress comes in steps: the cut and the laser glide)
+            .animation(moving ? .linear(duration: 0.6) : nil, value: p)
             if model.stage == .sharing && phase != "done" && phase != "failed" {
-                // waiting: a slow sweep up and down; sending: on the edge
-                // between what's gone and what's still to go
-                let y = phase == "moving"
-                    ? y0 + p * coverSide
-                    : y0 + coverSide * (0.5 - 0.5 * cos(t.truncatingRemainder(dividingBy: 7) / 7 * 2 * .pi))
+                // waiting: the laser rests on the cover's top edge; sending:
+                // it goes down with the progress, slowly, never back up
                 Laser()
                     .frame(width: coverSide + 36, height: 14)
-                    .position(x: x0 + coverSide / 2, y: y)
+                    .position(x: x0 + coverSide / 2, y: y0 + (moving ? p : 0) * coverSide)
+                    .animation(moving ? .linear(duration: 0.6) : nil, value: p)
             }
         }
     }

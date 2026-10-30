@@ -1,5 +1,7 @@
 **betterPod Share for Mac** sends songs and albums from your Mac to a betterPod, over the internet or the same Wi-Fi, with an 8-digit code. It works with every betterPod from 0.69 on (Knulli and Miyoo).
 
+**1.0.5:** while it sends, the laser cuts the cover clean: what has gone is gone, and the laser glides down with the progress (it rests on the cover's top while it waits). As on the betterPod from 0.81.
+
 **1.0.4:** Update works as soon as a share is sent (it waited until Share More or Clear).
 
 **1.0.3:** the pedestal and its light are drawn sharp on a Retina screen.
