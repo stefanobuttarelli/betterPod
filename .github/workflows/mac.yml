@@ -1,0 +1,39 @@
+# betterPod Share for the Mac: built on a Mac runner for each change to it;
+# a new version (mac/VERSION) gets its GitHub release, tagged mac-v<version>,
+# with the zip and mac/NOTES.md. It is never marked "Latest" (that stays on
+# the consoles' newest release).
+name: Mac app
+on:
+  push:
+    branches: [main]
+    paths: [mac/**, third_party/**, go.mod, go.sum, .github/workflows/mac.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - run: sh mac/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: betterPod-Share-mac
+          path: mac/build/*.zip
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(cat mac/VERSION)
+          if gh release view "mac-v$V" >/dev/null 2>&1; then
+            gh release upload "mac-v$V" "mac/build/betterPod-Share-mac-v$V.zip" --clobber
+            gh release edit "mac-v$V" --notes-file mac/NOTES.md
+          else
+            gh release create "mac-v$V" "mac/build/betterPod-Share-mac-v$V.zip" \
+              --target "$GITHUB_SHA" --title "betterPod Share for Mac $V" \
+              --notes-file mac/NOTES.md --latest=false
+          fi

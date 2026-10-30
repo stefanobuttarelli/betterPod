@@ -139,44 +139,79 @@ func (s *Share) Cancel() {
 	}
 }
 
-// StartShare sends album a, from the name from (shown on the betterPod).
-func StartShare(a *Album, from string) *Share {
+// StartShare sends sel, from the name from (shown on the betterPod).
+func StartShare(sel *Selection, from string) *Share {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Share{Code: newCode(), phase: phPreparing, cancel: cancel}
-	go s.run(ctx, a, from)
+	if c := os.Getenv("BETTERPOD_SHARE_CODE"); len(c) == 8 { // (tests)
+		s.Code = c
+	}
+	go s.run(ctx, sel, from)
 	return s
 }
 
-func (s *Share) run(ctx context.Context, a *Album, from string) {
-	info := shareInfo{V: 1, From: strings.TrimSpace(from), Album: a.Album, Artist: a.Artist, Songs: len(a.Songs), Bytes: a.Bytes}
-	dir := safeName(a.Album)
-	if len(a.Songs) == 1 && a.Songs[0].Title != "" {
-		info.Title = a.Songs[0].Title
-		dir = safeName(a.Artist + " - " + info.Title)
+func (s *Share) run(ctx context.Context, sel *Selection, from string) {
+	from = strings.TrimSpace(from)
+	info := shareInfo{V: 1, From: from, Album: sel.Title(), Artist: sel.Artist(), Songs: sel.Songs, Bytes: sel.Bytes}
+	dir := safeName(sel.Title())
+	switch sel.Kind {
+	case "song":
+		info.Album, info.Title = sel.Groups[0].Album, sel.Groups[0].Songs[0].Title
+		dir = safeName(info.Artist + " - " + info.Title)
+	case "mix":
+		dir = "Mix"
+		if from != "" {
+			dir = safeName("From " + from)
+		}
 	}
+	file := func(path string, data []byte, disk string) wormhole.DirectoryEntry {
+		return wormhole.DirectoryEntry{Path: path, Mode: 0o644, Reader: func() (io.ReadCloser, error) {
+			if data != nil {
+				return io.NopCloser(bytes.NewReader(data)), nil
+			}
+			return os.Open(disk)
+		}}
+	}
+	// the manifest and the share's cover first (the betterPod shows them
+	// while the rest comes), then the songs; in a mix each album's own
+	// cover follows its songs (the betterPod reads only the first cover.jpg
+	// as the share's)
 	man, _ := json.Marshal(info)
-	entries := []wormhole.DirectoryEntry{{Path: dir + "/" + shareManifest, Mode: 0o644,
-		Reader: func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(man)), nil }}}
-	if a.CoverJPG != nil {
-		cov := a.CoverJPG
-		entries = append(entries, wormhole.DirectoryEntry{Path: dir + "/cover.jpg", Mode: 0o644,
-			Reader: func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(cov)), nil }})
+	entries := []wormhole.DirectoryEntry{file(dir+"/"+shareManifest, man, "")}
+	if sel.CoverJPG != nil {
+		entries = append(entries, file(dir+"/cover.jpg", sel.CoverJPG, ""))
 	}
-	used := map[string]bool{}
 	var offer shareOffer
-	for _, t := range a.Songs {
-		p := t.Path
-		if e := strings.ToLower(filepath.Ext(p)); !slices.Contains(offer.Exts, e) {
-			offer.Exts = append(offer.Exts, e)
+	subUsed := map[string]bool{}
+	for _, g := range sel.Groups {
+		sub := dir
+		if sel.Kind == "mix" {
+			name := safeName(g.Album)
+			if subUsed[strings.ToLower(name)] && g.Artist != "" {
+				name = safeName(g.Artist + " - " + g.Album)
+			}
+			for i := 2; subUsed[strings.ToLower(name)]; i++ {
+				name = safeName(fmt.Sprintf("%s (%d)", g.Album, i))
+			}
+			subUsed[strings.ToLower(name)] = true
+			sub = dir + "/" + name
 		}
-		name := filepath.Base(p)
-		for i := 2; used[strings.ToLower(name)]; i++ {
-			ext := filepath.Ext(p)
-			name = fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(filepath.Base(p), ext), i, ext)
+		used := map[string]bool{}
+		for _, t := range g.Songs {
+			if e := strings.ToLower(filepath.Ext(t.Path)); !slices.Contains(offer.Exts, e) {
+				offer.Exts = append(offer.Exts, e)
+			}
+			name := filepath.Base(t.Path)
+			for i := 2; used[strings.ToLower(name)]; i++ {
+				ext := filepath.Ext(t.Path)
+				name = fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(filepath.Base(t.Path), ext), i, ext)
+			}
+			used[strings.ToLower(name)] = true
+			entries = append(entries, file(sub+"/"+name, nil, t.Path))
 		}
-		used[strings.ToLower(name)] = true
-		entries = append(entries, wormhole.DirectoryEntry{Path: dir + "/" + name, Mode: 0o644,
-			Reader: func() (io.ReadCloser, error) { return os.Open(p) }})
+		if sel.Kind == "mix" && g.CoverJPG != nil {
+			entries = append(entries, file(sub+"/cover.jpg", g.CoverJPG, ""))
+		}
 	}
 	progress := wormhole.WithProgress(func(sent, total int64) {
 		s.mu.Lock()

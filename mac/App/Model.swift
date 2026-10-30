@@ -1,0 +1,126 @@
+// Model.swift — what the window shows: nothing yet, the songs dropped (as
+// the betterPod will see them), then the share with its code.
+
+import AppKit
+import Combine
+import SwiftUI
+
+@MainActor
+final class Model: ObservableObject {
+    enum Stage { case empty, reading, ready, sharing }
+
+    @Published var stage: Stage = .empty
+    @Published var scan: ScanResult?
+    @Published var scanError: String?
+    @Published var status: ShareStatus?
+    @Published var cover: NSImage?
+    @Published var albumCovers: [String: NSImage] = [:]
+
+    private var shareID = 0
+    private var timer: Timer?
+    private var dropped: [URL] = []
+
+    /// The name the betterPod shows ("from Stefano's MacBook").
+    @AppStorage("fromName") var fromName: String = Host.current().localizedName ?? "Mac"
+
+    func open(_ urls: [URL]) {
+        guard !urls.isEmpty, stage != .sharing else { return }
+        dropped = urls
+        stage = .reading
+        scanError = nil
+        Task.detached(priority: .userInitiated) {
+            let r = Engine.scan(urls)
+            await MainActor.run { self.show(r) }
+        }
+    }
+
+    private func show(_ r: ScanResult) {
+        if let e = r.error {
+            scan = nil
+            scanError = e
+            stage = .empty
+            return
+        }
+        scan = r
+        cover = r.cover.flatMap { NSImage(data: $0) }
+        var covers: [String: NSImage] = [:]
+        for a in r.albums ?? [] {
+            if let d = a.cover, let img = NSImage(data: d) {
+                covers[a.id] = img
+            }
+        }
+        albumCovers = covers
+        stage = .ready
+    }
+
+    func choose() {
+        let p = NSOpenPanel()
+        p.canChooseFiles = true
+        p.canChooseDirectories = true
+        p.allowsMultipleSelection = true
+        p.prompt = "Choose"
+        p.message = "Songs or album folders to share"
+        if p.runModal() == .OK {
+            open(p.urls)
+        }
+    }
+
+    func share() {
+        guard let id = scan?.id else { return }
+        let name = fromName.trimmingCharacters(in: .whitespaces)
+        shareID = Engine.send(selection: id, from: String(name.prefix(32)))
+        status = Engine.status(shareID)
+        stage = .sharing
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.poll() }
+        }
+    }
+
+    private func poll() {
+        guard shareID != 0, let s = Engine.status(shareID) else { return }
+        status = s
+        if s.phase == "done" || s.phase == "failed" {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    /// Stops the share (if it still goes) and starts over.
+    func clear() {
+        stopShare()
+        scan = nil
+        cover = nil
+        albumCovers = [:]
+        scanError = nil
+        stage = .empty
+    }
+
+    /// Back to the songs, to share them again (a new code).
+    func back() {
+        stopShare()
+        stage = scan == nil ? .empty : .ready
+    }
+
+    func again() {
+        stopShare()
+        // the files may have changed meanwhile: read them again
+        open(dropped)
+    }
+
+    private func stopShare() {
+        timer?.invalidate()
+        timer = nil
+        if shareID != 0 {
+            Engine.cancel(shareID)
+            shareID = 0
+        }
+        status = nil
+    }
+
+    var progress: Double {
+        guard let s = status, s.total > 0 else { return 0 }
+        if s.phase == "done" { return 1 }
+        return min(1, Double(s.done) / Double(s.total))
+    }
+}
