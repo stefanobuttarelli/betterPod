@@ -1,8 +1,8 @@
 {
-  "version": "0.80",
-  "path": "release/betterpod-v0.80-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.80-knulli.zip",
-  "sha256": "e0c142cfff39812dd3163e89051aca1f3974bc220259fb2ed1048982a2958f0a",
-  "size": 16164335,
-  "notes": "- Share and Receive ask for this betterPod's name first, when it has none"
+  "version": "0.80.1",
+  "path": "release/betterpod-v0.80.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.80.1-knulli.zip",
+  "sha256": "5499599d0af5f4409ddfb12c037c2ca8c4d366cc44ed21695a88b1c5af4b5ac5",
+  "size": 16164367,
+  "notes": "- The Wi-Fi and headphones icons line up with the play / pause sign and the battery\n- Five Letters: Y sends the row"
 }

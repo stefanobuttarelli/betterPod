@@ -290,8 +290,8 @@ func (g *WordGame) OnKey(ui *IpodUI, k Key) bool {
 		g.kc = (g.kc - 1 + len(wlRows[g.kr])) % len(wlRows[g.kr])
 	case RIGHT:
 		g.kc = (g.kc + 1) % len(wlRows[g.kr])
-	case Y:
-		g.del()
+	case Y: // sends the row (B deletes)
+		g.submit()
 	case START: // the game's menu (every game: START)
 		var opts []SheetOption
 		if g.over {
@@ -534,7 +534,7 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 	// the hint at the side of the board
 	hf := face(W600, 10)
 	_, ha := lineBox(10)
-	hints := []string{"[A] type", "[A] full row: send", "[B] delete", "[START] menu"}
+	hints := []string{"[A] type", "[Y] send", "[B] delete", "[START] menu"}
 	if g.over {
 		hints = []string{"[A] new word", "", "", "[START] menu"}
 	}

@@ -1,8 +1,8 @@
 {
-  "version": "0.80",
-  "path": "release/betterpod-v0.80-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.80-onion.zip",
-  "sha256": "fd31c85736c40e957611b7cc2d273653b4cb34645233a1cb191b1b2a44594718",
-  "size": 28302227,
-  "notes": "- Share and Receive ask for this betterPod's name first, when it has none"
+  "version": "0.80.1",
+  "path": "release/betterpod-v0.80.1-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.80.1-onion.zip",
+  "sha256": "df56259b9e973b7ed6b80fe3c6a470bd6152a9f52ad9bce2bb374a8eca6b295e",
+  "size": 28302067,
+  "notes": "- The Wi-Fi and headphones icons line up with the play / pause sign and the battery\n- Five Letters: Y sends the row"
 }

@@ -201,15 +201,18 @@ func wifiIcon(n int, c Col) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, px(18), S))
 	p := pen{gg.NewContextForRGBA(img), float64(S) / 14}
 	dc := p.dc
-	cx, cy := 9.0, 11.6
+	// its top at the icon's top and the dot's bottom at 11.5 px, as the
+	// play / pause sign and the battery (it hung lower, and its arcs looked
+	// higher than them)
+	cx, cy := 9.0, 10.15
 	on, off := p.solid(c), p.solid(Col{c.R, c.G, c.B, c.A * 0.3})
 	// the dot (always there: it is the first step)
 	dc.SetFillStyle(on)
-	dc.DrawCircle(p.u(cx), p.u(cy), p.u(1.5))
+	dc.DrawCircle(p.u(cx), p.u(cy), p.u(1.4))
 	dc.Fill()
 	dc.SetLineCap(gg.LineCapRound)
-	dc.SetLineWidth(p.u(1.7))
-	for i, r := range []float64{4.2, 7.2, 10.2} {
+	dc.SetLineWidth(p.u(1.6))
+	for i, r := range []float64{3.85, 6.6, 9.35} {
 		if i < n {
 			dc.SetStrokeStyle(on)
 		} else {
@@ -262,9 +265,11 @@ func headsetIcon(bars int, bt bool, c Col) *image.RGBA {
 	p := pen{gg.NewContextForRGBA(img), float64(px(14)) / 14}
 	dc := p.dc
 	s := 9.5 // the headphones' height
-	cx, cy := 7.5, 7.0
+	// (from the icon's top to 11.5 px, as the play / pause sign and the
+	// battery)
+	cx, cy := 7.5, 5.9
 	if bars >= 0 {
-		cy = 5.25
+		cy = 4.75
 	}
 	on := p.solid(c)
 	// the headband
@@ -304,7 +309,7 @@ func headsetIcon(bars int, bt bool, c Col) *image.RGBA {
 			} else {
 				dc.SetFillStyle(off)
 			}
-			dc.DrawCircle(p.u(cx+float64(i-2)*2.6), p.u(12.3), p.u(0.88))
+			dc.DrawCircle(p.u(cx+float64(i-2)*2.6), p.u(10.7), p.u(0.8))
 			dc.Fill()
 		}
 	}

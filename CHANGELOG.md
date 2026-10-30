@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.80.1 (2026-10-30)
+
+### Changed
+- **Five Letters:** Y sends the row (B deletes, A still sends a full row).
+
+### Fixed
+- **The Wi-Fi icon lines up with the play / pause sign and the battery:** its dot hung 1.5 px lower and its arcs looked higher. The headphones icon (with the Wi-Fi as dots) is lined up the same way.
+
 ## v0.80 (2026-10-30)
 
 ### Added
