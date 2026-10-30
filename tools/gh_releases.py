@@ -54,6 +54,7 @@ def release_notes(v, body, knulli, onion):
             notes += f"\nNothing new for the {other} in this version: it stays on its latest release.\n"
     else:
         notes += "**Install:** update from Settings → Software Update, or get the newest release's zip.\n"
+    notes += "\n**On a Mac?** [betterPod Share for Mac](https://betterpod.xyz/mac/) sends songs and albums to a betterPod with an 8-digit code.\n"
     return notes
 
 

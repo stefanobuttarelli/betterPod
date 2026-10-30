@@ -8,7 +8,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/stefanobuttarelli/betterPod/tree/main/release"><b>Download</b></a> ·
+  <a href="https://github.com/stefanobuttarelli/betterPod/releases/latest"><img src="https://img.shields.io/badge/Download-for%20Anbernic%20%26%20Miyoo-2f7fd0?style=for-the-badge" alt="Download for Anbernic and Miyoo" height="36"></a>
+  &nbsp;
+  <a href="https://betterpod.xyz/mac/"><img src="https://img.shields.io/badge/Download-Share%20for%20Mac-1d1f23?style=for-the-badge" alt="Download betterPod Share for Mac" height="36"></a>
+</p>
+
+<p align="center">
+  <a href="#installation"><b>Download</b></a> ·
+  <a href="#betterpod-share-for-mac">Mac app</a> ·
   <a href="#supported-systems">Systems</a> ·
   <a href="#installation">Install</a> ·
   <a href="#controls">Controls</a> ·
@@ -45,7 +52,7 @@ The interface is the same on both. What differs is listed in [Features by system
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **YouTube (optional):** turn it on in Settings → YouTube and search in Music → Search → YouTube. A video with chapters becomes an album with a track per chapter, a playlist an album with a track per video. Tracks are tagged M4A with a square cover made from the video's picture. The tools (yt-dlp, QuickJS) are downloaded from their official GitHub releases when you turn it on, checked (SHA-256 where published, CPU, a test run) and not shipped. YouTube's terms don't allow downloading: use it for your own or freely licensed videos.
 - **Share:** send an album or a song to a friend's betterPod with an 8-digit code (an album's or a song's options → Share; on the other one Music → Receive). It works over the internet or the same Wi-Fi, encrypted from one console to the other, through [magic-wormhole](https://magic-wormhole.readthedocs.io)'s public servers; the songs land in `Shared/` in the music folder. The cover stands on a pedestal while a laser sends it, and is built line by line on the other. The first time, betterPod asks for its name (the one friends see; Settings → Sharing changes it).
-- **betterPod Share for Mac:** a small Mac app that sends songs and albums to a betterPod the same way: drop them on its window, give your friend the 8-digit code. Songs of several albums go with one code and arrive as their albums. [Download it](https://github.com/stefanobuttarelli/betterPod/releases/tag/mac-v1.0) (macOS 13+, Apple silicon or Intel; not signed by Apple yet, see the release for how to open it the first time).
+- **betterPod Share for Mac:** a small Mac app that sends songs and albums to a betterPod the same way: drop them on its window, give your friend the 8-digit code. Songs of several albums go with one code and arrive as their albums. [Download it](https://betterpod.xyz/mac/) (see [betterPod Share for Mac](#betterpod-share-for-mac)).
 - **Apps:** Brick and Solitaire, the classic iPod games (Solitaire saves your game); **2048** (after Gabriele Cirulli's game, MIT; your game is kept); **Five Letters**, guess a five-letter word in six tries with an on-screen keyboard (words from SCOWL and ENABLE); **Guess the Song**, a quiz on your own music (a clip plays, pick its title among four, ten rounds); **Puzzles**, twelve from [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/) (MIT): Mines, Sudoku, Net, Flood, Same Game, Fifteen, Light Up, Unruly, Towers, Keen, Pattern and Tents, played with the arrows and kept when you leave; and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
 - **Audio quality:**
   - every track plays at its own sample rate (44.1, 48, 96, 192 kHz…), with 32-bit float mixing;
@@ -155,6 +162,12 @@ The first start scans the music folder; later starts load the saved library at o
 #### Coming from MacriPod
 
 The Miyoo version was first released as MacriPod. Copy `App/MacriPod/conf` to `App/betterpod/conf` to keep your library, settings and podcasts, then delete `App/MacriPod`.
+
+### betterPod Share for Mac
+
+Send songs and albums from a Mac to a betterPod, as one betterPod shares with another: drop them on the window, and type the 8-digit code on the betterPod (Music → Receive).
+
+**[Download betterPod Share for Mac](https://betterpod.xyz/mac/)**: macOS 13 or later, Apple silicon or Intel. It isn't signed by Apple yet, so the first time macOS stops it: open it, then System Settings → Privacy & Security → Open Anyway (on macOS 13 and 14: right-click it → Open). Keep it in Applications: it updates itself.
 
 ## Controls
 
