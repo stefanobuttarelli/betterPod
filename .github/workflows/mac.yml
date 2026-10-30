@@ -19,7 +19,17 @@ jobs:
         with:
           go-version: '1.24'
           cache: false
-      - run: sh mac/build.sh
+      - name: Build
+        # (the errors also go up as an annotation, readable through the API)
+        run: |
+          set -o pipefail
+          if ! sh -x mac/build.sh 2>&1 | tee build.log; then
+            msg=$(grep -E "error|Error|undefined|warning: unre" build.log | head -60)
+            [ -z "$msg" ] && msg=$(tail -60 build.log)
+            msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"
+            echo "::error title=build::$msg"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: betterPod-Share-mac
