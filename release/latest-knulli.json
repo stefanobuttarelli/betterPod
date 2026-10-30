@@ -1,8 +1,8 @@
 {
-  "version": "0.81",
-  "path": "release/betterpod-v0.81-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81-knulli.zip",
-  "sha256": "0b08a4bb5ac97e483a8a09965542ccdf778bc7a0287ea97f58938d2daa6f7dc7",
-  "size": 16164732,
-  "notes": "- Share: the laser cuts the cover clean, sending and receiving\n- It rests on the top while waiting, then glides down with the progress"
+  "version": "0.81.1",
+  "path": "release/betterpod-v0.81.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.1-knulli.zip",
+  "sha256": "8d00b3eb476a05d0333ab5e01a9062d293dde58a507e35792ca5d9fe4f2d4dd8",
+  "size": 16178627,
+  "notes": "- Share: the pedestals have smooth edges, as on the web page and the Mac app"
 }

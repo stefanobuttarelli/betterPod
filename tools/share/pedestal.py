@@ -1,19 +1,20 @@
 """The Share pedestal and its light (share_ped_*.png, share_beam_*.png), at
-any scale: S=1 is the console's (260 × 150 and 260 × 240 px), the web page
-and the Mac app use S=3.
+any scale: 1 is the console's (260 × 150 and 260 × 240 px), the web page
+and the Mac app use 3. Each is drawn twice as big and shrunk, so its edges
+are smooth (PIL's ellipses aren't antialiased); "1x" draws scale 1 without
+that, as the console's pictures were until 0.81.1.
 
-    python3 tools/share/pedestal.py OUTDIR [S] [blue|green…]
+    python3 tools/share/pedestal.py OUTDIR [SCALE|1x] [blue|green…]
 """
 import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 OUT = sys.argv[1].rstrip("/") + "/"
-SCALE = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+ARG = sys.argv[2] if len(sys.argv) > 2 else "1"
+SCALE = int(ARG.rstrip("x"))
 ONLY = set(sys.argv[3:])
-# above the console's scale, drawn twice as big and shrunk: smooth edges
-# (PIL's ellipses aren't antialiased); S=1 stays exactly the console's
-S = SCALE * 2 if SCALE > 1 else 1
+S = SCALE if ARG == "1x" else SCALE * 2  # drawn at S, saved at SCALE
 
 
 def u(v):

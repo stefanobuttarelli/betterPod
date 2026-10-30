@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.81.1 (2026-10-30)
+
+### Changed
+- **Share's pedestals have smooth edges:** they are drawn as the web page's and the Mac app's (tools/share/pedestal.py, drawn twice as big and shrunk), so the rims of the base and of its light no longer show steps.
+
 ## v0.81 (2026-10-30)
 
 ### Changed
