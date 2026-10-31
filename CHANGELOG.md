@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0-beta.7 (2026-10-31)
+
+### Fixed
+- **Now Playing is in the menus only while its block is at the bottom.** After the music stops, or a long pause sends the block away, the main menu shows Genius again instead of a Now Playing with nothing under it (and Music drops Now playing and Up Next). When the music plays again, they come back.
+
 ## v1.0-beta.6 (2026-10-31)
 
 ### Added

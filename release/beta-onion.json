@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.6",
-  "path": "release/betterpod-v1.0-beta.6-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.6-onion.zip",
-  "sha256": "9e4561a6b19e991f04bf509d43d2cabd09d7a81e9ec39543dbe9463699af5fb7",
-  "size": 28435967,
-  "notes": "- The time in the header while you play: Show the Time in a game's START menu.\n- A scrollbar on every long list.\n- Playlists, albums and artists show their name under the header, not in it.\n- Settings \u2192 Library \u2192 Move Music to Another Card (Knulli)."
+  "version": "1.0-beta.7",
+  "path": "release/betterpod-v1.0-beta.7-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.7-onion.zip",
+  "sha256": "dc9aab8de37bc636977195ac422f9e256fe4dc2b3a61d58e36ea2e652bb22fc0",
+  "size": 28436382,
+  "notes": "- Now Playing shows in the menus only while its block is at the bottom; otherwise Genius."
 }

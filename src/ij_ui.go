@@ -1461,6 +1461,7 @@ func (ui *IpodUI) Run() {
 	var lastFrame time.Time
 	lastMinute := -1
 	lastState := PlayState(-1)
+	lastMiniHas := false // (the Now Playing block was there)
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
 	lastLocked, lastWarn := app.Locked, app.PowerExitWarning
@@ -1605,6 +1606,12 @@ func (ui *IpodUI) Run() {
 		if p := app.Playing; p != nil && p.State != lastState {
 			lastState = p.State
 			ui.dirty = true
+		}
+		// the Now Playing block comes or goes (a song, a stop, a long
+		// pause): the menus' Now Playing / Genius rows follow it
+		if has := ui.miniPlayerTrack() != nil; has != lastMiniHas {
+			lastMiniHas = has
+			ui.refreshBuilt()
 		}
 		// redraw every second while playing (progress, header icon)
 		if p := app.Playing; p != nil && p.State == StatePlaying {

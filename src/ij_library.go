@@ -21,7 +21,9 @@ func (ui *IpodUI) homeView() *View {
 			items = append(items[:2], append([]Item{{Label: "Podcasts", Preview: PrevMusic,
 				OnSelect: func() { ui.showView(ui.podcastsView(), "") }}}, items[2:]...)...)
 		}
-		if p := ui.app.Playing; p != nil && p.Track != nil {
+		// Now Playing while its block is there (playing, or paused not
+		// long ago); else Genius starts something
+		if ui.miniPlayerTrack() != nil {
 			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
 				OnLongPress: ui.askClearNowPlaying})
 		} else if len(ui.library().Tracks) > 0 {
@@ -51,7 +53,9 @@ func (ui *IpodUI) musicView() *View {
 			{Label: "Search", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchHubView(), "") }},
 			{Label: "Receive", Preview: PrevMusic, OnSelect: ui.openReceive},
 		}
-		if p := ui.app.Playing; p != nil && p.Track != nil {
+		// Now Playing while its block is there (playing, or paused not
+		// long ago); else Genius starts something
+		if ui.miniPlayerTrack() != nil {
 			items = append(items, Item{Label: "Now playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
 				OnLongPress: ui.askClearNowPlaying})
 			items = append(items, Item{Label: "Up Next", Preview: PrevNowPlaying, OnSelect: func() { ui.showView(ui.upNextView(), "") }})
