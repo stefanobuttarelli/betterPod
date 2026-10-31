@@ -33,7 +33,24 @@ func writePlaylist(pl *Playlist) error {
 // of add go at the end, the song at removePath is taken out.
 func editPlaylist(pl *Playlist, lib *Library, add []*Track, removePath string, nth int) error {
 	data, err := os.ReadFile(pl.Path)
-	if err != nil && !os.IsNotExist(err) {
+	if os.IsNotExist(err) {
+		// gone (renamed or deleted elsewhere): written again from the songs
+		// the library knows, with the change
+		tracks := append([]*Track(nil), pl.Tracks...)
+		if removePath != "" {
+			at := -1
+			for i, t := range tracks {
+				if t.Path == removePath && (i == nth || at < 0) {
+					at = i
+				}
+			}
+			if at >= 0 {
+				tracks = append(tracks[:at], tracks[at+1:]...)
+			}
+		}
+		data, _ = editM3U(nil, filepath.Dir(pl.Path), nil, tracks, "", 0)
+		removePath = ""
+	} else if err != nil {
 		return err // (a file that can't be read is not replaced)
 	}
 	b, err := editM3U(data, filepath.Dir(pl.Path), lib, add, removePath, nth)

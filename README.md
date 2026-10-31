@@ -105,6 +105,7 @@ The Miyoo has two slower cores and 128 MB of memory, so what would take the proc
 | Formats | FLAC, ALAC, AAC, WAV, AIFF, MP3, Ogg | FLAC, WAV, AIFF, MP3, Ogg (no AAC / ALAC decoder) |
 | Output | each track's own rate, 24-bit | 44.1 kHz, 16-bit |
 | LOSSLESS badge | ✓ | — |
+| Album covers | any size | up to 3000 px a side (a bigger picture needs more memory than the Miyoo has) |
 | Internet Archive, Suno, Podcasts, Weather, covers and Album Info online, Software Update | ✓ | ✓ on the Mini Plus, v4 and Flip (Wi-Fi); Internet Archive without ALAC |
 | YouTube (optional) | ✓ | — (it needs more memory than the Miyoo has) |
 | Bluetooth headphones | ✓ | — (no Bluetooth) |

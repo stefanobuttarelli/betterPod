@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.91.1 (2026-10-31)
+
+A check of the whole app before 1.0: fixes and speed.
+
+### Fixed
+- **Skipping quickly no longer breaks playback.** Several presses of NEXT or PREV in a row could leave a song playing that couldn't be paused. Skips now happen one at a time, and a pause pressed during a skip is kept.
+- **A file that can't be played is skipped** with a short message, instead of stopping the queue without a word (at most 5 in a row).
+- **After the end of the queue, play starts the last song again.** Before, Now Playing showed it but nothing could start it.
+- **Listen no longer stops at the end of a song**, and NEXT, PREV or the headset buttons no longer load your music over a Listen.
+- **The restored queue starts on the right song** after a restart with Shuffle on, even when a song of the queue was deleted. The saved queue is written safely and only when it changes.
+- **Playlists keep every line** when you add or remove a song: entries betterPod doesn't know (Windows paths, songs on another card, URLs) are no longer dropped.
+- **Moving the database or the music folder takes everything:** album merges, chosen covers, podcasts, Suno, recent searches, weather and game scores were left behind (and, after a music move, deleted). Now nothing is deleted unless its copy is there.
+- **Tags are never rewritten when their ID3 tag can't be fully read** (a damaged extended header, an unknown frame): the file is left as it is.
+- **The library, settings and other saved files are written safely**, so a power cut can't leave them empty. An unreadable album_merges.json is kept aside instead of being replaced.
+- **Renaming an album keeps the songs merged into it and its chosen cover.** Saving Album Info rereads only its songs instead of the whole library.
+- **Two albums with the same name and artist** in different folders no longer share one cover.
+- **Software Update** prepares every file before replacing any, so a failure halfway leaves the old version whole.
+- **Internet Archive:** long file names keep their extension, tracks in CD1 / CD2 folders no longer overwrite each other, Cancel stops at once, and a download resumed after the file changed on archive.org starts over.
+- **Share:** names a FAT card refuses are cleaned, a received album appears only when complete, and a broken sender can't make the app run out of memory.
+- **YouTube tools:** a failed update leaves the old tools working.
+- **Knulli:** after the screen is switched off with MENU and on again, the CPU speed and the backlight come back. The launcher puts the CPU governor and brightness back if betterPod is closed or crashes, and a shutdown saves your place.
+- **On the Miyoo:** quitting with the screen off no longer leaves the sound muted; the launcher brings the backlight back after a crash; the sleep timer waits for a Share to finish; charging is read again just before powering off.
+- **Covers over 3000 px are skipped on the Miyoo** instead of risking the app running out of memory. The next song's file is read only after the previous one is freed.
+- **The Cover Art Archive and version check now check certificates** (they used to skip the check).
+- **Genius** from the End of the Queue card always starts a new list.
+- **Old cached covers are cleaned up** after a scan: covers no album uses any more (a changed cover, a renamed album) used to stay in the database folder for good.
+- **The interface no longer pauses at the end of a song** while the next one is read from the card.
+
+### Changed
+- **Faster and lighter, mostly on the Miyoo:** with the screen off nothing is drawn; hidden screens behind the one you see are no longer drawn; Now Playing and Cover Flow's scrolling titles use half the frames; Solitaire and Brick stop drawing when nothing moves; lists stop redrawing during the marquee's pause; the dimming behind sheets is done in C; big Music previews are kept on disk; the charging check on the Mini Plus no longer runs while a frame is drawn; Wi-Fi and Bluetooth aren't polled with the screen off. In the tests, Now Playing takes half the CPU it did, and sheets and lists about a third less.
+- **No telemetry code is left** in the app: it was never switched on, and it is now gone.
+- **Builds:** the Knulli zip can no longer pack local test files, and the Miyoo build stops if the binary needs a library or glibc the Miyoo doesn't have.
+
 ## v0.91 (2026-10-31)
 
 ### Added

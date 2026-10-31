@@ -61,8 +61,8 @@ ev 116 1; ev 116 0;    shot power-on 5     # POWER: screen on
 key Control_R;         shot hold-on 3      # SELECT: Hold
 key Control_R;         shot hold-off 3
 key Down Down Down Down Alt_L; shot clear-sheet 3 # Y on the main menu's "Now Playing": Clear Now Playing
-key space;             shot cleared 4      # the music stops, the two rows go
-key Up Up Up space;    shot music-again2 4 # Music
+key Right space;       shot cleared 4      # Clear (Keep is chosen first): the music stops, the two rows go
+key Up Up Up Up space; shot music-again2 4 # Music (Genius took Now Playing's row)
 key Down Down Down space; shot albums 5    # Albums
 key Alt_L;             shot album-sheet 3  # Y on an album: its options
 key Down Down space;   shot share 10       # Share: a code from magic-wormhole's server, waiting

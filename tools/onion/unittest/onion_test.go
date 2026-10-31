@@ -571,13 +571,19 @@ func TestAaPolyMemory(t *testing.T) {
 	pts := [][2]float64{{60, 50}, {260, 50}, {260, 106}, {60, 142}}
 	a := image.NewRGBA(image.Rect(0, 0, 640, 480))
 	aaPoly(a, pts, Col{255, 255, 255, 0.5})
-	var m0, m1 runtime.MemStats
-	runtime.ReadMemStats(&m0)
-	for i := 0; i < 20; i++ {
-		aaPoly(a, pts, Col{255, 255, 255, 0.15})
+	// (the best of three: TotalAlloc counts the whole process, and other
+	// tests' goroutines can allocate meanwhile)
+	per := uint64(1 << 62)
+	for try := 0; try < 3; try++ {
+		var m0, m1 runtime.MemStats
+		runtime.ReadMemStats(&m0)
+		for i := 0; i < 20; i++ {
+			aaPoly(a, pts, Col{255, 255, 255, 0.15})
+		}
+		runtime.ReadMemStats(&m1)
+		per = min(per, (m1.TotalAlloc-m0.TotalAlloc)/20)
 	}
-	runtime.ReadMemStats(&m1)
-	if per := (m1.TotalAlloc - m0.TotalAlloc) / 20; per > 16<<10 {
+	if per > 16<<10 {
 		t.Errorf("aaPoly allocates %d bytes a call", per)
 	}
 	// against the whole screen rasterized, as it was

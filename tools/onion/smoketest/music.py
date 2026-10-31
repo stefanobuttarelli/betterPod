@@ -14,10 +14,12 @@ RATE = 44100
 
 
 def wav(path, freq, seconds):
-    frames = bytearray()
-    for i in range(int(RATE * seconds)):
+    # one second (a whole number of periods), repeated
+    second = bytearray()
+    for i in range(RATE):
         v = int(9000 * math.sin(2 * math.pi * freq * i / RATE))
-        frames += struct.pack("<hh", v, v)
+        second += struct.pack("<hh", v, v)
+    frames = bytes(second) * int(seconds)
     with open(path, "wb") as f:
         f.write(b"RIFF" + struct.pack("<I", 36 + len(frames)) + b"WAVE")
         f.write(b"fmt " + struct.pack("<IHHIIHH", 16, 1, 2, RATE, RATE * 4, 4, 16))
@@ -46,7 +48,7 @@ def main(root):
         d = os.path.join(root, artist, album)
         os.makedirs(d, exist_ok=True)
         for i, t in enumerate(titles, 1):
-            wav(os.path.join(d, "%02d %s.wav" % (i, t)), freq, 4)
+            wav(os.path.join(d, "%02d %s.wav" % (i, t)), freq, 60)  # (longer than the walk: no End of the Queue)
             freq += 40
     png(os.path.join(root, "Miyoo Ensemble", "Onion Sessions", "cover.png"), 240, 240,
         lambda x, y: (154 + x // 8, 162 - y // 4, 230 - (x + y) // 6))

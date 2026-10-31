@@ -330,6 +330,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	}
 
 	scanEnd(app.Library, start)
+	go pruneArtCaches(app.Library) // (covers no album uses any more)
 	elapsed := time.Since(start)
 	app.LibScanElapsed = elapsed.Truncate(time.Second).String()
 	app.LibScanStatus = fmt.Sprintf("%d tracks, %d albums, %d artists",

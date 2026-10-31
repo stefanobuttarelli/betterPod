@@ -216,7 +216,7 @@ func (ui *IpodUI) playQueuePos(pos int, t *Track) {
 	v0 := ui.topScreen()
 	go func() {
 		// (after a skip being loaded, the queue as it is then)
-		queueMu.Lock()
+		lockQueue()
 		if pos < q.length() && q.trackAt(pos) == t {
 			q.CurrentIndex = pos
 			app.playCurrentQueueTrack()

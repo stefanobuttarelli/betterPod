@@ -758,6 +758,7 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 		// folder the next time it starts
 		return errors.New("Quit and start betterPod again first: it moves to its new folder")
 	}
+	removeStaged(port) // (left by an update cut short: a power cut while installing)
 	stage := filepath.Join(ports, ".betterpod-update")
 	os.RemoveAll(stage)
 	if err := os.MkdirAll(stage, 0755); err != nil {
@@ -1009,3 +1010,17 @@ var exePath, exeErr = func() (string, error) {
 }()
 
 func startExe() (string, error) { return exePath, exeErr }
+
+// removeStaged deletes the *.kpnew files under dir: an update's copies,
+// left if it was cut short between copying them and renaming them in.
+func removeStaged(dir string) {
+	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err == nil && info.IsDir() && p != dir && (info.Name() == "music" || info.Name() == "conf") {
+			return filepath.SkipDir // (the music and the database: no update files there)
+		}
+		if err == nil && !info.IsDir() && strings.HasSuffix(p, ".kpnew") {
+			os.Remove(p)
+		}
+		return nil
+	})
+}

@@ -1589,8 +1589,9 @@ func (ui *IpodUI) Run() {
 		if app.TrackEndPending {
 			app.TrackEndPending = false
 			skipDir = 1
-			app.handleTrackEnd()
-			ui.onTrackChanged()
+			// (in the background: the next song's load, or a skip's that
+			// holds the queue, must not stop the interface)
+			go func() { app.handleTrackEnd(); ui.post(ui.onTrackChanged) }()
 		}
 		// play/pause changes (from the poller, headphones…) redraw at once
 		if p := app.Playing; p != nil && p.State != lastState {

@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -537,4 +538,58 @@ func readArtJPEG(p string, dev int) *image.RGBA {
 	out := newCanvas(dev, dev)
 	draw.Draw(out, out.Bounds(), src, src.Bounds().Min, draw.Src)
 	return out
+}
+
+// pruneArtCaches deletes the cached covers no album uses any more (after a
+// scan, in the background): .ipod_art's scaled copies are named from their
+// cover file's path, size and time, .miyoopod_artwork's from the album's key,
+// so a changed cover or a renamed album leaves its old files behind for
+// good. Only files older than 10 minutes go (not one just written for an
+// album the scan is still filling in).
+func pruneArtCaches(lib *Library) {
+	if lib == nil || len(lib.Albums) == 0 {
+		return
+	}
+	scaled := map[string]bool{}
+	keys := map[string]bool{}
+	for _, a := range lib.Albums {
+		keys[albumArtKey(a)] = true
+		if p := artDiskPath(a, 1); p != "" {
+			scaled[filepath.Base(p)[:16]] = true
+		}
+	}
+	old := time.Now().Add(-10 * time.Minute)
+	prune := func(dir string, n int, keep map[string]bool) int {
+		es, err := os.ReadDir(dir)
+		if err != nil {
+			return 0
+		}
+		gone := 0
+		for _, e := range es {
+			name := e.Name()
+			if e.IsDir() || len(name) < n || !isHex(name[:n]) || keep[name[:n]] {
+				continue
+			}
+			if info, err := e.Info(); err != nil || info.ModTime().After(old) {
+				continue
+			}
+			if os.Remove(filepath.Join(dir, name)) == nil {
+				gone++
+			}
+		}
+		return gone
+	}
+	n := prune(dataPath(".ipod_art"), 16, scaled) + prune(strings.TrimSuffix(ARTWORK_DIR(), "/"), 32, keys)
+	if n > 0 {
+		logMsg(fmt.Sprintf("Artwork: %d cached covers no album uses were deleted", n))
+	}
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

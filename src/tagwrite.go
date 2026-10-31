@@ -328,11 +328,17 @@ func readID3(f *os.File) (int, []id3Frame, int64, error) {
 	// cleanly to the padding or the end, the plain one is tried. A tag that
 	// can't be read to its end is not rewritten (the frames after the damage
 	// would be lost).
-	parse := func(plain bool) ([]id3Frame, bool) {
+	// loose: padding filled with another byte (spaces, 0xFF) some taggers
+	// write is taken too, but only when no strict reading works (a wrong
+	// size could otherwise land in a cover's bytes and take them for it)
+	parse := func(plain, loose bool) ([]id3Frame, bool) {
 		var frames []id3Frame
 		p := pos
 		for p < len(body) && body[p] != 0 {
 			if p+10 > len(body) || !id3FrameID(body[p:p+4]) {
+				if loose && len(frames) > 0 && oneByte(body[p:]) {
+					break
+				}
 				return nil, false // (not a frame, nor padding)
 			}
 			id := string(body[p : p+4])
@@ -353,9 +359,15 @@ func readID3(f *os.File) (int, []id3Frame, int64, error) {
 		}
 		return frames, true
 	}
-	frames, ok := parse(false)
+	frames, ok := parse(false, false)
 	if !ok && ver == 4 {
-		frames, ok = parse(true)
+		frames, ok = parse(true, false)
+	}
+	if !ok {
+		frames, ok = parse(false, true)
+	}
+	if !ok && ver == 4 {
+		frames, ok = parse(true, true)
 	}
 	if !ok {
 		return ver, nil, end, errors.New("the ID3 tag is damaged")
@@ -917,4 +929,14 @@ func (c *countReader) Read(b []byte) (int, error) {
 	n, err := c.r.Read(b)
 	c.n += int64(n)
 	return n, err
+}
+
+// oneByte: b is one byte repeated (padding).
+func oneByte(b []byte) bool {
+	for _, c := range b {
+		if c != b[0] {
+			return false
+		}
+	}
+	return true
 }

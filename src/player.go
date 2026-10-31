@@ -22,16 +22,32 @@ var queueMu sync.Mutex
 // the song that comes pauses).
 var pausePresses atomic.Int32
 
+// queueWaiting: skips waiting for queueMu (lockQueue).
+var queueWaiting atomic.Int32
+
+// lockQueue takes queueMu, counted while it waits: a play/pause pressed
+// meanwhile is for the song of the last skip, not of one before it.
+func lockQueue() {
+	queueWaiting.Add(1)
+	queueMu.Lock()
+	queueWaiting.Add(-1)
+}
+
 // unlockQueue frees the queue; a play/pause pressed meanwhile takes effect
-// now (not after a stop: the queue's end isn't played again by it).
+// now (not after a stop: the queue's end isn't played again by it), unless
+// another skip waits: then it is kept for that one's song.
 func (app *MiyooPod) unlockQueue() {
+	if queueWaiting.Load() > 0 {
+		queueMu.Unlock()
+		return
+	}
 	for n := pausePresses.Swap(0); n != 0; n = pausePresses.Swap(0) {
 		if n%2 == 1 && app.Playing != nil && app.Playing.State != StateStopped {
 			app.playPause()
 		}
 	}
 	queueMu.Unlock()
-	if pausePresses.Load() != 0 && queueMu.TryLock() {
+	if pausePresses.Load() != 0 && queueWaiting.Load() == 0 && queueMu.TryLock() {
 		app.unlockQueue() // (one came in between)
 	}
 }
@@ -45,7 +61,7 @@ func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
 		return
 	}
 
-	queueMu.Lock()
+	lockQueue()
 	app.Queue.Tracks = make([]*Track, len(tracks))
 	copy(app.Queue.Tracks, tracks)
 	app.Queue.CurrentIndex = startIdx
@@ -75,7 +91,7 @@ func (app *MiyooPod) shuffleAllAndPlay() {
 		return
 	}
 
-	queueMu.Lock()
+	lockQueue()
 	app.Queue.Tracks = make([]*Track, len(app.Library.Tracks))
 	copy(app.Queue.Tracks, app.Library.Tracks)
 	app.Queue.Shuffle = true
@@ -238,7 +254,7 @@ func (app *MiyooPod) nextTrack() {
 	if previewActive() {
 		return // (a Listen has the mixer: its own rows pick its songs)
 	}
-	queueMu.Lock()
+	lockQueue()
 	defer app.unlockQueue()
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		return
@@ -263,7 +279,7 @@ func (app *MiyooPod) prevTrack() {
 	if previewActive() {
 		return // (a Listen has the mixer: its own rows pick its songs)
 	}
-	queueMu.Lock()
+	lockQueue()
 	defer app.unlockQueue()
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		return
@@ -291,7 +307,7 @@ func (app *MiyooPod) prevTrack() {
 }
 
 func (app *MiyooPod) handleTrackEnd() {
-	queueMu.Lock()
+	lockQueue()
 	defer app.unlockQueue()
 	if previewActive() || trackEndGen.Load() != loadGen.Load() {
 		return // (a song was loaded since that end: a skip, a Listen)

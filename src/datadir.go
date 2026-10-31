@@ -8,12 +8,14 @@ package main
 // (dataPath), so switching folders never races with background saves.
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 const dataDirPointer = "datadir.txt"
@@ -191,7 +193,9 @@ func copyItems(src, dst string, items []string, onlyNewer bool, progress func(in
 			return false
 		}
 		st, err := os.Stat(to)
-		return err == nil && !info.ModTime().After(st.ModTime())
+		// (newer by more than FAT's 2 s steps: a file rewritten within the
+		// same 2 s as its copy reads as old, and is copied again)
+		return err == nil && st.Size() == info.Size() && st.ModTime().Sub(info.ModTime()) > 2*time.Second
 	}
 	for _, name := range items {
 		from := filepath.Join(src, name)
@@ -240,9 +244,16 @@ func copyItems(src, dst string, items []string, onlyNewer bool, progress func(in
 // current, before copying there).
 func removeDatabase(dir string) {
 	for _, name := range dataItems {
+		if genericItems[name] {
+			continue // (overwritten by the copy, file by file)
+		}
 		_ = os.RemoveAll(filepath.Join(dir, name))
 	}
 }
+
+// genericItems: database items whose names another program could use in a
+// shared folder (a card's root): never deleted whole.
+var genericItems = map[string]bool{"tools": true, "puzzles": true, "weather.json": true, "2048.json": true}
 
 // removeCopied deletes, after a move, the items' files in src that are in
 // dst too, with the same size, then the folders left empty. Nothing that
@@ -267,7 +278,8 @@ func removeCopied(src, dst string, items []string) int {
 			}
 			rel, _ := filepath.Rel(src, p)
 			st, err := os.Stat(filepath.Join(dst, rel))
-			if err != nil || !st.Mode().IsRegular() || st.Size() != info.Size() || st.ModTime().Before(info.ModTime()) {
+			if err != nil || !st.Mode().IsRegular() || st.Size() != info.Size() || st.ModTime().Before(info.ModTime()) ||
+				!sameSmallFile(p, filepath.Join(dst, rel), info.Size()) {
 				kept++
 				return nil
 			}
@@ -435,4 +447,16 @@ func renameLegacyDataDir(d string) string {
 		return d
 	}
 	return nd
+}
+
+// sameSmallFile: a file under 1 MB has the same bytes as its copy (FAT's
+// 2 s times can't tell a file rewritten just after its copy); bigger ones
+// (covers, the tools) aren't rewritten in place, their size is enough.
+func sameSmallFile(a, b string, size int64) bool {
+	if size >= 1<<20 {
+		return true
+	}
+	x, err1 := os.ReadFile(a)
+	y, err2 := os.ReadFile(b)
+	return err1 == nil && err2 == nil && bytes.Equal(x, y)
 }
