@@ -1,5 +1,5 @@
 // cdraw.c — the hot pixel loops of the iPod interface in C (see cdraw.go):
-// blit, blitShiftX, darkenColumns and Cover Flow's texture mapping.
+// blit, blitShiftX, darkenColumns, dimRect and Cover Flow's texture mapping.
 //
 // Same arithmetic as the Go versions, pixel for pixel (tools/onion/unittest
 // compares them): Go's compiler doesn't vectorise, clang does (NEON on the
@@ -181,6 +181,20 @@ void cd_drawtex(uint32_t *dp, int dst32, int x0, int x1, int ya, int yb,
                 row[o] = cd_over32(c, row[o]);
             }
             U = U2; V = V2; W = W2; u = u2; v = v2;
+        }
+    }
+}
+
+// cd_dim: dimRect of ij_gfx.go, black over w x h pixels: the colour times
+// m/256, the alpha toward 255 by the same amount.
+void cd_dim(uint8_t *dst, int dstride, int w, int h, uint32_t m) {
+    int x, y;
+    for (y = 0; y < h; y++) {
+        uint32_t *d = (uint32_t *)(dst + (long)y * dstride);
+        for (x = 0; x < w; x++) {
+            uint32_t p = d[x];
+            uint32_t a = 255 - (((255 - (p >> 24)) * m) >> 8);
+            d[x] = (cd_scale32(p, m) & 0xffffff) | a << 24;
         }
     }
 }

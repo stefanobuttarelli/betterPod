@@ -223,8 +223,12 @@ func (ui *IpodUI) drawVolumeOSD(dst *image.RGBA, now time.Time) {}
 // headphonesOut: the sound goes to headphones (Bluetooth, or wired ones in
 // the jack), not the console's speaker.
 func headphonesOut() bool {
-	return btConnected() || headphoneJack() == 1 || os.Getenv("MIYOOPOD_HEADPHONES") == "1" // (the last for tests)
+	return btConnected() || headphoneJack() == 1 || headphonesEnv // (the last for tests)
 }
+
+// headphonesEnv: MIYOOPOD_HEADPHONES=1, read once (headphonesOut is asked
+// at each frame).
+var headphonesEnv = os.Getenv("MIYOOPOD_HEADPHONES") == "1"
 
 // volIcons: the header's little speaker and headphones, in the header's
 // text colour (made once per colour).

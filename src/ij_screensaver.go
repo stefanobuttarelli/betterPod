@@ -1142,7 +1142,7 @@ func (ui *IpodUI) ssCardDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 	if s.cardPlay {
 		dim = 1 - h
 	}
-	fillRect(dst, 0, ssBar, 640, 480-ssBar, Col{0, 0, 0, 0.6 * dim})
+	dimRect(dst, 0, ssBar, 640, 480-ssBar, 0.6*dim)
 	var r image.Rectangle
 	var turn float64
 	if s.cardPlay {

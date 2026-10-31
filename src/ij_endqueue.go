@@ -79,7 +79,8 @@ func (s *Sheet) renderEnd(ui *IpodUI) *image.RGBA {
 		return s.cache
 	}
 	d := DPR
-	img := newCanvas(px(endW+8), px(endH+8))
+	img := newCanvasCached(&s.cache, px(endW+8), px(endH+8)) // (reused, cleared)
+	clearRGBA(img)
 	x0, y0 := 4.0, 2.0
 	x1, y1 := x0+endW, y0+endH
 	sheetCard(img, x0, y0, x1, y1)
@@ -168,7 +169,7 @@ func drawSparkle(img *image.RGBA, cx, cy float64, c Col) {
 // drawEnd: the card in the middle, fading in (v: 1 hidden, 0 shown).
 func (ui *IpodUI) drawEnd(dst *image.RGBA, s *Sheet, v float64, now time.Time) {
 	// the screen dims under the status bar, which stays as it is
-	fillRect(dst, 0, px(20), 640, 480-px(20), rgba(0, 0, 0, 0.45*(1-v)))
+	dimRect(dst, 0, px(20), 640, 480-px(20), 0.45*(1-v))
 	img := s.renderEnd(ui)
 	x := (640 - img.Bounds().Dx()) / 2
 	y := px(31) + px(10*v)

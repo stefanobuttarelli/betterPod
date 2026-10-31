@@ -6,7 +6,7 @@ package main
 import "C"
 
 // cdraw.go — the hottest pixel loops of the interface (blitShiftX,
-// darkenColumns, drawTex, a fading blit) run in C (cdraw.c), with the same
+// darkenColumns, dimRect, drawTex, a fading blit) run in C (cdraw.c), with the same
 // arithmetic as the Go code they replace (tools/onion/unittest checks it
 // pixel for pixel). On the Miyoo's Cortex-A7 the Go loops were most of a
 // frame; clang vectorises them and drops the bounds checks
@@ -70,4 +70,9 @@ func cDrawTex(dp []uint32, dst32, x0, x1, ya, yb int, sp []uint32, sst, iw, ih i
 	C.cd_drawtex(pix32Ptr(dp), C.int(dst32), C.int(x0), C.int(x1), C.int(ya), C.int(yb),
 		pix32Ptr(sp), C.int(sst), C.int(iw), C.int(ih),
 		(*C.double)(unsafe.Pointer(&hi[0])), (*C.double)(unsafe.Pointer(&tm[0])), C.uint32_t(op), C.double(DPR))
+}
+
+// cDim: dimRect over the clipped area x0..x1, y0..y1.
+func cDim(dst *image.RGBA, x0, y0, x1, y1 int, m uint32) {
+	C.cd_dim(pixPtr(dst, dst.PixOffset(x0, y0)), C.int(dst.Stride), C.int(x1-x0), C.int(y1-y0), C.uint32_t(m))
 }

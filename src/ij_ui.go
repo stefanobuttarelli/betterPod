@@ -950,14 +950,15 @@ func (ui *IpodUI) animating(now time.Time) bool {
 	if ui.miniAnimating(now) || tickerAnimating(now) || toastAnimating() || ui.wxPreviewAnimating(now) {
 		return true
 	}
-	return !ui.noMarquee && ui.listMarquee()
+	return !ui.noMarquee && ui.listMarquee(now)
 }
 
-// listMarquee: the selected row of a visible list is scrolling its title.
-func (ui *IpodUI) listMarquee() bool {
+// listMarquee: the selected row of a visible list is scrolling its title
+// (not while it waits at its start: no frames through the pause).
+func (ui *IpodUI) listMarquee(now time.Time) bool {
 	for _, st := range [][]*View{ui.split, ui.full} {
 		if len(st) > 0 && st[len(st)-1].marqueeOn && st[len(st)-1].Custom == nil {
-			return true
+			return marqSyncNeedsFrame(now)
 		}
 	}
 	return false
@@ -998,14 +999,21 @@ func (ui *IpodUI) drawStack(stack []*View, kind ViewKind, panelX, panelW int, no
 	draw := func(v *View) {
 		e := v.enter.Get(now)
 		h := v.hide.Get(now)
-		buf := ui.viewBuffer(v, panelW, contentH, now)
 		x := panelX + int(float64(panelW)*e+0.5)
 		// a view being covered moves left by a full panel width
 		cx := x + int(float64(panelW)*h+0.5)
-
-		fillRectClipped(ui.fb, x, px(20), panelW, contentH, th.bg, clip)
-
-		if sub, ok := ui.fb.SubImage(image.Rect(x, px(20), x+panelW, 480).Intersect(clip)).(*image.RGBA); ok && !sub.Bounds().Empty() {
+		area := image.Rect(x, px(20), x+panelW, 480).Intersect(clip)
+		if area.Intersect(image.Rect(cx, px(20), cx+panelW, 480)).Empty() {
+			// out of the panel (covered, or slid out): not drawn at all;
+			// its dirty flag stays, so it is drawn afresh when it comes back
+			return
+		}
+		buf := ui.viewBuffer(v, panelW, contentH, now)
+		if cx != x {
+			// (at rest the view covers its whole area)
+			fillRectClipped(ui.fb, x, px(20), panelW, contentH, th.bg, clip)
+		}
+		if sub, ok := ui.fb.SubImage(area).(*image.RGBA); ok && !sub.Bounds().Empty() {
 			blitOpaque(sub, buf, cx, px(20))
 		}
 	}
@@ -1047,7 +1055,17 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		ui.drawToast(fb, now)
 		return
 	}
-	fillRect(fb, 0, 0, 640, 480, th.bg)
+	// the full-screen views' left edge (640: none)
+	fullPx := 640
+	if fx := ui.fullX.Get(now); fx < 1 || len(ui.full) > 0 {
+		fullPx = int(fx*640 + 0.5)
+	}
+	// the background, unless something opaque is drawn over all of it
+	// (the full-screen views in place, or Cover Flow)
+	coverOpaque := ui.cover != nil && !ui.cover.exiting && ui.cover.fadeIn.Get(now) >= 1
+	if fullPx > 0 && !coverOpaque {
+		fillRect(fb, 0, 0, 640, 480, th.bg)
+	}
 
 	// Cover Flow is a separate full screen, fading in and out
 	if cf := ui.cover; cf != nil {
@@ -1055,8 +1073,8 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		if cf.exiting && !cf.fadeIn.Running() {
 			ui.cover = nil
 		} else {
+			// (no background: the header and the flow cover the layer)
 			l := newCanvasCached(&coverLayer, 640, 480)
-			fillRect(l, 0, 0, 640, 480, th.bg)
 			ui.hdrActive = true // its header shows the song ticker too
 			ui.drawHeader(l, 0, 640, now)
 			ui.hdrActive = false
@@ -1078,8 +1096,20 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		ui.drawColumn(fb, 320, col, colFocused, now)
 	} else if ph < 1 && ui.previewOnScreen() {
 		pv := newCanvasCached(&previewBuf, 320, 480)
-		ui.renderPreview(pv, now)
-		blit(fb, pv, 320+int(ph*320+0.5), 0, 1-ph)
+		// a still preview (an app's icon) is drawn once, not at each frame
+		still := ui.preview != PrevMusic && ui.preview != PrevNowPlaying && ui.preview != PrevWeather && !ui.musicPrev.Running()
+		if k := (previewKey{ui.preview, th}); !still || previewKept != k {
+			ui.renderPreview(pv, now)
+			previewKept = previewKey{}
+			if still {
+				previewKept = k
+			}
+		}
+		if ph <= 0 {
+			blitOpaque(fb, pv, 320, 0) // (it has its background)
+		} else {
+			blit(fb, pv, 320+int(ph*320+0.5), 0, 1-ph)
+		}
 	}
 	lx := ui.leftX.Get(now)
 	leftPx := int(lx*320 - 0.5)
@@ -1102,15 +1132,14 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	}
 
 	// full-screen views
-	fx := ui.fullX.Get(now)
-	if fx < 1 || len(ui.full) > 0 {
-		fullPx := int(fx*640 + 0.5)
-		if fullPx < 640 {
+	if fullPx < 640 {
+		// (the top view in place covers all under the header)
+		if n := len(ui.full); n == 0 || ui.full[n-1].enter.Get(now) != 0 || ui.full[n-1].hide.Get(now) != 0 {
 			fillRect(fb, fullPx, 0, 640-fullPx, 480, th.bg)
-			ui.hdrActive = len(ui.full) > 0
-			ui.drawHeader(fb, fullPx, 640, now)
-			ui.drawStack(ui.full, KindFull, fullPx, 640, now)
 		}
+		ui.hdrActive = len(ui.full) > 0
+		ui.drawHeader(fb, fullPx, 640, now)
+		ui.drawStack(ui.full, KindFull, fullPx, 640, now)
 	}
 
 	// option sheets
@@ -1157,14 +1186,27 @@ func newCanvasCached(buf **image.RGBA, w, h int) *image.RGBA {
 }
 
 func scaleProfile(p []float64, s float64) []float64 { // the panel shadow, fading while it slides
-	out := make([]float64, len(p))
+	if cap(scaledProfile) < len(p) {
+		scaledProfile = make([]float64, len(p))
+	}
+	out := scaledProfile[:len(p)] // (reused: it is drawn at once)
 	for i, v := range p {
 		out[i] = v * s
 	}
 	return out
 }
 
+var scaledProfile []float64
+
 var coverLayer, previewBuf, headerBg *image.RGBA
+
+// previewKey: the still preview previewBuf holds (and its theme).
+type previewKey struct {
+	p  PreviewKind
+	th *UITheme
+}
+
+var previewKept previewKey
 
 // header gradient (light theme; the themes carry their own), top to bottom
 // of the 20 px bar
@@ -1213,7 +1255,8 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 	}
 
 	if q := ui.app.Queue; q != nil {
-		var icons []string
+		var buf [2]string // (on the stack: the header is drawn at each frame)
+		icons := buf[:0]
 		switch q.Repeat {
 		case RepeatOne:
 			icons = append(icons, "hdr_repeat_one")
@@ -1342,10 +1385,14 @@ func batteryCharging() bool {
 	return false
 }
 
-// onlyKenBurns reports whether the Ken Burns preview is the only animation.
+// stillKenBurns: a Ken Burns preview that never moves (onlyKenBurns).
+var stillKenBurns KenBurns
+
+// onlyKenBurns reports whether the Ken Burns preview (or a scrolling
+// title) is the only animation.
 func (ui *IpodUI) onlyKenBurns(now time.Time) bool {
 	saved := ui.kb
-	ui.kb = &KenBurns{}
+	ui.kb = &stillKenBurns
 	ui.noMarquee = true
 	other := ui.animating(now)
 	ui.noMarquee = false
@@ -1411,7 +1458,8 @@ func (ui *IpodUI) Run() {
 	lastLocked, lastWarn := app.Locked, app.PowerExitWarning
 	lastStatus := -1
 	var lastWall time.Time
-	wasAnim := false // an animation was running at the last frame
+	wasAnim := false    // an animation was running at the last frame
+	blackShown := false // the screen off's black frame is on screen
 	var prefetched *Library
 	for app.Running {
 		// thumbnails of a newly loaded library are prefetched
@@ -1473,6 +1521,7 @@ func (ui *IpodUI) Run() {
 		now := animNow()
 		if app.Locked != lastLocked {
 			lastLocked = app.Locked
+			ui.dirty = true // (the black frame, or the screen back)
 			ui.lockChanged()
 		}
 		if app.PowerExitWarning != lastWarn {
@@ -1570,14 +1619,22 @@ func (ui *IpodUI) Run() {
 		ended := wasAnim && !anim
 		wasAnim = anim
 		presentBlocked := false
+		// screen off: the black frame is drawn and presented once (on Onion
+		// a whole frame through the present thread), not at each redraw the
+		// music asks for every second
+		black := app.Locked && !(isOnion && app.PowerExitWarning) // (Onion: the quit warning over the frame)
+		if black && blackShown {
+			ui.dirty = false
+		}
 		if ui.dirty || anim || ended {
 			ui.dirty = false
 			t0 := time.Now()
-			if app.Locked && !(isOnion && app.PowerExitWarning) { // (Onion: the quit warning over the frame)
+			if black {
 				fillRect(ui.fb, 0, 0, 640, 480, colBlack)
 			} else {
 				ui.renderFrame(now)
 			}
+			blackShown = black
 			t1 := time.Now()
 			presented := ui.present()
 			tp := time.Since(t1)
@@ -1622,7 +1679,7 @@ func (ui *IpodUI) Run() {
 				// 2.4 px a second: 10 frames keep it smooth on the Miyoo
 				frame = 100 * time.Millisecond
 			}
-			if !ui.kb.transStart.IsZero() || ui.listMarquee() || marqueeActive {
+			if !ui.kb.transStart.IsZero() || ui.listMarquee(now) || marqueeActive {
 				frame = 33 * time.Millisecond
 			}
 		}

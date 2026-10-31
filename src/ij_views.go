@@ -92,8 +92,9 @@ type View struct {
 	exiting   bool
 	firstIn   bool
 	cache     *image.RGBA
-	marqueeOn bool // the selected row is scrolling its title
-	miniRes   bool // the cache was drawn leaving room for the Now Playing block
+	tops      []float64 // rowTops' buffer
+	marqueeOn bool      // the selected row is scrolling its title
+	miniRes   bool      // the cache was drawn leaving room for the Now Playing block
 	marqIdx   int
 	marqSince time.Time
 	cacheW    int
@@ -162,8 +163,14 @@ func rowHeight(it *Item) float64 {
 	return h
 }
 
+// rowTops: the top of each row (CSS px) and the list's height. The slice
+// is the view's own, reused at each call (for a list of 5,000 songs, a new
+// one twice a frame was 80 KB of garbage).
 func (v *View) rowTops() ([]float64, float64) {
-	tops := make([]float64, len(v.Items))
+	if cap(v.tops) < len(v.Items) {
+		v.tops = make([]float64, len(v.Items))
+	}
+	tops := v.tops[:len(v.Items)]
 	y := 0.0
 	for i := range v.Items {
 		tops[i] = y
@@ -172,11 +179,12 @@ func (v *View) rowTops() ([]float64, float64) {
 	return tops, y
 }
 
-// ensureVisible clamps the selection and scrolls it into view (block: nearest).
-func (v *View) ensureVisible(viewportH float64) {
+// ensureVisible clamps the selection and scrolls it into view (block:
+// nearest). It returns rowTops.
+func (v *View) ensureVisible(viewportH float64) ([]float64, float64) {
 	if len(v.Items) == 0 {
 		v.Scroll = 0
-		return
+		return nil, 0
 	}
 	tops, total := v.rowTops()
 	if v.Index >= len(tops) {
@@ -196,6 +204,7 @@ func (v *View) ensureVisible(viewportH float64) {
 	if v.Scroll < 0 {
 		v.Scroll = 0
 	}
+	return tops, total
 }
 
 // selected row
@@ -216,8 +225,7 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		ui.renderEmpty(dst, v.Empty)
 		return
 	}
-	v.ensureVisible(hCSS)
-	tops, total := v.rowTops()
+	tops, total := v.ensureVisible(hCSS)
 	scrollable := total > hCSS+0.5
 	dfont := face(W600, 14)
 	capH := lineCapHeight(14)
@@ -474,17 +482,23 @@ func (v *View) scrollbarAnimating(now time.Time) bool {
 // drawScrollbar draws the iPod scrollbar in the column x..x+w (CSS px):
 // a thin rounded track with a 1 px border and a grey glossy thumb sized
 // by the visible fraction of the list.
+// the scrollbar's colours (light, dark)
+var (
+	sbTrack      = []GradStop{{0, hex("#e4e4e4")}, {1, hex("#f7f7f7")}}
+	sbBorder     = hex("#b4b4b4")
+	sbThumb      = []GradStop{{0, hex("#a8a8a8")}, {0.5, hex("#8a8a8a")}, {1, hex("#767676")}}
+	sbTrackDark  = []GradStop{{0, hex("#26282c")}, {1, hex("#303237")}}
+	sbBorderDark = hex("#45484e")
+	sbThumbDark  = []GradStop{{0, hex("#a3a6ac")}, {0.5, hex("#868990")}, {1, hex("#72757b")}}
+)
+
 func drawScrollbar(dst *image.RGBA, x, y, w, h, scroll, total, alpha float64) {
 	bw := 6.0
 	x0 := x + (w-bw)/2 - 1
 	y0, y1 := y+3, y+h-3
-	track := []GradStop{{0, hex("#e4e4e4")}, {1, hex("#f7f7f7")}}
-	border := hex("#b4b4b4")
-	thumb := []GradStop{{0, hex("#a8a8a8")}, {0.5, hex("#8a8a8a")}, {1, hex("#767676")}}
+	track, border, thumb := sbTrack, sbBorder, sbThumb
 	if th.dark {
-		track = []GradStop{{0, hex("#26282c")}, {1, hex("#303237")}}
-		border = hex("#45484e")
-		thumb = []GradStop{{0, hex("#a3a6ac")}, {0.5, hex("#868990")}, {1, hex("#72757b")}}
+		track, border, thumb = sbTrackDark, sbBorderDark, sbThumbDark
 	}
 	d := DPR
 	fillRoundedGradient(dst, x0*d, y0*d, (x0+bw)*d, y1*d, bw/2*d, track, alpha)
@@ -558,15 +572,22 @@ func (ui *IpodUI) searchField(term *string, placeholder, note string, edit func(
 // drawSearchBar: a bar the width of the list, a little darker than it,
 // holding a white rounded field with a magnifying glass, like the search
 // bar of the first iPhone. Selected, the field gets a blue ring.
+// the search bar's colours: bar top, bottom, line, field, its edge, text,
+// placeholder
+var (
+	searchBarLight = [7]Col{hex("#dde2e8"), hex("#c3cad3"), hex("#a5adb8"), colWhite, hex("#9aa3ae"), rgb(20, 22, 26), rgb(150, 155, 162)}
+	searchBarDark  = [7]Col{hex("#33363c"), hex("#26282d"), hex("#141518"), hex("#1b1c20"), hex("#4a4e56"), rgb(236, 237, 240), rgb(120, 124, 130)}
+)
+
 func drawSearchBar(dst *image.RGBA, it *Item, y, wCSS float64, sel, gearSel bool) {
 	d := DPR
 	h := searchBarH
-	top, bot, line := hex("#dde2e8"), hex("#c3cad3"), hex("#a5adb8")
-	field, edge, text, dim := colWhite, hex("#9aa3ae"), rgb(20, 22, 26), rgb(150, 155, 162)
+	c := &searchBarLight
 	if th.dark {
-		top, bot, line = hex("#33363c"), hex("#26282d"), hex("#141518")
-		field, edge, text, dim = hex("#1b1c20"), hex("#4a4e56"), rgb(236, 237, 240), rgb(120, 124, 130)
+		c = &searchBarDark
 	}
+	top, bot, line := c[0], c[1], c[2]
+	field, edge, text, dim := c[3], c[4], c[5], c[6]
 	fillVGradient(dst, 0, px(y), px(wCSS), px(y+h)-px(y), []GradStop{{0, top}, {1, bot}})
 	fillRect(dst, 0, px(y+h)-1, px(wCSS), 1, line)
 	x0, x1 := 8.0, wCSS-8

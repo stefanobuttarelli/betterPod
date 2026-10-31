@@ -98,7 +98,7 @@ func (np *NowPlayingView) Animating(now time.Time) bool {
 	if np.flip.Running() || np.backA.Running() {
 		return true
 	}
-	if np.back != nil && np.flipped && (marqSyncNeedsFrame(now) || np.back.marqueeOn) {
+	if np.back != nil && np.flipped && marqueeCounts() && (marqSyncNeedsFrame(now) || np.back.marqueeOn) {
 		return true
 	}
 	// a scrolling line or the moving bars keep the view redrawing while it
@@ -108,7 +108,7 @@ func (np *NowPlayingView) Animating(now time.Time) bool {
 	if ipodUI == nil || np.drawnAt < ipodUI.frameNo-1 {
 		return false
 	}
-	return np.barsOn || (np.marqOn && marqSyncNeedsFrame(now))
+	return np.barsOn || (np.marqOn && marqueeCounts() && marqSyncNeedsFrame(now))
 }
 
 // updateControls slides the control rows for the current mode.

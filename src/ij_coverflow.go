@@ -414,7 +414,7 @@ func (cf *CoverFlow) animating(now time.Time) bool {
 			return true
 		}
 	}
-	if cf.backAlbum != nil && marqueeActive {
+	if cf.backAlbum != nil && marqueeActive && marqueeCounts() {
 		return true
 	}
 	if cf.back != nil && cf.back.scrollbarAnimating(now) {
@@ -660,15 +660,12 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 		}
 	}
 	// back to front: covers further from the active one first, then by index
-	type item struct {
-		i, z int
-	}
-	//
-	var order []item
+	order := cfOrder[:0] // (reused from frame to frame)
 	for i := range cf.covers {
 		z := 1 - absInt(i-cf.active)
-		order = append(order, item{i, z})
+		order = append(order, cfItem{i, z})
 	}
+	cfOrder = order
 	for a := 1; a < len(order); a++ {
 		for b := a; b > 0 && (order[b].z < order[b-1].z || order[b].z == order[b-1].z && order[b].i < order[b-1].i); b-- {
 			order[b], order[b-1] = order[b-1], order[b]
@@ -738,7 +735,11 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 	// Now Playing (track info and controls) over the flow
 	//
 	//
-	if fo := cf.npFade.Get(now); fo > 0 && cf.np != nil {
+	if fo := cf.npFade.Get(now); fo >= 1 && cf.np != nil {
+		// faded in: straight over the flow (as Now Playing draws its lines
+		// over its cover), not through a buffer blended at 1
+		cf.np.Render(ui, nil, layer, now)
+	} else if fo > 0 && cf.np != nil {
 		nb := newCanvasCached(&cf.npBuf, W, H)
 		clearRGBA(nb)
 		cf.np.Render(ui, nil, nb, now)
@@ -746,6 +747,13 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 	}
 	blitOpaque(dst, layer, 0, px(20))
 }
+
+// cfItem: a cover in drawing order (index, depth).
+type cfItem struct {
+	i, z int
+}
+
+var cfOrder []cfItem
 
 // formatTrackLength: m:ss (h:mm:ss from an hour), like the iPod lists.
 func formatTrackLength(sec float64) string {
@@ -904,6 +912,11 @@ func marqSyncWakeAt(t time.Time) {
 	}
 }
 
+// marqueeCounts: a scrolling title is asked about as an animation (the
+// frame pacing asks without them, IpodUI.noMarquee, to give a screen where
+// only a title scrolls 30 frames a second instead of 60).
+func marqueeCounts() bool { return ipodUI == nil || !ipodUI.noMarquee }
+
 // marqSyncNeedsFrame: a synced marquee is moving or due to move.
 func marqSyncNeedsFrame(now time.Time) bool {
 	return marqSyncMoving || (!marqSyncWake.IsZero() && !now.Before(marqSyncWake))
@@ -948,6 +961,12 @@ func drawMarqueeSync(dst *image.RGBA, f font.Face, s string, x, baseline, maxW f
 	drawText(clip, f, s, (x-off+loop)*DPR, baseline*DPR, c)
 }
 
+// the album card's blue band and the line under it
+var (
+	backsideGrad = []GradStop{{0, hex("#6585ad")}, {1, hex("#789ab3")}}
+	backsideLine = hex("#6d87a3")
+)
+
 // backsideTex: an album's card: its name and artist on blue (scrolling
 // together when long, from since), then its songs (back).
 func (ui *IpodUI) backsideTex(buf, listBuf **image.RGBA, al *Album, back *View, w, h float64, since, now time.Time) *image.RGBA {
@@ -960,8 +979,8 @@ func (ui *IpodUI) backsideTex(buf, listBuf **image.RGBA, al *Album, back *View, 
 	_, sasc := lineBox(14)
 	inner := w - 2
 	infoH := backsideInfoH()
-	fillVGradient(img, px(1), px(1), px(inner), px(infoH-1), []GradStop{{0, hex("#6585ad")}, {1, hex("#789ab3")}})
-	fillRect(img, px(1), px(infoH), px(inner), px(1), hex("#6d87a3"))
+	fillVGradient(img, px(1), px(1), px(inner), px(infoH-1), backsideGrad)
+	fillRect(img, px(1), px(infoH), px(inner), px(1), backsideLine)
 	y := 5.0
 	// album and artist scroll on one cycle
 	cyc := math.Max(marqueeCycle(tf, al.Name, inner-16), marqueeCycle(sf, al.Artist, inner-16))

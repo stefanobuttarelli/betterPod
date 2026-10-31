@@ -181,9 +181,16 @@ func (g *Solitaire) animateCursor(from, to Pos, dur time.Duration) {
 	}{from, to, time.Now(), dur}
 }
 
-// Animating: the game redraws every frame (cards, cursor and menus
-// animate).
-func (g *Solitaire) Animating(now time.Time) bool { return true }
+// Animating: cards in flight or the hand moving. Otherwise the table is
+// still and only a key redraws it (60 frames a second for nothing kept a
+// core busy).
+func (g *Solitaire) Animating(now time.Time) bool {
+	if g.anims.animating() {
+		return true
+	}
+	a := g.cursorAnim
+	return a != nil && now.Sub(a.start) < a.dur
+}
 
 func (g *Solitaire) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	if g.anims.animating() {
