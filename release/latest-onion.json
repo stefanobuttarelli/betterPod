@@ -1,8 +1,8 @@
 {
-  "version": "0.86",
-  "path": "release/betterpod-v0.86-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.86-onion.zip",
-  "sha256": "0dc2aec7da5cbf66c318f8dcd477127911df021d55871c7e40e150f14c2643b4",
-  "size": 28347486,
-  "notes": "- Five Letters: the green letters are already in the next row\n- New Word at any time (START)\n- History of the words played"
+  "version": "0.87",
+  "path": "release/betterpod-v0.87-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.87-onion.zip",
+  "sha256": "ea1e343de1fe6e66b1dd6b1699616faae35fbb1937a41b323356485cc02e26ed",
+  "size": 28347329,
+  "notes": "- Five Letters: the tile the next letter goes in has a blue border"
 }

@@ -1,8 +1,8 @@
 {
-  "version": "0.86",
-  "path": "release/betterpod-v0.86-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.86-knulli.zip",
-  "sha256": "0d1e24a9310dcca21e2a721808b855ee669265c6526b89be5edd94b64e6d21b8",
-  "size": 16210435,
-  "notes": "- Five Letters: the green letters are already in the next row\n- New Word at any time (START)\n- History of the words played"
+  "version": "0.87",
+  "path": "release/betterpod-v0.87-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.87-knulli.zip",
+  "sha256": "f8791d0418359f034b12a0cb13730e4f483cddd9998a04a27e5985a3c7c9909e",
+  "size": 16210300,
+  "notes": "- Five Letters: the tile the next letter goes in has a blue border"
 }

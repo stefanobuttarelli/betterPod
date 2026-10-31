@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.87 (2026-10-31)
+
+### Changed
+- **Five Letters shows where the next letter goes:** that tile has a blue border, so it's clear when it skips the letters already found.
+
 ## v0.86 (2026-10-31)
 
 ### Added

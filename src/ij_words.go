@@ -625,7 +625,12 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 				hw, hh = ht*s, ht*s
 			}
 			if st == wlNone && ch == "" {
-				// an empty square
+				// an empty square; the one the next letter goes in, blue
+				// (the letters found in place are skipped)
+				if r == len(g.guesses) && !g.over && c == strings.IndexByte(g.typed, ' ') {
+					strokeRounded(dst, cx-hw, cy-hh, cx+hw, cy+hh, 7, 3, Col{40, 130, 230, 1}, 1)
+					continue
+				}
 				strokeRounded(dst, cx-hw, cy-hh, cx+hw, cy+hh, 7, 2, Col{186, 194, 206, 1}, 1)
 				continue
 			}
