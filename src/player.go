@@ -62,9 +62,11 @@ func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
 	app.playCurrentQueueTrack()
 	app.unlockQueue()
 
-	app.setScreen(ScreenNowPlaying)
-	app.refreshRootMenu()
-	app.drawCurrentScreen()
+	if !useIpodUI { // (the classic UI's screens; the iPod UI is on its own goroutine)
+		app.setScreen(ScreenNowPlaying)
+		app.refreshRootMenu()
+		app.drawCurrentScreen()
+	}
 }
 
 // shuffleAllAndPlay queues all library tracks, shuffles, and starts playing
@@ -83,9 +85,11 @@ func (app *MiyooPod) shuffleAllAndPlay() {
 	app.playCurrentQueueTrack()
 	app.unlockQueue()
 
-	app.setScreen(ScreenNowPlaying)
-	app.refreshRootMenu()
-	app.drawCurrentScreen()
+	if !useIpodUI { // (the classic UI's screens; the iPod UI is on its own goroutine)
+		app.setScreen(ScreenNowPlaying)
+		app.refreshRootMenu()
+		app.drawCurrentScreen()
+	}
 }
 
 // playCurrentQueueTrack loads and plays the current track in the queue
@@ -96,9 +100,6 @@ func (app *MiyooPod) playCurrentQueueTrack() bool {
 	if track == nil {
 		return false
 	}
-
-	// Track song play for analytics
-	TrackSongPlayed(track)
 
 	app.Playing.Track = track
 	app.Playing.State = StatePlaying
@@ -351,7 +352,6 @@ func (app *MiyooPod) toggleShuffle() {
 		// Reset playback position to start of new shuffle order
 		app.Queue.CurrentIndex = 0
 		logMsg("INFO: Shuffle enabled")
-		TrackAction("shuffle_enabled", nil)
 	} else {
 		// When turning off shuffle, set CurrentIndex to physical position
 		if currentPhysicalIdx >= 0 {
@@ -359,7 +359,6 @@ func (app *MiyooPod) toggleShuffle() {
 		}
 		app.Queue.ShuffleOrder = nil
 		logMsg("INFO: Shuffle disabled")
-		TrackAction("shuffle_disabled", nil)
 	}
 	app.NPCacheDirty = true
 }
@@ -371,13 +370,10 @@ func (app *MiyooPod) cycleRepeat() {
 	switch app.Queue.Repeat {
 	case RepeatOff:
 		app.Queue.Repeat = RepeatAll
-		TrackAction("repeat_mode_changed", map[string]interface{}{"repeat_mode": "all"})
 	case RepeatAll:
 		app.Queue.Repeat = RepeatOne
-		TrackAction("repeat_mode_changed", map[string]interface{}{"repeat_mode": "one"})
 	case RepeatOne:
 		app.Queue.Repeat = RepeatOff
-		TrackAction("repeat_mode_changed", map[string]interface{}{"repeat_mode": "off"})
 	}
 	app.NPCacheDirty = true
 }

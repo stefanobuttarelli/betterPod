@@ -14,3 +14,4 @@ onion/betterpod/conf/
 onion/betterpod/betterpod
 onion/betterpod/*.log
 .DS_Store
+.claude/

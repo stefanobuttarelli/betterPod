@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -29,17 +28,11 @@ const (
 
 var lastMusicBrainzRequest time.Time
 
-// getInsecureHTTPClient returns an HTTP client that skips TLS verification
-// This is necessary for embedded devices with incorrect system time (stuck at Unix epoch)
+// getInsecureHTTPClient: despite its old name, Software Update's client
+// (ij_update.go), which checks certificates and still works with a clock
+// stuck in 1970.
 func getInsecureHTTPClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // Required due to system clock being set to 1970
-			},
-		},
-	}
+	return updateClient(timeout)
 }
 
 // MusicBrainzRelease represents a simplified MusicBrainz release response
