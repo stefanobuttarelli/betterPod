@@ -6,8 +6,38 @@ import (
 	"math/rand"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// queueMu: one change of the current song (and its load) at a time. Skips
+// run in a goroutine per press: without it a second skip could start its
+// song while the first one still checks its own, and the first would then
+// call it a failure (no track, nothing to pause). It is never held while
+// waiting for the UI goroutine (ui.post only, never postSure).
+var queueMu sync.Mutex
+
+// pausePresses: play/pause pressed while a song was loading (an odd count:
+// the song that comes pauses).
+var pausePresses atomic.Int32
+
+// unlockQueue frees the queue; a play/pause pressed meanwhile takes effect
+// now (not after a stop: the queue's end isn't played again by it).
+func (app *MiyooPod) unlockQueue() {
+	for n := pausePresses.Swap(0); n != 0; n = pausePresses.Swap(0) {
+		if n%2 == 1 && app.Playing != nil && app.Playing.State != StateStopped {
+			app.playPause()
+		}
+	}
+	queueMu.Unlock()
+	if pausePresses.Load() != 0 && queueMu.TryLock() {
+		app.unlockQueue() // (one came in between)
+	}
+}
+
+// maxPlayFails: songs that won't play skipped in a row before it stops.
+const maxPlayFails = 5
 
 // playTrackFromList starts playing a track from a list, building a queue from the context
 func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
@@ -15,6 +45,7 @@ func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
 		return
 	}
 
+	queueMu.Lock()
 	app.Queue.Tracks = make([]*Track, len(tracks))
 	copy(app.Queue.Tracks, tracks)
 	app.Queue.CurrentIndex = startIdx
@@ -29,6 +60,7 @@ func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
 	}
 
 	app.playCurrentQueueTrack()
+	app.unlockQueue()
 
 	app.setScreen(ScreenNowPlaying)
 	app.refreshRootMenu()
@@ -41,6 +73,7 @@ func (app *MiyooPod) shuffleAllAndPlay() {
 		return
 	}
 
+	queueMu.Lock()
 	app.Queue.Tracks = make([]*Track, len(app.Library.Tracks))
 	copy(app.Queue.Tracks, app.Library.Tracks)
 	app.Queue.Shuffle = true
@@ -48,6 +81,7 @@ func (app *MiyooPod) shuffleAllAndPlay() {
 	app.buildShuffleOrder(0)
 
 	app.playCurrentQueueTrack()
+	app.unlockQueue()
 
 	app.setScreen(ScreenNowPlaying)
 	app.refreshRootMenu()
@@ -55,10 +89,12 @@ func (app *MiyooPod) shuffleAllAndPlay() {
 }
 
 // playCurrentQueueTrack loads and plays the current track in the queue
-func (app *MiyooPod) playCurrentQueueTrack() {
+// (false: it couldn't). The caller holds queueMu (but the classic UI,
+// which does everything on its own loop).
+func (app *MiyooPod) playCurrentQueueTrack() bool {
 	track := app.getCurrentTrack()
 	if track == nil {
-		return
+		return false
 	}
 
 	// Track song play for analytics
@@ -80,7 +116,8 @@ func (app *MiyooPod) playCurrentQueueTrack() {
 		app.Playing.State = StateStopped
 		app.Playing.Track = nil // Clear track on failure
 		app.showError(fmt.Sprintf("Failed to load audio\n%s", err.Error()))
-		return
+		playFailed(track)
+		return false
 	}
 
 	// Verify playback actually started
@@ -91,7 +128,8 @@ func (app *MiyooPod) playCurrentQueueTrack() {
 		app.Playing.State = StateStopped
 		app.Playing.Track = nil
 		app.showError("Playback failed to start")
-		return
+		playFailed(track)
+		return false
 	}
 
 	app.updateCoverflowForCurrentTrack()
@@ -105,6 +143,16 @@ func (app *MiyooPod) playCurrentQueueTrack() {
 
 	// Persist queue state when track changes
 	app.savePlaybackState()
+	return true
+}
+
+// playFailed: a song couldn't play (the iPod UI says so; showError is the
+// classic UI's).
+func playFailed(t *Track) {
+	if ui := ipodUI; ui != nil {
+		title := t.Title
+		ui.post(func() { ui.showToast("Couldn't play " + title) })
+	}
 }
 
 // getCurrentTrack returns the current track based on queue and shuffle state
@@ -130,7 +178,19 @@ func (app *MiyooPod) togglePlayPause() {
 	if previewActive() {
 		return // (a Listen plays: A on its row pauses it)
 	}
-	if app.Playing == nil || app.Playing.State == StateStopped {
+	if !queueMu.TryLock() {
+		// a song is loading (a skip): it pauses once it plays
+		pausePresses.Add(1)
+		return
+	}
+	app.playPause()
+	app.unlockQueue()
+}
+
+// playPause plays or pauses the current song. Stopped with a song (the end
+// of the queue), it plays it again. The caller holds queueMu.
+func (app *MiyooPod) playPause() {
+	if app.Playing == nil || app.Playing.Track == nil {
 		return
 	}
 	app.mpvTogglePause()
@@ -138,54 +198,84 @@ func (app *MiyooPod) togglePlayPause() {
 	app.drawCurrentScreen()
 }
 
-func (app *MiyooPod) nextTrack() {
-	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
-		return
-	}
-
-	// Determine the max index based on shuffle state
-	maxIdx := len(app.Queue.Tracks) - 1
+// queueMaxIdx: the last play position.
+func (app *MiyooPod) queueMaxIdx() int {
 	if app.Queue.Shuffle && len(app.Queue.ShuffleOrder) > 0 {
-		maxIdx = len(app.Queue.ShuffleOrder) - 1
+		return len(app.Queue.ShuffleOrder) - 1
 	}
+	return len(app.Queue.Tracks) - 1
+}
 
-	app.Queue.CurrentIndex++
-	if app.Queue.CurrentIndex > maxIdx {
-		if app.Queue.Repeat == RepeatAll {
-			app.Queue.CurrentIndex = 0
-		} else {
-			app.Queue.CurrentIndex = maxIdx
-			if queueEnded != nil && app.Playing.State != StateStopped {
-				// the iPod UI says so, and the last song plays on
-				// (ij_endqueue.go)
-				queueEnded(true)
-				return
-			}
-			app.mpvStop()
-			app.Playing.State = StateStopped
+// queueStep moves to the next play position (Repeat All: from the last to
+// the first). false: nothing comes after this song.
+func (app *MiyooPod) queueStep() bool {
+	maxIdx := app.queueMaxIdx()
+	if app.Queue.CurrentIndex < maxIdx {
+		app.Queue.CurrentIndex++
+		return true
+	}
+	if app.Queue.Repeat == RepeatAll {
+		app.Queue.CurrentIndex = 0
+		return true
+	}
+	app.Queue.CurrentIndex = maxIdx
+	return false
+}
+
+// playForward plays the song at the current position; one that won't play
+// is skipped for the next (maxPlayFails in a row at most, then it stops).
+func (app *MiyooPod) playForward() {
+	for fails := 0; !app.playCurrentQueueTrack(); {
+		fails++
+		if fails >= maxPlayFails || !app.queueStep() {
 			return
 		}
 	}
-
-	app.playCurrentQueueTrack()
 }
 
-func (app *MiyooPod) prevTrack() {
+func (app *MiyooPod) nextTrack() {
+	if previewActive() {
+		return // (a Listen has the mixer: its own rows pick its songs)
+	}
+	queueMu.Lock()
+	defer app.unlockQueue()
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		return
 	}
 
-	if app.Playing != nil && app.Playing.Position > 3.0 {
+	if !app.queueStep() {
+		if queueEnded != nil {
+			// the iPod UI says so, and the last song plays on
+			// (ij_endqueue.go)
+			queueEnded(true)
+			return
+		}
+		app.mpvStop()
+		app.Playing.State = StateStopped
+		return
+	}
+
+	app.playForward()
+}
+
+func (app *MiyooPod) prevTrack() {
+	if previewActive() {
+		return // (a Listen has the mixer: its own rows pick its songs)
+	}
+	queueMu.Lock()
+	defer app.unlockQueue()
+	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
+		return
+	}
+
+	if app.Playing != nil && app.Playing.Position > 3.0 && app.Playing.State != StateStopped {
 		app.mpvSeek(-app.Playing.Position)
 		app.NPCacheDirty = true // Force UI update when restarting track
 		return
 	}
 
 	// Determine the max index based on shuffle state
-	maxIdx := len(app.Queue.Tracks) - 1
-	if app.Queue.Shuffle && len(app.Queue.ShuffleOrder) > 0 {
-		maxIdx = len(app.Queue.ShuffleOrder) - 1
-	}
+	maxIdx := app.queueMaxIdx()
 
 	app.Queue.CurrentIndex--
 	if app.Queue.CurrentIndex < 0 {
@@ -200,6 +290,11 @@ func (app *MiyooPod) prevTrack() {
 }
 
 func (app *MiyooPod) handleTrackEnd() {
+	queueMu.Lock()
+	defer app.unlockQueue()
+	if previewActive() || trackEndGen.Load() != loadGen.Load() {
+		return // (a song was loaded since that end: a skip, a Listen)
+	}
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		app.Playing.State = StateStopped
 		return
@@ -210,31 +305,21 @@ func (app *MiyooPod) handleTrackEnd() {
 		return
 	}
 
-	// Determine the max index based on shuffle state
-	maxIdx := len(app.Queue.Tracks) - 1
-	if app.Queue.Shuffle && len(app.Queue.ShuffleOrder) > 0 {
-		maxIdx = len(app.Queue.ShuffleOrder) - 1
-	}
-
-	app.Queue.CurrentIndex++
-	if app.Queue.CurrentIndex > maxIdx {
-		if app.Queue.Repeat == RepeatAll {
-			app.Queue.CurrentIndex = 0
-			app.playCurrentQueueTrack()
-		} else {
-			app.Queue.CurrentIndex = maxIdx
-			app.Playing.State = StateStopped
-			app.NPCacheDirty = true
-			app.refreshRootMenu()
-			app.requestRedraw()
-			if queueEnded != nil {
-				queueEnded(false) // End of the Queue (ij_endqueue.go)
-			}
+	if !app.queueStep() {
+		// the end: stopped at the start of the last song (play plays it
+		// again, NEXT shows the card again)
+		app.Playing.State = StateStopped
+		app.Playing.Position = 0
+		app.NPCacheDirty = true
+		app.refreshRootMenu()
+		app.requestRedraw()
+		if queueEnded != nil {
+			queueEnded(false) // End of the Queue (ij_endqueue.go)
 		}
 		return
 	}
 
-	app.playCurrentQueueTrack()
+	app.playForward()
 	app.requestRedraw()
 }
 
@@ -298,7 +383,11 @@ func (app *MiyooPod) cycleRepeat() {
 }
 
 func (app *MiyooPod) buildShuffleOrder(startIdx int) {
-	n := len(app.Queue.Tracks)
+	app.Queue.ShuffleOrder = shuffleOrder(len(app.Queue.Tracks), startIdx)
+}
+
+// shuffleOrder: the n tracks in a random order, startIdx first.
+func shuffleOrder(n, startIdx int) []int {
 	order := make([]int, n)
 	for i := range order {
 		order[i] = i
@@ -313,7 +402,7 @@ func (app *MiyooPod) buildShuffleOrder(startIdx int) {
 			break
 		}
 	}
-	app.Queue.ShuffleOrder = order
+	return order
 }
 
 func (app *MiyooPod) updateCoverflowForCurrentTrack() {

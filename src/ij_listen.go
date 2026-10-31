@@ -330,7 +330,11 @@ func (ui *IpodUI) previewStop() {
 		pl.State = StatePaused
 		if p.userWasPlaying {
 			// (play reloads the track into the mixer at its place)
-			go app.mpvTogglePause()
+			go func() {
+				queueMu.Lock() // (not over a skip being loaded)
+				app.mpvTogglePause()
+				app.unlockQueue()
+			}()
 		}
 	}
 	app.NPCacheDirty = true

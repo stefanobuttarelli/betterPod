@@ -1028,6 +1028,10 @@ func (app *MiyooPod) loadLibraryJSON() error {
 	return nil
 }
 
+// rateProbeMiss: the last track whose sample rate couldn't be read (only
+// the poller uses it).
+var rateProbeMiss *Track
+
 // fillTrackTechInfo lazily populates the track's sample rate and average bitrate
 // (used by the Now Playing format badge). Cheap and idempotent: it only reads the
 // file header / stats the file when a value is still missing.
@@ -1036,11 +1040,13 @@ func (app *MiyooPod) fillTrackTechInfo(track *Track, duration float64) {
 		return
 	}
 
-	if track.SampleRate == 0 {
+	if track.SampleRate == 0 && rateProbeMiss != track {
 		if sr := probeSampleRate(track.Path); sr > 0 {
 			track.SampleRate = sr
 			app.NPCacheDirty = true
 			app.requestRedraw()
+		} else {
+			rateProbeMiss = track // (not read again every second)
 		}
 	}
 

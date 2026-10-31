@@ -205,18 +205,23 @@ func (ui *IpodUI) upNextView() *View {
 func (ui *IpodUI) playQueuePos(pos int, t *Track) {
 	app := ui.app
 	q := app.Queue
-	if q == nil || pos >= q.length() || q.trackAt(pos) != t {
+	if q == nil || pos >= q.length() || q.trackAt(pos) != t || previewActive() {
 		return
 	}
 	// the songs jumped over won't play: no longer "queued"
 	for p := q.CurrentIndex + 1; p < pos; p++ {
 		delete(queuedMarks, q.trackAt(p))
 	}
-	q.CurrentIndex = pos
 	skipDir = 1
 	v0 := ui.topScreen()
 	go func() {
-		app.playCurrentQueueTrack()
+		// (after a skip being loaded, the queue as it is then)
+		queueMu.Lock()
+		if pos < q.length() && q.trackAt(pos) == t {
+			q.CurrentIndex = pos
+			app.playCurrentQueueTrack()
+		}
+		app.unlockQueue() // (before postSure: it may wait for the UI)
 		ui.postSure(func() {
 			ui.onTrackChanged()
 			if ui.topScreen() == v0 {

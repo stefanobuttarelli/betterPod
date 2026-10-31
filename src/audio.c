@@ -2,6 +2,7 @@
 #include "SDL_mixer.h"
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 
 static Mix_Music *current_music = NULL;
@@ -27,6 +28,11 @@ static int chunk_for(int rate) {
 // (owned here: freed on the next load, on a rate change and on quit)
 //
 static void *current_music_data = NULL;
+
+// music_mu: current_music, current_music_data and cached_duration are
+// freed by a load (a skip's goroutine) while the poller reads the state:
+// one at a time. The mixer's callback never takes it (no wait there).
+static pthread_mutex_t music_mu = PTHREAD_MUTEX_INITIALIZER;
 
 static void on_music_finished() {
     music_finished_flag = 1;
@@ -159,6 +165,7 @@ int audio_set_rate(int rate) {
     Uint16 fmt = 0;
     if (rate < 8000 || rate > 384000 || rate == cur_rate) return 0;
     if (onion_mode) return 0; // MI_AO stays at 44.1 kHz (SDL_mixer resamples)
+    pthread_mutex_lock(&music_mu);
     free_current();
     Mix_CloseAudio();
     if (Mix_OpenAudio(rate, AUDIO_F32SYS, 2, chunk_for(rate)) < 0) {
@@ -168,6 +175,7 @@ int audio_set_rate(int rate) {
             Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0) {
             c_logf("Mix_OpenAudio failed: %s", SDL_GetError());
             cur_rate = 0;
+            pthread_mutex_unlock(&music_mu);
             return -1;
         }
     }
@@ -178,11 +186,23 @@ int audio_set_rate(int rate) {
     Mix_HookMusicFinished(on_music_finished);
     Mix_VolumeMusic(last_volume);
     music_finished_flag = 0;
+    pthread_mutex_unlock(&music_mu);
     return 0;
+}
+
+// audio_unload frees the current track (the Miyoo: before the next one is
+// read into RAM, so the two never take memory together).
+void audio_unload(void) {
+    pthread_mutex_lock(&music_mu);
+    free_current();
+    cached_duration = 0.0;
+    music_finished_flag = 0; // (a halt is no song's end)
+    pthread_mutex_unlock(&music_mu);
 }
 
 // Load from file path (streaming from SD card - fallback)
 int audio_load(const char *path) {
+    pthread_mutex_lock(&music_mu);
     if (current_music) {
         Mix_FreeMusic(current_music);
         current_music = NULL;
@@ -195,10 +215,12 @@ int audio_load(const char *path) {
     current_music = Mix_LoadMUS(path);
     if (!current_music) {
         c_logf("Mix_LoadMUS failed: %s", Mix_GetError());
+        pthread_mutex_unlock(&music_mu);
         return -1;
     }
 
     cached_duration = Mix_MusicDuration(current_music);
+    pthread_mutex_unlock(&music_mu);
     return 0;
 }
 
@@ -206,6 +228,7 @@ int audio_load(const char *path) {
 // Eliminates SD card I/O during playback - SDL_mixer reads from RAM.
 // Returns 0 on success, -1 on failure. On failure, caller must NOT free data (we do).
 int audio_load_mem(void *data, int size) {
+    pthread_mutex_lock(&music_mu);
     if (current_music) {
         Mix_FreeMusic(current_music);
         current_music = NULL;
@@ -222,6 +245,7 @@ int audio_load_mem(void *data, int size) {
         c_logf("SDL_RWFromMem failed: %s", SDL_GetError());
         free(current_music_data);
         current_music_data = NULL;
+        pthread_mutex_unlock(&music_mu);
         return -1;
     }
 
@@ -230,22 +254,30 @@ int audio_load_mem(void *data, int size) {
         c_logf("Mix_LoadMUS_RW failed: %s", Mix_GetError());
         free(current_music_data);
         current_music_data = NULL;
+        pthread_mutex_unlock(&music_mu);
         return -1;
     }
 
     cached_duration = Mix_MusicDuration(current_music);
+    pthread_mutex_unlock(&music_mu);
     c_log("audio_load_mem OK (playing from RAM)");
     return 0;
 }
 
 int audio_play() {
-    if (!current_music) return -1;
-    music_finished_flag = 0;
-    if (Mix_PlayMusic(current_music, 0) < 0) {
-        c_logf("Mix_PlayMusic failed: %s", Mix_GetError());
-        return -1;
+    int r = 0;
+    pthread_mutex_lock(&music_mu);
+    if (!current_music) {
+        r = -1;
+    } else {
+        music_finished_flag = 0;
+        if (Mix_PlayMusic(current_music, 0) < 0) {
+            c_logf("Mix_PlayMusic failed: %s", Mix_GetError());
+            r = -1;
+        }
     }
-    return 0;
+    pthread_mutex_unlock(&music_mu);
+    return r;
 }
 
 void audio_pause() {
@@ -265,9 +297,11 @@ void audio_toggle_pause() {
 }
 
 void audio_stop() {
+    pthread_mutex_lock(&music_mu);
     Mix_HaltMusic();
     music_finished_flag = 0;
     cached_duration = 0.0;
+    pthread_mutex_unlock(&music_mu);
 }
 
 int audio_is_playing() {
@@ -279,12 +313,18 @@ int audio_is_paused() {
 }
 
 double audio_get_position() {
-    if (!current_music || !Mix_PlayingMusic()) return 0.0;
-    return Mix_GetMusicPosition(current_music);
+    double pos = 0.0;
+    pthread_mutex_lock(&music_mu);
+    if (current_music && Mix_PlayingMusic()) pos = Mix_GetMusicPosition(current_music);
+    pthread_mutex_unlock(&music_mu);
+    return pos;
 }
 
 double audio_get_duration() {
-    return cached_duration;
+    pthread_mutex_lock(&music_mu);
+    double d = cached_duration;
+    pthread_mutex_unlock(&music_mu);
+    return d;
 }
 
 // Get duration of an audio file without loading it into the player
@@ -307,8 +347,11 @@ double audio_get_file_duration(const char *path) {
 }
 
 int audio_seek(double position) {
-    if (!current_music) return -1;
-    return Mix_SetMusicPosition(position);
+    int r = -1;
+    pthread_mutex_lock(&music_mu);
+    if (current_music) r = Mix_SetMusicPosition(position);
+    pthread_mutex_unlock(&music_mu);
+    return r;
 }
 
 void audio_set_volume(int volume) {
@@ -332,7 +375,11 @@ typedef struct {
     int finished;
 } AudioState;
 
+// audio_get_state leaves the "finished" flag set: only audio_check_finished
+// takes it (a Listen's rows read the state on every refresh, and its
+// follower would miss the song's end).
 void audio_get_state(AudioState *state) {
+    pthread_mutex_lock(&music_mu);
     state->position = 0.0;
     state->duration = cached_duration;
     state->is_playing = 0;
@@ -345,13 +392,12 @@ void audio_get_state(AudioState *state) {
         state->is_paused = Mix_PausedMusic();
     }
 
-    if (music_finished_flag) {
-        music_finished_flag = 0;
-        state->finished = 1;
-    }
+    state->finished = music_finished_flag != 0;
+    pthread_mutex_unlock(&music_mu);
 }
 
 void audio_quit() {
+    pthread_mutex_lock(&music_mu);
     if (current_music) {
         Mix_FreeMusic(current_music);
         current_music = NULL;
@@ -360,6 +406,7 @@ void audio_quit() {
         free(current_music_data);
         current_music_data = NULL;
     }
+    pthread_mutex_unlock(&music_mu);
     Mix_CloseAudio();
     Mix_Quit();
 }

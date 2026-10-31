@@ -52,5 +52,10 @@ func (ui *IpodUI) playGenius() {
 		ui.showToast("No songs in your library yet")
 		return
 	}
+	// playSong keeps the current song playing when it is the first: the
+	// list wouldn't start, so it goes last
+	if p := ui.app.Playing; len(tracks) > 1 && tracks[0] == p.Track {
+		tracks = append(tracks[1:], tracks[0])
+	}
 	ui.playSong(tracks, 0, true)
 }

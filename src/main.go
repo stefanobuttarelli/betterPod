@@ -736,6 +736,11 @@ func audioStop() {
 	C.audio_stop()
 }
 
+// audioUnload frees the current track (and its copy in RAM).
+func audioUnload() {
+	C.audio_unload()
+}
+
 func sdlCleanup() {
 	C.audio_quit()
 	C.quit()
@@ -783,6 +788,8 @@ func audioSetVolume(volume int) {
 	C.audio_set_volume(C.int(volume * 128 / 100))
 }
 
+// audioCheckFinished: the song came to its end (the flag is taken: only
+// one reader sees it).
 func audioCheckFinished() bool {
 	return C.audio_check_finished() != 0
 }

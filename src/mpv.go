@@ -63,10 +63,12 @@ func (app *MiyooPod) startPlaybackPoller() {
 					app.requestRedraw()
 				}
 			}
-			if state.Finished && atomic.LoadInt32(&trackLoading) == 0 {
+			gen := loadGen.Load()
+			if audioCheckFinished() && atomic.LoadInt32(&trackLoading) == 0 {
 				// Defer to main loop — avoids racing on Queue/Playing state.
 				// (A track being loaded stops the previous one, which also
 				// says "finished": that's no track end.)
+				trackEndGen.Store(gen)
 				app.TrackEndPending = true
 				app.requestRedraw()
 			}
@@ -108,6 +110,10 @@ var trackLoading int32
 // audioLoadMu: mpvLoadFile, one at a time.
 var audioLoadMu sync.Mutex
 
+// loadGen counts the loads; trackEndGen is the count when the poller saw a
+// song end (a skip loaded since then: that end is old news).
+var loadGen, trackEndGen atomic.Int64
+
 func (app *MiyooPod) mpvLoadFile(path string) error {
 	// one load at a time: a song picked (loaded in the background) and a
 	// track end (on the UI's loop) must never reopen the audio device
@@ -116,6 +122,10 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 	defer audioLoadMu.Unlock()
 	atomic.StoreInt32(&trackLoading, 1)
 	defer atomic.StoreInt32(&trackLoading, 0)
+	loadGen.Add(1)
+	// (the Miyoo: the last song's read-ahead stops)
+	atomic.AddInt32(&warmGen, 1)
+
 	var maxRAMSize int64 = 48 * 1024 * 1024 // 48MB (hi-res FLAC fits; the H700 has 1GB)
 	if isOnion {
 		maxRAMSize = onionMaxRAMTrack() // the Miyoo has 128 MB
@@ -129,6 +139,11 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 	setMiAOVolume(app.SystemVolume)
 
 	if info, err := os.Stat(path); err == nil && info.Size() > 0 && info.Size() < maxRAMSize {
+		if isOnion {
+			// the last song goes before this one is read: the Miyoo
+			// would hold both (up to 2 × 24 MB) for a moment
+			audioUnload()
+		}
 		loadErr := audioLoadFileToMemory(path)
 		if loadErr == nil {
 			playErr := audioPlay()
