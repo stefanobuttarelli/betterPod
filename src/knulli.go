@@ -372,6 +372,9 @@ func init() {
 	if isKnulli || isOnion {
 		backlightAtStart = getBacklightPercent() // remember the starting level before anything dims it
 	}
+	if isKnulli {
+		go watchQuitSignals() // (Onion starts it in onion.go)
+	}
 }
 
 // headphoneJack: wired headphones in the jack (1), not (0), unknown (-1).

@@ -125,7 +125,7 @@ func (ui *IpodUI) onionSleepTick(now time.Time) {
 	}
 	// charging (axp_test on the Mini Plus) is only read near power off
 	if app.Locked && s.mins > 0 && idle >= minute && now.Sub(s.chgRead) > time.Minute {
-		s.charging, s.chgRead = onionCharging(), now
+		s.charging, s.chgRead = onionChargingRead(), now
 	}
 	switch onionSleepAction(app.Locked, s.auto, playing, busy != "", s.charging, idle, s.mins, minute) {
 	case "screen off":
@@ -133,6 +133,11 @@ func (ui *IpodUI) onionSleepTick(now time.Time) {
 		s.auto = true
 		app.toggleLock()
 	case "power off":
+		// the reading above may be a minute old: read it again
+		if s.charging, s.chgRead = onionChargingRead(), now; s.charging {
+			logMsg("Sleep timer: charging, not powering off")
+			break
+		}
 		onionPowerOff(ui, idle)
 	}
 }
@@ -206,6 +211,14 @@ func onionDeepSleep(ui *IpodUI, on bool) {
 	logMsg("Awake: CPU " + readTrim(dir+"scaling_cur_freq") + " kHz, sound back")
 }
 
+// onionWake: on the way out, the clock and the sound as they were before
+// sleeping (a quit while asleep left MI_AO muted at -60 dB).
+func onionWake() {
+	if isOnion && onionSleep.deep && ipodUI != nil {
+		onionDeepSleep(ipodUI, false)
+	}
+}
+
 // onionPowerOff powers the Miyoo off as Onion's deep sleep does for an app:
 // betterPod quits (saving playback), and runtime.sh powers off.
 func onionPowerOff(ui *IpodUI, idle time.Duration) {
@@ -252,13 +265,6 @@ func onionPanel(on bool) {
 	} else {
 		logMsg("Screen panel off")
 	}
-}
-
-// onionScreenOff: the Miyoo with its screen off. The header's Wi-Fi icon
-// isn't read then (betterPod 0.63.4 may run iw or wpa_cli for its signal
-// every 5 s; nothing to see, and the CPU can stay down).
-func onionScreenOff() bool {
-	return isOnion && globalApp != nil && globalApp.Locked
 }
 
 // onionLockedFrame: how often the loop wakes with the screen off. POWER

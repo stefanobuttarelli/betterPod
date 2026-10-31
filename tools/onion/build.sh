@@ -41,6 +41,21 @@ CGO_LDFLAGS="-L$ROOT/onion/betterpod/libs -Wl,--allow-shlib-undefined" \
     -ldflags="-s -w" \
     -o build/betterpod-onion src/*.go
 
+# what the Miyoo can load (CLAUDE.md): only these libraries, glibc 2.28 at
+# most, and MI_AO_SendFrame exported for libSDL2.so (when readelf is there)
+if command -v readelf > /dev/null 2>&1; then
+  B=build/betterpod-onion
+  extra=$(readelf -d "$B" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' |
+    grep -vxE 'libSDL2\.so|libSDL2_mixer\.so|libc\.so\.6|libm\.so\.6|libpthread\.so\.0|libdl\.so\.2' || true)
+  [ -z "$extra" ] || { echo "Libraries the Miyoo doesn't have: $extra" >&2; exit 1; }
+  glibc=$(readelf --dyn-syms -W "$B" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -n 1)
+  if [ -n "$glibc" ] && [ "$(printf '%s\n2.28\n' "$glibc" | sort -V | tail -n 1)" != 2.28 ]; then
+    echo "Needs glibc $glibc (the Miyoo has 2.28)" >&2; exit 1
+  fi
+  readelf --dyn-syms -W "$B" | grep -w MI_AO_SendFrame | grep -qv UND ||
+    { echo "MI_AO_SendFrame isn't exported" >&2; exit 1; }
+fi
+
 # the folder for the SD card: App/betterpod
 APP=dist/sdcard/App/betterpod
 rm -rf dist/sdcard
@@ -51,6 +66,7 @@ cp LICENSE "$APP/LICENSE"
 cp port/betterpod/LICENSE.ipod.js port/betterpod/LICENSE.MiyooPod port/betterpod/LICENSE.puzzles port/betterpod/LICENSE.scowl "$APP/"
 cp build/betterpod-onion "$APP/betterpod"
 find "$APP" -name .DS_Store -delete
+find "$APP" -name '*.log' -delete
 rm -rf "$APP/conf"
 chmod 755 "$APP/betterpod" "$APP/launch.sh"
 

@@ -1331,7 +1331,7 @@ func batteryInfo() (int, bool) {
 
 func batteryCharging() bool {
 	if isOnion {
-		return onionCharging()
+		return onionChargingNow() // (read in the background: axp_test may take 2 s)
 	}
 	for _, p := range []string{"/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
 		if b, err := os.ReadFile(p); err == nil {

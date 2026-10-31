@@ -6,7 +6,7 @@ package main
 //
 // The Wi-Fi is read every 5 s in the background (/sys/class/net, and the
 // signal from /proc/net/wireless, iw or wpa_cli), so the header only reads
-// a number.
+// a number. Not with the screen off: iw or wpa_cli would run for nothing.
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func wifiLevel() int { return int(atomic.LoadInt32(&wifiState)) }
 func startWifiWatch() {
 	go func() {
 		for {
-			if !onionScreenOff() { // (the Miyoo with the screen off: not read, onion_sleep.go)
+			if globalApp == nil || !globalApp.Locked { // (the screen off: nothing to see, and the CPU can stay down)
 				atomic.StoreInt32(&wifiState, int32(readWifi()))
 			}
 			time.Sleep(5 * time.Second)
@@ -187,11 +187,16 @@ func statusKey() int {
 	return k
 }
 
-var wifiIcons = map[string]*image.RGBA{}
+var wifiIcons = map[wifiKey]*image.RGBA{}
+
+type wifiKey struct {
+	n int
+	c Col
+}
 
 // wifiIcon: the dot and three arcs, the first n solid and the rest faint.
 func wifiIcon(n int, c Col) *image.RGBA {
-	key := fmt.Sprint(n, c)
+	key := wifiKey{n, c}
 	if img := wifiIcons[key]; img != nil {
 		return img
 	}
@@ -254,10 +259,16 @@ func (ui *IpodUI) drawStatusIcons(dst *image.RGBA, left, y float64, c Col, white
 // headsetIcon: headphones, with the Bluetooth mark between the cups when
 // bt, and under them the Wi-Fi's strength as five dots (bars of 0-5; none
 // when there is no Wi-Fi: the headphones are then centred). 15 × 14 CSS px.
-var headsetIcons = map[string]*image.RGBA{}
+var headsetIcons = map[headsetKey]*image.RGBA{}
+
+type headsetKey struct {
+	bars int
+	bt   bool
+	c    Col
+}
 
 func headsetIcon(bars int, bt bool, c Col) *image.RGBA {
-	key := fmt.Sprint(bars, bt, c)
+	key := headsetKey{bars, bt, c}
 	if img := headsetIcons[key]; img != nil {
 		return img
 	}
@@ -317,7 +328,8 @@ func headsetIcon(bars int, bt bool, c Col) *image.RGBA {
 	return img
 }
 
-// iconTint: the colour of an icon (its most solid pixel).
+// iconTint: the colour of an icon (its most solid pixel). Emptied when the
+// theme changes (updateTheme): the dark theme's icons are new images.
 var iconTints = map[*image.RGBA]Col{}
 
 func iconTint(img *image.RGBA) Col {

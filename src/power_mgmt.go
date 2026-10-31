@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -49,16 +51,37 @@ func (app *MiyooPod) startInactivityMonitor() {
 	}
 }
 
-// exitAppGracefully saves state, restores hardware, and quits cleanly.
-// Called after 2-second power button hold.
+// exitAppGracefully quits after the power button was held 5 s. It runs on
+// a timer's goroutine, so it only stops the main loop: the loop's way out
+// (main.go) saves playback and puts the backlight and the CPU back, without
+// racing the interface.
 func (app *MiyooPod) exitAppGracefully() {
 	logMsg("INFO: Power button held for 5s — exiting gracefully")
-
-	app.savePlaybackState()
-	restoreBrightness()
-	app.restoreCPUGovernor()
-
 	app.Running = false
+}
+
+// watchQuitSignals: a shutdown (SIGTERM from the system, e.g. Onion on a
+// low battery, or Knulli closing the port) saves the queue and position
+// and quits cleanly, through the main loop's way out.
+func watchQuitSignals() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	s := <-ch
+	logMsg("Signal " + s.String() + ": saving and quitting")
+	app := globalApp
+	if app == nil {
+		os.Exit(0)
+	}
+	app.Running = false
+	// if the main loop can't get there in time
+	time.AfterFunc(3*time.Second, func() {
+		logMsg("Signal: the main loop didn't quit in 3 s, quitting here")
+		onionWake()
+		app.savePlaybackState()
+		restoreBrightness()
+		app.restoreCPUGovernor()
+		os.Exit(0)
+	})
 }
 
 // showPowerExitWarning brightens the screen if dimmed and shows the exit warning overlay.
