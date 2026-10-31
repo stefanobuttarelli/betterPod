@@ -1,8 +1,8 @@
 {
-  "version": "0.85",
-  "path": "release/betterpod-v0.85-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.85-knulli.zip",
-  "sha256": "86f2abb1d3db355949b44fa3173f0f9371bdc25b2d0fd567fb2d9a8f9b28994c",
-  "size": 16205789,
-  "notes": "- Listen plays right on the page: A plays and pauses, no Now Playing\n- YouTube previews play (made a plain M4A first)\n- Your music comes back as it was after a preview"
+  "version": "0.86",
+  "path": "release/betterpod-v0.86-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.86-knulli.zip",
+  "sha256": "0d1e24a9310dcca21e2a721808b855ee669265c6526b89be5edd94b64e6d21b8",
+  "size": 16210435,
+  "notes": "- Five Letters: the green letters are already in the next row\n- New Word at any time (START)\n- History of the words played"
 }

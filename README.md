@@ -206,7 +206,7 @@ On the Miyoo:
   - the wheel moves the hand, and A picks up or drops cards;
   - holding A undoes a move, and B (or START) opens the pause menu.
 - **Brick:** left/right move the paddle, and A launches the ball; START pauses it, with its menu.
-- **Five Letters:** A types the key under the cursor, as on a keyboard; with the row full, A sends it, and Y sends it too. B deletes a letter.
+- **Five Letters:** A types the key under the cursor, as on a keyboard; with the row full, A sends it, and Y sends it too. B deletes a letter. The letters found in place (green) are already in the next row. START → New Word gives another word at any time (the one left counts as missed), START → History lists the words played, found or not.
 - **Weather:**
   - in the list, Search for a Place opens the keyboard; choosing a result saves the place;
   - in a forecast, the wheel or d-pad picks the day, A updates the forecast and B goes back;

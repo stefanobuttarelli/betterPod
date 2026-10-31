@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.86 (2026-10-31)
+
+### Added
+- **Five Letters fills in what you've found:** the letters in place (green) are already in the next row; typing fills the other tiles, B leaves them. A letter that is twice in the word is there twice only where both were found.
+- **Five Letters: a new word at any time** (START → New Word): stuck on one, you get another, and the one left counts as missed (its answer shows).
+- **Five Letters: History** (START → History): the words played, newest first, found (in how many tries) or missed, with the day.
+
 ## v0.85 (2026-10-31)
 
 ### Changed

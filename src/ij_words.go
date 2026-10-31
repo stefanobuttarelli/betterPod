@@ -6,9 +6,13 @@ package main
 // best colour of each letter. The game in progress and the statistics are
 // kept when you leave.
 //
-//	arrows  move on the keyboard     A      type the key (ENTER / ⌫ too)
-//	Y       delete a letter          START  send the word (new word when over)
-//	B       back (the game is kept)  X      play / pause, as everywhere
+//	arrows  move on the keyboard     A      type the key; with the row full, send
+//	Y       send the row             B      delete a letter
+//	START   the menu: New Word (at any time: a word left counts as missed),
+//	        History (the words played, found or not)
+//
+// The letters found in place (green) are already in the next row; typing
+// fills the other tiles, and deleting leaves them.
 //
 // The words: the answers are the common five-letter words of SCOWL (Kevin
 // Atkinson, size 35, American and British), without plurals and past
@@ -17,6 +21,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"image"
 	"math"
 	"math/rand"
@@ -74,7 +79,19 @@ type wlStats struct {
 	Streak    int          `json:"streak"`
 	MaxStreak int          `json:"maxStreak"`
 	Dist      [wlTries]int `json:"dist"`
+	History   []wlPast     `json:"history,omitempty"` // the words played, newest last
 }
+
+// wlPast: a word played: found (in how many tries) or not, and when.
+type wlPast struct {
+	Word  string `json:"word"`
+	Won   bool   `json:"won"`
+	Tries int    `json:"tries"`          // found in; or how many were tried
+	Gave  bool   `json:"gave,omitempty"` // a new word asked for before the end
+	When  int64  `json:"when"`
+}
+
+const wlHistoryMax = 300
 
 type wlSave struct {
 	Answer  string   `json:"answer"`
@@ -96,6 +113,7 @@ type WordGame struct {
 	revealAt time.Time // the last row started turning
 	shakeAt  time.Time
 	typedAt  time.Time
+	lastAt   int // the tile typed last (its pop)
 	toast    string
 	toastAt  time.Time
 	bg       *image.RGBA
@@ -130,7 +148,23 @@ func (g *WordGame) load() bool {
 	if len(s.Answer) != wlLen || !wlValid[s.Answer] {
 		return false
 	}
-	g.answer, g.guesses, g.typed = s.Answer, s.Guesses, s.Typed
+	g.answer, g.guesses = s.Answer, s.Guesses
+	g.blankRow()
+	// the letters typed (blanks for the empty tiles; before 0.86 they were
+	// kept in a row from the left: they go into the free tiles)
+	if len(s.Typed) == wlLen {
+		b := []byte(g.typed)
+		for i := 0; i < wlLen; i++ {
+			if b[i] == ' ' && s.Typed[i] >= 'A' && s.Typed[i] <= 'Z' {
+				b[i] = s.Typed[i]
+			}
+		}
+		g.typed = string(b)
+	} else {
+		for i := 0; i < len(s.Typed); i++ {
+			g.typeLetter(s.Typed[i])
+		}
+	}
 	g.settle()
 	if g.over {
 		return false // a finished game: a new word
@@ -156,8 +190,83 @@ func (g *WordGame) newGame() {
 			break
 		}
 	}
-	g.guesses, g.typed, g.over, g.won = nil, "", false, false
+	g.guesses, g.over, g.won = nil, false, false
 	g.revealAt, g.toast = time.Time{}, ""
+	g.blankRow()
+}
+
+// known: the letters found in place (green) in the guesses so far: the
+// next row starts with them (0: not known). A letter found twice in the
+// word is there twice only where both were found.
+func (g *WordGame) known() [wlLen]byte {
+	var k [wlLen]byte
+	for _, w := range g.guesses {
+		if len(w) != wlLen {
+			continue
+		}
+		for i := 0; i < wlLen; i++ {
+			if w[i] == g.answer[i] {
+				k[i] = w[i]
+			}
+		}
+	}
+	return k
+}
+
+// blankRow: the row being typed, empty but for the letters known (blanks
+// for the tiles still to type).
+func (g *WordGame) blankRow() {
+	k := g.known()
+	b := []byte(strings.Repeat(" ", wlLen))
+	for i, c := range k {
+		if c != 0 {
+			b[i] = c
+		}
+	}
+	g.typed = string(b)
+}
+
+// rowFull: every tile of the row has its letter.
+func (g *WordGame) rowFull() bool { return !strings.Contains(g.typed, " ") }
+
+// typeLetter: ch in the first free tile.
+func (g *WordGame) typeLetter(ch byte) {
+	if i := strings.IndexByte(g.typed, ' '); i >= 0 {
+		b := []byte(g.typed)
+		b[i] = ch
+		g.typed = string(b)
+		g.typedAt, g.lastAt = time.Now(), i
+	}
+}
+
+// wlRecord: a word ends (found, missed, or given up): the statistics and
+// the history.
+func (g *WordGame) record(won, gave bool) {
+	g.stats.Played++
+	if won {
+		g.stats.Wins++
+		g.stats.Streak++
+		g.stats.MaxStreak = max(g.stats.MaxStreak, g.stats.Streak)
+		g.stats.Dist[len(g.guesses)-1]++
+	} else {
+		g.stats.Streak = 0
+	}
+	g.stats.History = append(g.stats.History, wlPast{Word: g.answer, Won: won, Tries: len(g.guesses), Gave: gave, When: time.Now().Unix()})
+	if n := len(g.stats.History); n > wlHistoryMax {
+		g.stats.History = g.stats.History[n-wlHistoryMax:]
+	}
+}
+
+// giveUp: a new word before the end: this one counts as missed, and its
+// answer is shown.
+func (g *WordGame) giveUp() {
+	if !g.over && len(g.guesses) > 0 {
+		g.record(false, true)
+	}
+	word := g.answer
+	g.newGame()
+	g.say("It was " + word)
+	g.save()
 }
 
 // settle: over / won from the guesses.
@@ -227,25 +336,31 @@ func (g *WordGame) typeKey(ch byte) {
 	case '-':
 		g.del()
 	default:
-		if len(g.typed) < wlLen {
-			g.typed += string(ch)
-			g.typedAt = time.Now()
-		}
+		g.typeLetter(ch)
 	}
 }
 
+// del: the last letter typed goes (the known ones stay).
 func (g *WordGame) del() {
-	if g.over || len(g.typed) == 0 {
+	if g.over {
 		return
 	}
-	g.typed = g.typed[:len(g.typed)-1]
+	k := g.known()
+	b := []byte(g.typed)
+	for i := wlLen - 1; i >= 0; i-- {
+		if k[i] == 0 && b[i] != ' ' {
+			b[i] = ' '
+			g.typed = string(b)
+			return
+		}
+	}
 }
 
 func (g *WordGame) submit() {
 	if g.over || g.revealing(time.Now()) {
 		return
 	}
-	if len(g.typed) < wlLen {
+	if !g.rowFull() {
 		g.say("Not enough letters")
 		g.shakeAt = time.Now()
 		return
@@ -256,21 +371,53 @@ func (g *WordGame) submit() {
 		return
 	}
 	g.guesses = append(g.guesses, g.typed)
-	g.typed = ""
 	g.revealAt = time.Now()
 	g.settle()
+	g.blankRow() // (with the letters found in place)
 	if g.over {
-		g.stats.Played++
-		if g.won {
-			g.stats.Wins++
-			g.stats.Streak++
-			g.stats.MaxStreak = max(g.stats.MaxStreak, g.stats.Streak)
-			g.stats.Dist[len(g.guesses)-1]++
-		} else {
-			g.stats.Streak = 0
-		}
+		g.record(g.won, false)
 	}
 	g.save() // (kept even if the console is switched off)
+}
+
+// wordsHistoryView: START → History: the words played, newest first.
+func (ui *IpodUI) wordsHistoryView(g *WordGame) *View {
+	v := &View{ID: "fiveletters-history", Title: "History", Kind: KindFull, Empty: "No words played yet"}
+	v.Build = func() []Item {
+		h := g.stats.History
+		var items []Item
+		if n := len(h); n > 0 {
+			found := 0
+			for _, p := range h {
+				if p.Won {
+					found++
+				}
+			}
+			items = append(items, Item{Header: true, Label: fmt.Sprintf("%d %s · %d found", n, pluralize(n, "word", "words"), found)})
+		}
+		for i := len(h) - 1; i >= 0; i-- {
+			p := h[i]
+			when := time.Unix(p.When, 0).Format("2 Jan")
+			sub := ""
+			switch {
+			case p.Won && p.Tries == 1:
+				sub = "Found at the first try · " + when
+			case p.Won:
+				sub = fmt.Sprintf("Found in %d tries · %s", p.Tries, when)
+			case p.Gave:
+				sub = fmt.Sprintf("Missed · a new word after %d %s · %s", p.Tries, pluralize(p.Tries, "try", "tries"), when)
+			default:
+				sub = "Missed · " + when
+			}
+			items = append(items, Item{Label: p.Word[:1] + strings.ToLower(p.Word[1:]), Sublabel: sub, NoArrow: true})
+		}
+		return items
+	}
+	v.Items = v.Build()
+	if len(v.Items) > 1 {
+		v.Index = 1
+	}
+	return v
 }
 
 // ---- keys ----
@@ -293,11 +440,13 @@ func (g *WordGame) OnKey(ui *IpodUI, k Key) bool {
 	case Y: // sends the row (B deletes)
 		g.submit()
 	case START: // the game's menu (every game: START)
-		var opts []SheetOption
-		if g.over {
-			opts = append(opts, SheetOption{Label: "New Word", OnSelect: func() { g.newGame(); ui.dirty = true }})
+		newWord := SheetOption{Label: "New Word", OnSelect: func() { g.newGame(); g.save(); ui.dirty = true }}
+		if !g.over && len(g.guesses) > 0 {
+			// stuck: another word (this one counts as missed)
+			newWord = SheetOption{Label: "New Word (this one is missed)", OnSelect: func() { g.giveUp(); ui.dirty = true }}
 		}
-		ui.gameMenu("Five Letters", opts...)
+		ui.gameMenu("Five Letters", newWord,
+			SheetOption{Label: "History", OnSelect: func() { ui.showView(ui.wordsHistoryView(g), "") }})
 	default:
 		return false
 	}
@@ -312,7 +461,7 @@ func (g *WordGame) OnCenter(ui *IpodUI) {
 	switch {
 	case g.over && !g.revealing(time.Now()):
 		g.newGame()
-	case len(g.typed) == wlLen && ch != '-':
+	case g.rowFull() && ch != '-':
 		g.submit()
 	default:
 		g.typeKey(ch)
@@ -450,7 +599,7 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 		for c := 0; c < wlLen; c++ {
 			cx := x0 + float64(c)*(wlTile+wlGap) + ht + dx
 			ch := ""
-			if c < len(word) {
+			if c < len(word) && word[c] != ' ' {
 				ch = word[c : c+1]
 			}
 			st, hh := wlNone, ht
@@ -471,7 +620,7 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 				}
 			}
 			hw := ht
-			if !shown && ch != "" && c == len(word)-1 && now.Sub(g.typedAt) < 150*time.Millisecond {
+			if !shown && ch != "" && c == g.lastAt && now.Sub(g.typedAt) < 150*time.Millisecond {
 				s := 1 + 0.1*math.Sin(math.Pi*float64(now.Sub(g.typedAt))/float64(150*time.Millisecond))
 				hw, hh = ht*s, ht*s
 			}

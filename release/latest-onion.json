@@ -1,8 +1,8 @@
 {
-  "version": "0.85",
-  "path": "release/betterpod-v0.85-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.85-onion.zip",
-  "sha256": "a6da80d72a2922695cfe52adda1220e3968de3853d2978cfa72cfcfb7a1f57c9",
-  "size": 28343084,
-  "notes": "- Listen plays right on the page: A plays and pauses, no Now Playing\n- YouTube previews play (made a plain M4A first)\n- Your music comes back as it was after a preview"
+  "version": "0.86",
+  "path": "release/betterpod-v0.86-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.86-onion.zip",
+  "sha256": "0dc2aec7da5cbf66c318f8dcd477127911df021d55871c7e40e150f14c2643b4",
+  "size": 28347486,
+  "notes": "- Five Letters: the green letters are already in the next row\n- New Word at any time (START)\n- History of the words played"
 }
