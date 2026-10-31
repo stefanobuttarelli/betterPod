@@ -547,6 +547,7 @@ func (ui *IpodUI) iaItemView(r iaResult, th *Album) *View {
 		err  string
 	}{}
 	v := &View{ID: "iaItem", Title: r.Title, Kind: KindFull}
+	v.onClose = ui.previewStop // (a song playing here stops with the page)
 	v.Build = func() []Item {
 		lic := licenseLabel(r.License)
 		if st.item != nil && st.item.License != "" {
@@ -565,21 +566,13 @@ func (ui *IpodUI) iaItemView(r iaResult, th *Album) *View {
 		if len(it.Groups) == 0 {
 			return append(items, Item{Label: "No audio files betterPod can play", NoArrow: true})
 		}
-		// Listen first: it plays, nothing is kept (ij_listen.go)
-		if songs := iaListenSongs(it); len(songs) > 0 {
-			listen := Item{Label: "Listen", Sublabel: fmt.Sprintf("%d %s, before you download", len(songs), pluralize(len(songs), "song", "songs")),
-				OnSelect: func() {
-					al := &Album{Name: it.Title, Artist: it.Creator}
-					if th != nil {
-						al.ArtImg = th.ArtImg
-					}
-					ui.startListen("ia:"+it.ID, al, songs, func() { ui.refreshView(v) })
-					ui.refreshView(v)
-				}}
-			if l, sub, p := listenState("ia:" + it.ID); l != "" {
-				listen.Label, listen.Sublabel, listen.Progress = l, sub, p
-			}
-			items = append(items, listen)
+		// Listen first: it plays right here, nothing is kept (ij_listen.go)
+		songs := iaListenSongs(it)
+		key := "ia:" + it.ID
+		refresh := func() { ui.refreshView(v) }
+		if len(songs) > 0 {
+			items = append(items, ui.previewRow(key, songs, 0, "Listen",
+				fmt.Sprintf("%d %s, before you download", len(songs), pluralize(len(songs), "song", "songs")), refresh))
 		}
 		for _, g := range iaGroupOrder {
 			fs := it.Groups[g]
@@ -606,7 +599,7 @@ func (ui *IpodUI) iaItemView(r iaResult, th *Album) *View {
 			g := g
 			items = append(items, Item{Label: label,
 				Sublabel: sub,
-				OnSelect: func() { ui.startIADownload(it, g, it.Groups[g]) }})
+				OnSelect: func() { ui.previewStop(); ui.startIADownload(it, g, it.Groups[g]) }})
 		}
 		// the track list shows the first format there is (lossless first)
 		g := ""
@@ -616,14 +609,27 @@ func (ui *IpodUI) iaItemView(r iaResult, th *Album) *View {
 				break
 			}
 		}
-		for _, f := range it.Groups[g] {
+		// the tracks: A plays one (when the preview has the same songs),
+		// Y downloads just that one
+		for n, f := range it.Groups[g] {
 			f := f
 			d := ""
 			if f.Length > 0 {
 				d = formatTrackLength(f.Length)
 			}
-			items = append(items, Item{Label: f.Title, Value: d, NoArrow: true,
-				OnSelect: func() { ui.startIADownload(it, g, []iaFile{f}) }})
+			row := Item{Label: f.Title, Value: d, NoArrow: true,
+				OnSelect: func() { ui.previewStop(); ui.startIADownload(it, g, []iaFile{f}) }}
+			if len(songs) == len(it.Groups[g]) {
+				row = ui.previewRow(key, songs, n, f.Title, "", refresh)
+				if row.Sublabel == "" {
+					row.Value = d
+				}
+			}
+			row.LongPress = []SheetOption{{Label: "Download This Track", OnSelect: func() {
+				ui.previewStop()
+				ui.startIADownload(it, g, []iaFile{f})
+			}}}
+			items = append(items, row)
 		}
 		return items
 	}

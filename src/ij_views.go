@@ -244,13 +244,19 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 			continue
 		}
 		if it.Progress > 0 {
-			// a loading row: the text, and the bar under it
+			// a loading (or playing) row: the text, and the bar under it;
+			// selected, on the list's blue
+			tc, sc := th.text, th.sub
+			if sel {
+				fillVGradient(dst, 0, px(y), px(wCSS), px(y+rh)-px(y), selGrad)
+				tc, sc = colWhite, colWhite
+			}
 			f := face(W700, 14)
 			_, a14 := lineBox(14)
 			_, a12 := lineBox(12)
-			drawText(dst, f, ellipsize(f, it.Label, (wCSS-24)*DPR), 12*DPR, (y+8+a14)*DPR, th.text)
+			drawText(dst, f, ellipsize(f, it.Label, (wCSS-24)*DPR), 12*DPR, (y+8+a14)*DPR, tc)
 			sf := face(W400, 12)
-			drawText(dst, sf, ellipsize(sf, it.Sublabel, (wCSS-24)*DPR), 12*DPR, (y+27+a12)*DPR, th.sub)
+			drawText(dst, sf, ellipsize(sf, it.Sublabel, (wCSS-24)*DPR), 12*DPR, (y+27+a12)*DPR, sc)
 			ui.drawProgressBar(dst, 12, y+46, wCSS-24, it.Progress*100, false)
 			continue
 		}

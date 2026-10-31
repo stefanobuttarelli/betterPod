@@ -16,10 +16,12 @@ func (app *MiyooPod) startPlaybackPoller() {
 	saveTickCount := 0
 
 	for app.Running {
-		if app.Playing != nil && app.Playing.State != StateStopped {
+		if app.Playing != nil && app.Playing.State != StateStopped && !previewActive() { // (a Listen has the mixer, ij_listen.go)
 			state := audioGetState()
 
-			if state.Position >= 0 {
+			if state.Position >= 0 && (state.IsPlaying || state.IsPaused) {
+				// (nothing in the mixer reads as 0: the place is kept, for
+				// play to reload the track there)
 				app.Playing.Position = state.Position
 			}
 			if state.Duration > 0 {

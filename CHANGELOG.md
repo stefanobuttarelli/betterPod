@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.85 (2026-10-31)
+
+### Changed
+- **Listen plays right on the page,** with no Now Playing: A on Listen plays (the row shows the song, the time and a bar), A again pauses, and the songs follow one another. On an Internet Archive item, A on a track plays that one, and Y downloads just it (A downloaded it before). Your own music is set aside meanwhile, and comes back as it was (playing or paused, at its place) when you leave the page, choose Download, or the last song ends.
+
+### Fixed
+- **Listen on YouTube didn't play** (an empty Now Playing): YouTube's audio comes as a fragmented MP4, which the player can't read; it is now made a plain M4A first, as for a download.
+- **A song's place is kept** while nothing is in the player (after a preview, or a sample-rate switch): play goes on from there instead of from the start.
+
 ## v0.84 (2026-10-31)
 
 ### Changed

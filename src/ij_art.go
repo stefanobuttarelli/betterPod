@@ -399,9 +399,6 @@ func (ui *IpodUI) onArtLoaded() {
 
 // trackAlbum finds the album of a track.
 func (ui *IpodUI) trackAlbum(t *Track) *Album {
-	if a := listenAlbumFor(t); a != nil {
-		return a // (a Listen song: its item's picture)
-	}
 	if t == nil || ui.app.Library == nil {
 		return nil
 	}

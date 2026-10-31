@@ -1,8 +1,8 @@
 {
-  "version": "0.84",
-  "path": "release/betterpod-v0.84-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.84-onion.zip",
-  "sha256": "1c77093ccf6394865fea6eb3c7ca5b99cd5c7d7cca0a680760101f7014578113",
-  "size": 28340217,
-  "notes": "- YouTube: the search options are by the search bar's gear\n- A thin bar over the results says what they are"
+  "version": "0.85",
+  "path": "release/betterpod-v0.85-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.85-onion.zip",
+  "sha256": "a6da80d72a2922695cfe52adda1220e3968de3853d2978cfa72cfcfb7a1f57c9",
+  "size": 28343084,
+  "notes": "- Listen plays right on the page: A plays and pauses, no Now Playing\n- YouTube previews play (made a plain M4A first)\n- Your music comes back as it was after a preview"
 }

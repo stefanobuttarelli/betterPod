@@ -61,12 +61,8 @@ func (app *MiyooPod) playCurrentQueueTrack() {
 		return
 	}
 
-	// Track song play for analytics (not a Listen's, ij_listen.go)
-	if !isListenPath(track.Path) {
-		TrackSongPlayed(track)
-	} else {
-		listenWait(track.Path) // (a Listen song still coming)
-	}
+	// Track song play for analytics
+	TrackSongPlayed(track)
 
 	app.Playing.Track = track
 	app.Playing.State = StatePlaying
@@ -131,6 +127,9 @@ func (app *MiyooPod) getCurrentTrack() *Track {
 }
 
 func (app *MiyooPod) togglePlayPause() {
+	if previewActive() {
+		return // (a Listen plays: A on its row pauses it)
+	}
 	if app.Playing == nil || app.Playing.State == StateStopped {
 		return
 	}

@@ -1,15 +1,18 @@
 package main
 
 // ij_listen.go — Listen, on an Internet Archive item's page and a YouTube
-// video's or playlist's: its songs play before (and without) a download.
+// video's or playlist's: a song plays right there, with play and pause on
+// its row, before (and without) a download. No Now Playing: the page stays,
+// with Download under it.
 //
 // The songs are fetched one after the other into the database folder's
-// tmp/listen (not the music folder: they don't join the library), and the
-// first one plays as soon as it is whole; the next ones keep coming while
-// it plays. Skipping to one that hasn't come yet waits for it
-// (listenWait, from playCurrentQueueTrack). A new Listen empties the
-// folder first, so it never holds more than one item's songs. Now Playing
-// shows the item's picture (listenAlbumFor, from trackAlbum).
+// tmp/listen (not the music folder: they don't join the library), the one
+// asked for first; it plays once it is whole (YouTube's audio, fragmented
+// MP4, is made a plain M4A first, as for a download), then the next one,
+// to the last. The user's own music is set aside meanwhile (paused, its
+// queue and place kept) and comes back as it was when the preview stops:
+// leaving the page, Download, or the last song's end. The playback poller
+// leaves the mixer alone while a preview plays (previewActive).
 
 import (
 	"context"
@@ -24,7 +27,7 @@ import (
 	"time"
 )
 
-// listenSong: one song to listen to: its tags, and how to get its file.
+// listenSong: one song to listen to: its title, and how to get its file.
 type listenSong struct {
 	Title    string
 	Duration float64
@@ -32,163 +35,180 @@ type listenSong struct {
 	fetch    func(ctx context.Context, dst string, progress func(got, total int64)) error // into dst
 }
 
-type listenSession struct {
-	key    string // what is listened to (the item, the video)
+type preview struct {
+	key    string // the page's item
+	songs  []listenSong
 	cancel context.CancelFunc
-	album  *Album // the item's name, artist and picture (Now Playing)
-	tracks []*Track
 
 	mu      sync.Mutex
-	ready   map[string]chan struct{} // closed when the song's file is whole
-	got     int64                    // the first song: bytes so far
-	total   int64
-	playing bool   // the first song started
-	err     string // the first song couldn't be fetched
+	files   []string        // where each song goes
+	ready   []chan struct{} // closed when its file is whole (or failed)
+	failed  []string        // why a song couldn't come ("" when it came)
+	got     []int64         // bytes so far, by song
+	total   []int64
+	cur     int  // the song asked for
+	loaded  bool // it is in the mixer
+	paused  bool
+	waiting bool // for its file
+	err     string
+
+	// the user's own music, set aside
+	userWasPlaying bool
 }
 
 var (
-	listenMu  sync.Mutex
-	listenCur *listenSession
+	previewMu  sync.Mutex
+	previewCur *preview
 )
 
 func listenDir() string { return filepath.Join(dataDir(), "tmp", "listen") }
 
-// listenWait: a song of the Listen session that hasn't come yet is waited
-// for (at most 3 minutes, or until another Listen starts). Player goroutine.
-func listenWait(path string) {
-	listenMu.Lock()
-	s := listenCur
-	listenMu.Unlock()
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	ch := s.ready[path]
-	s.mu.Unlock()
-	if ch == nil {
-		return
-	}
-	select {
-	case <-ch:
-	case <-time.After(3 * time.Minute):
-	}
+// previewActive: a preview has the mixer (the poller leaves it alone).
+func previewActive() bool {
+	previewMu.Lock()
+	defer previewMu.Unlock()
+	return previewCur != nil
 }
 
-// isListenPath: a song of a Listen (not counted in the statistics, not
-// kept as the queue to come back to).
-func isListenPath(p string) bool {
-	return strings.HasPrefix(p, listenDir()+string(filepath.Separator))
+// previewRow: what a song's row of key says: playing or paused, and where
+// (ok false: not this one).
+type previewInfo struct {
+	ok, loading, paused bool
+	cur                 int
+	pos, dur, progress  float64
+	err                 string
 }
 
-// listenPlayingNow: a Listen song is playing (or paused) now.
-func listenPlayingNow() bool {
-	ui := ipodUI
-	if ui == nil || ui.app.Playing == nil {
-		return false
+func previewState(key string) previewInfo {
+	previewMu.Lock()
+	p := previewCur
+	previewMu.Unlock()
+	if p == nil || p.key != key {
+		return previewInfo{}
 	}
-	p := ui.app.Playing
-	return p.Track != nil && p.State != StateStopped && isListenPath(p.Track.Path)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	in := previewInfo{ok: true, cur: p.cur, paused: p.paused, err: p.err}
+	if !p.loaded {
+		in.loading = true
+		if t := p.total[p.cur]; t > 0 {
+			in.progress = float64(p.got[p.cur]) / float64(t)
+		}
+		return in
+	}
+	st := audioGetState()
+	in.pos, in.dur = st.Position, st.Duration
+	if in.dur <= 0 {
+		in.dur = p.songs[p.cur].Duration
+	}
+	if in.dur > 0 {
+		in.progress = in.pos / in.dur
+	}
+	return in
 }
 
-// listenAlbumFor: the album of a Listen song (its item's picture).
-func listenAlbumFor(t *Track) *Album {
-	if t == nil || !isListenPath(t.Path) {
-		return nil
+// previewRow: the row of song i of a page's preview (the Listen row is
+// song 0 with label Listen): its label, sublabel and bar.
+func (ui *IpodUI) previewRow(key string, songs []listenSong, i int, label, sub string, refresh func()) Item {
+	it := Item{Label: label, Sublabel: sub, NoArrow: true,
+		OnSelect: func() { ui.previewToggle(key, songs, i, refresh) }}
+	in := previewState(key)
+	if !in.ok || in.cur != i {
+		return it
 	}
-	listenMu.Lock()
-	defer listenMu.Unlock()
-	if listenCur != nil {
-		return listenCur.album
-	}
-	return nil
-}
-
-// listenState: what the Listen row says for key ("" when not this one).
-func listenState(key string) (label, sub string, progress float64) {
-	listenMu.Lock()
-	s := listenCur
-	listenMu.Unlock()
-	if s == nil || s.key != key {
-		return "", "", 0
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	switch {
-	case s.err != "":
-		return "Couldn't play it", s.err + " · press [A] to try again", 0
-	case s.playing && listenPlayingNow():
-		return "Now Playing", "Press [A] to see it", 0
-	case s.playing:
-		return "", "", 0 // (heard, and something else plays now: Listen again)
-	case s.total > 0:
-		p := float64(s.got) / float64(s.total)
-		return "Loading…", fmt.Sprintf("%d%% of the first song", int(p*100)), max(p, 0.02)
+	case in.err != "":
+		it.Sublabel = in.err + " · press [A] to try again"
+	case in.loading:
+		it.Label, it.Sublabel = "Loading…", fmt.Sprintf("%d%% · %s", int(in.progress*100), songs[i].Title)
+		it.Progress = max(in.progress, 0.02)
+	default:
+		state := "Playing"
+		if in.paused {
+			state = "Paused · press [A] to play"
+		}
+		it.Label = songs[i].Title
+		it.Sublabel = fmt.Sprintf("%s · %s of %s", state, formatTrackLength(in.pos), formatTrackLength(in.dur))
+		it.Progress = max(in.progress, 0.01)
 	}
-	return "Loading…", "Getting the first song", 0.02
+	return it
 }
 
-// startListen plays songs (key: the item's own, for its row) with the
-// item's name, artist and picture; refresh redraws its page.
-func (ui *IpodUI) startListen(key string, album *Album, songs []listenSong, refresh func()) {
+// previewToggle: A on a song's row: it plays (fetched first), or pauses,
+// or plays on.
+func (ui *IpodUI) previewToggle(key string, songs []listenSong, i int, refresh func()) {
+	previewMu.Lock()
+	p := previewCur
+	previewMu.Unlock()
+	if p != nil && p.key == key && p.cur == i && p.err == "" {
+		p.mu.Lock()
+		if p.loaded {
+			p.paused = !p.paused
+			if p.paused {
+				audioPause()
+			} else {
+				audioResume()
+			}
+		}
+		p.mu.Unlock()
+		refresh()
+		return
+	}
+	if p != nil && p.key == key && p.err == "" {
+		ui.previewPlay(p, i, refresh) // another song of the same page
+		return
+	}
+	ui.previewStop()
+	ui.previewStart(key, songs, i, refresh)
+}
+
+func (ui *IpodUI) previewStart(key string, songs []listenSong, first int, refresh func()) {
 	if len(songs) == 0 {
 		return
-	}
-	listenMu.Lock()
-	old := listenCur
-	listenMu.Unlock()
-	if old != nil && old.key == key && old.err == "" && (!old.playing || listenPlayingNow()) {
-		if old.playing {
-			ui.showNowPlaying() // already this one
-		}
-		return
-	}
-	if old != nil {
-		old.cancel()
-	}
-	// what was being listened to before goes (unless it is playing now)
-	if p := ui.app.Playing; p != nil && p.Track != nil && isListenPath(p.Track.Path) {
-		ui.clearNowPlaying()
 	}
 	os.RemoveAll(listenDir())
 	os.MkdirAll(listenDir(), 0o755)
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &listenSession{key: key, cancel: cancel, album: album, ready: map[string]chan struct{}{}}
-	for i, sg := range songs {
-		t := &Track{Path: filepath.Join(listenDir(), fmt.Sprintf("%02d%s", i+1, sg.Ext)), Title: sg.Title,
-			Artist: album.Artist, AlbumArtist: album.Artist, Album: album.Name, TrackNum: i + 1, TrackTotal: len(songs),
-			Duration: sg.Duration}
-		s.tracks = append(s.tracks, t)
-		s.ready[t.Path] = make(chan struct{})
+	p := &preview{key: key, songs: songs, cancel: cancel, cur: first,
+		got: make([]int64, len(songs)), total: make([]int64, len(songs)), failed: make([]string, len(songs))}
+	for i, s := range songs {
+		p.files = append(p.files, filepath.Join(listenDir(), fmt.Sprintf("%02d%s", i+1, s.Ext)))
+		p.ready = append(p.ready, make(chan struct{}))
 	}
-	listenMu.Lock()
-	listenCur = s
-	listenMu.Unlock()
-	logMsg(fmt.Sprintf("Listen: %q, %d songs", album.Name, len(songs)))
-	tick := time.NewTicker(200 * time.Millisecond)
+	// the user's music is set aside: paused, its queue and place kept
+	app := ui.app
+	if pl := app.Playing; pl != nil && pl.Track != nil && pl.State == StatePlaying {
+		p.userWasPlaying = true
+	}
+	if pl := app.Playing; pl != nil && pl.Track != nil && pl.State != StateStopped {
+		pl.State = StatePaused
+		audioPause()
+	}
+	previewMu.Lock()
+	previewCur = p
+	previewMu.Unlock()
+	logMsg(fmt.Sprintf("Listen: %s, %d songs, from %d", key, len(songs), first+1))
+	// the songs come one after the other, the one asked for first
 	go func() {
-		defer tick.Stop()
-		for {
-			select {
-			case <-tick.C:
-				ui.post(refresh)
-			case <-ctx.Done():
-				return
+		order := []int{first}
+		for i := range songs {
+			if i != first {
+				order = append(order, i)
 			}
 		}
-	}()
-	go func() {
-		for i, sg := range songs {
-			t := s.tracks[i]
-			progress := func(got, total int64) {
-				if i == 0 {
-					s.mu.Lock()
-					s.got, s.total = got, total
-					s.mu.Unlock()
-				}
+		for _, i := range order {
+			if ctx.Err() != nil {
+				return
+			}
+			dst := p.files[i]
+			prog := func(got, total int64) {
+				p.mu.Lock()
+				p.got[i], p.total[i] = got, total
+				p.mu.Unlock()
 			}
 			var err error
 			for try := 0; try < 3; try++ {
-				if err = sg.fetch(ctx, t.Path+".part", progress); err == nil || ctx.Err() != nil {
+				if err = songs[i].fetch(ctx, dst+".part", prog); err == nil || ctx.Err() != nil {
 					break
 				}
 				time.Sleep(2 * time.Second)
@@ -197,42 +217,106 @@ func (ui *IpodUI) startListen(key string, album *Album, songs []listenSong, refr
 				return
 			}
 			if err == nil {
-				err = os.Rename(t.Path+".part", t.Path)
+				err = os.Rename(dst+".part", dst)
 			}
+			p.mu.Lock()
 			if err != nil {
-				logMsg(fmt.Sprintf("Listen: %q: %v", sg.Title, err))
-				if i == 0 {
-					s.mu.Lock()
-					s.err = iaErrText(err)
-					s.mu.Unlock()
-					cancel()
-					ui.post(refresh)
+				logMsg(fmt.Sprintf("Listen: %q: %v", songs[i].Title, err))
+				p.failed[i] = iaErrText(err)
+			}
+			close(p.ready[i])
+			p.mu.Unlock()
+		}
+	}()
+	// the page is redrawn while it plays (the time, the bar), and the next
+	// song follows the end of one
+	go func() {
+		tick := time.NewTicker(250 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+			p.mu.Lock()
+			loaded, paused, cur := p.loaded, p.paused, p.cur
+			p.mu.Unlock()
+			if loaded && !paused && audioCheckFinished() {
+				if cur+1 < len(songs) {
+					ui.postSure(func() { ui.previewPlay(p, cur+1, refresh) })
+				} else {
+					ui.postSure(func() { ui.previewStop(); refresh() })
 					return
 				}
-				// a song that won't come is skipped: its wait ends, it fails
 			}
-			s.mu.Lock()
-			close(s.ready[t.Path])
-			s.mu.Unlock()
-			if i == 0 && err == nil {
-				s.mu.Lock()
-				s.playing = true
-				s.mu.Unlock()
-				app := ui.app
-				go func() {
-					app.Queue.Shuffle = false // (in its own order)
-					app.playTrackFromList(s.tracks, 0)
-					ui.post(func() {
-						ui.onTrackChanged()
-						ui.showNowPlaying()
-						refresh()
-					})
-				}()
-			}
+			ui.post(refresh)
 		}
-		tick.Stop()
+	}()
+	ui.previewPlay(p, first, refresh)
+}
+
+// previewPlay: song i of the preview p plays as soon as its file is whole.
+func (ui *IpodUI) previewPlay(p *preview, i int, refresh func()) {
+	p.mu.Lock()
+	p.cur, p.loaded, p.paused, p.err = i, false, false, ""
+	ready, file := p.ready[i], p.files[i]
+	p.mu.Unlock()
+	audioStop()
+	refresh()
+	go func() {
+		<-ready
+		previewMu.Lock()
+		still := previewCur == p
+		previewMu.Unlock()
+		p.mu.Lock()
+		if !still || p.cur != i {
+			p.mu.Unlock()
+			return // another song (or none) was asked for meanwhile
+		}
+		why := p.failed[i]
+		p.mu.Unlock()
+		err := error(nil)
+		if why == "" {
+			err = ui.app.mpvLoadFile(file)
+		}
+		p.mu.Lock()
+		switch {
+		case why != "":
+			p.err = why
+		case err != nil:
+			p.err = "Can't play it"
+			logMsg("Listen: " + err.Error())
+		default:
+			p.loaded = true
+		}
+		p.mu.Unlock()
 		ui.post(refresh)
 	}()
+}
+
+// previewStop: the preview ends (the page left, Download, its last song's
+// end), and the user's music comes back as it was.
+func (ui *IpodUI) previewStop() {
+	previewMu.Lock()
+	p := previewCur
+	previewCur = nil
+	previewMu.Unlock()
+	if p == nil {
+		return
+	}
+	p.cancel()
+	audioStop()
+	app := ui.app
+	if pl := app.Playing; pl != nil && pl.Track != nil {
+		pl.State = StatePaused
+		if p.userWasPlaying {
+			// (play reloads the track into the mixer at its place)
+			go app.mpvTogglePause()
+		}
+	}
+	app.NPCacheDirty = true
+	ui.dirty = true
 }
 
 // httpFetch: url into dst, with the progress (a Listen song from
@@ -328,7 +412,16 @@ func ytListenSongs(i *ytInfo) []listenSong {
 					}
 					return err
 				}
-				return os.Rename(got, dst)
+				// YouTube's audio is fragmented MP4: made a plain M4A, as a
+				// download's tracks are (the mixer plays only that)
+				m, err := openM4A(got)
+				if err != nil {
+					return err
+				}
+				err = m.WriteRange(dst, 0, m.Duration(), m4aTags{Title: title})
+				m.Close()
+				os.Remove(got)
+				return err
 			}}
 	}
 	if len(i.Entries) > 0 {

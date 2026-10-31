@@ -676,6 +676,7 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 		if cancel != nil {
 			cancel()
 		}
+		ui.previewStop() // (a song playing here stops with the page)
 	}
 	head := func() Item {
 		title, who, dur, count := e.Title, e.who(), e.Duration, e.Count
@@ -725,25 +726,16 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			return append(items, Item{Label: "Loading…", NoArrow: true})
 		}
 		i := st.info
-		// Listen first: it plays, nothing is kept (ij_listen.go)
-		if songs := ytListenSongs(i); len(songs) > 0 {
-			key := "yt:" + i.ID + e.ID
+		// Listen first: it plays right here, nothing is kept (ij_listen.go)
+		songs := ytListenSongs(i)
+		key := "yt:" + i.ID + e.ID
+		refresh := func() { ui.refreshView(v) }
+		if len(songs) > 0 {
 			sub := "Before you download"
 			if len(songs) > 1 {
 				sub = fmt.Sprintf("%d songs, before you download", len(songs))
 			}
-			listen := Item{Label: "Listen", Sublabel: sub, OnSelect: func() {
-				al := &Album{Name: ytClean(i.Title), Artist: i.who()}
-				if st.thumb != nil {
-					al.ArtImg = st.thumb.ArtImg
-				}
-				ui.startListen(key, al, songs, func() { ui.refreshView(v) })
-				ui.refreshView(v)
-			}}
-			if l, sb, p := listenState(key); l != "" {
-				listen.Label, listen.Sublabel, listen.Progress = l, sb, p
-			}
-			items = append(items, listen)
+			items = append(items, ui.previewRow(key, songs, 0, "Listen", sub, refresh))
 		}
 		// the cover it will get (choosing it opens the square)
 		switch {
@@ -779,9 +771,17 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			a := albumFromPlaylist(i)
 			n := len(a.Tracks)
 			items = append(items, Item{Label: fmt.Sprintf("Download as Album · %d %s", n, pluralize(n, "song", "songs")),
-				Sublabel: a.Artist + " — " + a.Album, OnSelect: func() { ui.startYTDownload(i, withCover(a)) }})
-			for _, t := range a.Tracks {
-				items = append(items, Item{Label: t.Title, Value: lengthOrEmpty(t.Duration), NoArrow: true})
+				Sublabel: a.Artist + " — " + a.Album, OnSelect: func() { ui.previewStop(); ui.startYTDownload(i, withCover(a)) }})
+			for n, t := range a.Tracks {
+				row := Item{Label: t.Title, Value: lengthOrEmpty(t.Duration), NoArrow: true}
+				if len(songs) == len(a.Tracks) {
+					// A plays it here
+					row = ui.previewRow(key, songs, n, t.Title, "", refresh)
+					if row.Sublabel == "" {
+						row.Value = lengthOrEmpty(t.Duration)
+					}
+				}
+				items = append(items, row)
 			}
 			return items
 		}
@@ -792,7 +792,7 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 		}
 		one := albumFromVideo(i, false)
 		items = append(items, Item{Label: "Download as One Song", Sublabel: one.Artist + " — " + one.Tracks[0].Title + " · " + lengthOrEmpty(i.Duration),
-			OnSelect: func() { ui.startYTDownload(i, withCover(one)) }})
+			OnSelect: func() { ui.previewStop(); ui.startYTDownload(i, withCover(one)) }})
 		if len(i.Chapters) >= 2 {
 			for _, t := range albumFromVideo(i, true).Tracks {
 				items = append(items, Item{Label: t.Title, Value: lengthOrEmpty(t.Duration), NoArrow: true})
