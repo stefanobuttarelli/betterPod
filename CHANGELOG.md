@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0-beta.8 (2026-10-31)
+
+### Fixed
+- **A downloaded album always shows up.** When a download (Internet Archive, Podcasts, Suno, YouTube) ended while another scan was running, the rescan it asked for waited for a scan that never looked for it, and the album stayed hidden until a manual Rescan. Now any scan, when it ends, runs the rescan that was asked for meanwhile.
+- **Covers from cover.jpg / folder.jpg are found once, not at every start.** They were found after the library was saved, so each start looked for them and copied them again (on the card, at every start). And a scan no longer rewrites the covers it already has.
+
 ## v1.0-beta.7 (2026-10-31)
 
 ### Fixed

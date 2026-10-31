@@ -306,7 +306,7 @@ func (ui *IpodUI) rereadTracks(paths []string) {
 	}
 	app.LibScanRunning = true
 	scanStartMu.Unlock()
-	defer func() { app.LibScanRunning = false }()
+	defer app.scanEnded()
 	old := app.Library
 	if old == nil {
 		return

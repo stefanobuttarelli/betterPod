@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.7",
-  "path": "release/betterpod-v1.0-beta.7-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.7-onion.zip",
-  "sha256": "dc9aab8de37bc636977195ac422f9e256fe4dc2b3a61d58e36ea2e652bb22fc0",
-  "size": 28436382,
-  "notes": "- Now Playing shows in the menus only while its block is at the bottom; otherwise Genius."
+  "version": "1.0-beta.8",
+  "path": "release/betterpod-v1.0-beta.8-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.8-onion.zip",
+  "sha256": "08b4f9ad677a973ae3e8f0f62e851ddfc724d2489e0d1efa0757beff3e177b13",
+  "size": 28436333,
+  "notes": "- A downloaded album always shows up, also when another scan was running.\n- Covers from cover.jpg are found once, not copied again at every start."
 }

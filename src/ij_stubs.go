@@ -58,7 +58,7 @@ func (ui *IpodUI) addFolderToLibrary(dir string) bool {
 	}
 	app.LibScanRunning = true // (no full scan starts meanwhile)
 	scanStartMu.Unlock()
-	defer func() { app.LibScanRunning = false }()
+	defer app.scanEnded()
 
 	old := app.Library
 	if old == nil {
@@ -155,7 +155,7 @@ func (ui *IpodUI) removeFromLibrary(paths []string) {
 	}
 	app.LibScanRunning = true
 	scanStartMu.Unlock()
-	defer func() { app.LibScanRunning = false }()
+	defer app.scanEnded()
 
 	gone := map[string]bool{}
 	for _, p := range paths {

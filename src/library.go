@@ -51,6 +51,21 @@ func (app *MiyooPod) startLibraryScan(onComplete func()) bool {
 
 var scanStartMu sync.Mutex
 
+// scanEnded: a scan (full, or of a few folders or songs) is over. A rescan
+// asked for meanwhile (a download that ended while the start-up scan ran,
+// say) runs now, whichever scan it waited for; before, only a rescan
+// started by rescanLibrary looked, and the new album could stay unseen
+// until a manual one.
+func (app *MiyooPod) scanEnded() {
+	app.LibScanRunning = false
+	if rescanPending.Swap(false) {
+		if ui := ipodUI; ui != nil {
+			logMsg("Library: the rescan asked for during a scan runs now")
+			go ui.postSure(ui.rescanLibrary)
+		}
+	}
+}
+
 // scanLib is the library being built by the running scan.
 var scanLib *Library
 
@@ -339,7 +354,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	logMsg(fmt.Sprintf("INFO: Library scan complete: %d tracks, %d albums, %d artists, %d playlists",
 		len(app.Library.Tracks), len(app.Library.Albums), len(app.Library.Artists), len(app.Library.Playlists)))
 
-	app.LibScanRunning = false
+	app.scanEnded()
 
 	// Call onComplete before marking done — ensures menu is rebuilt before user can navigate away
 	if onComplete != nil {
@@ -741,6 +756,12 @@ func (app *MiyooPod) deferredArtExtraction() {
 
 	if extracted > 0 {
 		logMsg(fmt.Sprintf("INFO: Background art extraction: found art for %d albums", extracted))
+		// the covers found are kept in the library: saved before this pass
+		// (at the end of the scan), it would look for them again at every
+		// start
+		if err := app.saveLibraryJSON(); err != nil {
+			logMsg("WARNING: Failed to save library: " + err.Error())
+		}
 		app.NPCacheDirty = true
 		app.requestRedraw()
 		if onArtExtracted != nil {

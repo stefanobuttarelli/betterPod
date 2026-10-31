@@ -359,9 +359,12 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 	filename := fmt.Sprintf("%s.%s", hash, album.ArtExt)
 	filepath := ARTWORK_DIR() + filename
 
-	// Write artwork to disk
-	if err := os.WriteFile(filepath, album.ArtData, 0644); err != nil {
-		return fmt.Errorf("failed to write artwork file: %v", err)
+	// Write artwork to disk (not again when it is there already: a scan
+	// finds every album's embedded cover again)
+	if st, err := os.Stat(filepath); err != nil || st.Size() != int64(len(album.ArtData)) {
+		if err := os.WriteFile(filepath, album.ArtData, 0644); err != nil {
+			return fmt.Errorf("failed to write artwork file: %v", err)
+		}
 	}
 
 	// Store path and clear memory
@@ -369,7 +372,7 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 	album.ArtData = nil // Free memory!
 	missingLib = nil    // (Missing Covers counts again)
 
-	logMsg(fmt.Sprintf("[ARTWORK] Saved to disk: %s", filepath))
+	logMsg(fmt.Sprintf("[ARTWORK] Saved to disk: %s", filepath)) // (or found there)
 	return nil
 }
 
