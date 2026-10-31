@@ -65,10 +65,11 @@ key Right space;       shot cleared 4      # Clear (Keep is chosen first): the m
 key Up Up Up Up space; shot music-again2 4 # Music (Genius took Now Playing's row)
 key Down Down Down space; shot albums 5    # Albums
 key Alt_L;             shot album-sheet 3  # Y on an album: its options
-key Down Down space;   shot share 10       # Share: a code from magic-wormhole's server, waiting
+key Down Down Down space; sleep 2          # Share (after Add to Playlist…)
+key space Return;      shot share 10       # it asks this betterPod's name first: "g", START; then a code from magic-wormhole's server, waiting
 key Escape;            shot share-stopped 3
 key Alt_L;             shot album-sheet2 3
-key Down Down Down space; shot album-info 5 # Edit Album Info
+key Down Down Down Down space; shot album-info 5 # Edit Album Info
 key space;             shot info-search 20 # Find Info Online (the real sources)
 key Escape;            shot album-info2 4
 key Escape Escape;     shot back 4
@@ -80,7 +81,8 @@ key space;             shot pod-deleted 4  # Delete
 key Escape;            shot music-again4 4
 key Down space;        shot apps 4         # Apps
 key Down Down Down space; shot words 5     # Five Letters (its word lists)
-key Escape;            shot apps-again 4
+key Return;            sleep 1             # START: the game's menu
+key Down Down space;   shot apps-again 4   # Quit Five Letters (B deletes a letter there)
 key Down Down space;   shot puzzles 4      # Puzzles (Simon Tatham's C code, built for armv7)
 key space;             shot mines 8        # Mines: a new puzzle
 key space;             shot mines-open 4   # A opens a square
