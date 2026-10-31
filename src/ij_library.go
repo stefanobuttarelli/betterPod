@@ -134,44 +134,6 @@ func (ui *IpodUI) albumView(al *Album) *View {
 	return v
 }
 
-func (ui *IpodUI) playlistsView() *View {
-	v := &View{ID: "playlists", Title: "Playlists", Kind: KindFull, Empty: "No playlists"}
-	for _, pl := range ui.library().Playlists {
-		//
-		var art *Album
-		if len(pl.Tracks) > 0 {
-			art = ui.trackAlbum(pl.Tracks[0])
-		}
-		v.Items = append(v.Items, Item{
-			Label:    pl.Name,
-			Sublabel: "By you",
-			Album:    art,
-			OnSelect: func() { ui.showView(ui.playlistView(pl), pl.Name) },
-		})
-	}
-	return v
-}
-
-func (ui *IpodUI) playlistView(pl *Playlist) *View {
-	v := &View{ID: "playlist", Title: "Playlist", Kind: KindFull, Empty: "No songs in this playlist"}
-	for i, t := range pl.Tracks {
-		artist := t.Artist
-		if artist == "" {
-			artist = "Unknown artist"
-		}
-		v.Items = append(v.Items, Item{
-			Label:          t.Title,
-			Sublabel:       artist,
-			Album:          ui.trackAlbum(t),
-			Tracks:         pl.Tracks,
-			TrackIdx:       i,
-			ShowNowPlaying: true,
-			LongPress:      ui.mediaOptions([]*Track{t}),
-		})
-	}
-	return v
-}
-
 func (ui *IpodUI) songsView(tracks []*Track) *View {
 	v := &View{ID: "songs", Title: "Songs", Kind: KindFull, Empty: "No songs to show"}
 	byAlbum := map[*Album][]*Track{} // (each album sorted once)
@@ -235,6 +197,7 @@ func (ui *IpodUI) mediaOptions(tracks []*Track) []SheetOption {
 	return []SheetOption{
 		{Label: "Play Next", Icon: "queue_next", OnSelect: func() { ui.showToast(ui.enqueue(tracks, true)) }},
 		{Label: "Add to End of Queue", Icon: "queue_last", OnSelect: func() { ui.showToast(ui.enqueue(tracks, false)) }},
+		{Label: "Add to Playlist…", OnSelect: func() { ui.showView(ui.addToPlaylistView(tracks), "") }}, // (ij_playlists.go)
 		{Label: "Share", OnSelect: func() { ui.shareTracks(tracks) }},
 	}
 }

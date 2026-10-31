@@ -117,15 +117,19 @@ func (ui *IpodUI) artistsListView(artists []*Artist, thumbs bool) *View {
 
 func (ui *IpodUI) playlistsListView(pls []*Playlist) *View {
 	v := ui.playlistsView()
-	var items []Item
-	for _, it := range v.Items {
-		for _, p := range pls {
-			if it.Label == p.Name {
-				items = append(items, it)
-				break
+	all := v.Build
+	v.Build = func() []Item {
+		var items []Item
+		for _, it := range all() {
+			for _, p := range pls {
+				if it.Label == p.Name && it.OnSelect != nil && !strings.HasPrefix(it.Label, "New Playlist") {
+					items = append(items, it)
+					break
+				}
 			}
 		}
+		return items
 	}
-	v.Items = items
+	v.Items = v.Build()
 	return v
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.89 (2026-10-31)
+
+### Added
+- **Make your own playlists.** Music → Playlists → **New Playlist…**: type its name. **Add to Playlist…** is in the options of a song or an album (Y, or holding A, in the lists, in Cover Flow, in Up Next): choose a playlist, or make a new one there. A song already in it isn't added twice. In a playlist, a song's options have **Remove from Playlist**; a playlist's options have **Delete Playlist** (its songs stay in your library). Playlists show how many songs they have.
+- They are plain M3U files in `<music>/Playlists` (paths relative to the file), so a computer's player reads them too.
+
 ## v0.88.1 (2026-10-31)
 
 ### Fixed

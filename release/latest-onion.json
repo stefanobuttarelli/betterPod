@@ -1,8 +1,8 @@
 {
-  "version": "0.88.1",
-  "path": "release/betterpod-v0.88.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88.1-onion.zip",
-  "sha256": "2724e052afffe0dfcf4f20fcb1f2b8553f24251ee0a7f6da95b28b2965894aaa",
-  "size": 28347982,
-  "notes": "- Guess the Song: the cover shows sharp at once at the reveal"
+  "version": "0.89",
+  "path": "release/betterpod-v0.89-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.89-onion.zip",
+  "sha256": "a989f8caea14cfaa39bb82e27822e1e7b3c926b5c623d851b806d6b5d876ff2d",
+  "size": 28354174,
+  "notes": "- Playlists: New Playlist, and Add to Playlist in a song's or an album's options\n- Remove a song from a playlist, delete a playlist\n- Saved as M3U files in Music/Playlists"
 }
