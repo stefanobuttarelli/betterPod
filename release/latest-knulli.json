@@ -1,8 +1,8 @@
 {
-  "version": "0.91",
-  "path": "release/betterpod-v0.91-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.91-knulli.zip",
-  "sha256": "6758ff18713a1bff314769a98781d9f788bc39cec67e3654031bdc518f4caacf",
-  "size": 16251041,
-  "notes": "- End of the Queue: when the last song ends, or NEXT is pressed on it, a card offers Genius, Go to Music or Not Now."
+  "version": "0.91.1",
+  "path": "release/betterpod-v0.91.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.91.1-knulli.zip",
+  "sha256": "960a19a5a0dd79d24853f85415f797cf456911552b1efec579e6c7bd7c40b09a",
+  "size": 16277004,
+  "notes": "- A check of the whole app before 1.0: many fixes (quick skips, unplayable files, playlists, database moves, tags, Software Update, Internet Archive, Share, Knulli screen off/on, Miyoo exits) and a lighter, faster interface, mostly on the Miyoo."
 }
