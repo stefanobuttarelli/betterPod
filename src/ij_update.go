@@ -799,28 +799,62 @@ func runUpdate(m *updateManifest, progress func(float64), installing func()) err
 	if err := checkBinary(newBin); err != nil {
 		return err
 	}
+	return installFiles(filepath.Join(stage, "new"), ports, port, files)
+}
+
+// installFiles puts the unpacked update (newDir/rel for each of files) in
+// place under ports. Every file is first copied next to its target as
+// name.kpnew; if one copy fails, the copies are removed and the
+// installation is left as it was. Only then are they renamed into place,
+// each an atomic rename, the binary last, so an old binary never runs with
+// half the new files. The running binary is kept as betterpod.prev.
+func installFiles(newDir, ports, port string, files []string) error {
+	bin := filepath.Join(appDir, appBin)
+	order := make([]string, 0, len(files))
+	for _, rel := range files {
+		if rel != bin {
+			order = append(order, rel)
+		}
+	}
+	for _, rel := range files {
+		if rel == bin {
+			order = append(order, rel)
+		}
+	}
+	var staged []string
+	unstage := func() {
+		for _, tmp := range staged {
+			os.Remove(tmp)
+		}
+	}
+	for _, rel := range order {
+		src := filepath.Join(newDir, rel)
+		tmp := filepath.Join(ports, rel) + ".kpnew"
+		st, err := os.Stat(src)
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(tmp), 0755)
+		}
+		if err == nil {
+			err = copyFileMode(src, tmp, st.Mode().Perm())
+		}
+		if err != nil {
+			os.Remove(tmp)
+			unstage()
+			return err
+		}
+		staged = append(staged, tmp)
+	}
 	// keep the running binary as betterpod.prev
 	if cur := filepath.Join(port, appBin); fileExists(cur) {
 		copyFileMode(cur, cur+".prev", 0755)
 	}
-	// replace the files, each with an atomic rename
-	for _, rel := range files {
-		src := filepath.Join(stage, "new", rel)
+	for i, rel := range order {
 		dst := filepath.Join(ports, rel)
-		st, err := os.Stat(src)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-			return err
-		}
-		tmp := dst + ".kpnew"
-		if err := copyFileMode(src, tmp, st.Mode().Perm()); err != nil {
-			os.Remove(tmp)
-			return err
-		}
-		if err := os.Rename(tmp, dst); err != nil {
-			os.Remove(tmp)
+		if err := os.Rename(staged[i], dst); err != nil {
+			// rarely (a rename in the same folder): what is left is removed
+			for _, tmp := range staged[i:] {
+				os.Remove(tmp)
+			}
 			return err
 		}
 	}
@@ -937,7 +971,9 @@ func copyFileMode(src, dst string, mode os.FileMode) error {
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return os.Chmod(dst, mode)
+	// FAT (Onion's SD card) can't keep modes: a refused chmod is not an error
+	os.Chmod(dst, mode)
+	return nil
 }
 
 // restartIfUpdated runs the new binary in place of this process, with the

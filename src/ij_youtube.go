@@ -361,10 +361,19 @@ func ytInstallYtdlp(step fetchStep) error {
 			os.RemoveAll(tmp)
 			return err
 		}
-		os.RemoveAll(filepath.Join(dir, "ytdlp"))
-		if err := os.Rename(tmp, filepath.Join(dir, "ytdlp")); err != nil {
+		// the old one aside first, removed once the new one is in place
+		// (put back if the new one can't take its place)
+		cur, old := filepath.Join(dir, "ytdlp"), filepath.Join(dir, "ytdlp.old")
+		os.RemoveAll(old)
+		hadOld := os.Rename(cur, old) == nil
+		if err := os.Rename(tmp, cur); err != nil {
+			os.RemoveAll(tmp)
+			if hadOld {
+				os.Rename(old, cur)
+			}
 			return err
 		}
+		os.RemoveAll(old)
 		os.Remove(filepath.Join(dir, "yt-dlp")) // the one-file build isn't needed any more
 		return nil
 	})

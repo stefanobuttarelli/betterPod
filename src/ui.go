@@ -896,7 +896,6 @@ func (app *MiyooPod) toggleLock() {
 
 	if app.Locked {
 		logMsg("INFO: Screen locked")
-		TrackAction("screen_locked", nil)
 		// Save current brightness and fully dim the screen
 		app.BrightnessBeforeLock = getBrightness()
 		app.dimScreen()
@@ -909,7 +908,6 @@ func (app *MiyooPod) toggleLock() {
 		}
 	} else {
 		logMsg("INFO: Screen unlocked")
-		TrackAction("screen_unlocked", nil)
 		// Defer brightness — restore after overlay is gone to avoid flash
 		app.BrightnessNeedsRestore = true
 	}

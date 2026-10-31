@@ -739,6 +739,91 @@ func safeName(s string) string {
 	return s
 }
 
+// safeFileName is safeName for a file name: the name before the extension
+// is cleaned and shortened, the extension is kept.
+func safeFileName(s string) string {
+	s = strings.TrimSpace(s)
+	ext := filepath.Ext(s)
+	if ext == "" || len(ext) > 10 || strings.ContainsAny(ext, " /\\:*?\"<>|") {
+		return safeName(s)
+	}
+	return safeName(strings.TrimSuffix(s, ext)) + ext
+}
+
+// iaNames: the file name of each of the item's audio files (by their name
+// in the item) in its folder. When the files are in more than one folder
+// of the item (CD1/01 Intro.flac, CD2/01 Intro.flac), the folder comes
+// first ("CD1 - 01 Intro.flac"); a name still taken (the card ignores
+// upper and lower case) gets " (2)". Every format of the item goes to the
+// same folder, so all of them are named together, always in the same order.
+func iaNames(it *iaItem) map[string]string {
+	var all []iaFile
+	for _, g := range iaGroupOrder {
+		all = append(all, it.Groups[g]...)
+	}
+	dirs := map[string]bool{}
+	for _, f := range all {
+		dirs[iaSubdir(f.Name)] = true
+	}
+	names := map[string]string{}
+	taken := map[string]bool{}
+	for _, f := range all {
+		if _, ok := names[f.Name]; ok {
+			continue
+		}
+		base := iaBaseName(f.Name)
+		if sub := iaSubdir(f.Name); len(dirs) > 1 && sub != "" {
+			base = strings.ReplaceAll(sub, "/", " - ") + " - " + base
+		}
+		n := safeFileName(base)
+		stem, ext := strings.TrimSuffix(n, filepath.Ext(n)), filepath.Ext(n)
+		for i := 2; taken[strings.ToLower(n)]; i++ {
+			n = fmt.Sprintf("%s (%d)%s", stem, i, ext)
+		}
+		taken[strings.ToLower(n)] = true
+		names[f.Name] = n
+	}
+	return names
+}
+
+func iaSubdir(name string) string {
+	if i := strings.LastIndex(name, "/"); i > 0 {
+		return name[:i]
+	}
+	return ""
+}
+
+func iaBaseName(name string) string { return name[strings.LastIndex(name, "/")+1:] }
+
+// iaLocal: where f is saved in dir (names from iaNames), and the name
+// versions before 1.0 gave it (safeName of the bare file name, which could
+// cut the extension), so a file downloaded then still counts. Files in a
+// subfolder of the item have no old name: two of them could have shared it.
+func iaLocal(dir string, names map[string]string, f iaFile) (dst, legacy string) {
+	n, ok := names[f.Name]
+	if !ok {
+		n = safeFileName(iaBaseName(f.Name))
+	}
+	dst = filepath.Join(dir, n)
+	if old := safeName(iaBaseName(f.Name)); old != n && f.Size > 0 && !strings.Contains(f.Name, "/") {
+		legacy = filepath.Join(dir, old)
+	}
+	return dst, legacy
+}
+
+// iaHas: f is already downloaded (as dst, or with its old name).
+func iaHas(f iaFile, dst, legacy string) bool {
+	if st, err := os.Stat(dst); err == nil && (f.Size == 0 || st.Size() == f.Size) {
+		return true
+	}
+	if legacy != "" {
+		if st, err := os.Stat(legacy); err == nil && st.Size() == f.Size {
+			return true
+		}
+	}
+	return false
+}
+
 func freeBytes(dir string) int64 {
 	var st syscall.Statfs_t
 	if syscall.Statfs(dir, &st) != nil {
@@ -758,10 +843,9 @@ func iaDir(it *iaItem) string {
 
 // iaHave: how many of files are already downloaded, and the bytes left.
 func iaHave(it *iaItem, files []iaFile) (have int, left int64) {
-	dir := iaDir(it)
+	dir, names := iaDir(it), iaNames(it)
 	for _, f := range files {
-		dst := filepath.Join(dir, safeName(filepath.Base(f.Name)))
-		if st, err := os.Stat(dst); err == nil && (f.Size == 0 || st.Size() == f.Size) {
+		if dst, legacy := iaLocal(dir, names, f); iaHas(f, dst, legacy) {
 			have++
 		} else {
 			left += f.Size
@@ -821,8 +905,10 @@ func (d *iaDownload) run(ui *IpodUI) error {
 	}
 	// room for what is still to come (an album resumed needs only the rest)
 	_, left := iaHave(d.item, d.files)
+	names := iaNames(d.item)
 	for _, f := range d.files {
-		if st, err := os.Stat(filepath.Join(d.dir, safeName(filepath.Base(f.Name))) + ".part"); err == nil {
+		dst, _ := iaLocal(d.dir, names, f)
+		if st, err := os.Stat(dst + ".part"); err == nil {
 			left -= st.Size()
 		}
 	}
@@ -832,13 +918,32 @@ func (d *iaDownload) run(ui *IpodUI) error {
 	client := updateClient(0)
 	// get downloads one file into dst.part and renames it at the end. A
 	// .part left by an earlier attempt is continued (Range) when the server
-	// allows it. base is d.done before this file, for the progress.
+	// shows it's the same file: If-Range with the ETag or date kept beside
+	// it in dst.part.info (as podcasts do); else it starts again. base is
+	// d.done before this file, for the progress.
 	get := func(name string, dst string, count bool, base, size int64) error {
 		u := iaBase() + "/download/" + url.PathEscape(d.item.ID) + "/" + escapePath(name)
 		part := dst + ".part"
+		infoPath := part + ".info"
 		var have int64
+		var info podPartInfo
 		if st, err := os.Stat(part); err == nil {
 			have = st.Size()
+		}
+		if have > 0 {
+			b, err := os.ReadFile(infoPath)
+			if err != nil || json.Unmarshal(b, &info) != nil || info.URL != u {
+				// a .part from before 1.0 has no info: continued only if
+				// the server's total is the size archive.org lists
+				info = podPartInfo{}
+				if size <= 0 {
+					have = 0
+				}
+			}
+		}
+		done := func() error {
+			os.Remove(infoPath)
+			return os.Rename(part, dst)
 		}
 		setDone := func(n int64) {
 			if count {
@@ -856,13 +961,37 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		var stalled atomic.Bool
 		watchdog := time.AfterFunc(iaStall, func() { stalled.Store(true); cancel() })
 		defer watchdog.Stop()
+		// Cancel stops the request in flight too
+		go func() {
+			select {
+			case <-d.cancel:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		cancelled := func() bool {
+			select {
+			case <-d.cancel:
+				return true
+			default:
+				return false
+			}
+		}
 		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 		req.Header.Set("User-Agent", "betterPod/"+BETTERPOD_VERSION)
 		if have > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
+			if v := info.validator(); v != "" {
+				req.Header.Set("If-Range", v)
+			}
 		}
 		resp, err := client.Do(req)
 		if err != nil {
+			if cancelled() {
+				os.Remove(part)
+				os.Remove(infoPath)
+				return errIACancelled
+			}
 			if stalled.Load() {
 				return &iaRetry{msg: "Connection stalled"}
 			}
@@ -870,21 +999,37 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		}
 		defer resp.Body.Close()
 		flags := os.O_WRONLY | os.O_CREATE
+		restart := func() error {
+			os.Remove(part)
+			os.Remove(infoPath)
+			return &iaRetry{msg: "The file changed on the server: starting again", after: time.Second}
+		}
 		switch {
-		case resp.StatusCode == 206 && have > 0 && strings.HasPrefix(resp.Header.Get("Content-Range"), fmt.Sprintf("bytes %d-", have)):
+		case resp.StatusCode == 206 && have > 0:
+			from, total, ok := contentRange(resp.Header.Get("Content-Range"))
+			want := info.Total
+			if want <= 0 {
+				want = size
+			}
+			if !ok || from != have || (want > 0 && total > 0 && total != want) || (info.validator() == "" && total != want) {
+				return restart()
+			}
 			flags |= os.O_APPEND // continue the .part
 		case resp.StatusCode == 200:
 			flags |= os.O_TRUNC // from the start
 			have = 0
 			setDone(0)
+			info = podPartInfo{URL: u, ETag: resp.Header.Get("ETag"), Mod: resp.Header.Get("Last-Modified"), Total: resp.ContentLength}
+			if b, err := json.Marshal(info); err == nil && info.validator() != "" {
+				_ = os.WriteFile(infoPath, b, 0644)
+			}
 		case resp.StatusCode == 416 && have > 0:
 			// nothing after the .part's end: whole if it has the right size,
 			// else it is stale and the file starts over
-			if size == 0 || have == size {
-				return os.Rename(part, dst)
+			if want := max(info.Total, size); want == 0 || have == want {
+				return done()
 			}
-			os.Remove(part)
-			return &iaRetry{msg: "The partial file didn't match", after: time.Second}
+			return restart()
 		case resp.StatusCode == 429 || resp.StatusCode >= 500:
 			r := &iaRetry{msg: fmt.Sprintf("archive.org answered %d", resp.StatusCode)}
 			if sec, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && sec > 0 {
@@ -901,12 +1046,11 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		buf := make([]byte, 64<<10)
 		got := have
 		for {
-			select {
-			case <-d.cancel:
+			if cancelled() {
 				out.Close()
 				os.Remove(part)
+				os.Remove(infoPath)
 				return errIACancelled
-			default:
 			}
 			n, rerr := resp.Body.Read(buf)
 			if n > 0 {
@@ -923,6 +1067,11 @@ func (d *iaDownload) run(ui *IpodUI) error {
 			}
 			if rerr != nil {
 				out.Close() // the .part stays, the next attempt continues it
+				if cancelled() {
+					os.Remove(part)
+					os.Remove(infoPath)
+					return errIACancelled
+				}
 				if stalled.Load() {
 					return &iaRetry{msg: "Connection stalled"}
 				}
@@ -932,7 +1081,7 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		if err := out.Close(); err != nil {
 			return err
 		}
-		return os.Rename(part, dst)
+		return done()
 	}
 	// getRetry: get, tried again after a pause when archive.org is busy or
 	// the connection drops (a .part is continued, not started over)
@@ -982,8 +1131,8 @@ func (d *iaDownload) run(ui *IpodUI) error {
 		d.index, d.state = i, f.Title
 		base := d.done
 		d.mu.Unlock()
-		dst := filepath.Join(d.dir, safeName(filepath.Base(f.Name)))
-		if st, err := os.Stat(dst); err == nil && (f.Size == 0 || st.Size() == f.Size) {
+		dst, legacy := iaLocal(d.dir, names, f)
+		if iaHas(f, dst, legacy) {
 			d.mu.Lock()
 			d.done += f.Size
 			d.mu.Unlock()

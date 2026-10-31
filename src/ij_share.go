@@ -48,6 +48,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/psanford/wormhole-william/wormhole"
@@ -189,6 +190,13 @@ type ShareView struct {
 	unplayOn   string      // and its system ("Onion OS")
 	refused    atomic.Bool // receiver: stopped at the first song (sharePeek)
 }
+
+// shareRunning: shares being sent (waiting for the receiver too) or
+// received (from looking for the sender to the last file unpacked).
+var shareRunning atomic.Int32
+
+// shareBusy: a share is under way (the Miyoo's sleep timer waits for it).
+func shareBusy() bool { return shareRunning.Load() > 0 }
 
 func (s *ShareView) setPhase(p int) {
 	s.phase, s.phaseAt = p, time.Now()
@@ -392,6 +400,8 @@ func (ui *IpodUI) shareTracks(tracks []*Track) {
 		src = decodeAlbumSource(al)
 	}
 	go func() {
+		shareRunning.Add(1)
+		defer shareRunning.Add(-1)
 		var coverJPG []byte
 		if src != nil {
 			big := scaleImage(src, 500, 500)
@@ -426,10 +436,11 @@ func (ui *IpodUI) shareSend(ctx context.Context, s *ShareView, tracks []*Track, 
 		if e := strings.ToLower(filepath.Ext(p)); !slices.Contains(offer.Exts, e) {
 			offer.Exts = append(offer.Exts, e)
 		}
-		name := filepath.Base(p)
-		for i := 2; used[strings.ToLower(name)]; i++ {
-			ext := filepath.Ext(p)
-			name = fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(filepath.Base(p), ext), i, ext)
+		// (a name the receiver's FAT card can't hold is cleaned here too)
+		name := safeFileName(filepath.Base(p))
+		for i, first := 2, name; used[strings.ToLower(name)]; i++ {
+			ext := filepath.Ext(first)
+			name = fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(first, ext), i, ext)
 		}
 		used[strings.ToLower(name)] = true
 		entries = append(entries, wormhole.DirectoryEntry{Path: dir + "/" + name, Mode: 0o644,
@@ -591,6 +602,8 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 	s.refused.Store(false)
 	s.setPhase(shConnecting)
 	go func() {
+		shareRunning.Add(1)
+		defer shareRunning.Add(-1)
 		// nobody there: the server would wait forever
 		met := make(chan struct{})
 		go func() {
@@ -629,7 +642,7 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 				return
 			}
 		}
-		if free := freeBytes(musicRoot()); free > 0 && msg.UncompressedBytes64 > free-64<<20 {
+		if !shareRoom(msg.TransferBytes64, msg.UncompressedBytes64) {
 			msg.Reject()
 			ui.postSure(func() {
 				s.err = fmt.Sprintf("Not enough space · %s needed", humanBytes(msg.UncompressedBytes64))
@@ -640,6 +653,22 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 		msg.AnswerInfo, _ = json.Marshal(shareAnswer{Name: shareFrom()}) // (the sender shows "Sending to …")
 		ui.shareReceiveData(ctx, s, msg)
 	}()
+}
+
+// shareRoom: the zip (in the data folder's tmp) and the songs unpacked
+// from it (in the music folder) both fit, with 64 MB to spare: about twice
+// the share when both are on the same card, as on the Miyoo.
+func shareRoom(zipBytes, unpacked int64) bool {
+	music, tmp := musicRoot(), dataPath("")
+	fm, ft := freeBytes(music), freeBytes(tmp)
+	if fm <= 0 {
+		return true // (unknown: the unpacking will tell)
+	}
+	var a, b syscall.Stat_t
+	if syscall.Stat(music, &a) == nil && syscall.Stat(tmp, &b) == nil && a.Dev == b.Dev {
+		return zipBytes+unpacked <= fm-64<<20
+	}
+	return unpacked <= fm-64<<20 && (ft <= 0 || zipBytes <= ft-64<<20)
 }
 
 // shareReceiveData writes the zip as it comes (reading the manifest and the
@@ -818,6 +847,9 @@ func (ui *IpodUI) sharePeek(s *ShareView, g *growingFile) {
 			}
 			data = d
 		case 0:
+			if csize > 8<<20 {
+				return // (a manifest or a cover is never that big)
+			}
 			d := make([]byte, csize)
 			if _, err := io.ReadFull(r, d); err != nil {
 				return
@@ -850,6 +882,10 @@ func (ui *IpodUI) sharePeek(s *ShareView, g *growingFile) {
 				})
 			}
 		case "cover.jpg":
+			// (the size first: a huge picture would take all the memory)
+			if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err != nil || cfg.Width > 3000 || cfg.Height > 3000 {
+				continue
+			}
 			if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
 				c := scaleImage(img, shareCoverPx, shareCoverPx)
 				big := scaleImage(img, shareBigPx, shareBigPx)
@@ -914,6 +950,9 @@ func (r *growingReader) Read(p []byte) (int, error) {
 }
 
 // shareUnpack: the zip's music and images into <music>/Shared/<name>.
+// They are unpacked into a hidden folder first (the library skips it),
+// which takes its name only when everything is there: a share that fails
+// halfway leaves no half album. Names the card can't hold are cleaned.
 func shareUnpack(zpath, name string) (string, error) {
 	zr, err := zip.OpenReader(zpath)
 	if err != nil {
@@ -921,16 +960,16 @@ func shareUnpack(zpath, name string) (string, error) {
 	}
 	defer zr.Close()
 	base := filepath.Join(musicRoot(), "Shared")
-	dest := filepath.Join(base, safeName(name))
-	for i := 2; ; i++ {
-		if _, err := os.Stat(dest); os.IsNotExist(err) {
-			break
-		}
-		dest = filepath.Join(base, fmt.Sprintf("%s (%d)", safeName(name), i))
-	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
+	work := filepath.Join(base, ".receiving")
+	os.RemoveAll(work) // (left by a share that stopped with the app)
+	if err := os.MkdirAll(work, 0o755); err != nil {
 		return "", err
 	}
+	fail := func(err error) (string, error) {
+		os.RemoveAll(work)
+		return "", err
+	}
+	used := map[string]bool{}
 	for _, f := range zr.File {
 		// only plain files, only music and pictures, never outside dest
 		if f.FileInfo().IsDir() {
@@ -943,16 +982,22 @@ func shareUnpack(zpath, name string) (string, error) {
 		if strings.EqualFold(filepath.Base(rel), shareManifest) || !shareKeep(rel) {
 			continue
 		}
-		out := filepath.Join(dest, rel)
+		rel = shareCleanPath(rel)
+		for i, first := 2, rel; used[strings.ToLower(rel)]; i++ {
+			ext := filepath.Ext(first)
+			rel = fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(first, ext), i, ext)
+		}
+		used[strings.ToLower(rel)] = true
+		out := filepath.Join(work, rel)
 		os.MkdirAll(filepath.Dir(out), 0o755)
 		rc, err := f.Open()
 		if err != nil {
-			return dest, err
+			return fail(err)
 		}
 		w, err := os.Create(out)
 		if err != nil {
 			rc.Close()
-			return dest, err
+			return fail(err)
 		}
 		_, err = io.Copy(w, rc)
 		rc.Close()
@@ -960,10 +1005,34 @@ func shareUnpack(zpath, name string) (string, error) {
 			err = cerr
 		}
 		if err != nil {
-			return dest, err
+			return fail(err)
 		}
 	}
+	dest := filepath.Join(base, safeName(name))
+	for i := 2; ; i++ {
+		if _, err := os.Lstat(dest); os.IsNotExist(err) {
+			break
+		}
+		dest = filepath.Join(base, fmt.Sprintf("%s (%d)", safeName(name), i))
+	}
+	if err := os.Rename(work, dest); err != nil {
+		return fail(err)
+	}
 	return dest, nil
+}
+
+// shareCleanPath: each part of a received path as the card can hold it
+// (FAT refuses : * ? " < > |), the file's extension kept.
+func shareCleanPath(rel string) string {
+	parts := strings.Split(rel, string(os.PathSeparator))
+	for i, p := range parts {
+		if i == len(parts)-1 {
+			parts[i] = safeFileName(p)
+		} else {
+			parts[i] = safeName(p)
+		}
+	}
+	return filepath.Join(parts...)
 }
 
 func shareKeep(name string) bool {

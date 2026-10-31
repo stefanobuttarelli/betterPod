@@ -152,6 +152,8 @@ func (ui *IpodUI) onionBusy() string {
 		return "the software update"
 	case len(albumSaving) > 0:
 		return "an album's tags being written"
+	case shareBusy():
+		return "a share"
 	}
 	return ""
 }
