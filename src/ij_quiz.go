@@ -101,6 +101,9 @@ func (q *QuizGame) titles() map[string]bool {
 }
 
 // next: a new round (or the end).
+// quizArtPx: the cover's size at the reveal (device px).
+const quizArtPx = 260
+
 func (q *QuizGame) next() {
 	if q.round >= quizRounds {
 		q.phase = "done"
@@ -126,6 +129,13 @@ func (q *QuizGame) next() {
 	}
 	q.used[t] = true
 	q.answer = t
+	// its cover, made now while the clip plays: at the reveal it shows
+	// at once, sharp (not the small one first)
+	if q.ui != nil {
+		if al := q.ui.trackAlbum(t); al != nil {
+			q.ui.art(al, quizArtPx)
+		}
+	}
 	// three other titles
 	seen := map[string]bool{strings.ToLower(strings.TrimSpace(t.Title)): true}
 	q.choices = []*Track{t}
@@ -324,7 +334,7 @@ func (q *QuizGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 		fillRoundedGradient(dst, 24, 56, 24+math.Max(10, 592*left), 66, 5, g, 1)
 	}
 	// the picture: a question mark while it plays, the cover after
-	ax, ay, as := 24.0, 92.0, 260.0
+	ax, ay, as := 24.0, 92.0, float64(quizArtPx)
 	if q.phase == "reveal" {
 		al := ui.trackAlbum(q.answer)
 		img := ui.art(al, int(as))

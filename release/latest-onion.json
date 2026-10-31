@@ -1,8 +1,8 @@
 {
-  "version": "0.88",
-  "path": "release/betterpod-v0.88-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88-onion.zip",
-  "sha256": "40363845ee2ef855ac3f32eb53a6f8ff69c60d91bfefd0ab3b9345ebafe85e6b",
-  "size": 28347948,
-  "notes": "- Five Letters: a full row is framed in blue with the A button: A sends it"
+  "version": "0.88.1",
+  "path": "release/betterpod-v0.88.1-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88.1-onion.zip",
+  "sha256": "2724e052afffe0dfcf4f20fcb1f2b8553f24251ee0a7f6da95b28b2965894aaa",
+  "size": 28347982,
+  "notes": "- Guess the Song: the cover shows sharp at once at the reveal"
 }

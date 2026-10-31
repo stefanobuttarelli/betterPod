@@ -1,8 +1,8 @@
 {
-  "version": "0.88",
-  "path": "release/betterpod-v0.88-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88-knulli.zip",
-  "sha256": "9bc2138c294afe49d03b7efaa672b0351c948503ba777ec4f108173012484cb6",
-  "size": 16211686,
-  "notes": "- Five Letters: a full row is framed in blue with the A button: A sends it"
+  "version": "0.88.1",
+  "path": "release/betterpod-v0.88.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88.1-knulli.zip",
+  "sha256": "ecb4a9443f2e2bdbb024f7e0b2cc1f78e9ce88d4f461a5ca7f2c515b630646f4",
+  "size": 16211829,
+  "notes": "- Guess the Song: the cover shows sharp at once at the reveal"
 }

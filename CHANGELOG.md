@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.88.1 (2026-10-31)
+
+### Fixed
+- **Guess the Song: the cover shows sharp at once** when the answer is revealed. It is made in the background as the clip starts, instead of at the reveal (when a small, blurry one showed first).
+
 ## v0.88 (2026-10-31)
 
 ### Changed
