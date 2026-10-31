@@ -41,6 +41,7 @@ type Item struct {
 	Duration       string // track length, right-aligned (Cover Flow track list)
 	QueueMark      string // queue icon before the title ("queue_next"/"queue_last"); songs look it up
 	SearchField    bool   // the search bar on top: Label is the text, Placeholder shows when empty, Value a note
+	Header         bool   // a thin section bar (the iPod's letters): Label only, never selected
 	Gear           func() // (search bar) a round gear button at its right, reached with RIGHT
 	Placeholder    string
 	Progress       float64 // > 0: a progress bar under the text (0..1), for a loading row
@@ -143,6 +144,9 @@ func rowHeight(it *Item) float64 {
 	if it.SearchField {
 		return searchBarH
 	}
+	if it.Header {
+		return headerRowH
+	}
 	if it.Progress > 0 {
 		return 68
 	}
@@ -233,6 +237,10 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		sel := i == v.Index && !v.noCursor
 		if it.SearchField {
 			drawSearchBar(dst, it, y, wCSS, sel && !(v.gearOn && it.Gear != nil), sel && v.gearOn && it.Gear != nil)
+			continue
+		}
+		if it.Header {
+			drawHeaderRow(dst, it.Label, y, wCSS)
 			continue
 		}
 		if it.Progress > 0 {
@@ -508,6 +516,22 @@ func (ui *IpodUI) renderEmpty(dst *image.RGBA, msg string) {
 // marqueeActive is set while a scrolling (marquee) title is on screen, so
 // the main loop keeps redrawing at 30 fps.
 var marqueeActive bool
+
+// ---- section bars ----
+
+const headerRowH = 22.0
+
+// drawHeaderRow: a thin bar across the list with a short bold label, as
+// the iPod's letters between the artists (what the list below shows, the
+// options being by the search bar's gear).
+func drawHeaderRow(dst *image.RGBA, label string, y, wCSS float64) {
+	fillVGradient(dst, 0, px(y), px(wCSS), px(y+headerRowH)-px(y), th.header)
+	fillRect(dst, 0, px(y+headerRowH)-px(1), px(wCSS), px(1), th.headerBorder)
+	fillRect(dst, 0, px(y), px(wCSS), px(1), th.headerBorder)
+	f := face(W700, 12)
+	_, asc := lineBox(12)
+	drawText(dst, f, ellipsize(f, label, (wCSS-24)*DPR), 12*DPR, (y+(headerRowH-asc)/2+asc-1)*DPR, th.headerText)
+}
 
 // ---- the search bar ----
 

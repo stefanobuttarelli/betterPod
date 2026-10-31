@@ -525,6 +525,13 @@ func (ui *IpodUI) scroll(dir int, velocity float64) {
 	if ni > len(v.Items)-1 {
 		ni = len(v.Items) - 1
 	}
+	// section bars are passed over (back, when one is at the end)
+	for ni >= 0 && ni < len(v.Items) && v.Items[ni].Header {
+		ni += dir
+	}
+	if ni < 0 || ni >= len(v.Items) {
+		ni = v.Index
+	}
 	if ni != v.Index {
 		v.Index = ni
 		v.dirty = true

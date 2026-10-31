@@ -1,8 +1,8 @@
 {
-  "version": "0.83",
-  "path": "release/betterpod-v0.83-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.83-knulli.zip",
-  "sha256": "8e621a875c4b94fba376d28932f04aad5027e0a7956ad964cb30f9f0e8c881f1",
-  "size": 16199976,
-  "notes": "- Listen: an Internet Archive item or a YouTube video plays before you download it"
+  "version": "0.84",
+  "path": "release/betterpod-v0.84-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.84-knulli.zip",
+  "sha256": "8565013afce1794e74210fd5c790e8e4354bec33765efc5ff782a9dc636f86ef",
+  "size": 16203155,
+  "notes": "- YouTube: the search options are by the search bar's gear\n- A thin bar over the results says what they are"
 }

@@ -271,19 +271,23 @@ func (ui *IpodUI) youtubeView() *View {
 			ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 			ui.refreshView(v)
 		}
-		items := []Item{ui.searchField(&st.term, "Search YouTube or paste a link", note, edit, nil)}
-		kind, other := "Videos", "Playlists & Albums"
-		if st.playlists {
-			kind, other = "Playlists & Albums", "Videos"
+		bar := ui.searchField(&st.term, "Search YouTube or paste a link", note, edit, nil)
+		// what it searches for: by the search bar's gear (as Weather's)
+		bar.Gear = func() {
+			ui.showView(ui.ytSearchSettingsView(&st.playlists, func() {
+				if st.ran != "" {
+					run()
+				} else {
+					ui.refreshView(v)
+				}
+			}), "")
 		}
-		items = append(items, Item{Label: "Showing: " + kind, Sublabel: "Press [A] to show " + other, NoArrow: true, OnSelect: func() {
-			st.playlists = !st.playlists
-			if st.ran != "" {
-				run()
-			} else {
-				ui.refreshView(v)
-			}
-		}})
+		items := []Item{bar}
+		kind := "Videos"
+		if st.playlists {
+			kind = "Playlists & Albums"
+		}
+		items = append(items, Item{Header: true, Label: "Showing: " + kind})
 		switch {
 		case st.busy:
 			items = append(items, Item{Label: "Searching…", NoArrow: true})
@@ -1295,6 +1299,32 @@ func ytErrText(why string) error {
 
 // searchHubView: the library, Internet Archive and (when turned on)
 // YouTube.
+// ytSearchSettingsView: YouTube's search options (the search bar's gear):
+// what it looks for. changed runs the search again.
+func (ui *IpodUI) ytSearchSettingsView(playlists *bool, changed func()) *View {
+	v := &View{ID: "yt-settings", Title: "Search Settings", Kind: KindFull}
+	v.Build = func() []Item {
+		pick := func(label, sub string, on bool) Item {
+			return Item{Label: label, Sublabel: sub, Checked: *playlists == on, NoArrow: true, OnSelect: func() {
+				if *playlists != on {
+					*playlists = on
+					changed()
+				}
+				ui.refreshView(v)
+			}}
+		}
+		return []Item{
+			pick("Videos", "Songs, live sets, albums in one video", false),
+			pick("Playlists & Albums", "Each video a song of the album", true),
+		}
+	}
+	v.Items = v.Build()
+	if *playlists {
+		v.Index = 1
+	}
+	return v
+}
+
 func (ui *IpodUI) searchHubView() *View {
 	v := &View{ID: "searchHub", Title: "Search", Kind: KindSplit}
 	v.Build = func() []Item {

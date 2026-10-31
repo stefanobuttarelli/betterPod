@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.84 (2026-10-31)
+
+### Changed
+- **YouTube's search options are by the search bar's gear,** as Weather's: Videos, or Playlists & Albums (the search runs again when it changes). Over the results a thin bar, as the iPod's letters between the artists, says what they are: "Showing: Videos". It is never selected: the cursor passes over it.
+
 ## v0.83 (2026-10-31)
 
 ### Added

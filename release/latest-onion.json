@@ -1,8 +1,8 @@
 {
-  "version": "0.83",
-  "path": "release/betterpod-v0.83-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.83-onion.zip",
-  "sha256": "cc208023bf625f57ba6f18e2385de169268918b4c2b3858987684cd5ee19f6e3",
-  "size": 28336557,
-  "notes": "- Listen: an Internet Archive item or a YouTube video plays before you download it"
+  "version": "0.84",
+  "path": "release/betterpod-v0.84-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.84-onion.zip",
+  "sha256": "1c77093ccf6394865fea6eb3c7ca5b99cd5c7d7cca0a680760101f7014578113",
+  "size": 28340217,
+  "notes": "- YouTube: the search options are by the search bar's gear\n- A thin bar over the results says what they are"
 }
