@@ -336,6 +336,18 @@ func generateAlbumCacheKey(artist, album string) string {
 	return fmt.Sprintf("%x", hash)
 }
 
+// albumArtKey: the name of an album's files in the artwork cache, from its
+// key (its folder and name, as the library groups albums): two albums of
+// the same artist and name in different folders (two editions, a "Greatest
+// Hits") would share the artist and name's, and one cover would replace
+// the other's.
+func albumArtKey(a *Album) string {
+	if a.Key == "" {
+		return generateAlbumCacheKey(a.Artist, a.Name)
+	}
+	return generateAlbumCacheKey("album", keyRel(a.Key))
+}
+
 // saveAlbumArtwork saves album artwork to disk and clears ArtData from memory
 func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 	if album == nil || album.ArtData == nil || len(album.ArtData) == 0 {
@@ -347,8 +359,7 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 		return fmt.Errorf("failed to create artwork directory: %v", err)
 	}
 
-	// Generate filename using hash of artist+album
-	hash := generateAlbumCacheKey(album.Artist, album.Name)
+	hash := albumArtKey(album)
 	if album.ArtExt == "" {
 		album.ArtExt = sniffImageExt(album.ArtData)
 	}

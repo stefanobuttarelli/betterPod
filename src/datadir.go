@@ -19,17 +19,52 @@ import (
 const dataDirPointer = "datadir.txt"
 
 // the files and folders that make up the database (nothing else is ever
-// copied or deleted: the data folder may be shared with other things)
+// copied or deleted: the data folder may be shared with other things, as
+// /userdata or a card's root). Whatever the app keeps in the data folder
+// must be listed here, or a move leaves it behind (unittest: datadir_test.go
+// looks for dataPath / dataDir names in the code). Not listed: tmp/ (things
+// under way), and the pointers datadir.txt and musicdir.txt, which stay in
+// the default folder.
 var dataItems = []string{
 	".miyoopod_library.json",
 	".miyoopod_settings.json",
 	".miyoopod_playback.json",
+	".miyoopod_update.json",
+	".miyoopod_update_status",
+	".update_check.json",
 	"scan_stats.json",
 	"ipodjs_settings.json",
+	"album_merges.json",
+	"recent_searches.json",
+	"podcasts.json",
+	"suno.json",
+	"weather.json",
+	"share_count.txt",
 	"ipodSolitaireSaveState.json",
 	"ipodSolitaireWins.txt",
+	"fiveletters.json",
+	"2048.json",
+	"quiz_best.txt",
+	"puzzles",
+	"chosen_covers",
 	".miyoopod_artwork",
 	".ipod_art",
+	"tools",
+}
+
+// folderItems: everything in a database folder of its own (the one in the
+// music folder, which Move Music takes whole), but tmp/ and the pointers.
+func folderItems(dir string) []string {
+	var out []string
+	es, _ := os.ReadDir(dir)
+	for _, e := range es {
+		switch n := e.Name(); n {
+		case "tmp", dataDirPointer, musicDirPointer:
+		default:
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 var (
@@ -142,6 +177,11 @@ func hasDatabase(dir string) bool {
 // already in dst are copied again only if src's copy is newer (the final
 // pass of a move, for what the app wrote while copying).
 func copyDatabase(src, dst string, onlyNewer bool, progress func(int)) error {
+	return copyItems(src, dst, dataItems, onlyNewer, progress)
+}
+
+// copyItems: copyDatabase for the items named.
+func copyItems(src, dst string, items []string, onlyNewer bool, progress func(int)) error {
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
@@ -153,7 +193,7 @@ func copyDatabase(src, dst string, onlyNewer bool, progress func(int)) error {
 		st, err := os.Stat(to)
 		return err == nil && !info.ModTime().After(st.ModTime())
 	}
-	for _, name := range dataItems {
+	for _, name := range items {
 		from := filepath.Join(src, name)
 		st, err := os.Stat(from)
 		if err != nil {
@@ -196,25 +236,74 @@ func copyDatabase(src, dst string, onlyNewer bool, progress func(int)) error {
 	return nil
 }
 
-// removeDatabase deletes the database items from dir (after a move).
+// removeDatabase deletes the database items from dir (Replace with
+// current, before copying there).
 func removeDatabase(dir string) {
 	for _, name := range dataItems {
 		_ = os.RemoveAll(filepath.Join(dir, name))
 	}
 }
 
+// removeCopied deletes, after a move, the items' files in src that are in
+// dst too, with the same size, then the folders left empty. Nothing that
+// wasn't copied is deleted (a file written meanwhile, or that couldn't be
+// read). It returns how many files were kept.
+func removeCopied(src, dst string, items []string) int {
+	kept := 0
+	for _, name := range items {
+		root := filepath.Join(src, name)
+		if _, err := os.Lstat(root); err != nil {
+			continue
+		}
+		var dirs []string
+		filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+			if err != nil {
+				kept++
+				return nil
+			}
+			if info.IsDir() {
+				dirs = append(dirs, p)
+				return nil
+			}
+			rel, _ := filepath.Rel(src, p)
+			st, err := os.Stat(filepath.Join(dst, rel))
+			if err != nil || !st.Mode().IsRegular() || st.Size() != info.Size() || st.ModTime().Before(info.ModTime()) {
+				kept++
+				return nil
+			}
+			if os.Remove(p) != nil {
+				kept++
+			}
+			return nil
+		})
+		for i := len(dirs) - 1; i >= 0; i-- {
+			os.Remove(dirs[i]) // (only if empty)
+		}
+	}
+	return kept
+}
+
+// copyFile copies a file through a .tmp, synced, then renamed (its mode
+// kept: the YouTube tools are programs).
 func copyFile(from, to string) error {
 	in, err := os.Open(from)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
+	mode := os.FileMode(0644)
+	if st, err := in.Stat(); err == nil {
+		mode = st.Mode().Perm()
+	}
 	tmp := to + ".tmp"
-	out, err := os.Create(tmp)
+	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	if _, err := io.Copy(out, in); err == nil {
+		err = out.Sync()
+	}
+	if err != nil {
 		out.Close()
 		os.Remove(tmp)
 		return err
@@ -226,25 +315,62 @@ func copyFile(from, to string) error {
 	return os.Rename(tmp, to)
 }
 
+// atomicLocks: one lock per file written by writeFileAtomic, so two
+// writers of the same file don't share its .tmp.
+var atomicLocks sync.Map
+
+// writeFileAtomic writes the file whole or not at all: into a .tmp, synced
+// (a power cut after the rename must not leave an empty file: the rename
+// can reach the card before the data), then renamed over the old one.
 func writeFileAtomic(path string, data []byte) error {
+	mu, _ := atomicLocks.LoadOrStore(path, &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	defer mu.(*sync.Mutex).Unlock()
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err = f.Write(data); err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, path)
 }
 
-// rebaseArtPaths points the albums' artwork files at the current artwork
-// folder (the library stores absolute paths).
+// rebaseArtPaths points the albums' artwork files at the current database
+// folder (the library stores absolute paths): the artwork cache's, and the
+// covers chosen by hand. Other covers (a cover.jpg by the songs) stay.
 func rebaseArtPaths(lib *Library) {
 	if lib == nil {
 		return
 	}
 	for _, al := range lib.Albums {
-		if al.ArtPath != "" {
-			al.ArtPath = ARTWORK_DIR() + filepath.Base(al.ArtPath)
+		if p := dataArtPath(al.ArtPath); p != "" {
+			al.ArtPath = p
 		}
 	}
+}
+
+// dataArtPath: where a cover kept in a database folder (the artwork cache,
+// or chosen_covers) is in the current one; "" for a cover kept elsewhere.
+func dataArtPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	switch filepath.Base(filepath.Dir(p)) {
+	case ".miyoopod_artwork":
+		return ARTWORK_DIR() + filepath.Base(p)
+	case "chosen_covers":
+		return filepath.Join(dataDir(), "chosen_covers", filepath.Base(p))
+	}
+	return ""
 }
 
 // artPathFor finds an album's artwork file, also when the library was
@@ -256,9 +382,10 @@ func artPathFor(p string) string {
 	if _, err := os.Stat(p); err == nil {
 		return p
 	}
-	alt := ARTWORK_DIR() + filepath.Base(p)
-	if _, err := os.Stat(alt); err == nil {
-		return alt
+	if alt := dataArtPath(p); alt != "" {
+		if _, err := os.Stat(alt); err == nil {
+			return alt
+		}
 	}
 	return p
 }

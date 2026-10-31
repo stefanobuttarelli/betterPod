@@ -54,8 +54,15 @@ const mergesFile = "album_merges.json"
 func mergesLocked() map[string]albumMerge {
 	if d := dataDir(); d != mergesFrom {
 		merges = map[string]albumMerge{}
-		if b, err := os.ReadFile(filepath.Join(d, mergesFile)); err == nil {
-			json.Unmarshal(b, &merges)
+		p := filepath.Join(d, mergesFile)
+		if b, err := os.ReadFile(p); err == nil {
+			if err := json.Unmarshal(b, &merges); err != nil {
+				// (the next save would replace it with what's left: the
+				// file is kept aside as it was)
+				merges = map[string]albumMerge{}
+				logMsg("Album merges: " + p + " can't be read (" + err.Error() + "): kept as " + mergesFile + ".bad")
+				_ = writeFileAtomic(p+".bad", b)
+			}
 		}
 		mergesFrom = d
 	}
@@ -75,9 +82,7 @@ func saveMergesLocked() {
 		return
 	}
 	b, _ := json.MarshalIndent(m, "", " ")
-	if err := os.WriteFile(p+".tmp", b, 0o644); err == nil {
-		os.Rename(p+".tmp", p)
-	} else {
+	if err := writeFileAtomic(p, b); err != nil {
 		logMsg("Album merges: " + err.Error())
 	}
 }
@@ -270,6 +275,24 @@ func retargetAlbumMerges(oldKey string, t *Track, name, artist string) {
 	}
 }
 
+// albumRenamed: Album Info gave all of al's own songs (t is one of them)
+// the album name and artist. The songs put into it follow it, and so does
+// its chosen cover (both are kept by the album's key, which has its name).
+// It returns the songs put into it, to be read again with the others.
+func albumRenamed(al *Album, t *Track, name, artist string) []string {
+	var paths []string
+	for _, m := range mergedIn(al) {
+		paths = append(paths, m.Path)
+	}
+	retargetAlbumMerges(al.Key, t, name, artist)
+	newKey := ownAlbumDir(t) + "|" + strings.ToLower(strings.TrimSpace(name))
+	if newKey != al.Key {
+		moveChosenCover(al.Key, newKey)
+		logMsg(fmt.Sprintf("Album Info: %q renamed %q: %d songs put into it follow", al.Name, name, len(paths)))
+	}
+	return paths
+}
+
 // rereadTracks reads songs again into the library (their album may have
 // changed), without scanning the whole music folder: as removeFromLibrary
 // without them, then the scan's scanTrack on each. Background goroutine.
@@ -362,6 +385,14 @@ func (ui *IpodUI) rereadTracks(paths []string) {
 		logMsg("WARNING: Failed to save library: " + err.Error())
 	}
 	ui.postSure(func() {
+		// the playlists show the songs read again, not the old ones
+		for _, pl := range lib.Playlists {
+			for i, t := range pl.Tracks {
+				if nt := lib.TracksByPath[t.Path]; nt != nil && again[t.Path] {
+					pl.Tracks[i] = nt
+				}
+			}
+		}
 		ui.kb.initialized = false
 		ui.refreshBuilt()
 	})

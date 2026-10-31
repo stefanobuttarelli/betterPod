@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -527,8 +528,8 @@ func (ui *IpodUI) songInfoView(e *albumEdit, s *songEdit, list, album *View) *Vi
 }
 
 // saveAlbumEdit writes the changed fields of the changed songs, and only
-// those (each file keeps its own values of the others), then scans the
-// library again and goes back. The old values are logged first, so they
+// those (each file keeps its own values of the others), then reads these
+// songs again into the library (rereadTracks) and goes back. The old values are logged first, so they
 // can be put back by hand. A read-only card stops it at the first file.
 func (ui *IpodUI) saveAlbumEdit(e *albumEdit, v *View) {
 	if albumSaving[e.al] {
@@ -558,7 +559,7 @@ func (ui *IpodUI) saveAlbumEdit(e *albumEdit, v *View) {
 		var stop error
 		for i, j := range todo {
 			logMsg(fmt.Sprintf("Album Info: %s: was %+v, writing %+v", j.path, j.s.orig, j.tags))
-			if err := writeTagsMasked(j.path, filepath.Ext(j.path), j.tags, j.mask); err != nil {
+			if err := safeWriteTags(j.path, j.tags, j.mask); err != nil {
 				logMsg(fmt.Sprintf("Album Info: %s: %v", j.path, err))
 				failed = append(failed, j.tags.Title)
 				if errors.Is(err, syscall.EROFS) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) || isDiskErr(err) {
@@ -587,8 +588,43 @@ func (ui *IpodUI) saveAlbumEdit(e *albumEdit, v *View) {
 			}
 			saved := len(written)
 			if saved > 0 {
+				// a renamed album keeps the songs put into it and its
+				// chosen cover; then only these songs are read again (not
+				// the whole music folder)
+				var paths []string
+				for _, j := range written {
+					paths = append(paths, j.path)
+				}
+				// renamed (or given another album artist) only when all its
+				// own songs were, alike: otherwise the album splits, and
+				// what was put into it stays with the songs left
+				own := 0
+				for _, t := range albumTracks(e.al) {
+					if mergedKey(t.Path) == "" {
+						own++
+					}
+				}
+				var t0 *Track
+				name, artist, n, same := "", "", 0, true
+				for _, j := range written {
+					if j.mask&(tagAlbum|tagAlbumArtist) == 0 || mergedKey(j.path) != "" {
+						continue
+					}
+					if t0 == nil {
+						t0, name = j.s.t, j.tags.Album
+					} else if !strings.EqualFold(strings.TrimSpace(j.tags.Album), strings.TrimSpace(name)) {
+						same = false
+					}
+					if j.mask&tagAlbumArtist != 0 {
+						artist = j.tags.AlbumArtist
+					}
+					n++
+				}
+				if t0 != nil && same && n == own {
+					paths = append(paths, albumRenamed(e.al, t0, name, artist)...)
+				}
 				ui.dirtyAllViews()
-				ui.rescanLibrary()
+				go ui.rereadTracks(paths)
 			}
 			if stop != nil || len(failed) > 0 {
 				if stop != nil {
@@ -609,6 +645,19 @@ func (ui *IpodUI) saveAlbumEdit(e *albumEdit, v *View) {
 			ui.showToast(fmt.Sprintf("Saved %d %s", saved, pluralize(saved, "song", "songs")))
 		})
 	}()
+}
+
+// safeWriteTags: writeTagsMasked, with a file that makes it panic (a tag
+// damaged in a way not foreseen) an error for that song, not the end of
+// the app.
+func safeWriteTags(path string, t songTags, mask tagMask) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("couldn't write the tags (%v)", r)
+			logMsg(fmt.Sprintf("Album Info: %s: panic %v\n%s", path, r, debug.Stack()))
+		}
+	}()
+	return writeTagsMasked(path, filepath.Ext(path), t, mask)
 }
 
 // closeAlbumInfo: back to where Album Info was opened from (only its own
