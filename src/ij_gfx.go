@@ -281,6 +281,35 @@ func darkenColumns(dst *image.RGBA, x0, y0, h int, alpha []float64) {
 	// alpha is left as it is
 }
 
+// dimRect darkens a rectangle as black at opacity a over it would (the
+// screen behind a sheet), in integers: the colour times (1-a), the alpha
+// toward opaque. A fillRect of black with an alpha blends in floats, a lot
+// slower over the whole screen each frame.
+func dimRect(dst *image.RGBA, x, y, w, h int, a float64) {
+	x0, y0, x1, y1, ok := clipRect(dst, x, y, w, h)
+	if !ok || a <= 0 {
+		return
+	}
+	if a >= 1 {
+		fillRect(dst, x0, y0, x1-x0, y1-y0, colBlack)
+		return
+	}
+	m := uint32(int((1 - a) * 256))
+	if cDraw {
+		cDim(dst, x0, y0, x1, y1, m)
+		return
+	}
+	p, _ := pix32(dst)
+	for yy := y0; yy < y1; yy++ {
+		o := dst.PixOffset(x0, yy) / 4
+		row := p[o : o+x1-x0]
+		for i, c := range row {
+			al := 255 - (255-c>>24)*m>>8
+			row[i] = scale32(c, m)&0xffffff | al<<24
+		}
+	}
+}
+
 // boxShadowProfile returns the alpha falloff of a CSS box-shadow blur, one
 // value per device px (Gaussian with sigma = blur/2).
 func boxShadowProfile(blurDevice, maxAlpha float64) []float64 {

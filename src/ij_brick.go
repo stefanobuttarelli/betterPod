@@ -48,6 +48,7 @@ type BrickGame struct {
 	bricks           []brk
 	lastStep         time.Time
 	acc              time.Duration
+	paused           bool // the menu (a sheet) is open
 	onQuit           func()
 	bg               *image.RGBA
 }
@@ -210,9 +211,13 @@ func (g *BrickGame) reset() {
 	g.phase = "waiting"
 }
 
-// Animating: the game redraws every frame (CustomView); the input
-// methods move the paddle and drive the menu.
-func (g *BrickGame) Animating(now time.Time) bool { return true }
+// Animating: the ball in play or the paddle gliding (CustomView); the
+// input methods move the paddle and drive the menu. Waiting for the
+// serve, paused by the menu or after the game, nothing moves and only a
+// key redraws.
+func (g *BrickGame) Animating(now time.Time) bool {
+	return !g.paused && (g.phase == "playing" || g.pvel != 0 && g.phase != "gameOver")
+}
 
 func (g *BrickGame) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	if g.phase == "gameOver" {
@@ -257,14 +262,16 @@ func (g *BrickGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 	if g.acc > 10*brickStep {
 		g.acc = 10 * brickStep
 	}
-	if ui.activeSheet() != nil { // the menu (START) pauses the game
+	g.paused = ui.activeSheet() != nil
+	if g.paused { // the menu (START) pauses the game
 		g.acc = 0
 	}
 	for g.acc >= brickStep {
 		g.step()
 		g.acc -= brickStep
 	}
-	if v != nil && (v.exiting || ui.topScreen() != v) {
+	// still (no frames until a key): the clock starts again at the next one
+	if v != nil && (v.exiting || ui.topScreen() != v) || !g.Animating(now) {
 		g.lastStep = time.Time{}
 		g.acc = 0
 	}

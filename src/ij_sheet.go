@@ -133,7 +133,10 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 	}
 	d := DPR
 	hCSS := s.heightCSS()
-	img := newCanvas(640, px(hCSS))
+	// the last picture's buffer, cleared (a new one at each move of the
+	// cursor was 0.3 MB of garbage)
+	img := newCanvasCached(&s.cache, 640, px(hCSS))
+	clearRGBA(img)
 	x0, x1 := sheetMargin, 320-sheetMargin
 	sep := rgba(0, 0, 0, 0.09)
 	if th.dark {
@@ -224,7 +227,7 @@ func (ui *IpodUI) drawSheets(dst *image.RGBA, now time.Time) {
 			continue
 		}
 		// the screen dims behind the sheet
-		fillRect(dst, 0, 0, 640, 480, rgba(0, 0, 0, 0.32*(1-v)))
+		dimRect(dst, 0, 0, 640, 480, 0.32*(1-v))
 		img := s.render(ui)
 		h := img.Bounds().Dy()
 		rest := 480 - h - px(sheetMargin) + px(4)

@@ -430,6 +430,9 @@ func writeUpdCheck(f updCheckFile) {
 	}
 }
 
+// autoUpdOff: MIYOOPOD_AUTO_UPDATE_CHECK=0, read once (not at each frame).
+var autoUpdOff = os.Getenv("MIYOOPOD_AUTO_UPDATE_CHECK") == "0"
+
 var autoUpd struct {
 	next    time.Time // when the next check is due (zero: not planned yet)
 	running bool
@@ -437,7 +440,7 @@ var autoUpd struct {
 
 // autoCheckTick is called by the UI loop; it is cheap until a check is due.
 func (ui *IpodUI) autoCheckTick(now time.Time) {
-	if autoUpd.running || os.Getenv("MIYOOPOD_AUTO_UPDATE_CHECK") == "0" {
+	if autoUpd.running || autoUpdOff {
 		return
 	}
 	if autoUpd.next.IsZero() {

@@ -6,10 +6,14 @@ package main
 // once within a per-frame budget, and the list thumbnails are prefetched.
 
 import (
+	"bufio"
+	"bytes"
 	"container/list"
 	"fmt"
 	"hash/fnv"
 	"image"
+	"image/draw"
+	"image/jpeg"
 	"os"
 	"path/filepath"
 	"slices"
@@ -458,10 +462,16 @@ func (ui *IpodUI) artCached(a *Album, devSize int) *image.RGBA {
 // ---- disk cache of scaled artwork ----
 //
 // Files are named after the artwork file (path, size, mtime) and the size,
-// so a changed cover gets a new entry. Only sizes up to 320 px are cached.
+// so a changed cover gets a new entry. Sizes up to 320 px are raw RGBA;
+// bigger ones (the 480 px previews) are JPEG: raw they would take 900 KB
+// an album on the card, and the slideshow would decode the original cover
+// at every step without them.
+
+// artJPEGFrom: sizes above this are kept as JPEG.
+const artJPEGFrom = 320
 
 func artDiskPath(a *Album, dev int) string {
-	if a == nil || a.ArtPath == "" || dev > 320 {
+	if a == nil || a.ArtPath == "" {
 		return ""
 	}
 	st, err := os.Stat(a.ArtPath)
@@ -470,13 +480,20 @@ func artDiskPath(a *Album, dev int) string {
 	}
 	h := fnv.New64a()
 	fmt.Fprintf(h, "%s|%d|%d", a.ArtPath, st.Size(), st.ModTime().UnixNano())
-	return filepath.Join(dataPath(".ipod_art"), fmt.Sprintf("%016x_%d.rgba", h.Sum64(), dev))
+	ext := "rgba"
+	if dev > artJPEGFrom {
+		ext = "jpg"
+	}
+	return filepath.Join(dataPath(".ipod_art"), fmt.Sprintf("%016x_%d.%s", h.Sum64(), dev, ext))
 }
 
 func readArtDisk(a *Album, dev int) *image.RGBA {
 	p := artDiskPath(a, dev)
 	if p == "" {
 		return nil
+	}
+	if dev > artJPEGFrom {
+		return readArtJPEG(p, dev)
 	}
 	data, err := os.ReadFile(p)
 	if err != nil || len(data) != dev*dev*4 {
@@ -492,7 +509,32 @@ func writeArtDisk(a *Album, dev int, img *image.RGBA) {
 	}
 	_ = os.MkdirAll(filepath.Dir(p), 0755)
 	tmp := p + ".tmp"
-	if os.WriteFile(tmp, img.Pix, 0644) == nil {
+	data := img.Pix
+	if dev > artJPEGFrom {
+		var b bytes.Buffer
+		if jpeg.Encode(&b, img, &jpeg.Options{Quality: 90}) != nil {
+			return
+		}
+		data = b.Bytes()
+	}
+	if os.WriteFile(tmp, data, 0644) == nil {
 		_ = os.Rename(tmp, p)
 	}
+}
+
+// readArtJPEG: a big size from the disk cache (nil if missing or not
+// dev x dev).
+func readArtJPEG(p string, dev int) *image.RGBA {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	src, err := jpeg.Decode(bufio.NewReader(f))
+	if err != nil || src.Bounds().Dx() != dev || src.Bounds().Dy() != dev {
+		return nil
+	}
+	out := newCanvas(dev, dev)
+	draw.Draw(out, out.Bounds(), src, src.Bounds().Min, draw.Src)
+	return out
 }

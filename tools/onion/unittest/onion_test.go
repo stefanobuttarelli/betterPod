@@ -321,6 +321,15 @@ func TestCDrawMatchesGo(t *testing.T) {
 		if n, m := diffPixels(g, c); n != 0 {
 			t.Fatalf("darkenColumns iter %d: %d bytes differ, max %d", iter, n, m)
 		}
+		// dimRect, also over see-through pixels (a layer)
+		da := []float64{0.32, 0.45, 0.6, 0.01, 0.999, 0.17}[iter%6]
+		for _, d := range []*image.RGBA{dst, src} {
+			w, h := 1+r.Intn(640), 1+r.Intn(480)
+			g, c = both(d, func(d *image.RGBA) { dimRect(d, dx, dy, w, h, da) })
+			if n, m := diffPixels(g, c); n != 0 {
+				t.Fatalf("dimRect iter %d: %d bytes differ, max %d", iter, n, m)
+			}
+		}
 	}
 	// a clipped sub-image as destination (blitClipped)
 	dst := randImage(r, 640, 480, false)
