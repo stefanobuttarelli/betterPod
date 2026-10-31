@@ -1,8 +1,8 @@
 {
-  "version": "0.91.1",
-  "path": "release/betterpod-v0.91.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.91.1-onion.zip",
-  "sha256": "0bf7e78eb9ae74a62f0a12c771a5485c9b076f2efe0c99b1da2bbd2c7aa2dfe7",
-  "size": 28418475,
-  "notes": "- A check of the whole app before 1.0: many fixes (quick skips, unplayable files, playlists, database moves, tags, Software Update, Internet Archive, Share, Knulli screen off/on, Miyoo exits) and a lighter, faster interface, mostly on the Miyoo."
+  "version": "0.92",
+  "path": "release/betterpod-v0.92-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.92-onion.zip",
+  "sha256": "a56ab0c3db1a9f3e85509faa328b6c43730f795e4b4f63eecb798d7225181c6c",
+  "size": 28421043,
+  "notes": "- Beta Versions: a button in Settings \u2192 Software Update (off by default) that also offers beta versions, to try what comes next before it's out."
 }

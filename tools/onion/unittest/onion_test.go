@@ -80,7 +80,12 @@ func TestVersions(t *testing.T) {
 	}{{"0.1", "0.2", true}, {"0.1", "0.1", false}, {"0.1", "0.1.1", true}, {"0.10", "0.9", false}, {"0.2", "0.1", false},
 		// a release made for one system only adds a number (0.29.1), and the
 		// next common version (0.30) is newer
-		{"0.2", "0.29", true}, {"0.29", "0.29.1", true}, {"0.29.1", "0.30", true}, {"0.29.1", "0.29", false}} {
+		{"0.2", "0.29", true}, {"0.29", "0.29.1", true}, {"0.29.1", "0.30", true}, {"0.29.1", "0.29", false},
+		// betas (1.0 on): before their release, after what came before,
+		// in their own order
+		{"1.0", "1.1-beta.1", true}, {"1.0.3", "1.1-beta.1", true}, {"1.1-beta.1", "1.1-beta.2", true},
+		{"1.1-beta.2", "1.1", true}, {"1.1", "1.1-beta.3", false}, {"1.1-beta.2", "1.0.9", false},
+		{"1.1-beta.2", "1.1-beta.2", false}, {"1.1-beta.10", "1.1-beta.9", false}, {"0.91.1", "1.0-beta.1", true}} {
 		if got := isNewerVersion(c.cur, c.rem); got != c.newer {
 			t.Errorf("isNewerVersion(%s, %s) = %v", c.cur, c.rem, got)
 		}

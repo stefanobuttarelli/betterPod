@@ -24,11 +24,27 @@ versions = []
 for p in parts:
     head, body = p.split("\n", 1)
     versions.append((head.split()[0], body.strip()))
-newest = versions[0][0]
 only = os.environ.get("ONLY_SINCE", "0.65")
 
+
+def beta(v):
+    """A beta ("1.1-beta.2"): a pre-release on GitHub, never "Latest"."""
+    return "-" in v
+
+
 def key(v):
-    return [int(x) for x in v.split(".")]
+    """Sorts as src/version.go does: a beta before its release."""
+    base, _, pre = v.partition("-")
+    nums = [int(x) for x in base.split(".")]
+    while len(nums) < 4:
+        nums.append(0)
+    last = pre.rsplit(".", 1)[-1]
+    rank = (int(last) if last.isdigit() else 0) if pre else 1 << 30
+    return nums + [rank]
+
+
+# "Latest" goes to the newest release that isn't a beta
+newest = next((v for v, _ in versions if not beta(v)), versions[0][0])
 
 def systems(knulli, onion):
     """The release title's systems, from the zips it carries."""
@@ -85,6 +101,8 @@ for v, body in reversed(versions):  # oldest first, so the newest ends up on top
     # this one is for the Miyoo only (Anbernic users follow that link too)
     args = ["release", "create", f"v{v}", "--target", commits[0], "--title", f"betterPod {v}{systems(k, o)}",
             "--notes-file", "/tmp/notes.md", f"--latest={'true' if v == newest and k else 'false'}"]
+    if beta(v):
+        args.append("--prerelease")
     args += [f for f in (zipf, onionf) if os.path.exists(f)]
     r = gh(*args)
     print(f"v{v}:", r.stdout.strip(), r.stderr.strip())

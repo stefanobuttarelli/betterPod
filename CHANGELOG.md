@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.92 (2026-10-31)
+
+### Added
+- **Beta versions.** Settings → Software Update has a **Beta Versions** button (off by default). On, Software Update offers betas too: versions like 1.1-beta.1, to try what comes next before it's out. A beta comes before its version, so the final release follows it; turning Beta Versions off doesn't go back, a beta stays until a newer version is out. The Settings column shows whether it's on.
+- For releases: a beta's zip goes in `release/beta-knulli.json` / `release/beta-onion.json`, and on GitHub it is a pre-release, never "Latest".
+
 ## v0.91.1 (2026-10-31)
 
 A check of the whole app before 1.0: fixes and speed.

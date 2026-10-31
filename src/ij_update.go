@@ -23,6 +23,14 @@ package main
 // Database) is never touched. The previous binary is kept as
 // betterpod/betterpod.prev.
 //
+// Betas: with Beta Versions on (a button on Software Update's screen, kept
+// in the preferences), release/beta-<system>.json is read too, a manifest
+// of the same kind for a version like "1.1-beta.2", and the newer of the
+// two is offered (version.go: a beta comes before its release, so the
+// release follows it). Off, only the stable manifest is read, and a beta
+// installed stays until a release passes it. Versions before 0.92 never read
+// the beta manifest.
+//
 // (release/latest.json is the manifest of the versions called KnulliPod,
 // in ports/knullipod: it names the bridge, a zip in their layout whose
 // KnulliPod.sh moves the installation to ports/betterpod once.)
@@ -60,7 +68,7 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "0.91.1"
+	BETTERPOD_VERSION  = "0.92"
 	betterPodBuildDate = "2026-10-29"
 	// the installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod
 	// on Knulli; /mnt/SDCARD/App/betterpod/betterpod (with its launch.sh) on
@@ -80,6 +88,12 @@ func updateDistro() string {
 }
 
 func updateManifestRel() string { return "release/latest-" + updateDistro() + ".json" }
+
+// updateBetaRel: the betas' manifest (only read with Beta Versions on).
+func updateBetaRel() string { return "release/beta-" + updateDistro() + ".json" }
+
+// betaUpdates: Beta Versions is on (ij_prefs.go keeps it).
+var betaUpdates bool
 
 // updateZipRoot: where the installation starts inside the zip. Onion's zip
 // is unpacked at the root of the SD card by hand (App/betterpod/…); the
@@ -166,17 +180,19 @@ type updButton struct {
 
 func (u *UpdateView) buttons() []updButton {
 	check := updButton{"Check for Updates", func(ui *IpodUI) { ui.checkForUpdate() }}
+	beta := updButton{"Beta Versions: " + onOff(betaUpdates), func(ui *IpodUI) { ui.toggleBeta() }}
 	switch upd.state {
 	case updIdle:
-		return []updButton{check}
+		return []updButton{check, beta}
 	case updUpToDate:
-		return []updButton{{"Check Again", check.do}}
+		return []updButton{{"Check Again", check.do}, beta}
 	case updFailed:
-		return []updButton{{"Try Again", check.do}}
+		return []updButton{{"Try Again", check.do}, beta}
 	case updAvailable:
 		return []updButton{
 			{"Download and Install", func(ui *IpodUI) { ui.installUpdate() }},
 			{"Not Now", func(ui *IpodUI) { ui.hideView() }},
+			beta,
 		}
 	}
 	return nil
@@ -266,15 +282,24 @@ func (u *UpdateView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	switch upd.state {
 	case updIdle:
 		sub = "Connect to Wi-Fi to check for a new version"
+		if betaUpdates {
+			sub = "Beta versions are on: they are offered too"
+		}
 	case updChecking:
 		status = "Checking for updates…"
 	case updUpToDate:
 		sub = "betterPod is up to date"
+		if betaUpdates {
+			sub += ", betas included"
+		}
 		if !upd.checked.IsZero() {
 			sub += " · checked " + checkedWhen(upd.checked, now)
 		}
 	case updAvailable:
 		status = fmt.Sprintf("Version %s is available · %.1f MB", m.Version, float64(m.Size)/1e6)
+		if isBetaVersion(m.Version) {
+			status = fmt.Sprintf("Beta %s is available · %.1f MB", m.Version, float64(m.Size)/1e6)
+		}
 	case updDownloading:
 		status = "Downloading version " + m.Version + "…"
 		sub = fmt.Sprintf("%.1f of %.1f MB", upd.progress*float64(m.Size)/1e6, float64(m.Size)/1e6)
@@ -527,6 +552,21 @@ func (ui *IpodUI) checkForUpdate() {
 	}()
 }
 
+// toggleBeta turns Beta Versions on or off and checks again (on: a beta
+// may be there; off: a beta found before is no longer offered).
+func (ui *IpodUI) toggleBeta() {
+	betaUpdates = !betaUpdates
+	ui.savePrefs()
+	if betaUpdates {
+		logMsg("Software Update: beta versions on")
+	} else {
+		logMsg("Software Update: beta versions off")
+	}
+	upd.manifest = nil
+	upd.state = updIdle
+	ui.checkForUpdate()
+}
+
 func (ui *IpodUI) installUpdate() {
 	if upd.state != updAvailable || upd.manifest == nil {
 		return
@@ -641,16 +681,40 @@ func newSharedTransport() *http.Transport {
 	return tr
 }
 
+// fetchManifest: the stable manifest, and with Beta Versions on the betas'
+// too: the newer of the two. No beta manifest (no beta out), or one that
+// can't be read, leaves the stable one.
 func fetchManifest() (*updateManifest, error) {
-	if u := os.Getenv("MIYOOPOD_UPDATE_URL"); u != "" {
-		return fetchManifestFrom(u, false)
+	m, err := fetchChannel(updateManifestRel(), os.Getenv("MIYOOPOD_UPDATE_URL"))
+	if err != nil || !betaUpdates {
+		return m, err
+	}
+	repo := updRepo
+	b, berr := fetchChannel(updateBetaRel(), os.Getenv("MIYOOPOD_UPDATE_BETA_URL"))
+	if berr != nil {
+		updRepo = repo // (the zip of the stable version is read there)
+		logMsg("No beta: " + berr.Error())
+		return m, nil
+	}
+	if isNewerVersion(m.Version, b.Version) {
+		return b, nil
+	}
+	updRepo = repo
+	return m, nil
+}
+
+// fetchChannel reads one manifest (rel in the repository, or url when set,
+// for tests), through the API first, then raw.
+func fetchChannel(rel, url string) (*updateManifest, error) {
+	if url != "" {
+		return fetchManifestFrom(url, false)
 	}
 	var last error
 	for _, repo := range updateRepos {
-		m, err := fetchManifestFrom(apiBase(repo)+updateManifestRel(), true)
+		m, err := fetchManifestFrom(apiBase(repo)+rel, true)
 		if err != nil {
 			logMsg("Update check through the API (" + repo + ") failed (" + err.Error() + "), trying raw")
-			m, err = fetchManifestFrom(rawBase(repo)+updateManifestRel(), false)
+			m, err = fetchManifestFrom(rawBase(repo)+rel, false)
 		}
 		if err == nil {
 			updRepo = repo

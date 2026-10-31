@@ -23,7 +23,8 @@ type ipodPrefs struct {
 	SaverEffect int     `json:"screensaverEffect,omitempty"`
 	SaverColors int     `json:"screensaverColors,omitempty"`
 	Apple       bool    `json:"turnItApple,omitempty"`
-	ShareName   string  `json:"shareName,omitempty"` // this betterPod's name, for Share
+	ShareName   string  `json:"shareName,omitempty"`   // this betterPod's name, for Share
+	Beta        bool    `json:"betaUpdates,omitempty"` // Software Update offers betas too
 }
 
 func ipodPrefsPath() string { return dataPath("ipodjs_settings.json") }
@@ -48,6 +49,7 @@ func (ui *IpodUI) loadPrefs() {
 	ytEnabled = p.YouTube
 	appleMode = p.Apple
 	shareName = p.ShareName
+	betaUpdates = p.Beta
 	podsInMenu = !p.NoPodcasts
 	saverAfter, saverDim = p.SaverAfter, p.SaverDim
 	if p.SaverStyle == "viz" {
@@ -96,6 +98,6 @@ func (ui *IpodUI) savePrefs() {
 	}
 	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu, Effects: effectsMode,
 		SaverAfter: saverAfter, SaverDim: saverDim, SaverLevel: saverLevel,
-		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName})
+		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName, Beta: betaUpdates})
 	_ = writeFileAtomic(ipodPrefsPath(), data)
 }

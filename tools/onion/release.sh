@@ -9,6 +9,9 @@
 # like release/latest-knulli.json for Knulli. Commit and push both; consoles
 # read the manifest through GitHub's API, then the zip at its path. Older
 # Onion zips in release/ can then be removed.
+#
+# A beta (BETTERPOD_VERSION like "1.1-beta.1") goes to release/beta-onion.json
+# instead: only consoles with Beta Versions on read it.
 set -e
 cd "$(dirname "$0")/../.."
 [ $# -gt 0 ] || { echo "usage: $0 \"what's new\" [...]" >&2; exit 1; }
@@ -20,9 +23,11 @@ NAME=betterpod-v$VERSION-onion.zip
 
 mkdir -p release
 cp "dist/$NAME" "release/$NAME"
-python3 - "$VERSION" "release/$NAME" "$@" << 'PY'
+MANIFEST=release/latest-onion.json
+case "$VERSION" in *-*) MANIFEST=release/beta-onion.json ;; esac
+python3 - "$VERSION" "release/$NAME" "$MANIFEST" "$@" << 'PY'
 import hashlib, json, sys
-version, path, notes = sys.argv[1], sys.argv[2], sys.argv[3:]
+version, path, out, notes = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
 data = open(path, "rb").read()
 manifest = {
     "version": version,
@@ -32,9 +37,9 @@ manifest = {
     "size": len(data),
     "notes": "\n".join("- " + n for n in notes),
 }
-with open("release/latest-onion.json", "w") as f:
+with open(out, "w") as f:
     json.dump(manifest, f, indent=2)
     f.write("\n")
-print("release/latest-onion.json: v%s, %d bytes, sha256 %s" % (version, len(data), manifest["sha256"][:16]))
+print("%s: v%s, %d bytes, sha256 %s" % (out, version, len(data), manifest["sha256"][:16]))
 PY
-echo "Next: git add release/$NAME release/latest-onion.json, commit and push"
+echo "Next: git add release/$NAME $MANIFEST, commit and push"

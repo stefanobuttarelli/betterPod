@@ -216,13 +216,22 @@ func updateLabel() string {
 }
 
 func (ui *IpodUI) updateSummary() *View {
-	items := []Item{{Label: "Version", Value: BETTERPOD_VERSION}}
-	if v := updateLabel(); v != "" {
-		items = append(items, Item{Label: "Update Available", Value: v})
-	} else if upd.state == updUpToDate {
-		items = append(items, Item{Label: "Up to Date"})
+	items := func() []Item {
+		items := []Item{{Label: "Version", Value: BETTERPOD_VERSION}}
+		if v := updateLabel(); v != "" {
+			items = append(items, Item{Label: "Available", Value: v}) // (a beta's version is long: a short label)
+		} else if upd.state == updUpToDate {
+			items = append(items, Item{Label: "Up to Date"})
+		}
+		items = append(items, Item{Label: "Beta Versions", Value: onOff(betaUpdates)})
+		for i := range items {
+			items[i].NoArrow = true
+		}
+		return items
 	}
-	return summaryView("Software Update", items...)
+	v := summaryView("Software Update", items()...)
+	v.Build = items // (again when shown: a check or Beta Versions changed it)
+	return v
 }
 
 func (ui *IpodUI) saverSummary() *View {

@@ -62,7 +62,9 @@ The binary is built from the file list `src/*.go`, not as a package, because `ma
 
 ## Software Update
 
-Settings → Software Update reads `release/latest-<system>.json` (`updateDistro()`: `knulli` or `onion`) through GitHub's API, with raw.githubusercontent.com as the fallback, and downloads the zip at its `path`, checking size and SHA-256. Knulli's zip holds `betterPod.sh` and `betterpod/`; Onion's holds `App/betterpod/` (unzipped at the root of the card by hand), and the update takes what is under `App/`. The files are replaced one by one with atomic renames, the old binary is kept as `betterpod.prev`, and `conf/` is never touched.
+Settings → Software Update reads `release/latest-<system>.json` (`updateDistro()`: `knulli` or `onion`) through GitHub's API, with raw.githubusercontent.com as the fallback, and downloads the zip at its `path`, checking size and SHA-256. Knulli's zip holds `betterPod.sh` and `betterpod/`; Onion's holds `App/betterpod/` (unzipped at the root of the card by hand), and the update takes what is under `App/`. Every file is first copied next to its target (`.kpnew`), then renamed into place, the binary last; the old binary is kept as `betterpod.prev`, and `conf/` is never touched.
+
+**Betas** (from 0.92): a version like `1.1-beta.1` (`version.go`: a beta sorts before its release) goes to `release/beta-<system>.json` instead of `latest-`; only consoles with Settings → Software Update → **Beta Versions** on read it, and they are offered the newer of the two manifests. `tools/onion/release.sh` writes the beta manifest when the version has a `-`; `tools/gh_releases.py` makes betas pre-releases, never "Latest". A beta has its own changelog section (`## v1.1-beta.1`).
 
 ## Where things are
 

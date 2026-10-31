@@ -1,8 +1,8 @@
 {
-  "version": "0.91.1",
-  "path": "release/betterpod-v0.91.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.91.1-knulli.zip",
-  "sha256": "960a19a5a0dd79d24853f85415f797cf456911552b1efec579e6c7bd7c40b09a",
-  "size": 16277004,
-  "notes": "- A check of the whole app before 1.0: many fixes (quick skips, unplayable files, playlists, database moves, tags, Software Update, Internet Archive, Share, Knulli screen off/on, Miyoo exits) and a lighter, faster interface, mostly on the Miyoo."
+  "version": "0.92",
+  "path": "release/betterpod-v0.92-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.92-knulli.zip",
+  "sha256": "7412a01760285d5ce8f785b37dc9e90c86c2cfe32905823480ee01b52420465f",
+  "size": 16281538,
+  "notes": "- Beta Versions: a button in Settings \u2192 Software Update (off by default) that also offers beta versions, to try what comes next before it's out."
 }
