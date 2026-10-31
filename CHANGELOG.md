@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.90 (2026-10-31)
+
+### Added
+- **Suno** (Music → Search → Suno). Type a profile's name (the part after @) to see its public songs, or a song's code (what a share link ends with, suno.com/s/…) to open that song or playlist. **Listen** plays them right there; **Download All**, or Y on a song, saves the MP3s into `<music>/Suno/<artist>/<title>/`, each with its cover and tags. Suno has no public API: this uses its web player's, which may change.
+- **Genius,** in the main menu while nothing is playing: 50 songs of your library at random (no podcast episodes, the same artist not twice in a row) start at once.
+
+### Changed
+- **Listen fetches only the song playing and the next one,** not all the songs of the page ahead of time (an album or a profile could mean dozens of downloads).
+
 ## v0.89 (2026-10-31)
 
 ### Added

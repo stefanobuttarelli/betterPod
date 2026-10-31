@@ -24,6 +24,9 @@ func (ui *IpodUI) homeView() *View {
 		if p := ui.app.Playing; p != nil && p.Track != nil {
 			items = append(items, Item{Label: "Now Playing", Preview: PrevNowPlaying, OnSelect: ui.showNowPlaying,
 				OnLongPress: ui.askClearNowPlaying})
+		} else if len(ui.library().Tracks) > 0 {
+			// nothing playing: Genius starts something (ij_genius.go)
+			items = append(items, Item{Label: "Genius", Preview: PrevMusic, OnSelect: ui.playGenius})
 		}
 		// a new version found (by hand or by the daily check)
 		if updateAvailable() {

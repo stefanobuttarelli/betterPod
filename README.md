@@ -71,6 +71,8 @@ The interface is the same on both. What differs is listed in [Features by system
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
 - **Missing covers found online.** Settings → Library → Missing Covers lists the albums without one: choose one to see what MusicBrainz, iTunes, Deezer and Wikipedia find (with thumbnails and the source) and pick, or search by hand; Search All Automatically fetches them from the Cover Art Archive (MusicBrainz), or else from iTunes, Deezer or Wikipedia, with the same checks. For a soundtrack ripped from a game, which has no album cover of its own, Wikipedia gives the game's box.
 - **Internet Archive.** Search archive.org, see each item's license, listen to it, and download albums (FLAC, ALAC, WAV, AIFF or MP3) straight into your library.
+- **Suno.** Type a Suno profile's name, or a song's code from its share link, to listen to the songs and download them (MP3, with their covers and tags).
+- **Genius,** in the main menu when nothing is playing: 50 songs of your library at random start at once. (Random, despite the name.)
 - **Album Info.** Hold A (or press Y) on an album, in the lists or in Cover Flow, and choose Edit Album Info; Settings → Library → **Missing Info** lists the albums without an artist or track numbers. **Find Info Online** asks MusicBrainz, iTunes, Deezer and Wikipedia; choosing a result fills in album, album artist, year and genre and pairs its songs with yours (titles, artists, numbers). For a game rip, Wikipedia gives the composer or the game's developer. Every field can also be typed. **Save Changes** writes the tags into the MP3, FLAC and Ogg Vorbis files and scans the library again. **Cover** searches for another cover for any album (the one you choose stays, through rescans). **Add to Another Album** (on the album, or on one song in Songs) merges it into an album the library sees as another one (another folder, another spelling, a bonus disc tagged apart): the files stay as they are, any format, and the database remembers where the songs belong; when their numbers are taken they come after it as the next disc. **Separate Added Songs** sends them back.
 - **Podcasts,** in the main menu under Music, as on the iPod. Search Apple's podcast directory, see a podcast's newest episodes and download them into `<music>/Podcasts/<podcast>/`, tagged, with the podcast's artwork, so each podcast is an album. A downloaded episode plays when chosen; Y on an episode or a podcast deletes what was downloaded (asking first). The podcasts you download from stay listed under the search field. Only the files betterPod downloaded count as downloaded and get deleted. The search goes to Apple; feeds and episodes come from each podcast's own servers, which see the console's IP address, like any podcast app.
 - **Bluetooth headphones** connect from Settings → Bluetooth (paired ones with A, new ones with Find New Devices), without going back to Knulli.
@@ -102,7 +104,7 @@ The Miyoo has two slower cores and 128 MB of memory, so what would take the proc
 | Formats | FLAC, ALAC, AAC, WAV, AIFF, MP3, Ogg | FLAC, WAV, AIFF, MP3, Ogg (no AAC / ALAC decoder) |
 | Output | each track's own rate, 24-bit | 44.1 kHz, 16-bit |
 | LOSSLESS badge | ✓ | — |
-| Internet Archive, Podcasts, Weather, covers and Album Info online, Software Update | ✓ | ✓ on the Mini Plus, v4 and Flip (Wi-Fi); Internet Archive without ALAC |
+| Internet Archive, Suno, Podcasts, Weather, covers and Album Info online, Software Update | ✓ | ✓ on the Mini Plus, v4 and Flip (Wi-Fi); Internet Archive without ALAC |
 | YouTube (optional) | ✓ | — (it needs more memory than the Miyoo has) |
 | Bluetooth headphones | ✓ | — (no Bluetooth) |
 | Headphone buttons, pause on unplug | ✓ | — |
@@ -258,6 +260,17 @@ Music → Internet Archive searches [archive.org](https://archive.org) over Wi-F
 
 To open an item you know, type its identifier (the part of the link after `/details/`) and choose **Open item**. This also works for items that archive.org's search doesn't list. The search is not filtered: check the license before you download, and download only what you have the right to.
 
+### Suno
+
+Music → Search → Suno gets public songs from [Suno](https://suno.com) over Wi-Fi. Suno has no public API: betterPod uses the one its web player uses, which needs no account for public songs but may change without notice.
+
+- **Profile:** type the name after the @ (suno.com/@**name**). Its public songs come 20 at a time, newest first; **More Songs…** loads the next ones.
+- **Song code:** type what a share link ends with (suno.com/s/**code**), or a song's id. A playlist's link works too.
+- **Listen** plays the songs right there, as on Internet Archive; **Download All** or **Download** (Y on a song: just that one) gets the MP3s.
+- **Where it goes:** each song is a single, in `<music>/Suno/<artist>/<title>/` with its cover, tagged (its first style as the genre). A song already downloaded says so.
+
+Download your own songs, or songs you have the right to keep: check Suno's terms.
+
 ### Software Update
 
 <img src="docs/images/update.png" width="320" align="right" alt="Software Update">
@@ -320,7 +333,7 @@ Everything runs in Docker (Go 1.24, zig cc for 32-bit ARM with glibc 2.28, the S
 tools/onion/build.sh
 # -> dist/sdcard/App/betterpod/          (copy App/ to the SD card)
 #    dist/betterpod-v<version>-onion.zip  (unzip at the root of the card)
-tools/onion/unittest.sh    # update zip, curves, sleep timer, C pixel loops, Album Info, Podcasts
+tools/onion/unittest.sh    # update zip, curves, sleep timer, C pixel loops, Album Info, Podcasts, Suno
 tools/onion/smoketest.sh   # the ARM binary emulated, a frame per step
 tools/onion/sleeptest.sh   # the sleep timer, with a 3-second "minute"
 tools/onion/perf.sh        # drawing time and load per scenario
@@ -336,8 +349,10 @@ tools/onion/release.sh "What's new"   # release/betterpod-v<version>-onion.zip a
 | `src/library.go`, `src/ij_libinfo.go` | Library scan, album grouping, artwork, scan statistics |
 | `src/datadir.go`, `src/ij_datadir.go` | Database folder and Settings → Database |
 | `src/ij_archive.go` | Music → Internet Archive (search, item, download) |
+| `src/ij_suno.go` | Music → Search → Suno (a profile's songs, a song or playlist by its code, download) |
+| `src/ij_genius.go` | Genius: 50 songs at random, from the main menu |
 | `src/ij_playlists.go` | Playlists: New Playlist, Add to Playlist, removing and deleting; M3U files in `<music>/Playlists` |
-| `src/ij_listen.go` | Listen, on an Internet Archive item and a YouTube video: a song plays on its row (play, pause), fetched into a temporary folder; the user's music is set aside and comes back |
+| `src/ij_listen.go` | Listen, on an Internet Archive item, a YouTube video and Suno's songs: a song plays on its row (play, pause), fetched into a temporary folder; the user's music is set aside and comes back |
 | `src/ij_podcasts.go` | Podcasts (Apple's directory, RSS feeds, episodes) |
 | `src/tagwrite.go` | Writes tags into MP3 (ID3v2), FLAC and Ogg Vorbis files (podcast episodes, Album Info) |
 | `src/ij_albuminfo.go` | Album Info and Missing Info: an album's tags, filled in online or by hand |

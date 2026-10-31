@@ -454,24 +454,53 @@ func (ui *IpodUI) iaSearchView() *View {
 // (safe off the UI goroutine) says the search is still the one shown. On
 // the UI goroutine.
 func (ui *IpodUI) iaLoadThumbs(v *View, res []iaResult, thumbs map[string]*Album, current func() bool) {
-	type job struct {
-		th *Album
-		id string
+	var jobs []thumbJob
+	for _, r := range res {
+		if r.ID == "" {
+			continue
+		}
+		th := thumbs[r.ID]
+		if th == nil {
+			th = &Album{Name: r.Title, Artist: r.Creator}
+			thumbs[r.ID] = th
+		}
+		if th.ArtImg == nil {
+			jobs = append(jobs, thumbJob{th, iaBase() + "/services/img/" + url.PathEscape(r.ID)})
+		}
 	}
-	work := make(chan job)
+	ui.loadThumbs(v, "Internet Archive", jobs, current)
+}
+
+// thumbJob: a list row's picture to fetch.
+type thumbJob struct {
+	th  *Album
+	url string
+}
+
+// loadThumbs fetches rows' pictures from source, three at a time, while
+// current (safe off the UI goroutine) says the list is still the one shown.
+// On the UI goroutine.
+func (ui *IpodUI) loadThumbs(v *View, source string, jobs []thumbJob, current func() bool) {
+	work := make(chan thumbJob)
 	for w := 0; w < 3; w++ {
 		go func() {
 			for j := range work {
 				if !current() {
 					continue
 				}
-				data, err := coverImage("Internet Archive", iaBase()+"/services/img/"+url.PathEscape(j.id))
+				data, err := coverImage(source, j.url)
 				if err != nil || data == nil {
 					continue
 				}
 				img, _, err := image.Decode(bytes.NewReader(data))
 				if err != nil {
 					continue
+				}
+				// a row's picture is small: a big one isn't kept whole (Suno's
+				// can be 1000 px, too much memory on the Miyoo for a list)
+				if b := img.Bounds(); b.Dx() > 240 || b.Dy() > 240 {
+					w, h := 240, 240*b.Dy()/max(b.Dx(), 1)
+					img = scaleImage(shrinkImage(img, w, h), w, h)
 				}
 				th := j.th
 				ui.postSure(func() {
@@ -485,20 +514,6 @@ func (ui *IpodUI) iaLoadThumbs(v *View, res []iaResult, thumbs map[string]*Album
 				})
 			}
 		}()
-	}
-	var jobs []job
-	for _, r := range res {
-		if r.ID == "" {
-			continue
-		}
-		th := thumbs[r.ID]
-		if th == nil {
-			th = &Album{Name: r.Title, Artist: r.Creator}
-			thumbs[r.ID] = th
-		}
-		if th.ArtImg == nil {
-			jobs = append(jobs, job{th, r.ID})
-		}
 	}
 	go func() {
 		defer close(work)

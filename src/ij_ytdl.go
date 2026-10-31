@@ -1331,6 +1331,7 @@ func (ui *IpodUI) searchHubView() *View {
 		items := []Item{
 			{Label: "Library", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchView(), "") }},
 			{Label: "Internet Archive", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.iaSearchView(), "") }},
+			{Label: "Suno", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.sunoView(), "") }},
 		}
 		if ytEnabled && !isOnion { // (no YouTube on the Miyoo, see onion.go)
 			items = append(items, Item{Label: "YouTube", Preview: PrevMusic, OnSelect: func() {

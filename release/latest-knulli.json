@@ -1,8 +1,8 @@
 {
-  "version": "0.89",
-  "path": "release/betterpod-v0.89-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.89-knulli.zip",
-  "sha256": "6fad9db71f429e65915fe66b1d36d47fd1a37918d295b4c824e27bf9e298afe0",
-  "size": 16216331,
-  "notes": "- Playlists: New Playlist, and Add to Playlist in a song's or an album's options\n- Remove a song from a playlist, delete a playlist\n- Saved as M3U files in Music/Playlists"
+  "version": "0.90",
+  "path": "release/betterpod-v0.90-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.90-knulli.zip",
+  "sha256": "96bb9464637b6b353e4db470ba29eab52de1ef94339c498b5593ddd0c18f0969",
+  "size": 16246545,
+  "notes": "- Suno: Music \u2192 Search \u2192 Suno. Type a profile's name or a song's code to listen and download (MP3, with covers and tags).\n- Genius: in the main menu while nothing plays, 50 songs at random start at once.\n- Listen fetches only the song playing and the next one."
 }

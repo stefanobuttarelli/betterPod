@@ -5,11 +5,11 @@ package main
 // its row, before (and without) a download. No Now Playing: the page stays,
 // with Download under it.
 //
-// The songs are fetched one after the other into the database folder's
-// tmp/listen (not the music folder: they don't join the library), the one
-// asked for first; it plays once it is whole (YouTube's audio, fragmented
-// MP4, is made a plain M4A first, as for a download), then the next one,
-// to the last. The user's own music is set aside meanwhile (paused, its
+// The songs are fetched into the database folder's tmp/listen (not the
+// music folder: they don't join the library): the one asked for and the
+// one after it, no further. Each plays once it is whole (YouTube's audio,
+// fragmented MP4, is made a plain M4A first, as for a download), then the
+// next one, to the last. The user's own music is set aside meanwhile (paused, its
 // queue and place kept) and comes back as it was when the preview stops:
 // leaving the page, Download, or the last song's end. The playback poller
 // leaves the mixer alone while a preview plays (previewActive).
@@ -39,6 +39,7 @@ type preview struct {
 	key    string // the page's item
 	songs  []listenSong
 	cancel context.CancelFunc
+	kick   chan struct{} // another song asked for: the fetcher looks again
 
 	mu      sync.Mutex
 	files   []string        // where each song goes
@@ -169,7 +170,7 @@ func (ui *IpodUI) previewStart(key string, songs []listenSong, first int, refres
 	os.RemoveAll(listenDir())
 	os.MkdirAll(listenDir(), 0o755)
 	ctx, cancel := context.WithCancel(context.Background())
-	p := &preview{key: key, songs: songs, cancel: cancel, cur: first,
+	p := &preview{key: key, songs: songs, cancel: cancel, cur: first, kick: make(chan struct{}, 1),
 		got: make([]int64, len(songs)), total: make([]int64, len(songs)), failed: make([]string, len(songs))}
 	for i, s := range songs {
 		p.files = append(p.files, filepath.Join(listenDir(), fmt.Sprintf("%02d%s", i+1, s.Ext)))
@@ -188,18 +189,31 @@ func (ui *IpodUI) previewStart(key string, songs []listenSong, first int, refres
 	previewCur = p
 	previewMu.Unlock()
 	logMsg(fmt.Sprintf("Listen: %s, %d songs, from %d", key, len(songs), first+1))
-	// the songs come one after the other, the one asked for first
+	// the songs come one at a time: the one asked for, then the one after
+	// it (no further: a profile's or a playlist's dozens of songs aren't
+	// fetched ahead); another song asked for comes next
 	go func() {
-		order := []int{first}
-		for i := range songs {
-			if i != first {
-				order = append(order, i)
+		fetched := make([]bool, len(songs))
+		for {
+			p.mu.Lock()
+			cur := p.cur
+			p.mu.Unlock()
+			i := -1
+			for _, j := range []int{cur, cur + 1} {
+				if j < len(songs) && !fetched[j] {
+					i = j
+					break
+				}
 			}
-		}
-		for _, i := range order {
-			if ctx.Err() != nil {
-				return
+			if i < 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-p.kick:
+				}
+				continue
 			}
+			fetched[i] = true
 			dst := p.files[i]
 			prog := func(got, total int64) {
 				p.mu.Lock()
@@ -262,6 +276,10 @@ func (ui *IpodUI) previewPlay(p *preview, i int, refresh func()) {
 	p.cur, p.loaded, p.paused, p.err = i, false, false, ""
 	ready, file := p.ready[i], p.files[i]
 	p.mu.Unlock()
+	select {
+	case p.kick <- struct{}{}:
+	default:
+	}
 	audioStop()
 	refresh()
 	go func() {
@@ -333,7 +351,7 @@ func httpFetch(ctx context.Context, u, dst string, progress func(got, total int6
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("archive.org answered %d", resp.StatusCode)
+		return fmt.Errorf("the server answered %d", resp.StatusCode)
 	}
 	out, err := os.Create(dst)
 	if err != nil {
