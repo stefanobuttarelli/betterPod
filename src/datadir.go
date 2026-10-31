@@ -39,7 +39,6 @@ var dataItems = []string{
 	"album_merges.json",
 	"recent_searches.json",
 	"podcasts.json",
-	"suno.json",
 	"weather.json",
 	"share_count.txt",
 	"ipodSolitaireSaveState.json",

@@ -496,7 +496,7 @@ func (ui *IpodUI) loadThumbs(v *View, source string, jobs []thumbJob, current fu
 				if err != nil {
 					continue
 				}
-				// a row's picture is small: a big one isn't kept whole (Suno's
+				// a row's picture is small: a big one isn't kept whole (a source's
 				// can be 1000 px, too much memory on the Miyoo for a list)
 				if b := img.Bounds(); b.Dx() > 240 || b.Dy() > 240 {
 					w, h := 240, 240*b.Dy()/max(b.Dx(), 1)

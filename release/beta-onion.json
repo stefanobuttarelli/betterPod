@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.8",
-  "path": "release/betterpod-v1.0-beta.8-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.8-onion.zip",
-  "sha256": "08b4f9ad677a973ae3e8f0f62e851ddfc724d2489e0d1efa0757beff3e177b13",
-  "size": 28436333,
-  "notes": "- A downloaded album always shows up, also when another scan was running.\n- Covers from cover.jpg are found once, not copied again at every start."
+  "version": "1.0-beta.9",
+  "path": "release/betterpod-v1.0-beta.9-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.9-onion.zip",
+  "sha256": "35d37a1a6c3ba2a0ab755524cbb0efa3860037c3a2526fd0fb16d278a4a795c5",
+  "size": 28406500,
+  "notes": "- Suno removed (it didn't work with real profiles)."
 }

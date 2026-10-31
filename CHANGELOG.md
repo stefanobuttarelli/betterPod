@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0-beta.9 (2026-10-31)
+
+### Removed
+- **Suno** (Music → Search → Suno) is gone: Suno's endpoints didn't give the songs of real profiles. Songs downloaded with it stay in your library (`<music>/Suno`).
+
 ## v1.0-beta.8 (2026-10-31)
 
 ### Fixed
