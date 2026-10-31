@@ -263,6 +263,16 @@ type id3Frame struct {
 	data  []byte
 }
 
+// id3FrameID: four of A–Z and 0–9, as frame IDs are.
+func id3FrameID(b []byte) bool {
+	for _, c := range b[:4] {
+		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // readID3 returns the tag's version (3 or 4; 0 without a tag), its frames,
 // and where the audio starts.
 func readID3(f *os.File) (int, []id3Frame, int64, error) {
@@ -295,36 +305,51 @@ func readID3(f *os.File) (int, []id3Frame, int64, error) {
 		body = deunsync(body)
 	}
 	pos := 0
-	if flags&0x40 != 0 && len(body) >= 4 { // extended header: dropped
-		if ver == 3 {
-			pos = 4 + int(binary.BigEndian.Uint32(body))
-		} else {
-			pos = syncsafe(body)
+	if flags&0x40 != 0 { // extended header: dropped
+		if len(body) < 4 {
+			return ver, nil, end, errors.New("the ID3 tag is damaged")
 		}
+		// (its size read as int64: a 32-bit int would wrap below 0)
+		var n int64
+		if ver == 3 {
+			n = 4 + int64(binary.BigEndian.Uint32(body))
+		} else {
+			n = int64(syncsafe(body))
+		}
+		// a size past the tag would read as a tag without frames, and
+		// the rewrite would lose them all (the cover, the lyrics)
+		if n < 4 || n > int64(len(body)) {
+			return ver, nil, end, errors.New("the ID3 tag's extended header is damaged")
+		}
+		pos = int(n)
 	}
 	// the frames; v2.4 sizes are syncsafe, but some taggers (older
-	// iTunes) wrote them plain: if the syncsafe reading runs into a
-	// damaged frame, the plain one is tried. A tag that can't be read to
-	// its end is not rewritten (the frames after the damage would be lost).
+	// iTunes) wrote them plain: if the syncsafe reading doesn't walk
+	// cleanly to the padding or the end, the plain one is tried. A tag that
+	// can't be read to its end is not rewritten (the frames after the damage
+	// would be lost).
 	parse := func(plain bool) ([]id3Frame, bool) {
 		var frames []id3Frame
 		p := pos
-		for p+10 <= len(body) && body[p] != 0 {
+		for p < len(body) && body[p] != 0 {
+			if p+10 > len(body) || !id3FrameID(body[p:p+4]) {
+				return nil, false // (not a frame, nor padding)
+			}
 			id := string(body[p : p+4])
-			n := int(binary.BigEndian.Uint32(body[p+4:]))
+			n := int64(binary.BigEndian.Uint32(body[p+4:]))
 			if ver == 4 && !plain {
-				n = syncsafe(body[p+4:])
+				n = int64(syncsafe(body[p+4:]))
 			}
 			fl := [2]byte{body[p+8], body[p+9]}
-			if n < 0 || p+10+n > len(body) {
+			if int64(p)+10+n > int64(len(body)) {
 				return nil, false
 			}
-			data := append([]byte(nil), body[p+10:p+10+n]...)
+			data := append([]byte(nil), body[p+10:p+10+int(n)]...)
 			if ver == 4 && fl[1]&0x02 != 0 {
 				data, fl[1] = deunsync(data), fl[1]&^0x02
 			}
 			frames = append(frames, id3Frame{id, fl, data})
-			p += 10 + n
+			p += 10 + int(n)
 		}
 		return frames, true
 	}

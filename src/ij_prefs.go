@@ -97,5 +97,5 @@ func (ui *IpodUI) savePrefs() {
 	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu, Effects: effectsMode,
 		SaverAfter: saverAfter, SaverDim: saverDim, SaverLevel: saverLevel,
 		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName})
-	_ = os.WriteFile(ipodPrefsPath(), data, 0644)
+	_ = writeFileAtomic(ipodPrefsPath(), data)
 }

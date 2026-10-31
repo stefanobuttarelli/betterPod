@@ -602,7 +602,30 @@ func (ui *IpodUI) setAlbumCover(a *Album, data []byte) {
 // chosenCoverPath: where an album's chosen cover is kept (by its key, its
 // folder relative to the music folder).
 func chosenCoverPath(a *Album, ext string) string {
-	return filepath.Join(dataDir(), "chosen_covers", generateAlbumCacheKey("", keyRel(a.Key))+"."+ext)
+	return chosenCoverFor(a.Key, ext)
+}
+
+func chosenCoverFor(key, ext string) string {
+	return filepath.Join(dataDir(), "chosen_covers", generateAlbumCacheKey("", keyRel(key))+"."+ext)
+}
+
+// moveChosenCover: an album's chosen cover goes with it to its new key (a
+// name changed by Album Info). An album already there with a chosen cover
+// keeps its own.
+func moveChosenCover(oldKey, newKey string) {
+	exts := []string{"jpg", "png", "webp", "gif"}
+	for _, e := range exts {
+		if fileExists(chosenCoverFor(newKey, e)) {
+			return
+		}
+	}
+	for _, e := range exts {
+		if p := chosenCoverFor(oldKey, e); fileExists(p) {
+			if err := os.Rename(p, chosenCoverFor(newKey, e)); err != nil {
+				logMsg("Covers: " + err.Error())
+			}
+		}
+	}
 }
 
 // applyChosenCovers: the albums with a chosen cover get it (after a scan).

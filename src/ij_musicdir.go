@@ -548,8 +548,14 @@ func (j *moveJob) run(ui *IpodUI, byDir map[string]*Album, songs int) error {
 			}
 		}
 		if j.dataRel != "" {
-			os.RemoveAll(filepath.Join(j.from, j.dataRel)) // (copied when switching)
-			dirs[filepath.Dir(filepath.Join(j.from, j.dataRel))] = true
+			// (copied when switching: only what was, tmp/ apart)
+			from := filepath.Join(j.from, j.dataRel)
+			os.RemoveAll(filepath.Join(from, "tmp"))
+			if n := removeCopied(from, filepath.Join(j.to, j.dataRel), folderItems(from)); n > 0 {
+				logMsg(fmt.Sprintf("Move Music: %d database files not copied are kept in %s", n, from))
+			}
+			os.Remove(from)
+			dirs[filepath.Dir(from)] = true
 		}
 		removeEmptyDirs(j.from, dirs)
 		if kept > 0 {
@@ -683,12 +689,21 @@ func (j *moveJob) checkAll(list []*moveUnit, buf []byte, repair bool) (int, erro
 // database first (copied, when it was inside the music folder), then the
 // folder, both remembered on disk.
 func (j *moveJob) switchTo(ui *IpodUI) error {
+	// the database folder, whole (it's the app's own, and the old one is
+	// deleted): copied here first, then again on the UI goroutine what
+	// changed meanwhile, so nothing is written while it switches
+	if j.dataRel != "" {
+		from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
+		if err := copyItems(from, to, folderItems(from), false, nil); err != nil {
+			return err
+		}
+	}
 	res := make(chan error, 1)
 	ui.postSure(func() {
 		if j.dataRel != "" {
 			ui.savePrefs()
 			from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
-			if err := copyDatabase(from, to, false, nil); err != nil {
+			if err := copyItems(from, to, folderItems(from), true, nil); err != nil {
 				res <- err
 				return
 			}

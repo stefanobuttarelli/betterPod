@@ -136,11 +136,39 @@ func decodeAlbumSource(a *Album) image.Image {
 		return nil
 	}
 	defer f.Close()
+	// its size first: on the Miyoo (128 MB) a picture too big to decode is
+	// left out (a 5000 px PNG takes 100 MB once decoded)
+	if isOnion {
+		cfg, _, err := image.DecodeConfig(f)
+		if err != nil {
+			return nil
+		}
+		if cfg.Width > onionMaxArtSide || cfg.Height > onionMaxArtSide {
+			bigArtLog(a.ArtPath, cfg.Width, cfg.Height)
+			return nil
+		}
+		if _, err := f.Seek(0, 0); err != nil {
+			return nil
+		}
+	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		return nil
 	}
 	return img
+}
+
+// onionMaxArtSide: the biggest cover the Miyoo decodes, on a side (3000 ×
+// 3000 is 36 MB as RGBA, 13 MB as a JPEG's YCbCr).
+const onionMaxArtSide = 3000
+
+// bigArtLog logs a cover left out, once per file.
+var bigArtLogged sync.Map
+
+func bigArtLog(p string, w, h int) {
+	if _, seen := bigArtLogged.LoadOrStore(p, true); !seen {
+		logMsg(fmt.Sprintf("Artwork: %s is %d×%d, too big for the Miyoo: left out", p, w, h))
+	}
 }
 
 // art returns the album artwork scaled to devSize, or nil while it is being

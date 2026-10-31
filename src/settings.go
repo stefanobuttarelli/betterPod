@@ -152,5 +152,5 @@ func (app *MiyooPod) saveSettings() error {
 		return err
 	}
 
-	return os.WriteFile(SETTINGS_PATH(), data, 0644)
+	return writeFileAtomic(SETTINGS_PATH(), data)
 }

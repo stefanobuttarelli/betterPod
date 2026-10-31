@@ -311,9 +311,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 	}
 
 	// Parse playlists
-	for _, pl := range scanLib.Playlists {
-		app.parsePlaylist(pl, scanLib)
-	}
+	app.parsePlaylists(scanLib)
 
 	// the new library replaces the old one only now, whole (the menus kept
 	// showing the old one meanwhile, and nothing reads a half-built one)
@@ -640,7 +638,7 @@ func (app *MiyooPod) rgbaCachePath(album *Album) string {
 	if album.ArtPath == "" && album.ArtData == nil {
 		return ""
 	}
-	hash := generateAlbumCacheKey(album.Artist, album.Name)
+	hash := albumArtKey(album)
 	return fmt.Sprintf("%s%s_%d.rgba", ARTWORK_DIR(), hash, COVER_CENTER_SIZE)
 }
 
@@ -901,8 +899,14 @@ func (app *MiyooPod) handleLibraryScanKey(key Key) {
 	}
 }
 
+// libSaveMu: one library save at a time (it's started from several
+// goroutines: two writing the file together would mix it).
+var libSaveMu sync.Mutex
+
 // saveLibraryJSON writes the library to a JSON file
 func (app *MiyooPod) saveLibraryJSON() error {
+	libSaveMu.Lock()
+	defer libSaveMu.Unlock()
 	if app.Library == nil {
 		return fmt.Errorf("library is nil")
 	}
@@ -915,7 +919,8 @@ func (app *MiyooPod) saveLibraryJSON() error {
 		return fmt.Errorf("failed to marshal library: %v", err)
 	}
 
-	err = os.WriteFile(LIBRARY_JSON_PATH(), data, 0644)
+	// whole or not at all: a power cut while writing keeps the old one
+	err = writeFileAtomic(LIBRARY_JSON_PATH(), data)
 	if err != nil {
 		return fmt.Errorf("failed to write library file: %v", err)
 	}
@@ -1015,9 +1020,7 @@ func (app *MiyooPod) loadLibraryJSON() error {
 	}
 
 	// Parse playlists (they're just references, need to be re-read)
-	for _, pl := range lib.Playlists {
-		app.parsePlaylist(pl, lib)
-	}
+	app.parsePlaylists(lib)
 
 	// Decode album art
 	app.decodeAlbumArt()

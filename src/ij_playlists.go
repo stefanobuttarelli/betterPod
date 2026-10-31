@@ -20,20 +20,91 @@ import (
 
 func playlistsDir() string { return filepath.Join(musicRoot(), "Playlists") }
 
-// writePlaylist: the playlist's file, from its songs.
+// writePlaylist: the file of a new playlist, from its songs. A playlist
+// already on disk is changed with editPlaylist instead, which keeps its
+// lines.
 func writePlaylist(pl *Playlist) error {
-	var b strings.Builder
-	b.WriteString("#EXTM3U\n")
-	dir := filepath.Dir(pl.Path)
-	for _, t := range pl.Tracks {
+	b, _ := editM3U(nil, filepath.Dir(pl.Path), nil, pl.Tracks, "", 0)
+	os.MkdirAll(filepath.Dir(pl.Path), 0o755)
+	return writeFileAtomic(pl.Path, b)
+}
+
+// editPlaylist changes a playlist's file in place (see editM3U): the songs
+// of add go at the end, the song at removePath is taken out.
+func editPlaylist(pl *Playlist, lib *Library, add []*Track, removePath string, nth int) error {
+	data, err := os.ReadFile(pl.Path)
+	if err != nil && !os.IsNotExist(err) {
+		return err // (a file that can't be read is not replaced)
+	}
+	b, err := editM3U(data, filepath.Dir(pl.Path), lib, add, removePath, nth)
+	if err != nil {
+		return err
+	}
+	os.MkdirAll(filepath.Dir(pl.Path), 0o755)
+	return writeFileAtomic(pl.Path, b)
+}
+
+// editM3U: an M3U file with the songs of add at its end, and without the
+// song at removePath (the nth song the library found in the file, or else
+// the first line that points at it) and the #EXT lines just before it
+// (#EXTINF…). Every other line stays as it was: songs the library doesn't
+// have (on another card, a format this system skips, a URL), comments, a
+// BOM, Windows' line ends. Rewriting the file from the library's songs would
+// drop them all.
+func editM3U(data []byte, baseDir string, lib *Library, add []*Track, removePath string, nth int) ([]byte, error) {
+	text := string(data)
+	cr := ""
+	if strings.Contains(text, "\r\n") {
+		cr = "\r"
+	}
+	var lines []string
+	if strings.TrimSpace(text) != "" {
+		lines = strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	}
+	if removePath != "" {
+		var lower map[string]*Track
+		at, k := -1, 0
+		for i, l := range lines {
+			l = m3uLine(l)
+			if l == "" || strings.HasPrefix(l, "#") || lib == nil {
+				continue
+			}
+			t := m3uTrack(lib, baseDir, l, &lower)
+			if t == nil {
+				continue
+			}
+			if t.Path == removePath && (k == nth || at < 0) {
+				at = i
+				if k == nth {
+					break
+				}
+			}
+			k++
+		}
+		if at < 0 {
+			return nil, fmt.Errorf("%s is not in the playlist's file", filepath.Base(removePath))
+		}
+		from := at
+		for from > 0 {
+			l := m3uLine(lines[from-1])
+			if !strings.HasPrefix(l, "#EXT") || strings.HasPrefix(l, "#EXTM3U") {
+				break
+			}
+			from--
+		}
+		lines = append(lines[:from], lines[at+1:]...)
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "#EXTM3U"+cr)
+	}
+	for _, t := range add {
 		p := t.Path
-		if rel, err := filepath.Rel(dir, p); err == nil {
+		if rel, err := filepath.Rel(baseDir, p); err == nil {
 			p = rel
 		}
-		fmt.Fprintf(&b, "#EXTINF:%d,%s - %s\n%s\n", int(t.Duration), t.Artist, t.Title, filepath.ToSlash(p))
+		lines = append(lines, fmt.Sprintf("#EXTINF:%d,%s - %s%s", int(t.Duration), t.Artist, t.Title, cr), filepath.ToSlash(p)+cr)
 	}
-	os.MkdirAll(dir, 0o755)
-	return writeFileAtomic(pl.Path, []byte(b.String()))
+	return []byte(strings.Join(lines, "\n") + "\n"), nil
 }
 
 // createPlaylist: a new, empty playlist called name (a number added when
@@ -69,21 +140,22 @@ func (ui *IpodUI) addToPlaylist(pl *Playlist, tracks []*Track) string {
 	for _, t := range pl.Tracks {
 		have[t.Path] = true
 	}
-	n := 0
+	var add []*Track
 	for _, t := range tracks {
 		if !have[t.Path] {
-			pl.Tracks = append(pl.Tracks, t)
+			add = append(add, t)
 			have[t.Path] = true
-			n++
 		}
 	}
+	n := len(add)
 	if n == 0 {
 		return "Already in " + pl.Name
 	}
-	if err := writePlaylist(pl); err != nil {
+	if err := editPlaylist(pl, ui.library(), add, "", 0); err != nil {
 		logMsg("Playlists: " + err.Error())
 		return "Couldn't save " + pl.Name
 	}
+	pl.Tracks = append(pl.Tracks, add...)
 	if n == 1 {
 		return "Added to " + pl.Name
 	}
@@ -195,10 +267,12 @@ func (ui *IpodUI) playlistView(pl *Playlist) *View {
 				ShowNowPlaying: true,
 				LongPress: append(ui.mediaOptions([]*Track{t}), SheetOption{Label: "Remove from Playlist", Danger: true, OnSelect: func() {
 					if i < len(pl.Tracks) && pl.Tracks[i] == t {
-						pl.Tracks = append(append([]*Track{}, pl.Tracks[:i]...), pl.Tracks[i+1:]...)
-						if err := writePlaylist(pl); err != nil {
+						if err := editPlaylist(pl, ui.library(), nil, t.Path, i); err != nil {
 							logMsg("Playlists: " + err.Error())
+							ui.showToast("Couldn't save " + pl.Name)
+							return
 						}
+						pl.Tracks = append(append([]*Track{}, pl.Tracks[:i]...), pl.Tracks[i+1:]...)
 						ui.refreshView(v)
 					}
 				}}),

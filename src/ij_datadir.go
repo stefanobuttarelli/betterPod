@@ -249,11 +249,12 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 			removeDatabase(dir)
 		}
 		err := copyDatabase(old, dir, false, progress)
-		ui.post(func() {
-			if err == nil {
-				// what the app saved meanwhile (artwork, playback position)
-				err = copyDatabase(old, dir, true, nil)
-			}
+		if err == nil {
+			// what the app saved meanwhile (artwork, playback position):
+			// here, not on the UI goroutine (it's I/O)
+			err = copyDatabase(old, dir, true, nil)
+		}
+		ui.postSure(func() {
 			if err == nil {
 				err = setDataDir(dir)
 			}
@@ -267,13 +268,20 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 			dbStatus = "Database moved to " + dir
 			ui.refreshBuilt()
 			go func() {
+				// what was saved in the old folder until the switch; the
+				// old copy goes only if this worked, and only what was copied
+				err := copyDatabase(old, dir, true, nil)
 				if app.Library != nil {
 					if err := app.saveLibraryJSON(); err != nil {
 						logMsg("DATABASE: " + err.Error())
 					}
 				}
-				if filepath.Clean(old) != filepath.Clean(dir) {
-					removeDatabase(old)
+				if err != nil {
+					logMsg("DATABASE: the old copy is kept in " + old + ": " + err.Error())
+				} else if filepath.Clean(old) != filepath.Clean(dir) {
+					if n := removeCopied(old, dir, dataItems); n > 0 {
+						logMsg(fmt.Sprintf("DATABASE: %d files not copied are kept in %s", n, old))
+					}
 				}
 				logMsg("DATABASE: now in " + dir)
 				ui.post(func() {
