@@ -69,11 +69,6 @@ func (app *MiyooPod) cycleAutoLock() {
 func (app *MiyooPod) toggleSentry() {
 	app.SentryEnabled = !app.SentryEnabled
 
-	// Update PostHog client state (don't log to avoid circular call)
-	if posthogClient != nil {
-		posthogClient.Enabled = app.SentryEnabled
-	}
-
 	// Rebuild the settings menu to update the label
 	app.RootMenu = app.buildRootMenu()
 	app.MenuStack = []*MenuScreen{app.RootMenu}

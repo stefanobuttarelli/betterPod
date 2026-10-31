@@ -436,14 +436,6 @@ func (app *MiyooPod) handleMenuKey(key Key) {
 			}
 			item.Submenu.Parent = current
 			app.MenuStack = append(app.MenuStack, item.Submenu)
-			// Track menu navigation with title as screen name
-			screenName := item.Submenu.Title
-			if screenName == "MiyooPod" || screenName == "" {
-				screenName = "home"
-			}
-			TrackPageView(screenName, map[string]interface{}{
-				"menu_depth": len(app.MenuStack),
-			})
 		} else if item.Action != nil {
 			item.Action()
 		}
@@ -455,18 +447,6 @@ func (app *MiyooPod) handleMenuKey(key Key) {
 			app.cancelSearch()
 		} else if len(app.MenuStack) > 1 {
 			app.MenuStack = app.MenuStack[:len(app.MenuStack)-1]
-			// Track navigation back
-			if len(app.MenuStack) > 0 {
-				current := app.MenuStack[len(app.MenuStack)-1]
-				screenName := current.Title
-				if screenName == "MiyooPod" || screenName == "" {
-					screenName = "home"
-				}
-				TrackPageView(screenName, map[string]interface{}{
-					"menu_depth": len(app.MenuStack),
-					"action":     "back",
-				})
-			}
 		}
 	case MENU:
 		if app.SearchActive || app.SearchAllItems != nil {

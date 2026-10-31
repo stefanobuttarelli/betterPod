@@ -298,9 +298,6 @@ func main() {
 	// Start inactivity monitor for auto-lock
 	go app.startInactivityMonitor()
 
-	// Track app opened
-	TrackAppLifecycle("app_opened", nil)
-
 	// Draw initial menu
 	app.drawCurrentScreen()
 
@@ -413,9 +410,6 @@ func main() {
 		onionLogAudio()
 	}
 
-	// Track app closed
-	TrackAppLifecycle("app_closed", nil)
-
 	// Cleanup: close refresh channel to unblock RunUI goroutine
 	close(app.RefreshChan)
 
@@ -425,17 +419,15 @@ func main() {
 	restartIfUpdated()
 }
 
-// setScreen changes the current screen and tracks the page view
+// setScreen changes the current screen
 func (app *MiyooPod) setScreen(screen ScreenType) {
 	app.setScreenWithContext(screen, nil)
 }
 
-// setScreenWithContext changes screen with additional tracking context
+// setScreenWithContext changes screen (properties were for telemetry,
+// removed before 1.0)
 func (app *MiyooPod) setScreenWithContext(screen ScreenType, properties map[string]interface{}) {
-	if app.CurrentScreen != screen {
-		app.CurrentScreen = screen
-		TrackPageView(screen.String(), properties)
-	}
+	app.CurrentScreen = screen
 }
 
 // handleKeyRelease handles key release events

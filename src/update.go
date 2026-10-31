@@ -179,12 +179,6 @@ func (app *MiyooPod) launchUpdater() {
 	app.triggerRefresh()
 	time.Sleep(500 * time.Millisecond)
 
-	// Track update event
-	TrackAppLifecycle("app_closed", map[string]interface{}{
-		"reason":         "ota_update",
-		"update_version": app.UpdateInfo.Version,
-	})
-
 	// Cleanup
 	close(app.RefreshChan)
 	sdlCleanup()
