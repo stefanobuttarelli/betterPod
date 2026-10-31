@@ -1,8 +1,8 @@
 {
-  "version": "0.81.4",
-  "path": "release/betterpod-v0.81.4-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.4-knulli.zip",
-  "sha256": "fe8fbb2c49995b07d6d915af8c7434058d29a7692bbfbddbdd7ffa159208bbf7",
-  "size": 16186441,
-  "notes": "- Share: the light rises through the beam while it goes; bits of the cover drift up while sending\n- A failed share's message fits in two lines"
+  "version": "0.82",
+  "path": "release/betterpod-v0.82-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.82-knulli.zip",
+  "sha256": "8f300bc94f86826c18a78c5011b8171969d5d5bd892beb1505ddf1e279c54f24",
+  "size": 16189487,
+  "notes": "- Album Info: Cover, to search for another cover for any album\n- A cover you choose stays through rescans"
 }

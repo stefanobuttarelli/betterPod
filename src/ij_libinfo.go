@@ -34,6 +34,7 @@ func albumKeyFor(t *Track) string {
 
 // finishAlbums picks each album's artist and rebuilds the artist index.
 func finishAlbums(lib *Library) {
+	defer applyChosenCovers(lib) // (covers chosen by hand, ij_covers.go)
 	for _, al := range lib.Albums {
 		counts := map[string]int{}
 		aa := ""

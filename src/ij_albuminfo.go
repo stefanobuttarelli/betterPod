@@ -361,6 +361,20 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 			row("Genre", "genre", func(g *songTags) string { return g.Genre }, func(g *songTags, x string) { g.Genre = x }, false),
 			Item{Label: "Songs", Sublabel: fmt.Sprintf("%d %s", len(e.songs), pluralize(len(e.songs), "song", "songs")),
 				OnSelect: func() { ui.showView(ui.songsInfoView(e, v), "") }})
+		// the cover: the same search as Missing Covers, for any album
+		cover := Item{Label: "Cover", Sublabel: "Search for another one", Album: e.al,
+			OnSelect: func() { ui.showView(ui.coverPickView(e.al, func() { e.status = "" }), "") }}
+		if e.al.ArtPath == "" && e.al.ArtData == nil {
+			cover.Sublabel = "No cover · search for one"
+		}
+		if hasChosenCover(e.al) {
+			cover.Sublabel = "Chosen by you · search for another one"
+			cover.LongPress = []SheetOption{{Label: "Use the Album's Own Cover", OnSelect: func() {
+				ui.forgetChosenCover(e.al)
+				ui.refreshView(v)
+			}}}
+		}
+		items = append(items, cover)
 		items = append(items, ui.mergeItems(e, nil, func() { ui.closeAlbumInfo(e) })...) // (ij_albummerge.go)
 		if n, w := e.changed(); n > 0 {
 			sub := e.summary()

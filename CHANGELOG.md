@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.82 (2026-10-31)
+
+### Added
+- **Album Info → Cover:** the album's cover, and the same search as Missing Covers (MusicBrainz, iTunes, Deezer, Wikipedia, or typed by hand), for any album, also one that has a cover already.
+- **A cover you choose stays:** it is kept apart (`chosen_covers` in the database folder) and wins over the files' own and a cover.jpg, through rescans. Hold A (or Y) on Cover → Use the Album's Own Cover to go back.
+
 ## v0.81.4 (2026-10-30)
 
 ### Changed

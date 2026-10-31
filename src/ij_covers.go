@@ -571,16 +571,77 @@ func saveCoverFile(a *Album, data []byte) {
 	}
 }
 
-// setAlbumCover gives the album the cover and saves it in the artwork
-// cache; on the UI goroutine (the album is shared with it).
+// setAlbumCover gives the album the cover, chosen (Missing Covers, Album
+// Info → Cover): it is kept apart from the artwork cache, so it stays
+// through rescans, over the files' own and a cover.jpg (chosenCoverPath,
+// finishAlbums). On the UI goroutine (the album is shared with it).
 func (ui *IpodUI) setAlbumCover(a *Album, data []byte) {
-	a.ArtData, a.ArtExt = data, sniffImageExt(data)
-	if err := ui.app.saveAlbumArtwork(a); err != nil {
-		logMsg("Covers: saving " + a.Name + ": " + err.Error())
+	ext := sniffImageExt(data)
+	p := chosenCoverPath(a, ext)
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	for _, e := range []string{"jpg", "png", "webp", "gif"} { // (one per album)
+		if e != ext {
+			os.Remove(chosenCoverPath(a, e))
+		}
 	}
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		logMsg("Covers: saving " + a.Name + ": " + err.Error())
+		a.ArtData, a.ArtExt = data, ext
+		ui.app.saveAlbumArtwork(a)
+	} else {
+		a.ArtPath, a.ArtData, a.ArtExt = p, nil, ext
+		missingLib = nil // (Missing Covers counts again)
+	}
+	a.ArtImg = nil
 	ui.artc.dropAlbum(a)
 	ui.kb.initialized = false
 	ui.onArtLoaded()
+	go ui.app.saveLibraryJSON()
+}
+
+// chosenCoverPath: where an album's chosen cover is kept (by its key, its
+// folder relative to the music folder).
+func chosenCoverPath(a *Album, ext string) string {
+	return filepath.Join(dataDir(), "chosen_covers", generateAlbumCacheKey("", keyRel(a.Key))+"."+ext)
+}
+
+// applyChosenCovers: the albums with a chosen cover get it (after a scan).
+func applyChosenCovers(lib *Library) {
+	dir := filepath.Join(dataDir(), "chosen_covers")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return
+	}
+	have := map[string]string{}
+	for _, e := range entries {
+		n := e.Name()
+		have[strings.TrimSuffix(n, filepath.Ext(n))] = filepath.Join(dir, n)
+	}
+	for _, al := range lib.Albums {
+		if p, ok := have[generateAlbumCacheKey("", keyRel(al.Key))]; ok {
+			al.ArtPath, al.ArtData = p, nil
+		}
+	}
+}
+
+// forgetChosenCover: the album goes back to its own cover (the files', or
+// a cover.jpg), read again.
+func (ui *IpodUI) forgetChosenCover(a *Album) {
+	for _, e := range []string{"jpg", "png", "webp", "gif"} {
+		os.Remove(chosenCoverPath(a, e))
+	}
+	var paths []string
+	for _, t := range albumTracks(a) {
+		paths = append(paths, t.Path)
+	}
+	a.ArtPath, a.ArtData, a.ArtImg = "", nil, nil
+	ui.artc.dropAlbum(a)
+	go ui.rereadTracks(paths)
+}
+
+// hasChosenCover: the album's cover was chosen by hand.
+func hasChosenCover(a *Album) bool {
+	return a.ArtPath != "" && strings.HasPrefix(a.ArtPath, filepath.Join(dataDir(), "chosen_covers")+string(filepath.Separator))
 }
 
 // missingCovers: albums without artwork that can be searched for.

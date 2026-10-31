@@ -1,8 +1,8 @@
 {
-  "version": "0.81.4",
-  "path": "release/betterpod-v0.81.4-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.81.4-onion.zip",
-  "sha256": "a02f35b2bc438199fea4185c621f8f8c2635317f43d8b83f81e0c3e201b98b6f",
-  "size": 28320881,
-  "notes": "- Share: the light rises through the beam while it goes; bits of the cover drift up while sending\n- A failed share's message fits in two lines"
+  "version": "0.82",
+  "path": "release/betterpod-v0.82-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.82-onion.zip",
+  "sha256": "105c3bfd71a370ca0a2512152e6ceab9576906bd79ec7b34bf397a2bec2f7183",
+  "size": 28324792,
+  "notes": "- Album Info: Cover, to search for another cover for any album\n- A cover you choose stays through rescans"
 }
