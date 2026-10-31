@@ -1,0 +1,8 @@
+{
+  "version": "1.0-beta.1",
+  "path": "release/betterpod-v1.0-beta.1-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.1-onion.zip",
+  "sha256": "b16635a04da161d28767da4d18d288c5b08d80f411706d9c93aef3f8e312a916",
+  "size": 28421024,
+  "notes": "- The first beta of 1.0: the beta channel works. Same as 0.92 otherwise."
+}

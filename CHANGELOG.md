@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0-beta.1 (2026-10-31)
+
+The first beta of 1.0, on the beta channel (Settings → Software Update → Beta Versions). It is 0.92 with the 1.0 number, to try the beta channel and the last checks on the consoles before 1.0.
+
 ## v0.92 (2026-10-31)
 
 ### Added
