@@ -1,8 +1,8 @@
 {
-  "version": "0.87",
-  "path": "release/betterpod-v0.87-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.87-onion.zip",
-  "sha256": "ea1e343de1fe6e66b1dd6b1699616faae35fbb1937a41b323356485cc02e26ed",
-  "size": 28347329,
-  "notes": "- Five Letters: the tile the next letter goes in has a blue border"
+  "version": "0.88",
+  "path": "release/betterpod-v0.88-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88-onion.zip",
+  "sha256": "40363845ee2ef855ac3f32eb53a6f8ff69c60d91bfefd0ab3b9345ebafe85e6b",
+  "size": 28347948,
+  "notes": "- Five Letters: a full row is framed in blue with the A button: A sends it"
 }

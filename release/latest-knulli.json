@@ -1,8 +1,8 @@
 {
-  "version": "0.87",
-  "path": "release/betterpod-v0.87-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.87-knulli.zip",
-  "sha256": "f8791d0418359f034b12a0cb13730e4f483cddd9998a04a27e5985a3c7c9909e",
-  "size": 16210300,
-  "notes": "- Five Letters: the tile the next letter goes in has a blue border"
+  "version": "0.88",
+  "path": "release/betterpod-v0.88-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.88-knulli.zip",
+  "sha256": "9bc2138c294afe49d03b7efaa672b0351c948503ba777ec4f108173012484cb6",
+  "size": 16211686,
+  "notes": "- Five Letters: a full row is framed in blue with the A button: A sends it"
 }

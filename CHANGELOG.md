@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.88 (2026-10-31)
+
+### Changed
+- **Five Letters: a full row is framed in blue,** with the A button at its right: A now sends it to be checked.
+
 ## v0.87 (2026-10-31)
 
 ### Changed

@@ -638,6 +638,17 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 		}
 	}
 
+	// a full row: a blue frame around it and the A button at its right
+	// (A sends it)
+	if r := len(g.guesses); !g.over && r < wlTries && g.rowFull() && !g.revealing(now) && now.Sub(g.shakeAt) >= wlShake {
+		y0 := wlY0 + float64(r)*(wlTile+wlGap)
+		x1 := x0 + wlLen*wlTile + (wlLen-1)*wlGap
+		strokeRounded(dst, x0-5, y0-5, x1+5, y0+wlTile+5, 10, 3, Col{40, 130, 230, 1}, 1)
+		f := face(W600, 12)
+		_, asc := lineBox(12)
+		drawText(dst, f, "[A]", x1+11, y0+wlTile/2+asc*DPR/2-1, Col{40, 130, 230, 1})
+	}
+
 	// the keyboard
 	ks := g.keyStates(now)
 	for r, row := range wlRows {
@@ -693,7 +704,7 @@ func (g *WordGame) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
 		hints = []string{"[A] new word", "", "", "[START] menu"}
 	}
 	for i, l := range hints {
-		drawText(dst, hf, l, 452, 40+float64(i)*28+ha*DPR/2, Col{110, 118, 132, 1})
+		drawText(dst, hf, l, 470, 40+float64(i)*28+ha*DPR/2, Col{110, 118, 132, 1})
 	}
 	// the statistics, at the left
 	sf := face(W700, 20)
