@@ -1,8 +1,8 @@
 {
-  "version": "0.90",
-  "path": "release/betterpod-v0.90-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.90-knulli.zip",
-  "sha256": "96bb9464637b6b353e4db470ba29eab52de1ef94339c498b5593ddd0c18f0969",
-  "size": 16246545,
-  "notes": "- Suno: Music \u2192 Search \u2192 Suno. Type a profile's name or a song's code to listen and download (MP3, with covers and tags).\n- Genius: in the main menu while nothing plays, 50 songs at random start at once.\n- Listen fetches only the song playing and the next one."
+  "version": "0.91",
+  "path": "release/betterpod-v0.91-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.91-knulli.zip",
+  "sha256": "6758ff18713a1bff314769a98781d9f788bc39cec67e3654031bdc518f4caacf",
+  "size": 16251041,
+  "notes": "- End of the Queue: when the last song ends, or NEXT is pressed on it, a card offers Genius, Go to Music or Not Now."
 }

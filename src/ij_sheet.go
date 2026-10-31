@@ -29,6 +29,8 @@ type Sheet struct {
 	cache     *image.RGBA
 	cacheIx   int
 	cacheDark bool
+	cacheArt  bool     // (End of the Queue: its cover was there)
+	end       *endInfo // End of the Queue: a card in the middle (ij_endqueue.go)
 }
 
 // The sheet is a small floating card at the bottom of the screen, over a
@@ -217,6 +219,10 @@ func (ui *IpodUI) drawSheets(dst *image.RGBA, now time.Time) {
 			continue
 		}
 		keep = append(keep, s)
+		if s.end != nil {
+			ui.drawEnd(dst, s, v, now)
+			continue
+		}
 		// the screen dims behind the sheet
 		fillRect(dst, 0, 0, 640, 480, rgba(0, 0, 0, 0.32*(1-v)))
 		img := s.render(ui)

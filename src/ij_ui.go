@@ -150,6 +150,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	home.hide = newAnim(0)
 	ui.split = []*View{home}
 	ui.headerTitle = home.Title
+	ui.initEndQueue() // End of the Queue (ij_endqueue.go)
 	return ui
 }
 

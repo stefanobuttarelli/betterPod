@@ -155,6 +155,12 @@ func (app *MiyooPod) nextTrack() {
 			app.Queue.CurrentIndex = 0
 		} else {
 			app.Queue.CurrentIndex = maxIdx
+			if queueEnded != nil && app.Playing.State != StateStopped {
+				// the iPod UI says so, and the last song plays on
+				// (ij_endqueue.go)
+				queueEnded(true)
+				return
+			}
 			app.mpvStop()
 			app.Playing.State = StateStopped
 			return
@@ -221,6 +227,9 @@ func (app *MiyooPod) handleTrackEnd() {
 			app.NPCacheDirty = true
 			app.refreshRootMenu()
 			app.requestRedraw()
+			if queueEnded != nil {
+				queueEnded(false) // End of the Queue (ij_endqueue.go)
+			}
 		}
 		return
 	}

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.91 (2026-10-31)
+
+### Added
+- **End of the Queue.** When the last song in the queue ends, or NEXT is pressed on it, a card in the middle of the screen says nothing else is lined up and offers **Genius** (50 songs at random), **Go to Music** or **Not Now** (B too). NEXT on the last song no longer stops it: it plays on under the card. The status bar stays visible above it. It doesn't show under the screensaver, with Hold on or during a Listen.
+
 ## v0.90 (2026-10-31)
 
 ### Added
