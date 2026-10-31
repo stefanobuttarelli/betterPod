@@ -140,37 +140,40 @@ int onion_ao_stats(int *failed) {
 #define ONION_RAW_MIN   -60
 #define ONION_RAW_MAX   30
 
-// onion_ao_get_raw returns MI_AO's volume in dB (-60 = mute), or -1000 when
-// /dev/mi_ao can't be opened.
+// onion_ao_get_raw returns MI_AO's volume in dB (-60 = mute), -1000 when
+// /dev/mi_ao can't be opened, or -1001 when it can't be read.
 int onion_ao_get_raw(void) {
     int fd = open("/dev/mi_ao", O_RDWR | O_CLOEXEC);
     int buf2[] = {0, 0};
     uint64_t buf1[] = {sizeof(buf2), (uintptr_t)buf2};
+    int r;
     if (fd < 0) return -1000;
-    ioctl(fd, MI_AO_GETVOLUME, buf1);
+    r = ioctl(fd, MI_AO_GETVOLUME, buf1);
     close(fd);
-    return buf2[1];
+    return r < 0 ? -1001 : buf2[1];
 }
 
 // onion_ao_set_raw sets MI_AO's volume in dB, muting at the bottom of the
-// range like keymon. It returns the value set, or -1000.
+// range like keymon. It returns the value set, or -1000. When the volume
+// can't be read, it is set anyway and the mute follows the new value (the
+// old one isn't taken for 0 dB, which would leave a mute on).
 int onion_ao_set_raw(int value) {
     int fd = open("/dev/mi_ao", O_RDWR | O_CLOEXEC);
     int buf2[] = {0, 0};
     uint64_t buf1[] = {sizeof(buf2), (uintptr_t)buf2};
-    int prev;
+    int prev, known;
     if (fd < 0) return -1000;
     if (value > ONION_RAW_MAX) value = ONION_RAW_MAX;
     if (value < ONION_RAW_MIN) value = ONION_RAW_MIN;
-    ioctl(fd, MI_AO_GETVOLUME, buf1);
+    known = ioctl(fd, MI_AO_GETVOLUME, buf1) >= 0;
     prev = buf2[1];
-    if (value != prev) {
+    if (!known || value != prev) {
         buf2[1] = value;
         ioctl(fd, MI_AO_SETVOLUME, buf1);
-        if (prev <= ONION_RAW_MIN && value > ONION_RAW_MIN) {
+        if ((!known || prev <= ONION_RAW_MIN) && value > ONION_RAW_MIN) {
             buf2[1] = 0;
             ioctl(fd, MI_AO_SETMUTE, buf1);
-        } else if (prev > ONION_RAW_MIN && value <= ONION_RAW_MIN) {
+        } else if ((!known || prev > ONION_RAW_MIN) && value <= ONION_RAW_MIN) {
             buf2[1] = 1;
             ioctl(fd, MI_AO_SETMUTE, buf1);
         }

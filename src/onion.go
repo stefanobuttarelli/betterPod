@@ -43,13 +43,13 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"os/signal"
+	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -66,7 +66,8 @@ func init() {
 	// a decoded cover is scaled for the lists and Cover Flow only; the
 	// screensaver's sizes are made from Cover Flow's when it needs them
 	prefetchSizes = prefetchSizes[:2]
-	go onionWatchSignals()
+	go watchQuitSignals()
+	go onionChargingWatch()
 }
 
 // envInt reads an integer switch, with a default and a valid range.
@@ -88,27 +89,6 @@ func onionMaxRAMTrack() int64 { return int64(envInt("MIYOOPOD_RAM_TRACK_MB", 24,
 
 // onionArtBudget: bytes of scaled artwork kept in memory.
 func onionArtBudget() int64 { return int64(envInt("MIYOOPOD_ART_CACHE_MB", 16, 4, 256)) << 20 }
-
-// onionWatchSignals: a shutdown (SIGTERM from Onion, e.g. on a low
-// battery) saves the queue and position and quits cleanly.
-func onionWatchSignals() {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	s := <-ch
-	logMsg("Signal " + s.String() + ": saving and quitting")
-	onionLogAudio()
-	app := globalApp
-	if app == nil {
-		os.Exit(0)
-	}
-	app.Running = false
-	// if the main loop can't get there in time
-	time.AfterFunc(3*time.Second, func() {
-		app.savePlaybackState()
-		restoreBrightness()
-		os.Exit(0)
-	})
-}
 
 // --- volume (MI_AO) --------------------------------------------------------
 
@@ -280,23 +260,21 @@ func onionLevelFromRaw(raw int) int {
 // --- battery -----------------------------------------------------------------
 
 // onionModel: 283 = Miyoo Mini (and v4), 354 = Mini Plus (written by Onion
-// at boot).
+// at boot: runtime.sh writes 354 when the AXP answers, 283 otherwise, so the
+// v4 and the Flip are 283 too).
 var onionModel = readInt("/tmp/deviceModel")
 
 var axpCharging = regexp.MustCompile(`"charging"\s*:\s*(\d+)`)
 
 // onionCharging tells whether the charger is plugged in, as Onion's
 // battery.h does: gpio59 on the Mini, the AXP223 (axp_test) on the Mini Plus.
+// Onion knows no other model; for one (no /tmp/deviceModel) the kernel's
+// power supply is tried, then gpio59. It may run axp_test (up to 2 s): the
+// interface reads onionChargingNow instead.
 func onionCharging() bool {
 	switch onionModel {
 	case 283:
-		const gpio = "/sys/class/gpio/gpio59/value"
-		if _, err := os.Stat(gpio); err != nil {
-			_ = os.WriteFile("/sys/class/gpio/export", []byte("59"), 0644)
-			_ = os.WriteFile("/sys/class/gpio/gpio59/direction", []byte("in"), 0644)
-		}
-		b, err := os.ReadFile(gpio)
-		return err == nil && len(b) > 0 && b[0] == '1'
+		return onionGpio59()
 	case 354:
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -309,7 +287,71 @@ func onionCharging() bool {
 		m := axpCharging.FindSubmatch(out)
 		return m != nil && string(m[1]) == "3"
 	}
-	return false
+	if chg, ok := powerSupplyCharging(); ok {
+		return chg
+	}
+	return onionGpio59()
+}
+
+func onionGpio59() bool {
+	const gpio = "/sys/class/gpio/gpio59/value"
+	if _, err := os.Stat(gpio); err != nil {
+		_ = os.WriteFile("/sys/class/gpio/export", []byte("59"), 0644)
+		_ = os.WriteFile("/sys/class/gpio/gpio59/direction", []byte("in"), 0644)
+	}
+	b, err := os.ReadFile(gpio)
+	return err == nil && len(b) > 0 && b[0] == '1'
+}
+
+// powerSupplyCharging reads /sys/class/power_supply: a charger that is
+// online, or a battery that says it charges. ok is false when there is none.
+func powerSupplyCharging() (charging, ok bool) {
+	dirs, _ := filepath.Glob("/sys/class/power_supply/*")
+	for _, d := range dirs {
+		if v := readTrim(d + "/online"); v != "" && readTrim(d+"/type") != "Battery" {
+			ok = true
+			if v == "1" {
+				return true, true
+			}
+		}
+		if v := readTrim(d + "/status"); v != "" {
+			ok = true
+			if v == "Charging" || v == "Full" {
+				return true, true
+			}
+		}
+	}
+	return false, ok
+}
+
+var (
+	onionChgMu  sync.Mutex  // one axp_test at a time
+	onionChgNow atomic.Bool // the last reading
+)
+
+// onionChargingRead reads the charger now and keeps the result for
+// onionChargingNow.
+func onionChargingRead() bool {
+	onionChgMu.Lock()
+	defer onionChgMu.Unlock()
+	v := onionCharging()
+	onionChgNow.Store(v)
+	return v
+}
+
+// onionChargingNow: the charger as last read (every 30 s, in the
+// background), for the header's battery.
+func onionChargingNow() bool { return onionChgNow.Load() }
+
+// onionChargingWatch reads the charger every 30 s while the screen is on
+// (off, the sleep timer reads it when it needs it).
+func onionChargingWatch() {
+	for {
+		if globalApp == nil || !globalApp.Locked {
+			onionChargingRead()
+		}
+		time.Sleep(30 * time.Second)
+	}
 }
 
 // --- keys --------------------------------------------------------------------
@@ -403,14 +445,13 @@ func (ui *IpodUI) drawPowerExitOSD(dst *image.RGBA) {
 // the backlight and the CPU back (toggleLock leaves that to the classic
 // UI's redraw, which the iPod UI never runs) and redraws the whole frame.
 func (ui *IpodUI) lockChanged() {
-	if !isOnion {
-		return // (Knulli as before: see the PR's note on unlocking there)
-	}
 	app := ui.app
 	ui.dirty = true
-	ui.prevFB = nil
-	if !app.Locked {
-		onionPanel(true) // (also when the backlight can't be read to put it back)
+	if isOnion {
+		ui.prevFB = nil
+		if !app.Locked {
+			onionPanel(true) // (also when the backlight can't be read to put it back)
+		}
 	}
 	if app.Locked || !app.BrightnessNeedsRestore {
 		return
@@ -420,8 +461,19 @@ func (ui *IpodUI) lockChanged() {
 	if lvl <= 0 {
 		lvl = backlightAtStart
 	}
+	if lvl <= 0 && !isOnion {
+		lvl = 50 // (Knulli: a black screen is worse than a guess)
+	}
 	if lvl > 0 {
 		setBacklightPercent(lvl)
+	}
+	// Onion's launch.sh starts the app in performance; Knulli's launcher
+	// leaves the system's governor, so it gets that one back
+	if !isOnion && app.OriginalCPUGovernor != "" {
+		if err := writeCPUGovernor(app.OriginalCPUGovernor); err != nil {
+			logMsg(fmt.Sprintf("WARNING: Could not set CPU governor to %s: %v", app.OriginalCPUGovernor, err))
+		}
+		return
 	}
 	app.setCPUGovernorUnlocked()
 }

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <linux/input.h>
 #include <math.h>
 #include <SDL.h>
@@ -272,6 +273,11 @@ static struct { int fd; int bt; int jack; int logged; char name[24]; } media_dev
 static int hp_jack = -1;
 int headphone_jack(void) { return hp_jack; }
 static int media_n;
+// The devices without media keys, so they aren't opened again at every
+// scan: by node name and inode (a device that comes later under the same
+// name gets a new node, and is looked at again).
+static struct { char name[24]; ino_t ino; } media_skip[32];
+static int media_skip_n;
 static Uint32 media_last_scan;
 static int media_disabled = -1;
 
@@ -322,10 +328,19 @@ static void media_scan(void) {
         int have = 0, known = 0, i, fd;
         unsigned long keys[(KEY_MAX + 1) / (8 * sizeof(long)) + 0], sw[1];
         struct input_id id;
+        struct stat st;
         if (strncmp(e->d_name, "event", 5) != 0) continue;
         for (i = 0; i < media_n; i++) if (strcmp(media_dev[i].name, e->d_name) == 0) known = 1;
         if (known) continue;
         snprintf(path, sizeof(path), "/dev/input/%s", e->d_name);
+        if (stat(path, &st) != 0) continue;
+        for (i = 0; i < media_skip_n; i++) {
+            if (strcmp(media_skip[i].name, e->d_name) != 0) continue;
+            if (media_skip[i].ino == st.st_ino) known = 1;
+            else media_skip[i] = media_skip[--media_skip_n]; // a new device under that name
+            break;
+        }
+        if (known) continue;
         fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue;
         memset(keys, 0, sizeof(keys)); sw[0] = 0;
@@ -338,7 +353,13 @@ static void media_scan(void) {
             for (i = 0; i < (int)(sizeof(codes) / sizeof(codes[0])); i++)
                 if (keys[codes[i] / (8 * sizeof(long))] & (1UL << (codes[i] % (8 * sizeof(long))))) have = 1;
         }
-        if (!have && !(sw[0] & (1UL << SW_HEADPHONE_INSERT))) { close(fd); continue; }
+        if (!have && !(sw[0] & (1UL << SW_HEADPHONE_INSERT))) {
+            close(fd);
+            if (media_skip_n == (int)(sizeof(media_skip) / sizeof(media_skip[0]))) media_skip_n = 0; // (full: start again)
+            snprintf(media_skip[media_skip_n].name, sizeof(media_skip[0].name), "%s", e->d_name);
+            media_skip[media_skip_n++].ino = st.st_ino;
+            continue;
+        }
         memset(&id, 0, sizeof(id));
         ioctl(fd, EVIOCGID, &id);
         media_dev[media_n].fd = fd;

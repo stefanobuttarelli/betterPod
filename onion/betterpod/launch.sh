@@ -70,6 +70,9 @@ old_governor=$(cat "$governor" 2> /dev/null)
 min_freq=/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
 old_min_freq=$(cat "$min_freq" 2> /dev/null)
 echo performance > "$governor" 2> /dev/null
+# the backlight (betterPod sets it to 0 with the screen off)
+duty=/sys/class/pwm/pwmchip0/pwm0/duty_cycle
+old_duty=$(cat "$duty" 2> /dev/null)
 
 chmod +x ./betterpod 2> /dev/null
 ./betterpod
@@ -83,4 +86,9 @@ echo 4 > /sys/class/gpio/export 2> /dev/null
 echo out > /sys/devices/gpiochip0/gpio/gpio4/direction 2> /dev/null
 echo 1 > /sys/devices/gpiochip0/gpio/gpio4/value 2> /dev/null
 echo 4 > /sys/class/gpio/unexport 2> /dev/null
+# and the backlight as it was (after a crash with the screen off it stayed 0)
+case "$old_duty" in
+  ''|0|*[!0-9]*) ;;
+  *) echo "$old_duty" > "$duty" 2> /dev/null ;;
+esac
 sync

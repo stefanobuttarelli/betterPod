@@ -341,20 +341,30 @@ func (ui *IpodUI) bluetoothView() *View {
 			})
 		}()
 	}
-	// while open: read again every 4 s (a change made elsewhere shows)
+	// while open: read again every 4 s (a change made elsewhere shows), not
+	// with the screen off; the goroutine ends when the view closes
 	tick := time.NewTicker(4 * time.Second)
+	done := make(chan struct{})
 	go func() {
-		for range tick.C {
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+			}
 			ui.post(func() {
-				if !st.closed && len(st.doing) == 0 {
+				if !st.closed && len(st.doing) == 0 && !ui.app.Locked {
 					refresh()
 				}
 			})
 		}
 	}()
 	v.onClose = func() {
+		if !st.closed {
+			close(done)
+		}
 		st.closed = true
-		tick.Stop()
 		if st.stop != nil {
 			st.stop()
 		}

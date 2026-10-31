@@ -401,15 +401,21 @@ func main() {
 		time.Sleep(sleepDur)
 	}
 
+	// Onion: a quit while asleep (onion_sleep.go) gives the sound back
+	onionWake()
+
 	// Save playback state before exit
 	app.savePlaybackState()
 
 	// Restore original CPU governor
 	app.restoreCPUGovernor()
 
-	// Hold or a locked screen may have dimmed the backlight
-	if isOnion {
+	// Hold or a locked screen may have dimmed the backlight (on Knulli only
+	// then: otherwise the brightness set in the app stays)
+	if isOnion || app.Locked || hold.on {
 		restoreBrightness()
+	}
+	if isOnion {
 		onionLogAudio()
 	}
 

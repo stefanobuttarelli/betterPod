@@ -103,6 +103,7 @@ func (ui *IpodUI) updateTheme() bool {
 	// drop everything rendered with the old palette
 	headerBg = nil
 	greyPreviewBg = nil
+	clear(iconTints) // (keyed by the old images)
 	ui.assetsMu.Lock()
 	for k := range ui.assets {
 		if len(k) > 6 && k[:6] == "theme:" {

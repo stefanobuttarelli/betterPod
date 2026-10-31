@@ -74,7 +74,27 @@ if [ "$(type -t pm_platform_helper)" = "function" ]; then
   pm_platform_helper "$GAMEDIR/$BIN"
 fi
 
+# betterPod lowers the CPU and switches the backlight off with the screen;
+# it puts both back when it quits, and this does it again if it was killed
+# or crashed.
+old_governors=""
+for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+  [ -f "$g" ] && old_governors="$old_governors $g=$(cat "$g" 2> /dev/null)"
+done
+bright_tool=$(command -v batocera-brightness 2> /dev/null)
+old_bright=""
+[ -n "$bright_tool" ] && old_bright=$("$bright_tool" 2> /dev/null)
+
 ./$BIN
+
+for pair in $old_governors; do
+  g=${pair%%=*}; v=${pair#*=}
+  [ -n "$v" ] && [ "$(cat "$g" 2> /dev/null)" != "$v" ] && echo "$v" > "$g" 2> /dev/null
+done
+case "$old_bright" in
+  ''|0|*[!0-9]*) ;;
+  *) [ "$("$bright_tool" 2> /dev/null)" = 0 ] && "$bright_tool" "$old_bright" > /dev/null 2>&1 ;;
+esac
 
 if [ "$(type -t pm_finish)" = "function" ]; then
   pm_finish
