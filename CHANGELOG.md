@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.83 (2026-10-31)
+
+### Added
+- **Listen before you download,** on an Internet Archive item's page and a YouTube video's or playlist's: the first row, **Listen**, plays its songs at once in Now Playing, with the item's picture, and keeps nothing (they go to a temporary folder, emptied by the next Listen). The first song plays as soon as it has come; the next ones keep coming while it plays (skipping to one that hasn't waits for it). Internet Archive plays the MP3s when an item has them, the smallest. The download buttons follow, as before. YouTube is on Knulli only, as its downloads.
+
 ## v0.82 (2026-10-31)
 
 ### Added

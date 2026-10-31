@@ -1,8 +1,8 @@
 {
-  "version": "0.82",
-  "path": "release/betterpod-v0.82-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.82-onion.zip",
-  "sha256": "105c3bfd71a370ca0a2512152e6ceab9576906bd79ec7b34bf397a2bec2f7183",
-  "size": 28324792,
-  "notes": "- Album Info: Cover, to search for another cover for any album\n- A cover you choose stays through rescans"
+  "version": "0.83",
+  "path": "release/betterpod-v0.83-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.83-onion.zip",
+  "sha256": "cc208023bf625f57ba6f18e2385de169268918b4c2b3858987684cd5ee19f6e3",
+  "size": 28336557,
+  "notes": "- Listen: an Internet Archive item or a YouTube video plays before you download it"
 }

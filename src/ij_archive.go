@@ -345,7 +345,7 @@ func (ui *IpodUI) iaSearchView() *View {
 			}
 			if !found {
 				items = append(items, Item{Label: "Open item “" + id + "”", Sublabel: "By its identifier (archive.org/details/" + id + ")",
-					OnSelect: func() { ui.showView(ui.iaItemView(iaResult{ID: id, Title: id}), "") }})
+					OnSelect: func() { ui.showView(ui.iaItemView(iaResult{ID: id, Title: id}, nil), "") }})
 			}
 		}
 		for _, r := range st.res {
@@ -361,7 +361,7 @@ func (ui *IpodUI) iaSearchView() *View {
 				st.thumbs[r.ID] = th
 			}
 			items = append(items, Item{Label: r.Title, Sublabel: sub, Album: th,
-				OnSelect: func() { ui.showView(ui.iaItemView(r), "") }})
+				OnSelect: func() { ui.showView(ui.iaItemView(r, th), "") }})
 		}
 		if st.ran == "" && !st.busy {
 			items = append(items, ui.recentItems("ia", func(term string) {
@@ -541,7 +541,7 @@ func iaErrText(err error) string {
 
 // iaItemView: the item's license and size, the download buttons and its
 // tracks (selecting one downloads just that track).
-func (ui *IpodUI) iaItemView(r iaResult) *View {
+func (ui *IpodUI) iaItemView(r iaResult, th *Album) *View {
 	st := &struct {
 		item *iaItem
 		err  string
@@ -564,6 +564,22 @@ func (ui *IpodUI) iaItemView(r iaResult) *View {
 		it := st.item
 		if len(it.Groups) == 0 {
 			return append(items, Item{Label: "No audio files betterPod can play", NoArrow: true})
+		}
+		// Listen first: it plays, nothing is kept (ij_listen.go)
+		if songs := iaListenSongs(it); len(songs) > 0 {
+			listen := Item{Label: "Listen", Sublabel: fmt.Sprintf("%d %s, before you download", len(songs), pluralize(len(songs), "song", "songs")),
+				OnSelect: func() {
+					al := &Album{Name: it.Title, Artist: it.Creator}
+					if th != nil {
+						al.ArtImg = th.ArtImg
+					}
+					ui.startListen("ia:"+it.ID, al, songs, func() { ui.refreshView(v) })
+					ui.refreshView(v)
+				}}
+			if l, sub, p := listenState("ia:" + it.ID); l != "" {
+				listen.Label, listen.Sublabel, listen.Progress = l, sub, p
+			}
+			items = append(items, listen)
 		}
 		for _, g := range iaGroupOrder {
 			fs := it.Groups[g]

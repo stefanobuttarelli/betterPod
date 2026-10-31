@@ -1,8 +1,8 @@
 {
-  "version": "0.82",
-  "path": "release/betterpod-v0.82-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.82-knulli.zip",
-  "sha256": "8f300bc94f86826c18a78c5011b8171969d5d5bd892beb1505ddf1e279c54f24",
-  "size": 16189487,
-  "notes": "- Album Info: Cover, to search for another cover for any album\n- A cover you choose stays through rescans"
+  "version": "0.83",
+  "path": "release/betterpod-v0.83-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.83-knulli.zip",
+  "sha256": "8e621a875c4b94fba376d28932f04aad5027e0a7956ad964cb30f9f0e8c881f1",
+  "size": 16199976,
+  "notes": "- Listen: an Internet Archive item or a YouTube video plays before you download it"
 }

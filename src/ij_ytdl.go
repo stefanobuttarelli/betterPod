@@ -721,6 +721,26 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			return append(items, Item{Label: "Loading…", NoArrow: true})
 		}
 		i := st.info
+		// Listen first: it plays, nothing is kept (ij_listen.go)
+		if songs := ytListenSongs(i); len(songs) > 0 {
+			key := "yt:" + i.ID + e.ID
+			sub := "Before you download"
+			if len(songs) > 1 {
+				sub = fmt.Sprintf("%d songs, before you download", len(songs))
+			}
+			listen := Item{Label: "Listen", Sublabel: sub, OnSelect: func() {
+				al := &Album{Name: ytClean(i.Title), Artist: i.who()}
+				if st.thumb != nil {
+					al.ArtImg = st.thumb.ArtImg
+				}
+				ui.startListen(key, al, songs, func() { ui.refreshView(v) })
+				ui.refreshView(v)
+			}}
+			if l, sb, p := listenState(key); l != "" {
+				listen.Label, listen.Sublabel, listen.Progress = l, sb, p
+			}
+			items = append(items, listen)
+		}
 		// the cover it will get (choosing it opens the square)
 		switch {
 		case st.coverSrc != nil:
