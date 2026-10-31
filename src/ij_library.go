@@ -76,7 +76,7 @@ func (ui *IpodUI) artistsView() *View {
 		v.Items = append(v.Items, Item{
 			Label: ar.Name,
 			OnSelect: func() {
-				ui.showView(ui.artistView(ar), ar.Name)
+				ui.showView(ui.artistView(ar), "")
 			},
 		})
 	}
@@ -84,14 +84,19 @@ func (ui *IpodUI) artistsView() *View {
 }
 
 func (ui *IpodUI) artistView(ar *Artist) *View {
-	v := &View{ID: "artist", Title: "Artist", Kind: KindFull, Empty: "No albums by this artist"}
+	// the header says Artists; the artist's name is in the section bar
+	v := &View{ID: "artist", Title: "Artists", Kind: KindFull, Index: 1}
+	v.Items = []Item{{Label: ar.Name, Header: true}}
+	if len(ar.Albums) == 0 {
+		v.Items = append(v.Items, Item{Label: "No albums by this artist", NoArrow: true})
+	}
 	for _, al := range ar.Albums {
 		//
 		v.Items = append(v.Items, Item{
 			Label:     al.Name,
 			Sublabel:  al.Artist,
 			Album:     al,
-			OnSelect:  func() { ui.showView(ui.albumView(al), al.Name) },
+			OnSelect:  func() { ui.showView(ui.albumView(al), "") },
 			LongPress: ui.albumOptions(al), // with Edit Album Info (ij_albuminfo.go)
 		})
 	}
@@ -114,7 +119,7 @@ func (ui *IpodUI) albumsView(albums []*Album) *View {
 				Label:     al.Name,
 				Sublabel:  al.Artist,
 				Album:     al,
-				OnSelect:  func() { ui.showView(ui.albumView(al), al.Name) },
+				OnSelect:  func() { ui.showView(ui.albumView(al), "") },
 				LongPress: ui.albumOptions(al), // with Edit Album Info and Delete Album (ij_albuminfo.go)
 			})
 		}
@@ -125,8 +130,18 @@ func (ui *IpodUI) albumsView(albums []*Album) *View {
 }
 
 func (ui *IpodUI) albumView(al *Album) *View {
-	v := &View{ID: "album", Title: "Album", Kind: KindFull, Empty: "No saved songs"}
+	// the header says Albums; the album's name (and artist) is in the
+	// section bar above its songs
+	v := &View{ID: "album", Title: "Albums", Kind: KindFull, Index: 1}
 	tracks := albumTracks(al)
+	bar := al.Name
+	if al.Artist != "" {
+		bar += " · " + al.Artist
+	}
+	v.Items = []Item{{Label: bar, Header: true}}
+	if len(tracks) == 0 {
+		v.Items = append(v.Items, Item{Label: "No saved songs", NoArrow: true})
+	}
 	for i, t := range tracks {
 		v.Items = append(v.Items, Item{
 			Label:          t.Title,

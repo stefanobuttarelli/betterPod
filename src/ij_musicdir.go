@@ -974,10 +974,10 @@ func removeEmptyDirs(root string, dirs map[string]bool) {
 	}
 }
 
-// ---- Settings → Library → Music Folder ----
+// ---- Settings → Library → Move Music to Another Card ----
 
 func (ui *IpodUI) musicFolderView() *View {
-	v := &View{ID: "musicFolder", Title: "Music Folder", Kind: KindFull}
+	v := &View{ID: "musicFolder", Title: "Move Music", Kind: KindFull}
 	var cards []musicCard
 	loaded := false
 	go func() {

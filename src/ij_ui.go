@@ -810,7 +810,8 @@ func (ui *IpodUI) HandleKey(ev int) {
 // gameMenu: START in a game: its own options, then Quit (the game's
 // screen closes; it keeps its state as when B left it).
 func (ui *IpodUI) gameMenu(name string, opts ...SheetOption) {
-	opts = append(opts, SheetOption{Label: "Quit " + name, OnSelect: func() { ui.hideView() }})
+	opts = append(opts, ui.gameClockOption(name), // (the time in the header, ij_gameclock.go)
+		SheetOption{Label: "Quit " + name, OnSelect: func() { ui.hideView() }})
 	ui.showSheetTitled(name, opts)
 }
 
@@ -1280,8 +1281,10 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 	tx := float64(x)/DPR + 6
 	maxW := iconsLeft + gap - tx
 
-	if hold.on && (x != 0 || w >= 640 || ui.nowPlayingOnScreen()) {
-		clock := time.Now().Format("15:04")
+	// the time in the middle: Hold's, or a game's that shows it
+	// (ij_gameclock.go)
+	if hold.on && (x != 0 || w >= 640 || ui.nowPlayingOnScreen()) || w >= 640 && ui.gameClockShown() {
+		clock := gameClockText()
 		cw := textWidth(f, clock) / DPR
 		cx := float64(x)/DPR + 160 - cw/2
 		if limit := cx - 8 - tx; limit < maxW {
@@ -1612,7 +1615,7 @@ func (ui *IpodUI) Run() {
 		}
 		if m := time.Now().Minute(); m != lastMinute {
 			lastMinute = m
-			if hold.on {
+			if hold.on || ui.gameClockShown() {
 				ui.dirty = true // the clock in the header
 			}
 			ui.updateTheme()

@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0-beta.6 (2026-10-31)
+
+### Added
+- **The time in the header while you play.** Each game's START menu (Brick, Solitaire, 2048, Five Letters, Guess the Song, each Puzzle) has **Show the Time** / **Hide the Time**, kept for that game. The time sits in the middle of the header and changes with the minute.
+- **A scrollbar on every list longer than the screen,** at the right as on the iPod: albums, songs, settings, the half-width menus and their columns. It stays (no frames spent fading it); Cover Flow's track list keeps its own, shown while it scrolls.
+- **Settings → Library → Move Music to Another Card,** a row of its own (Knulli). Music Folder above it only says where the music is.
+
+### Changed
+- **Playlists, albums and artists keep the section's name in the header** ("Playlists", "Albums", "Artists") and show the playlist's, album's (with its artist) or artist's name in the section bar above the list, as Internet Archive, Podcasts and Suno do.
+- **An empty playlist says so on a row:** "No songs yet", and how to add some ("Press Ⓨ on a song, then Add to Playlist…"), instead of a sentence running off the screen.
+
 ## v1.0-beta.5 (2026-10-31)
 
 ### Changed

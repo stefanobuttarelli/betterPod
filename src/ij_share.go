@@ -1055,7 +1055,7 @@ func (s *ShareView) OnKey(ui *IpodUI, k Key) bool {
 	if !s.send && s.phase == shDone && s.playable && k == Y {
 		// the album, where it is in the library
 		if al := ui.trackAlbum(s.tracks[0]); al != nil {
-			ui.showView(ui.albumView(al), al.Name)
+			ui.showView(ui.albumView(al), "")
 		}
 		return true
 	}

@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.5",
-  "path": "release/betterpod-v1.0-beta.5-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.5-onion.zip",
-  "sha256": "b1e355e1d794289634a62a3f014175fb04f51a873dab51aeef4c336c48df5f91",
-  "size": 28432671,
-  "notes": "- Beta Versions is now in Settings \u2192 Software Update's right column; the update page keeps only its buttons, so the notes fit again."
+  "version": "1.0-beta.6",
+  "path": "release/betterpod-v1.0-beta.6-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.6-onion.zip",
+  "sha256": "9e4561a6b19e991f04bf509d43d2cabd09d7a81e9ec39543dbe9463699af5fb7",
+  "size": 28435967,
+  "notes": "- The time in the header while you play: Show the Time in a game's START menu.\n- A scrollbar on every long list.\n- Playlists, albums and artists show their name under the header, not in it.\n- Settings \u2192 Library \u2192 Move Music to Another Card (Knulli)."
 }

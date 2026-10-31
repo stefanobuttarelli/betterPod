@@ -235,7 +235,16 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 	slh, sasc := lineBox(12)
 	llh, _ := lineBox(14)
 
+	// a list longer than the screen keeps its scrollbar at the right, as
+	// the iPod's (the rows end before it); Cover Flow's track list shows
+	// its own only while it scrolls (below)
+	fullW := wCSS
+	bar := scrollable && !v.TrackList
 	for i := range v.Items {
+		wCSS := fullW
+		if bar {
+			wCSS -= sbW
+		}
 		it := &v.Items[i]
 		rh := rowHeight(it)
 		y := tops[i] - v.Scroll
@@ -441,6 +450,8 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		if a := v.scrollbarAlpha(animNow()); a > 0 {
 			drawScrollbar(dst, wCSS-sbW, 0, sbW, hCSS, v.Scroll, total, a)
 		}
+	} else if bar {
+		drawScrollbar(dst, fullW-sbW, 0, sbW, hCSS, v.Scroll, total, 1)
 	}
 }
 

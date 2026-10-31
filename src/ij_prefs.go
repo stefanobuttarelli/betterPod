@@ -8,23 +8,24 @@ import (
 )
 
 type ipodPrefs struct {
-	Volume      float64 `json:"volume"`
-	ShuffleMode string  `json:"shuffleMode"`
-	RepeatMode  string  `json:"repeatMode"`
-	HoldBright  int     `json:"holdBrightness,omitempty"`
-	Theme       string  `json:"theme,omitempty"`
-	Effects     string  `json:"effects,omitempty"`
-	YouTube     bool    `json:"youtube,omitempty"`
-	NoPodcasts  bool    `json:"hidePodcasts,omitempty"` // Podcasts taken out of the main menu
-	SaverAfter  int     `json:"screensaverMinutes,omitempty"`
-	SaverDim    bool    `json:"screensaverDim,omitempty"`
-	SaverLevel  int     `json:"screensaverBrightness,omitempty"`
-	SaverStyle  string  `json:"screensaverStyle,omitempty"`
-	SaverEffect int     `json:"screensaverEffect,omitempty"`
-	SaverColors int     `json:"screensaverColors,omitempty"`
-	Apple       bool    `json:"turnItApple,omitempty"`
-	ShareName   string  `json:"shareName,omitempty"`   // this betterPod's name, for Share
-	Beta        bool    `json:"betaUpdates,omitempty"` // Software Update offers betas too
+	Volume      float64  `json:"volume"`
+	ShuffleMode string   `json:"shuffleMode"`
+	RepeatMode  string   `json:"repeatMode"`
+	HoldBright  int      `json:"holdBrightness,omitempty"`
+	Theme       string   `json:"theme,omitempty"`
+	Effects     string   `json:"effects,omitempty"`
+	YouTube     bool     `json:"youtube,omitempty"`
+	NoPodcasts  bool     `json:"hidePodcasts,omitempty"` // Podcasts taken out of the main menu
+	SaverAfter  int      `json:"screensaverMinutes,omitempty"`
+	SaverDim    bool     `json:"screensaverDim,omitempty"`
+	SaverLevel  int      `json:"screensaverBrightness,omitempty"`
+	SaverStyle  string   `json:"screensaverStyle,omitempty"`
+	SaverEffect int      `json:"screensaverEffect,omitempty"`
+	SaverColors int      `json:"screensaverColors,omitempty"`
+	Apple       bool     `json:"turnItApple,omitempty"`
+	ShareName   string   `json:"shareName,omitempty"`   // this betterPod's name, for Share
+	Beta        bool     `json:"betaUpdates,omitempty"` // Software Update offers betas too
+	GameClock   []string `json:"gameClock,omitempty"`   // the games that show the time in the header
 }
 
 func ipodPrefsPath() string { return dataPath("ipodjs_settings.json") }
@@ -50,6 +51,9 @@ func (ui *IpodUI) loadPrefs() {
 	appleMode = p.Apple
 	shareName = p.ShareName
 	betaUpdates = p.Beta
+	for _, g := range p.GameClock {
+		gameClock[g] = true
+	}
 	podsInMenu = !p.NoPodcasts
 	saverAfter, saverDim = p.SaverAfter, p.SaverDim
 	if p.SaverStyle == "viz" {
@@ -98,6 +102,6 @@ func (ui *IpodUI) savePrefs() {
 	}
 	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu, Effects: effectsMode,
 		SaverAfter: saverAfter, SaverDim: saverDim, SaverLevel: saverLevel,
-		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName, Beta: betaUpdates})
+		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName, Beta: betaUpdates, GameClock: gameClockList()})
 	_ = writeFileAtomic(ipodPrefsPath(), data)
 }

@@ -20,7 +20,6 @@ import (
 type Pos struct{ X, Y float64 }
 
 var (
-	solMenuItems = []string{"Resume", "Undo", "Redeal", "Quit"}
 	solWinItems  = []string{"New Game", "Quit"}
 	solLostItems = []string{"Redeal", "Quit"}
 )
@@ -203,7 +202,7 @@ func (g *Solitaire) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	case PhLost:
 		g.lostIx = clamp(g.lostIx+dir, len(solLostItems))
 	case PhMenu:
-		g.menuIx = clamp(g.menuIx+dir, len(solMenuItems))
+		g.menuIx = clamp(g.menuIx+dir, len(solMenuItems()))
 	default:
 		g.sel.scroll(dir)
 	}
@@ -240,6 +239,8 @@ func (g *Solitaire) OnCenter(ui *IpodUI) {
 		case 2:
 			g.redeal()
 		case 3:
+			ui.toggleGameClock("Solitaire") // (the time in the header, ij_gameclock.go)
+		case 4:
 			g.onQuit()
 		}
 		return
@@ -595,7 +596,7 @@ func (g *Solitaire) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) 
 		if g.wins == 1 {
 			sub = "1 win"
 		}
-		g.drawMenu(dst, solMenuItems, g.menuIx, "Paused", sub)
+		g.drawMenu(dst, solMenuItems(), g.menuIx, "Paused", sub)
 	case PhWon:
 		sub := fmt.Sprintf("%d wins total", g.wins)
 		if g.wins == 1 {
@@ -1034,4 +1035,14 @@ func dashedRoundRect(dst *image.RGBA, x, y, w, h, r float64, c Col) {
 			drawThickLine(dst, x0*DPR, y0*DPR, x1*DPR, y1*DPR, 2, c)
 		}
 	}
+}
+
+// solMenuItems: the pause menu (START): Resume, Undo, Redeal, the time in
+// the header (shown or not), Quit.
+func solMenuItems() []string {
+	t := "Show the Time"
+	if gameClock["Solitaire"] {
+		t = "Hide the Time"
+	}
+	return []string{"Resume", "Undo", "Redeal", t, "Quit"}
 }

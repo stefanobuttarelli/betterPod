@@ -238,7 +238,7 @@ func (ui *IpodUI) playlistsView() *View {
 				Label:    pl.Name,
 				Sublabel: fmt.Sprintf("%d %s", n, pluralize(n, "song", "songs")),
 				Album:    art,
-				OnSelect: func() { ui.showView(ui.playlistView(pl), pl.Name) },
+				OnSelect: func() { ui.showView(ui.playlistView(pl), "") },
 				LongPress: append(ui.mediaOptions(pl.Tracks), SheetOption{Label: "Delete Playlist", Danger: true, OnSelect: func() {
 					ui.showSheetTitled("Delete "+pl.Name+"? Its songs stay in your library.", []SheetOption{{Label: "Delete Playlist", Danger: true, OnSelect: func() {
 						os.Remove(pl.Path)
@@ -266,9 +266,15 @@ func (ui *IpodUI) playlistsView() *View {
 }
 
 func (ui *IpodUI) playlistView(pl *Playlist) *View {
-	v := &View{ID: "playlist", Title: "Playlist", Kind: KindFull, Empty: "No songs yet · Y on a song → Add to Playlist…"}
+	// the header says Playlists; the playlist's name is in the section bar
+	// above its songs
+	v := &View{ID: "playlist", Title: "Playlists", Kind: KindFull, Index: 1}
 	v.Build = func() []Item {
-		var items []Item
+		items := []Item{{Label: pl.Name, Header: true}}
+		if len(pl.Tracks) == 0 {
+			return append(items, Item{Label: "No songs yet", NoArrow: true,
+				Sublabel: "Press [Y] on a song, then Add to Playlist…"})
+		}
 		for i, t := range pl.Tracks {
 			artist := t.Artist
 			if artist == "" {

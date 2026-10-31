@@ -70,6 +70,7 @@ The interface is the same on both. What differs is listed in [Features by system
   - wired and Bluetooth media buttons work, even in Hold;
   - unplugging pauses the music, like on an iPod;
   - a Bluetooth icon shows in the status bar.
+- **The time in the header while you play:** Show the Time in a game's START menu.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
 - **Missing covers found online.** Settings → Library → Missing Covers lists the albums without one: choose one to see what MusicBrainz, iTunes, Deezer and Wikipedia find (with thumbnails and the source) and pick, or search by hand; Search All Automatically fetches them from the Cover Art Archive (MusicBrainz), or else from iTunes, Deezer or Wikipedia, with the same checks. For a soundtrack ripped from a game, which has no album cover of its own, Wikipedia gives the game's box.
@@ -84,7 +85,7 @@ The interface is the same on both. What differs is listed in [Features by system
 - **L2 / R2 set the brightness** anywhere, shown in the header.
 - **Screensaver — Visualizer:** bars, waves, tunnel, stars and a spectrogram that move with the music (Settings → Screensaver → Style; LEFT / RIGHT change the effect, A the colours, START a big clock, UP / DOWN the song).
 - **Screensaver:** a mosaic of album covers that turn over, the album playing big; pick one with the arrows and A to see its songs (Settings → Screensaver, or SELECT + Y).
-- **Move the music to another card** (Settings → Library → Music Folder): copied, checked file by file, then the originals deleted; a card taken out only pauses it.
+- **Move the music to another card** (Settings → Library → Move Music to Another Card): copied, checked file by file, then the originals deleted; a card taken out only pauses it.
 - **Updates over Wi-Fi.** betterPod checks this repository once a day and shows **Update Available** in the main menu; Software Update installs the new version in place.
 - **betterPod, or iPod.** The main menu says betterPod; Settings → **Turn it Apple** makes it say iPod.
 - **Settings in two columns.** The right side shows the menu of the row the cursor is on (Shuffle's choices, the Screensaver's options…), under its own header. A or RIGHT move into it, B or LEFT come back; pages of their own (About, Bluetooth, Software Update) show a summary there.

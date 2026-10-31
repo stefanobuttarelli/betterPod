@@ -102,7 +102,7 @@ func (ui *IpodUI) artistsListView(artists []*Artist, thumbs bool) *View {
 	v := &View{ID: "artists", Title: "Artists", Kind: KindFull, Empty: "No artists"}
 	for _, ar := range artists {
 		//
-		it := Item{Label: ar.Name, OnSelect: func() { ui.showView(ui.artistView(ar), ar.Name) }}
+		it := Item{Label: ar.Name, OnSelect: func() { ui.showView(ui.artistView(ar), "") }}
 		if thumbs {
 			if len(ar.Albums) > 0 {
 				it.Album = ar.Albums[0]
