@@ -280,7 +280,7 @@ func (ui *IpodUI) settingsView() *View {
 	v.Build = func() []Item {
 		return onionSettings([]Item{ // (no YouTube or Bluetooth on the Miyoo, see onion.go)
 			page("About", "", ui.aboutSummary, ui.aboutView),
-			page("Software Update", updateLabel(), ui.updateSummary, ui.updateView),
+			col("Software Update", updateLabel(), ui.updateColumn),
 			col("Shuffle", shuffleLabel(ui.shuffleMode), ui.shuffleView),
 			col("Repeat", repeatLabel(ui.repeatMode()), ui.repeatView),
 			col("Theme", themeLabel(themeMode), ui.themeView),

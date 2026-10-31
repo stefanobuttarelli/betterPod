@@ -288,7 +288,7 @@ Settings → Software Update opens a full-screen page with a download bar. **Che
 2. prepares every new file next to the old one, then puts them in place, keeping the previous binary as `betterpod/betterpod.prev`;
 3. restarts betterPod.
 
-**Beta Versions** (a button on the same page, off by default) also offers betas: versions like `1.1-beta.1`, listed in `release/beta-knulli.json` (on the Miyoo, `release/beta-onion.json`), to try what comes next before it's out. A beta comes before its version, so the final `1.1` follows `1.1-beta.2`. Turning Beta Versions off doesn't go back: a beta stays until a newer version is out. On GitHub, betas are pre-releases.
+**Beta Versions** (in Settings → Software Update's right column, off by default) also offers betas: versions like `1.1-beta.1`, listed in `release/beta-knulli.json` (on the Miyoo, `release/beta-onion.json`), to try what comes next before it's out. A beta comes before its version, so the final `1.1` follows `1.1-beta.2`. Turning Beta Versions off doesn't go back: a beta stays until a newer version is out. On GitHub, betas are pre-releases.
 
 betterPod also checks by itself once a day (30 s after start-up, when a day has passed since the last check). When a new version is out, the main menu shows **Update Available**, a shortcut to this page. Nothing is downloaded without asking.
 

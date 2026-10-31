@@ -23,7 +23,7 @@ package main
 // Database) is never touched. The previous binary is kept as
 // betterpod/betterpod.prev.
 //
-// Betas: with Beta Versions on (a button on Software Update's screen, kept
+// Betas: with Beta Versions on (Settings → Software Update's column, kept
 // in the preferences), release/beta-<system>.json is read too, a manifest
 // of the same kind for a version like "1.1-beta.2", and the newer of the
 // two is offered (version.go: a beta comes before its release, so the
@@ -68,7 +68,7 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "1.0-beta.4"
+	BETTERPOD_VERSION  = "1.0-beta.5"
 	betterPodBuildDate = "2026-10-29"
 	// the installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod
 	// on Knulli; /mnt/SDCARD/App/betterpod/betterpod (with its launch.sh) on
@@ -180,19 +180,19 @@ type updButton struct {
 
 func (u *UpdateView) buttons() []updButton {
 	check := updButton{"Check for Updates", func(ui *IpodUI) { ui.checkForUpdate() }}
-	beta := updButton{"Beta Versions: " + onOff(betaUpdates), func(ui *IpodUI) { ui.toggleBeta() }}
+	// (Beta Versions is in Settings' column: two buttons leave room for the
+	// notes)
 	switch upd.state {
 	case updIdle:
-		return []updButton{check, beta}
+		return []updButton{check}
 	case updUpToDate:
-		return []updButton{{"Check Again", check.do}, beta}
+		return []updButton{{"Check Again", check.do}}
 	case updFailed:
-		return []updButton{{"Try Again", check.do}, beta}
+		return []updButton{{"Try Again", check.do}}
 	case updAvailable:
 		return []updButton{
 			{"Download and Install", func(ui *IpodUI) { ui.installUpdate() }},
 			{"Not Now", func(ui *IpodUI) { ui.hideView() }},
-			beta,
 		}
 	}
 	return nil
@@ -552,8 +552,9 @@ func (ui *IpodUI) checkForUpdate() {
 	}()
 }
 
-// toggleBeta turns Beta Versions on or off and checks again (on: a beta
-// may be there; off: a beta found before is no longer offered).
+// toggleBeta turns Beta Versions on or off (Settings → Software Update's
+// column) and checks again (on: a beta may be there; off: a beta found
+// before is no longer offered).
 func (ui *IpodUI) toggleBeta() {
 	betaUpdates = !betaUpdates
 	ui.savePrefs()

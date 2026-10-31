@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0-beta.5 (2026-10-31)
+
+### Changed
+- **Beta Versions moved to Settings → Software Update's right column,** with Check for Updates (it opens the update page; "Available" with the version when one is found) and the version you have. A on Beta Versions turns it on or off and checks again. The update page keeps only its own buttons, so the notes of a new version have room again.
+
 ## v1.0-beta.4 (2026-10-31)
 
 ### Changed

@@ -215,22 +215,30 @@ func updateLabel() string {
 	return ""
 }
 
-func (ui *IpodUI) updateSummary() *View {
-	items := func() []Item {
-		items := []Item{{Label: "Version", Value: BETTERPOD_VERSION}}
-		if v := updateLabel(); v != "" {
-			items = append(items, Item{Label: "Available", Value: v}) // (a beta's version is long: a short label)
-		} else if upd.state == updUpToDate {
-			items = append(items, Item{Label: "Up to Date"})
+// updateColumn: Settings → Software Update's column: the page (Check for
+// Updates, or the version found), Beta Versions (A turns it on or off and
+// checks again) and this version.
+func (ui *IpodUI) updateColumn() *View {
+	v := &View{ID: "updateCol", Title: "Software Update", Kind: KindSplit}
+	v.Build = func() []Item {
+		check := Item{Label: "Check for Updates", Preview: PrevSettings,
+			OnSelect: func() { ui.showView(ui.updateView(), "") }}
+		switch v := updateLabel(); {
+		case upd.state == updChecking:
+			check.Label = "Checking…"
+		case v != "":
+			check.Label, check.Value = "Available", v
+		case upd.state == updUpToDate:
+			check.Label = "Up to Date" // (A: the page, to check again)
 		}
-		items = append(items, Item{Label: "Beta Versions", Value: onOff(betaUpdates)})
-		for i := range items {
-			items[i].NoArrow = true
+		return []Item{
+			check,
+			{Label: "Beta Versions", Value: onOff(betaUpdates), Preview: PrevSettings, NoArrow: true,
+				OnSelect: func() { ui.toggleBeta(); ui.refreshView(v) }},
+			{Label: "Version", Value: BETTERPOD_VERSION, Preview: PrevSettings, NoArrow: true},
 		}
-		return items
 	}
-	v := summaryView("Software Update", items()...)
-	v.Build = items // (again when shown: a check or Beta Versions changed it)
+	v.Items = v.Build()
 	return v
 }
 
