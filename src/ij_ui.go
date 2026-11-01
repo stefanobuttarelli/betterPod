@@ -1236,11 +1236,6 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 	batX := right - batW
 	ui.drawBattery(sub, batX, 3.5)
 	iconsLeft := batX - gap
-	if hold.on {
-		drawPadlock(sub, iconsLeft-8, 3.5, 1, th.padlock, th.padShackle, 1)
-		batX -= 16
-		iconsLeft = batX - gap
-	}
 	iconsLeft = ui.drawStatusIcons(sub, iconsLeft, 3.5, th.headerText, false)
 	p := ui.app.Playing
 	if p != nil && p.Track != nil && p.State != StateStopped {
@@ -1274,6 +1269,10 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 			blit(sub, ic, px(ix), px(3), 1)
 			iconsLeft = ix - gap
 		}
+	}
+	if hold.on {
+		// the padlock comes last, at the left end: the others stay put
+		iconsLeft = drawHeaderLock(sub, iconsLeft, iconTint(ui.themed("bluetooth"))) - gap
 	}
 	// title
 	f := face(W700, 13)

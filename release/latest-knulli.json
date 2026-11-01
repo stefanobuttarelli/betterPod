@@ -2,7 +2,7 @@
   "version": "1.0",
   "path": "release/betterpod-v1.0-knulli.zip",
   "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-knulli.zip",
-  "sha256": "cfd3641ceacc5a95bacfbbaa580ba078bb74ada092b4a03b9e2d85e8ebb35ba2",
-  "size": 16268267,
-  "notes": "- betterPod 1.0.\n- Genius in the Music menu, under Cover Flow.\n- YouTube's Listen plays a long video at once, in parts (Knulli).\n- The time in the header while you play: Show the Time in each game's START menu.\n- A scrollbar on every long list; the header always says where you are.\n- Beta Versions is in Settings → Software Update's right column.\n- An album's options: Edit opens Album Info, with Delete Album at its bottom.\n- Fixed: downloaded albums always show up; Cover Flow follows the library at once.\n- Suno is gone (its songs stay in your library)."
+  "sha256": "575825cc340bd59cd2090ed6e0a59520984ab689fefd2073c0890518431b99ea",
+  "size": 16268307,
+  "notes": "- betterPod 1.0.\n- Genius in the Music menu, under Cover Flow.\n- YouTube's Listen plays a long video at once, in parts (Knulli).\n- The time in the header while you play: Show the Time in each game's START menu.\n- A scrollbar on every long list; the header always says where you are.\n- Beta Versions is in Settings → Software Update's right column.\n- An album's options: Edit opens Album Info, with Delete Album at its bottom.\n- Hold's padlock is redrawn, at the left end of the header's icons.\n- Fixed: downloaded albums always show up; Cover Flow follows the library at once.\n- Suno is gone (its songs stay in your library)."
 }

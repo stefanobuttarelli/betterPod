@@ -17,6 +17,7 @@ betterPod 1.0. What changed since 0.92, gathered from the eleven betas (their no
 - **Beta Versions is in Settings → Software Update's right column,** with Check for Updates and the version you have. The update page keeps only its own buttons, so a new version's notes have room.
 - **The brightness slides into the header** when L2 / R2 (or MENU + the volume keys on the Miyoo) change it, as the volume does. The volume and the brightness take turns.
 - **An album's options are one row shorter:** **Edit** opens Album Info, and Delete Album is at its bottom.
+- **Hold's padlock is redrawn and sits at the left end of the header's icons,** so the battery and the other icons stay where they are. It is flat, in the icons' grey (white on the screensaver), and as tall as they are, with no empty space at its left.
 
 ### Fixed
 - **A downloaded album always shows up,** also when its download ended during another scan (it needed a manual Rescan).
