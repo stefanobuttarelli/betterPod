@@ -31,6 +31,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"golang.org/x/image/font"
 )
 
 type songEdit struct {
@@ -288,15 +290,32 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 	v := &View{ID: "albumInfo", Title: "Album Info", Kind: KindFull}
 	e.views[v] = true
 	st := &struct{ text, field string }{}
-	// edit: the keyboard on a field; START keeps it
-	edit := func(field, cur string, set func(string)) {
+	// edit: a screen of its own for the field (its name and the text being
+	// typed, above the keyboard: in the list the keyboard hid the row);
+	// START keeps it; B held closes the keyboard and leaves it as it was.
+	// Both close the screen.
+	edit := func(field, label, cur string, set func(string)) {
 		st.field, st.text = field, cur
-		ui.showKeyboard(&st.text, func() { ui.refreshView(v) }, func() {
+		fv := ui.fieldEditView(label, &st.text)
+		e.views[fv] = true
+		closed := false
+		ui.showView(fv, "")
+		ui.showKeyboard(&st.text, func() {
+			ui.refreshView(fv)
+			if !ui.keyboardEditing(&st.text) && !closed {
+				closed = true // (the keyboard is going: START or B)
+				if ui.topScreen() == fv {
+					ui.hideView()
+				}
+				st.field = ""
+				ui.refreshView(v)
+			}
+		}, func() {
 			set(strings.TrimSpace(st.text))
 			st.field = ""
 			ui.refreshView(v)
 		})
-		ui.refreshView(v)
+		ui.refreshView(fv)
 	}
 	shown := func(field, val string) string {
 		if st.field == field && ui.keyboardEditing(&st.text) {
@@ -324,7 +343,7 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 			if !same {
 				start = "" // different on each song: nothing to keep by mistake
 			}
-			edit(field, start, func(x string) {
+			edit(field, label, start, func(x string) {
 				if (same && x == val) || (!same && x == "") {
 					return // not changed: each song keeps its own
 				}
@@ -661,6 +680,34 @@ func safeWriteTags(path string, t songTags, mask tagMask) (err error) {
 		}
 	}()
 	return writeTagsMasked(path, filepath.Ext(path), t, mask)
+}
+
+// fieldEditView: one field of Album Info being typed: the field's name and
+// its text with the caret (its end, when it's longer than the row).
+func (ui *IpodUI) fieldEditView(label string, text *string) *View {
+	v := &View{ID: "albumInfoField", Title: "Album Info", Kind: KindFull}
+	v.Build = func() []Item {
+		val := *text
+		if ui.keyboardEditing(text) {
+			val = ui.withCaret(text)
+		}
+		sf := face(W400, 12)
+		return []Item{{Label: label, Sublabel: tailFit(sf, val, (320-24)*DPR), NoArrow: true}}
+	}
+	return v
+}
+
+// tailFit: s, or its end after "…" when it's wider than w (device px): the
+// caret at the end stays in sight.
+func tailFit(f font.Face, s string, w float64) string {
+	if textWidth(f, s) <= w {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 1 && textWidth(f, "…"+string(r)) > w {
+		r = r[1:]
+	}
+	return "…" + string(r)
 }
 
 // closeAlbumInfo: back to where Album Info was opened from (only its own

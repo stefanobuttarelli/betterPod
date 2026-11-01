@@ -561,7 +561,8 @@ func drawHeaderRow(dst *image.RGBA, label string, y, wCSS float64) {
 	fillRect(dst, 0, px(y), px(wCSS), px(1), th.headerBorder)
 	f := face(W700, 12)
 	_, asc := lineBox(12)
-	drawText(dst, f, ellipsize(f, label, (wCSS-24)*DPR), 12*DPR, (y+(headerRowH-asc)/2+asc-1)*DPR, th.headerText)
+	// (it starts where the header's title does: 6 px in)
+	drawText(dst, f, ellipsize(f, label, (wCSS-12)*DPR), 6*DPR, (y+(headerRowH-asc)/2+asc-1)*DPR, th.headerText)
 }
 
 // ---- the search bar ----

@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.12",
-  "path": "release/betterpod-v1.0-beta.12-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.12-knulli.zip",
-  "sha256": "a1918445c5f9bbbd1d85b0ee523300ad8a6250fcfddeb8552778c3814f557dfe",
-  "size": 16268567,
-  "notes": "- Hold's padlock is at the left end of the header's icons, redrawn at its old size.\n- The header's icons are evenly spaced."
+  "version": "1.1-beta.1",
+  "path": "release/betterpod-v1.1-beta.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.1-knulli.zip",
+  "sha256": "fe5f732eea39c8516f18bb55111a0a4e2e88e9889bd4a3aeaf1ab9303fec8a9a",
+  "size": 16274257,
+  "notes": "- Hold L or R to rewind or fast forward; a tap still skips.\n- A download (Internet Archive, YouTube, Podcasts) joins the library at once, without a full scan.\n- Album Info: a field is edited on a screen of its own, above the keyboard.\n- The section bar's text lines up with the header's title."
 }

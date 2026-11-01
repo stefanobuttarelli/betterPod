@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -44,15 +45,20 @@ func (ui *IpodUI) rescanLibrary() {
 	}()
 }
 
-// addFolderToLibrary puts the songs of one new folder (a received share)
-// into the library without scanning the whole music folder: the library is
-// copied, the folder's files are read with the scan's own scanTrack, and the
-// copy replaces the library and is saved. While a full scan runs it just
-// asks for another one (that one will find the folder). Background goroutine.
+// addFolderToLibrary puts the songs of one new folder (a received share, a
+// download from Internet Archive, YouTube or Podcasts) into the library
+// without scanning the whole music folder: the library is copied, the
+// folder's files are read with the scan's own scanTrack, and the copy
+// replaces the library and is saved. While another scan runs, the folder
+// waits for it to end (pendingFolders, scanEnded) and false is returned.
+// Background goroutine.
 func (ui *IpodUI) addFolderToLibrary(dir string) bool {
 	app := ui.app
 	scanStartMu.Lock()
 	if app.LibScanRunning || dbBusy {
+		if !dbBusy && !slices.Contains(pendingFolders, dir) {
+			pendingFolders = append(pendingFolders, dir)
+		}
 		scanStartMu.Unlock()
 		return false
 	}

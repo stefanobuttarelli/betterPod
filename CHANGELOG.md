@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1-beta.1 (2026-11-01)
+
+### Added
+- **Hold L or R to rewind or fast forward** the song playing, anywhere, as on the iPod: a tap still goes to the previous / next song. Seeking starts after 0.4 s, in steps of 2 s, then 5 s after 2 s, then 10 s after 4 s. Fast forward stops just before the end, so the next song comes as usual.
+
+### Changed
+- **A download joins the library at once, without a full scan.** An album from Internet Archive, YouTube or Podcasts is added on its own when the download ends, as a received share already was. While another scan runs, it is added right after that scan (no second full scan). Deleting podcast episodes no longer rescans the library either.
+- **Album Info: a field is edited on a screen of its own,** with the field's name and its text above the keyboard (in the list, the keyboard hid the row). START keeps the text; B held closes the keyboard and leaves it as it was.
+- **The section bar's text starts where the header's title does** (it was 6 px further right).
+
 ## v1.0.1 (2026-11-01)
 
 ### Fixed

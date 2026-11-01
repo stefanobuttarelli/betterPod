@@ -759,9 +759,7 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 			// just this folder into the library (no full scan), once the
 			// received animation has played (it would stutter meanwhile)
 			time.Sleep(1500 * time.Millisecond)
-			if !ui.addFolderToLibrary(dest) {
-				ui.post(ui.rescanLibrary)
-			}
+			ui.addFolderToLibrary(dest) // (or after the scan running)
 			ui.shareFindTracks(s)
 		}()
 	})
@@ -770,7 +768,7 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 // shareFindTracks waits for the rescan, then finds the received songs.
 func (ui *IpodUI) shareFindTracks(s *ShareView) {
 	time.Sleep(300 * time.Millisecond)
-	for i := 0; i < 600 && (ui.app.LibScanRunning || rescanPending.Load()); i++ {
+	for i := 0; i < 600 && (ui.app.LibScanRunning || rescanPending.Load() || folderPending()); i++ {
 		time.Sleep(200 * time.Millisecond)
 	}
 	ui.postSure(func() {

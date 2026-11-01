@@ -17,7 +17,8 @@ package main
 // download that stalls for 30 s stops, and answers to an older search are
 // dropped. Downloads go to <music>/Internet Archive/<creator>/<title>/,
 // one file at a time (a .part file renamed when complete), with the item's
-// cover saved as cover.jpg; the library is rescanned at the end.
+// cover saved as cover.jpg; at the end its folder joins the library
+// (addFolderToLibrary, no full scan).
 
 import (
 	"bytes"
@@ -891,7 +892,9 @@ func (ui *IpodUI) startDownloadJob(d *iaDownload, run func() error, again func()
 			}
 			d.mu.Unlock()
 			if err == nil || d.index > 0 {
-				ui.rescanLibrary()
+				// just its folder into the library, at once: no full scan
+				// (Internet Archive, YouTube, Podcasts)
+				go ui.addFolderToLibrary(d.dir)
 			}
 			ui.dirty = true
 		})

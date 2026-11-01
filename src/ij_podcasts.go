@@ -863,7 +863,7 @@ func (ui *IpodUI) deletePodFiles(p podcast, paths []string, what string, after f
 				if after != nil {
 					after()
 				}
-				ui.rescanLibrary()
+				go ui.removeFromLibrary(paths) // (no full scan)
 			})
 		}()
 	}}})

@@ -728,6 +728,9 @@ func (ui *IpodUI) HandleKey(ev int) {
 		if ui.repeatKey == k {
 			ui.repeatKey = NONE
 		}
+		if (k == L || k == R) && ui.lrRelease(k) {
+			return
+		}
 		_, held := ui.pressStart[k]
 		delete(ui.pressStart, k)
 		long := ui.longFired[k]
@@ -807,13 +810,9 @@ func (ui *IpodUI) HandleKey(ev int) {
 		ui.stepBrightness(k == R2)
 		ui.repeatKey, ui.repeatStart, ui.repeatLast = k, now, now
 	case L, R:
-		if k == R {
-			skipDir = 1
-			go func() { ui.app.nextTrack(); ui.post(ui.onTrackChanged) }()
-		} else {
-			skipDir = -1
-			go func() { ui.app.prevTrack(); ui.post(ui.onTrackChanged) }()
-		}
+		// tapped: the previous / next song; held: rewind / fast forward
+		// (on release, lrRelease; while held, lrSeekPoll: ij_lrseek.go)
+		ui.lrPress(k, now)
 	case Y:
 		ui.centerLongPress()
 	}
@@ -1601,6 +1600,7 @@ func (ui *IpodUI) Run() {
 		}
 		ui.checkLongPress(now)
 		ui.checkRepeat(now)
+		ui.lrSeekPoll(now)
 		if app.TrackEndPending {
 			app.TrackEndPending = false
 			skipDir = 1

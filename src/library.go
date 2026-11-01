@@ -56,14 +56,44 @@ var scanStartMu sync.Mutex
 // say) runs now, whichever scan it waited for; before, only a rescan
 // started by rescanLibrary looked, and the new album could stay unseen
 // until a manual one.
+//
+// Folders downloaded or received meanwhile (pendingFolders) are added then,
+// each alone, as addFolderToLibrary does; a full rescan asked for finds
+// them anyway.
 func (app *MiyooPod) scanEnded() {
+	scanStartMu.Lock()
 	app.LibScanRunning = false
-	if rescanPending.Swap(false) {
-		if ui := ipodUI; ui != nil {
-			logMsg("Library: the rescan asked for during a scan runs now")
-			go ui.postSure(ui.rescanLibrary)
-		}
+	dirs := pendingFolders
+	pendingFolders = nil
+	scanStartMu.Unlock()
+	ui := ipodUI
+	if ui == nil {
+		return
 	}
+	if rescanPending.Swap(false) {
+		logMsg("Library: the rescan asked for during a scan runs now")
+		go ui.postSure(ui.rescanLibrary)
+		return
+	}
+	if len(dirs) > 0 {
+		go func() {
+			for _, d := range dirs {
+				logMsg("Library: adding " + d + ", downloaded during a scan")
+				ui.addFolderToLibrary(d)
+			}
+		}()
+	}
+}
+
+// pendingFolders: new folders (downloads, shares) waiting for the scan
+// running to end (scanStartMu).
+var pendingFolders []string
+
+// folderPending: a folder waits to be added.
+func folderPending() bool {
+	scanStartMu.Lock()
+	defer scanStartMu.Unlock()
+	return len(pendingFolders) > 0
 }
 
 // scanLib is the library being built by the running scan.
