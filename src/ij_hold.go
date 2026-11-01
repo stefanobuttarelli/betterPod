@@ -311,7 +311,18 @@ func drawPadlock(dst *image.RGBA, x, y, s float64, body []GradStop, shackle Col,
 	fillRoundedGradient(dst, X, Y+4.6*d, X+8*d, Y+11*d, 1.2*d, body, op)
 }
 
-var padlockDarkGrad = []GradStop{{0, rgb(120, 126, 130)}, {1, rgb(40, 44, 48)}}
+// drawHeaderLock: the header's padlock in Hold, flat in the icons' colour,
+// its right edge at right (CSS px): a body of 8 × 6 under a shackle of 5,
+// 11 px tall, centred on the other icons (the old one's size). It returns
+// its left edge.
+func drawHeaderLock(dst *image.RGBA, right float64, c Col) float64 {
+	const w, top = 8.0, 4.5
+	X, Y := (right-w)*DPR, top*DPR
+	strokeRounded(dst, X+1.6*DPR, Y+0.6*DPR, X+6.4*DPR, Y+7*DPR, 2.4*DPR, 1.3*DPR, c, 1)
+	fillRoundedGradient(dst, X, Y+4.8*DPR, X+w*DPR, Y+11*DPR, 1.4*DPR, []GradStop{{0, c}, {1, c}}, 1)
+	return right - w
+}
+
 var padlockBadgeGrad = []GradStop{{0, rgb(255, 255, 255)}, {1, rgb(190, 196, 200)}}
 
 // drawHoldBadge: the "Hold" / "Unlocked" badge (brightness bar while adjusting).

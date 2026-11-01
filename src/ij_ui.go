@@ -1235,12 +1235,9 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 	batW := 26.0
 	batX := right - batW
 	ui.drawBattery(sub, batX, 3.5)
-	iconsLeft := batX - gap
-	if hold.on {
-		drawPadlock(sub, iconsLeft-8, 3.5, 1, th.padlock, th.padShackle, 1)
-		batX -= 16
-		iconsLeft = batX - gap
-	}
+	// the icons leftwards from the battery, iconGap apart ink to ink
+	// (putIcon, ij_status.go)
+	iconsLeft := batX - iconGap
 	iconsLeft = ui.drawStatusIcons(sub, iconsLeft, 3.5, th.headerText, false)
 	p := ui.app.Playing
 	if p != nil && p.Track != nil && p.State != StateStopped {
@@ -1248,11 +1245,7 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 		if p.State == StatePaused {
 			name = "pause"
 		}
-		ic := ui.asset(name)
-		iw := float64(ic.Bounds().Dx()) / DPR
-		ix := iconsLeft - iw
-		blit(sub, ic, px(ix), px(3.5), 1)
-		iconsLeft = ix - gap
+		iconsLeft = putIcon(sub, ui.asset(name), iconsLeft, 3.5)
 	}
 
 	if q := ui.app.Queue; q != nil {
@@ -1268,18 +1261,18 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 			icons = append(icons, "hdr_shuffle")
 		}
 		for _, n := range icons {
-			ic := ui.themed(n)
-			iw := float64(ic.Bounds().Dx()) / DPR
-			ix := iconsLeft + gap - 6 - iw
-			blit(sub, ic, px(ix), px(3), 1)
-			iconsLeft = ix - gap
+			iconsLeft = putIcon(sub, ui.themed(n), iconsLeft, 3)
 		}
+	}
+	if hold.on {
+		// the padlock comes last, at the left end: the others stay put
+		iconsLeft = drawHeaderLock(sub, iconsLeft, iconTint(ui.themed("bluetooth"))) - iconGap
 	}
 	// title
 	f := face(W700, 13)
 	_, asc := lineBox(13)
 	tx := float64(x)/DPR + 6
-	maxW := iconsLeft + gap - tx
+	maxW := iconsLeft - tx // (iconGap before the first icon)
 
 	// the time in the middle: Hold's, or a game's that shows it
 	// (ij_gameclock.go)

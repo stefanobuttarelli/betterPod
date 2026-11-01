@@ -26,8 +26,6 @@ type UITheme struct {
 	sheetBorder  Col
 	sheetText    Col
 	sheetShadow  Col
-	padlock      []GradStop
-	padShackle   Col
 }
 
 var lightTheme = UITheme{
@@ -47,8 +45,6 @@ var lightTheme = UITheme{
 	sheetBorder:  hex("#3e4249"),
 	sheetText:    rgb(0, 0, 0),
 	sheetShadow:  hex("#505050"),
-	padlock:      []GradStop{{0, rgb(120, 126, 130)}, {1, rgb(40, 44, 48)}},
-	padShackle:   rgb(70, 74, 78),
 }
 
 var darkTheme = UITheme{
@@ -69,8 +65,6 @@ var darkTheme = UITheme{
 	sheetBorder:  hex("#15171a"),
 	sheetText:    rgb(240, 241, 243),
 	sheetShadow:  hex("#000000"),
-	padlock:      []GradStop{{0, rgb(235, 237, 240)}, {1, rgb(170, 175, 180)}},
-	padShackle:   rgb(215, 218, 222),
 }
 
 var th = &lightTheme

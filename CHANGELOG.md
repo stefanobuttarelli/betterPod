@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0-beta.12 (2026-11-01)
+
+### Changed
+- **Hold's padlock is at the left end of the header's icons,** so the battery and the others stay where they are when Hold comes on. It is redrawn flat, in the icons' grey (white on the screensaver), at the size it had.
+- **The header's icons are evenly spaced:** the same space between each two (padlock, repeat and shuffle, play / pause, headphones and Wi-Fi, battery), measured on what is drawn and not on each picture's box.
+
 ## v1.0-beta.11 (2026-11-01)
 
 ### Changed

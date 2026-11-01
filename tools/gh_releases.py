@@ -2,7 +2,7 @@
 """Publish a GitHub release for every version in CHANGELOG.md that has none.
 
 Run by .github/workflows/releases.yml. A version's release is tagged at the
-commit whose subject starts with "vX.Y:" (the last such commit), gets its
+commit whose subject starts with "vX.Y:" (or "X.Y:"; the last such commit), gets its
 CHANGELOG section as notes, and the zips from release/ (Knulli's and
 Onion's) when they are still there: the title says which systems it is for
 ("Knulli + Miyoo", "Knulli only", "Miyoo only") and an install table ends the
@@ -91,7 +91,8 @@ for v, body in reversed(versions):  # oldest first, so the newest ends up on top
                 r = gh("release", "edit", f"v{v}", "--title", f"betterPod {v}{systems(k, o)}", "--notes-file", "/tmp/notes.md")
                 print(f"v{v} updated:", r.stdout.strip(), r.stderr.strip())
         continue
-    commits = [l.split()[0] for l in log if l.split(" ", 1)[1].startswith(f"v{v}:")]
+    # (the "v" in front was once forgotten: "1.0-beta.11: …")
+    commits = [l.split()[0] for l in log if l.split(" ", 1)[1].startswith((f"v{v}:", f"{v}:"))]
     if not commits:
         print(f"v{v}: no commit, skipped")
         continue

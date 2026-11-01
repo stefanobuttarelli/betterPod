@@ -82,7 +82,7 @@ key Escape;            shot music-again4 4
 key Down space;        shot apps 4         # Apps
 key Down Down Down space; shot words 5     # Five Letters (its word lists)
 key Return;            sleep 1             # START: the game's menu
-key Down Down space;   shot apps-again 4   # Quit Five Letters (B deletes a letter there)
+key Down Down Down space; shot apps-again 4 # Quit Five Letters, under Show the Time (B deletes a letter there)
 key Down Down space;   shot puzzles 4      # Puzzles (Simon Tatham's C code, built for armv7)
 key space;             shot mines 8        # Mines: a new puzzle
 key space;             shot mines-open 4   # A opens a square

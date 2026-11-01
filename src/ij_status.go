@@ -234,15 +234,10 @@ func wifiIcon(n int, c Col) *image.RGBA {
 // headphones (with the Bluetooth mark when they are Bluetooth ones) in c;
 // it returns where the next icon goes.
 func (ui *IpodUI) drawStatusIcons(dst *image.RGBA, left, y float64, c Col, white bool) float64 {
-	const gap = 4.0
 	if !white {
 		c = iconTint(ui.themed("bluetooth")) // (the grey of the Bluetooth mark)
 	}
-	put := func(ic *image.RGBA) {
-		iw := float64(ic.Bounds().Dx()) / DPR
-		blit(dst, ic, px(left-iw), px(y), 1)
-		left -= iw + gap
-	}
+	put := func(ic *image.RGBA) { left = putIcon(dst, ic, left, y) }
 	bt := btConnected()
 	if bt || headphonesOut() {
 		// headphones (Bluetooth: with its mark) and the Wi-Fi as five dots
@@ -254,6 +249,52 @@ func (ui *IpodUI) drawStatusIcons(dst *image.RGBA, left, y float64, c Col, white
 		put(wifiIcon(wifiArcs(n), c))
 	}
 	return left
+}
+
+// iconGap: the space between two header icons, ink to ink (CSS px).
+const iconGap = 5.0
+
+// putIcon draws ic with its ink's right edge at right (CSS px) and returns
+// where the next icon's ink ends: its ink's left edge less iconGap. Icons
+// are measured by their ink, not their box, so the spaces are all equal
+// whatever empty margins an icon has.
+func putIcon(dst *image.RGBA, ic *image.RGBA, right, y float64) float64 {
+	l, r := inkMargins(ic)
+	ix := right + r - float64(ic.Bounds().Dx())/DPR
+	blit(dst, ic, px(ix), px(y), 1)
+	return ix + l - iconGap
+}
+
+// inkMargins: the empty columns at the left and the right of an icon (CSS
+// px), measured once per image (the icons are cached, so few of them).
+var inkCache = map[*image.RGBA][2]float64{}
+
+func inkMargins(img *image.RGBA) (l, r float64) {
+	if m, ok := inkCache[img]; ok {
+		return m[0], m[1]
+	}
+	b := img.Bounds()
+	inkCol := func(x int) bool {
+		for y := b.Min.Y; y < b.Max.Y; y++ {
+			if img.Pix[img.PixOffset(x, y)+3] > 40 {
+				return true
+			}
+		}
+		return false
+	}
+	lo, hi := b.Min.X, b.Max.X-1
+	for lo < hi && !inkCol(lo) {
+		lo++
+	}
+	for hi > lo && !inkCol(hi) {
+		hi--
+	}
+	m := [2]float64{float64(lo-b.Min.X) / DPR, float64(b.Max.X-1-hi) / DPR}
+	if len(inkCache) > 64 { // (icons made for other colours, Wi-Fi levels…)
+		clear(inkCache)
+	}
+	inkCache[img] = m
+	return m[0], m[1]
 }
 
 // headsetIcon: headphones, with the Bluetooth mark between the cups when

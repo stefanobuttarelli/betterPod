@@ -1248,21 +1248,17 @@ func (ui *IpodUI) ssBarDraw(dst *image.RGBA, s *screensaver, now time.Time) {
 		fillTriangle(dst, x0+bw/2+3, y0+3, x0+bw/2-6, y0+bh/2+1, x0+bw/2, y0+bh/2+1, colBlack)
 		fillTriangle(dst, x0+bw/2-3, y0+bh-3, x0+bw/2+6, y0+bh/2-1, x0+bw/2, y0+bh/2-1, colBlack)
 	}
-	left := batX - gap
-	if hold.on {
-		drawPadlock(dst, left-8, 3.5, 1, []GradStop{{0, colWhite}, {1, colWhite}}, colWhite, 1)
-		left -= 16
-	}
+	left := batX - iconGap // (ink to ink, as in the header: putIcon)
 	left = ui.drawStatusIcons(dst, left, 3.5, colWhite, true)
 	if p := ui.app.Playing; p != nil && p.Track != nil && p.State != StateStopped {
 		name := "play"
 		if p.State == StatePaused {
 			name = "pause"
 		}
-		ic := whiteIcon(ui, name)
-		iw := float64(ic.Bounds().Dx()) / DPR
-		blit(dst, ic, px(left-iw), px(3.5), 1)
-		left -= iw + gap
+		left = putIcon(dst, whiteIcon(ui, name), left, 3.5)
+	}
+	if hold.on {
+		left = drawHeaderLock(dst, left, colWhite) - iconGap // (last, as in the header)
 	}
 	// left: the clock, or the brightness for a moment after it changes
 	if now.Before(s.briShown) || hold.on && now.Before(hold.levelShown) {
