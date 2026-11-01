@@ -220,7 +220,8 @@ func (ui *IpodUI) removeFromLibrary(paths []string) {
 // askDeleteAlbum: Delete Album (an album's options), after a confirmation:
 // its songs are deleted from the card and leave the library; its folder
 // goes too when nothing but pictures and lists is left in it.
-func (ui *IpodUI) askDeleteAlbum(al *Album) {
+// after: what follows once it is deleted (Album Info closes).
+func (ui *IpodUI) askDeleteAlbum(al *Album, after func()) {
 	tracks := albumTracks(al)
 	if len(tracks) == 0 {
 		return
@@ -260,6 +261,9 @@ func (ui *IpodUI) askDeleteAlbum(al *Album) {
 			})
 			ui.removeFromLibrary(paths)
 		}()
+		if after != nil {
+			after()
+		}
 	}}})
 }
 

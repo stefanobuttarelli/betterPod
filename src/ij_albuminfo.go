@@ -194,11 +194,11 @@ func (e *albumEdit) apply(a *albumInfo) int {
 
 // ---- entry points ----
 
-// albumOptions: an album's long-press sheet, with Edit Album Info.
+// albumOptions: an album's long-press sheet, with Edit (Album Info, where
+// Delete Album is too: one row less in the sheet).
 func (ui *IpodUI) albumOptions(al *Album) []SheetOption {
 	return append(ui.mediaOptions(albumTracks(al)),
-		SheetOption{Label: "Edit Album Info", OnSelect: func() { ui.openAlbumInfo(al) }},
-		SheetOption{Label: "Delete Album", Danger: true, OnSelect: func() { ui.askDeleteAlbum(al) }})
+		SheetOption{Label: "Edit", OnSelect: func() { ui.openAlbumInfo(al) }})
 }
 
 // openAlbumInfo opens Album Info (not while the album is being saved).
@@ -403,6 +403,9 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 					ui.refreshView(v)
 				}})
 		}
+		items = append(items, Item{Label: "Delete Album", OnSelect: func() {
+			ui.askDeleteAlbum(al, func() { ui.post(func() { ui.closeAlbumInfo(e) }) })
+		}})
 		return items
 	}
 	v.Items = v.Build()

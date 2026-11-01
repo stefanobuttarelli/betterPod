@@ -69,7 +69,7 @@ key Down Down Down space; sleep 2          # Share (after Add to Playlist…)
 key space Return;      shot share 10       # it asks this betterPod's name first: "g", START; then a code from magic-wormhole's server, waiting
 key Escape;            shot share-stopped 3
 key Alt_L;             shot album-sheet2 3
-key Down Down Down Down space; shot album-info 5 # Edit Album Info
+key Down Down Down Down space; shot album-info 5 # Edit (Album Info)
 key space;             shot info-search 20 # Find Info Online (the real sources)
 key Escape;            shot album-info2 4
 key Escape Escape;     shot back 4

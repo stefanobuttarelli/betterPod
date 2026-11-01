@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0-beta.11 (2026-11-01)
+
+### Changed
+- **An album's options are one row shorter.** Edit Album Info is now **Edit**, and Delete Album moved into it, at the bottom of Album Info (still with its question). After the deletion Album Info closes.
+
 ## v1.0-beta.10 (2026-11-01)
 
 ### Fixed

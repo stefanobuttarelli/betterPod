@@ -101,7 +101,7 @@ func (ui *IpodUI) artistView(ar *Artist) *View {
 			Sublabel:  al.Artist,
 			Album:     al,
 			OnSelect:  func() { ui.showView(ui.albumView(al), "") },
-			LongPress: ui.albumOptions(al), // with Edit Album Info (ij_albuminfo.go)
+			LongPress: ui.albumOptions(al), // with Edit: Album Info (ij_albuminfo.go)
 		})
 	}
 	return v
@@ -124,7 +124,7 @@ func (ui *IpodUI) albumsView(albums []*Album) *View {
 				Sublabel:  al.Artist,
 				Album:     al,
 				OnSelect:  func() { ui.showView(ui.albumView(al), "") },
-				LongPress: ui.albumOptions(al), // with Edit Album Info and Delete Album (ij_albuminfo.go)
+				LongPress: ui.albumOptions(al), // with Edit: Album Info and Delete Album (ij_albuminfo.go)
 			})
 		}
 		return items

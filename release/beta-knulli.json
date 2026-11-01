@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.10",
-  "path": "release/betterpod-v1.0-beta.10-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.10-knulli.zip",
-  "sha256": "8df6a2890262caf4811ebdcfcde91d2a0ae0760183fe1a640f7c27f3c776172f",
-  "size": 16268244,
-  "notes": "- Cover Flow follows the library at once: a deleted album leaves it."
+  "version": "1.0-beta.11",
+  "path": "release/betterpod-v1.0-beta.11-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.11-knulli.zip",
+  "sha256": "f6c3868732c11abe36a9c567a09bfc52e1e821d5e1b3c8d9dcf99c530b50afc7",
+  "size": 16268185,
+  "notes": "- An album's options are one row shorter: Edit Album Info is now Edit, and Delete Album moved into it."
 }
