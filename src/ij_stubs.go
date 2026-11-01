@@ -226,7 +226,8 @@ func (ui *IpodUI) askDeleteAlbum(al *Album) {
 		return
 	}
 	n := len(tracks)
-	title := fmt.Sprintf("Delete %s? Its %d %s will be deleted from the card. This can't be undone.", al.Name, n, pluralize(n, "song", "songs"))
+	// (one line: the sheet's title doesn't wrap)
+	title := fmt.Sprintf("Delete %s (%d %s) for good?", al.Name, n, pluralize(n, "song", "songs"))
 	ui.showSheetTitled(title, []SheetOption{{Label: "Delete Album", Danger: true, OnSelect: func() {
 		var paths []string
 		dirs := map[string]bool{}

@@ -1060,3 +1060,68 @@ func coverBackFace() *image.RGBA {
 // cfNPWiden: how much wider Cover Flow's Now Playing cover is when tilted
 // (CSS px).
 const cfNPWiden = 9.0
+
+// libraryChanged: the library was replaced (an album deleted, a scan): the
+// flow takes its albums, each cover keeping its place in the animation
+// (matched by album key), so a deleted album's gap closes as a move does.
+// The album in front stays in front when it is still there; else the next
+// one comes. On the UI goroutine.
+func (cf *CoverFlow) libraryChanged(ui *IpodUI, lib *Library) {
+	if lib == nil {
+		return
+	}
+	old := cf.albums
+	key := func(a *Album) string {
+		if a.Key != "" {
+			return a.Key
+		}
+		return a.Artist + "|" + a.Name
+	}
+	at := map[string]int{}
+	for i, a := range old {
+		at[key(a)] = i
+	}
+	covers := map[int]*cfCover{}
+	active := -1
+	for j, a := range lib.Albums {
+		i, ok := at[key(a)]
+		if !ok {
+			continue
+		}
+		if c := cf.covers[i]; c != nil {
+			covers[j] = c
+		}
+		if i == cf.active {
+			active = j
+		}
+		if cf.selected != nil && old[i] == cf.selected {
+			cf.selected = a // (the same album, from the new library)
+		}
+		if cf.backAlbum != nil && old[i] == cf.backAlbum {
+			cf.backAlbum = a
+		}
+	}
+	if active < 0 {
+		// the album in front is gone: the one after it (or the last)
+		active = min(cf.active, len(lib.Albums)-1)
+	}
+	cf.albums, cf.covers, cf.active = lib.Albums, covers, max(active, 0)
+	if cf.selected != nil {
+		if _, ok := at[key(cf.selected)]; !ok || !slicesContains(lib.Albums, cf.selected) {
+			// its album is gone: back to the flow
+			cf.selected, cf.backFromNP, cf.playing = nil, false, false
+			cf.backAnim.To(0, 250*time.Millisecond, easeOutCubic, 0)
+			ui.headerTitle = "Cover Flow"
+		}
+	}
+	ui.dirty = true
+}
+
+func slicesContains(l []*Album, a *Album) bool {
+	for _, x := range l {
+		if x == a {
+			return true
+		}
+	}
+	return false
+}

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0-beta.10 (2026-11-01)
+
+### Fixed
+- **Cover Flow follows the library at once.** An album deleted (or added by a scan) while Cover Flow was open stayed there until it was opened again. Now its cover leaves and the others close the gap, as when you move; the album in front stays in front, or the next one comes.
+- **Delete Album's question fits on its line** ("Delete … (3 songs) for good?"): it was cut off.
+
 ## v1.0-beta.9 (2026-10-31)
 
 ### Removed

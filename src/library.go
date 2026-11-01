@@ -82,6 +82,9 @@ func (app *MiyooPod) installLibrary(lib *Library) {
 	ui.postSure(func() {
 		app.Library = lib
 		app.remapQueue(lib)
+		if cf := ui.cover; cf != nil {
+			cf.libraryChanged(ui, lib) // (Cover Flow shows the new albums)
+		}
 		close(done)
 	})
 	select {

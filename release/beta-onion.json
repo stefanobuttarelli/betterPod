@@ -1,8 +1,8 @@
 {
-  "version": "1.0-beta.9",
-  "path": "release/betterpod-v1.0-beta.9-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.9-onion.zip",
-  "sha256": "35d37a1a6c3ba2a0ab755524cbb0efa3860037c3a2526fd0fb16d278a4a795c5",
-  "size": 28406500,
-  "notes": "- Suno removed (it didn't work with real profiles)."
+  "version": "1.0-beta.10",
+  "path": "release/betterpod-v1.0-beta.10-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-beta.10-onion.zip",
+  "sha256": "b9ccdfad07d2e824e2f680daaac9a10f333acfda361ee51ed5834a978cc70009",
+  "size": 28407377,
+  "notes": "- Cover Flow follows the library at once: a deleted album leaves it."
 }
