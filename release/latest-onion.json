@@ -1,8 +1,8 @@
 {
-  "version": "0.92",
-  "path": "release/betterpod-v0.92-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.92-onion.zip",
-  "sha256": "a56ab0c3db1a9f3e85509faa328b6c43730f795e4b4f63eecb798d7225181c6c",
-  "size": 28421043,
-  "notes": "- Beta Versions: a button in Settings \u2192 Software Update (off by default) that also offers beta versions, to try what comes next before it's out."
+  "version": "1.0",
+  "path": "release/betterpod-v1.0-onion.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-onion.zip",
+  "sha256": "722e13fdbe5c79634516bd4c345d6b981b649a209beeba03b5c9e4bb156fb841",
+  "size": 28406689,
+  "notes": "- betterPod 1.0.\n- Genius in the Music menu, under Cover Flow.\n- The time in the header while you play: Show the Time in each game's START menu.\n- A scrollbar on every long list; the header always says where you are.\n- Beta Versions is in Settings \u2192 Software Update's right column.\n- An album's options: Edit opens Album Info, with Delete Album at its bottom.\n- Hold's padlock at the left end of the header's icons, all evenly spaced.\n- Fixed: downloaded albums always show up; Cover Flow follows the library at once.\n- Suno is gone (its songs stay in your library)."
 }
