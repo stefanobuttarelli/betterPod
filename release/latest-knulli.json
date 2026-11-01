@@ -1,8 +1,8 @@
 {
-  "version": "0.92",
-  "path": "release/betterpod-v0.92-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v0.92-knulli.zip",
-  "sha256": "7412a01760285d5ce8f785b37dc9e90c86c2cfe32905823480ee01b52420465f",
-  "size": 16281538,
-  "notes": "- Beta Versions: a button in Settings \u2192 Software Update (off by default) that also offers beta versions, to try what comes next before it's out."
+  "version": "1.0",
+  "path": "release/betterpod-v1.0-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-knulli.zip",
+  "sha256": "cfd3641ceacc5a95bacfbbaa580ba078bb74ada092b4a03b9e2d85e8ebb35ba2",
+  "size": 16268267,
+  "notes": "- betterPod 1.0.\n- Genius in the Music menu, under Cover Flow.\n- YouTube's Listen plays a long video at once, in parts (Knulli).\n- The time in the header while you play: Show the Time in each game's START menu.\n- A scrollbar on every long list; the header always says where you are.\n- Beta Versions is in Settings → Software Update's right column.\n- An album's options: Edit opens Album Info, with Delete Album at its bottom.\n- Fixed: downloaded albums always show up; Cover Flow follows the library at once.\n- Suno is gone (its songs stay in your library)."
 }

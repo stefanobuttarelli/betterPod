@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.0 (2026-11-01)
+
+betterPod 1.0. What changed since 0.92, gathered from the eleven betas (their notes follow, one by one).
+
+### Added
+- **Genius in the Music menu,** under Cover Flow: 50 songs of your library at random, also when something is playing (they replace it).
+- **YouTube's Listen plays a long video at once** (Knulli). The audio comes in parts: 20 seconds first, then 3 minutes each, one ahead of the one playing. A 2-hour mix starts after a few seconds, and only a few minutes of it are on the card at a time. A video that can't be heard in parts is fetched whole, as before.
+- **The time in the header while you play.** Each game's START menu has **Show the Time** / **Hide the Time**, kept for that game.
+- **A scrollbar on every list longer than the screen,** at the right as on the iPod.
+- **Settings → Library → Move Music to Another Card,** a row of its own (Knulli).
+
+### Changed
+- **The header says where you are, never an item's name.** Playlists, albums, artists, Internet Archive items and podcasts keep the section's name at the top ("Playlists", "Albums"…) and show the item's name in the section bar above the list.
+- **An empty playlist says so on a row,** with how to add songs.
+- **Beta Versions is in Settings → Software Update's right column,** with Check for Updates and the version you have. The update page keeps only its own buttons, so a new version's notes have room.
+- **The brightness slides into the header** when L2 / R2 (or MENU + the volume keys on the Miyoo) change it, as the volume does. The volume and the brightness take turns.
+- **An album's options are one row shorter:** **Edit** opens Album Info, and Delete Album is at its bottom.
+
+### Fixed
+- **A downloaded album always shows up,** also when its download ended during another scan (it needed a manual Rescan).
+- **Covers from cover.jpg / folder.jpg are found once,** not copied again at every start; a scan no longer rewrites the covers it already has.
+- **Now Playing is in the menus only while its block is at the bottom.** When nothing plays, the main menu shows Genius again.
+- **Cover Flow follows the library at once:** a deleted album's cover leaves, and a scanned one comes, without opening Cover Flow again.
+- **Delete Album's question fits on its line.**
+
+### Removed
+- **Suno** is gone: its endpoints didn't give the songs of real profiles. Songs downloaded with it stay in your library (`<music>/Suno`).
+
 ## v1.0-beta.11 (2026-11-01)
 
 ### Changed
