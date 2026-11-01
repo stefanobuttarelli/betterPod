@@ -664,6 +664,12 @@ func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) {
 	for t := range queuedMarks {
 		delete(queuedMarks, t)
 	}
+	// with nothing playing, the menus wait for Now Playing (npOpening): the
+	// Now Playing row and block would come first, while the song loads
+	opening := showNP && ui.miniPlayerTrack() == nil
+	if opening {
+		npOpening.Store(true)
+	}
 	go func() {
 		app.Queue.Shuffle = ui.shuffleMode != "off"
 		app.playTrackFromList(tracks, idx)
@@ -674,6 +680,13 @@ func (ui *IpodUI) playSong(tracks []*Track, idx int, showNP bool) {
 			ui.onTrackChanged()
 			if showNP {
 				ui.showNowPlaying()
+			}
+			if opening {
+				// the menus under Now Playing follow it once it has slid in
+				// (lastMiniHas), not while they still show
+				time.AfterFunc(durSlide+50*time.Millisecond, func() {
+					ui.postSure(func() { npOpening.Store(false); ui.dirty = true })
+				})
 			}
 		})
 	}()

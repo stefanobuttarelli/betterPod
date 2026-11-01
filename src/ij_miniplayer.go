@@ -20,6 +20,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -97,7 +98,14 @@ func (ui *IpodUI) followPause(now time.Time) {
 
 // miniPlayerTrack: the track the block shows (nil: no block, also after a
 // long pause).
+// npOpening: a song chosen with nothing playing is loading, and Now Playing
+// opens once it plays; until then the menus and the block don't show it.
+var npOpening atomic.Bool
+
 func (ui *IpodUI) miniPlayerTrack() *Track {
+	if npOpening.Load() {
+		return nil // (Now Playing opens first: playSong)
+	}
 	if p := ui.app.Playing; p != nil && p.Track != nil && p.State != StateStopped {
 		if p.State == StatePaused && !pausedSince.IsZero() && animNow().Sub(pausedSince) >= miniPauseHide {
 			return nil

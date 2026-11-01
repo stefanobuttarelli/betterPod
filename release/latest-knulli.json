@@ -1,8 +1,8 @@
 {
-  "version": "1.0",
-  "path": "release/betterpod-v1.0-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0-knulli.zip",
-  "sha256": "2f6304d84b5ffdf4e268bb5ebcf91b80c7c0fb15444a7060125b9c6b8b5a6510",
-  "size": 16268709,
-  "notes": "- betterPod 1.0.\n- Genius in the Music menu, under Cover Flow.\n- YouTube's Listen plays a long video at once, in parts (Knulli).\n- The time in the header while you play: Show the Time in each game's START menu.\n- A scrollbar on every long list; the header always says where you are.\n- Beta Versions is in Settings → Software Update's right column.\n- An album's options: Edit opens Album Info, with Delete Album at its bottom.\n- Hold's padlock at the left end of the header's icons, all evenly spaced.\n- Fixed: downloaded albums always show up; Cover Flow follows the library at once.\n- Suno is gone (its songs stay in your library)."
+  "version": "1.0.1",
+  "path": "release/betterpod-v1.0.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0.1-knulli.zip",
+  "sha256": "32cd5159f80643eecfc9ab2583038957eb7c31562907872c091f028554202030",
+  "size": 16268785,
+  "notes": "- Genius goes straight to Now Playing: the menu no longer changes first, while the song loads."
 }

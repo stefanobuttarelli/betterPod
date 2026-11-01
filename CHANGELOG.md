@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.1 (2026-11-01)
+
+### Fixed
+- **Genius (and any song chosen with nothing playing) goes straight to Now Playing.** While the first song loaded, the menu already showed Now Playing in Genius's place, its block at the bottom and the song's name in the header, and only then Now Playing came. Now the menu stays as it is until Now Playing has slid in.
+
 ## v1.0 (2026-11-01)
 
 betterPod 1.0. What changed since 0.92, gathered from the twelve betas (their notes follow, one by one).
