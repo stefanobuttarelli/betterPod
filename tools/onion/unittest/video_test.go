@@ -1,20 +1,23 @@
 //go:build ignore
 
-// Tests for Videos (video.go, ij_video.go): which of YouTube's formats is
-// played, the size and rate of the frames, ffmpeg's arguments, the frame
-// queue, the streams' server (ranges in 10 MB pieces, a broken connection
-// taken up again, a refusal remembered) and Recently Watched. Run with
-// tools/onion/unittest.sh.
+// Tests for Videos (video.go, ij_video.go, ij_videodl.go): which of
+// YouTube's formats is played, the size and rate of the frames, ffmpeg's
+// arguments, the frame queue, the streams' server (ranges in 10 MB pieces,
+// a broken connection taken up again, a refusal remembered), Recently
+// Watched, the downloaded videos, and the text being typed cut around its
+// caret (Album Info). Run with tools/onion/unittest.sh.
 
 package main
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,9 +60,9 @@ func TestPickFormats(t *testing.T) {
 			f("139", "none", "mp4a.40.5", 0, 0, 0, 48), f("140", "none", "mp4a.40.2", 0, 0, 0, 129), f("251", "none", "opus", 0, 0, 0, 135),
 			f("18", "avc1.42001E", "mp4a.40.2", 640, 360, 30, 0), hls}, "134+140"},
 		{"only one format with both", []ytFormat{f("18", "avc1.42001E", "mp4a.40.2", 640, 360, 30, 0), hls}, "18+18"},
-		{"4:3: 480p fills 586x440", []ytFormat{f("134", "avc1", "none", 480, 360, 30, 0), f("135", "avc1", "none", 640, 480, 30, 0),
+		{"4:3: 480p fills 640x480", []ytFormat{f("134", "avc1", "none", 480, 360, 30, 0), f("135", "avc1", "none", 640, 480, 30, 0),
 			f("136", "avc1", "none", 960, 720, 30, 0), f("140", "none", "mp4a.40.2", 0, 0, 0, 129)}, "135+140"},
-		{"upright: 360x640 fills 246x440", []ytFormat{f("134", "avc1", "none", 360, 640, 30, 0), f("135", "avc1", "none", 480, 854, 30, 0),
+		{"upright: 360x640 fills 270x480", []ytFormat{f("134", "avc1", "none", 360, 640, 30, 0), f("135", "avc1", "none", 480, 854, 30, 0),
 			f("140", "none", "mp4a.40.2", 0, 0, 0, 129)}, "134+140"},
 		{"only small: the biggest", []ytFormat{f("160", "avc1", "none", 256, 144, 30, 0), f("133", "avc1", "none", 426, 240, 30, 0),
 			f("140", "none", "mp4a.40.2", 0, 0, 0, 129)}, "133+140"},
@@ -91,8 +94,8 @@ func TestPickFormats(t *testing.T) {
 
 func TestVideoFit(t *testing.T) {
 	for _, c := range []struct{ w, h, fw, fh int }{
-		{1920, 1080, 640, 360}, {640, 360, 640, 360}, {480, 360, 586, 440}, {1080, 1920, 246, 440},
-		{0, 0, 640, 360}, {1280, 544, 640, 272}, {640, 480, 586, 440},
+		{1920, 1080, 640, 360}, {640, 360, 640, 360}, {480, 360, 640, 480}, {1080, 1920, 270, 480},
+		{0, 0, 640, 360}, {1280, 544, 640, 272}, {640, 480, 640, 480},
 	} {
 		if fw, fh := videoFit(c.w, c.h, videoBoxW, videoBoxH); fw != c.fw || fh != c.fh {
 			t.Errorf("videoFit(%d, %d) = %dx%d, want %dx%d", c.w, c.h, fw, fh, c.fw, c.fh)
@@ -372,5 +375,85 @@ func TestChooseStreams(t *testing.T) {
 	srv.Close()
 	if _, err := pick(); err == nil || !strings.Contains(err.Error(), "No connection") {
 		t.Errorf("no server: %v", err)
+	}
+}
+
+// Download Video asks yt-dlp for what the player would stream first, with
+// the format that has both as the fallback.
+func TestVideoDownloadFormats(t *testing.T) {
+	usual := &ytInfo{Formats: []ytFormat{
+		f("160", "avc1.4d400c", "none", 256, 144, 30, 0), f("134", "avc1.4d401e", "none", 640, 360, 30, 0),
+		f("136", "avc1.64001f", "none", 1280, 720, 30, 0), f("140", "none", "mp4a.40.2", 0, 0, 0, 129),
+		f("251", "none", "opus", 0, 0, 0, 135), f("18", "avc1.42001E", "mp4a.40.2", 640, 360, 30, 0)}}
+	if sel, v, a := videoDownloadFormats(usual); sel != "134+140/18" || v.ID != "134" || a.ID != "140" {
+		t.Errorf("usual: %q", sel)
+	}
+	if sel, v, a := videoDownloadFormats(&ytInfo{Formats: []ytFormat{f("18", "avc1.42001E", "mp4a.40.2", 640, 360, 30, 0)}}); sel != "18" || v.ID != "18" || a != nil {
+		t.Errorf("only both: %q", sel)
+	}
+	if sel, _, _ := videoDownloadFormats(&ytInfo{Formats: []ytFormat{f("394", "av01.0.00M.08", "none", 640, 360, 30, 0)}}); sel != "" {
+		t.Errorf("nothing playable: %q", sel)
+	}
+}
+
+// The downloaded videos: listed newest first, a record without its file
+// left out, deleted with their picture.
+func TestVideosSaved(t *testing.T) {
+	old := dataDirOverride
+	dataDirOverride = t.TempDir()
+	defer func() { dataDirOverride = old }()
+	if len(videosSaved()) != 0 {
+		t.Fatal("videos before any")
+	}
+	os.MkdirAll(videosDir(), 0755)
+	save := func(id string, at int64, file bool) {
+		data, _ := json.Marshal(videoSaved{ID: id, Title: "T " + id, W: 640, H: 360, FPS: 30, Duration: 40, At: at})
+		os.WriteFile(videoSavedPath(id, ".json"), data, 0644)
+		if file {
+			os.WriteFile(videoSavedPath(id, ".mp4"), []byte("mp4"), 0644)
+			os.WriteFile(videoSavedPath(id, ".jpg"), []byte("jpg"), 0644)
+		}
+	}
+	save("old", 100, true)
+	save("new", 200, true)
+	save("half", 300, false) // (a download that never finished)
+	got := videosSaved()
+	if len(got) != 2 || got[0].ID != "new" || got[1].ID != "old" || got[0].W != 640 {
+		t.Fatalf("saved: %+v", got)
+	}
+	if _, ok := videoSavedInfo("half"); ok {
+		t.Error("a record without its file")
+	}
+	if s, ok := videoSavedInfo("old"); !ok || s.Title != "T old" {
+		t.Errorf("old: %+v %v", s, ok)
+	}
+	videoDeleteSaved("new")
+	if _, err := os.Stat(videoSavedPath("new", ".jpg")); err == nil || len(videosSaved()) != 1 {
+		t.Error("not deleted")
+	}
+}
+
+// Text being typed (Album Info) is cut so its caret stays in sight.
+func TestCaretFit(t *testing.T) {
+	oldFonts := fontDir
+	fontDir = "../port/betterpod/assets/fonts/"
+	defer func() { fontDir = oldFonts }()
+	fc := face(W400, 12)
+	if got := caretFit(fc, "Short|", 400); got != "Short|" {
+		t.Errorf("short: %q", got)
+	}
+	long := strings.Repeat("Album Artist ", 12)
+	w := textWidth(fc, "Album Artist Album Artist")
+	end := caretFit(fc, long+"|", w)
+	if !strings.HasPrefix(end, "…") || !strings.HasSuffix(end, "|") || textWidth(fc, end) > w {
+		t.Errorf("caret at the end: %q", end)
+	}
+	start := caretFit(fc, "Al|"+long, w)
+	if !strings.HasPrefix(start, "Al|") || !strings.HasSuffix(start, "…") || textWidth(fc, start) > w {
+		t.Errorf("caret near the start: %q", start)
+	}
+	mid := caretFit(fc, long+"|"+long, w)
+	if !strings.Contains(mid, "|") || textWidth(fc, mid) > w {
+		t.Errorf("caret in the middle: %q", mid)
 	}
 }

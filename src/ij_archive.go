@@ -703,6 +703,7 @@ type iaDownload struct {
 	lastErr  string
 	again    func() // Try Again
 	source   string // the header ("YouTube"; empty: Internet Archive)
+	video    bool   // a video for Videos → Downloaded (ij_videodl.go), not songs for the library
 }
 
 var iaCur *iaDownload
@@ -886,11 +887,15 @@ func (ui *IpodUI) startDownloadJob(d *iaDownload, run func() error, again func()
 				d.err, d.state = "Cancelled", "Download stopped"
 			case err != nil:
 				d.err, d.state = err.Error(), "Download stopped"
+			case d.video:
+				d.state = "Saved in Videos → Downloaded"
 			default:
 				d.state = "Added to your library"
 			}
 			d.mu.Unlock()
-			if err == nil || d.index > 0 {
+			if d.video {
+				ui.refreshVideosMenu() // (Downloaded comes)
+			} else if err == nil || d.index > 0 {
 				ui.rescanLibrary()
 			}
 			ui.dirty = true
@@ -1379,7 +1384,7 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	}
 	d.mu.Lock()
 	title, creator := d.item.Title, d.item.Creator
-	state, errs, fin, whole := d.state, d.err, d.finished, d.whole
+	state, errs, fin, whole, video := d.state, d.err, d.finished, d.whole, d.video
 	idx, n, done, total, format := d.index, len(d.files), d.done, d.total, d.format
 	retry, failed, lastErr := d.retry, len(d.failed), d.lastErr
 	d.mu.Unlock()
@@ -1408,6 +1413,10 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 	}
 	status, detail := "", ""
 	switch {
+	case video && fin && errs == "":
+		status = state + " · " + format
+	case video && !fin:
+		status, detail = state, retry
 	case fin && errs == "" && failed > 0:
 		status = fmt.Sprintf("%d of %d %s added · %d failed", n-failed, n, pluralize(n, "track", "tracks"), failed)
 		detail = lastErr
@@ -1449,7 +1458,11 @@ func (dv *IADownloadView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.
 		label = "Done"
 		if dv.canRetry() {
 			label = "Try Again"
-			center(face(W500, 12), "Tracks already downloaded are kept · [B] to close", iaHintY+a12, th.sub)
+			hint := "Tracks already downloaded are kept · [B] to close"
+			if video {
+				hint = "What came is kept · [B] to close"
+			}
+			center(face(W500, 12), hint, iaHintY+a12, th.sub)
 		}
 	}
 	drawJobButton(dst, th, label, fin)

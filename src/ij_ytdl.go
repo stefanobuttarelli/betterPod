@@ -355,7 +355,8 @@ func (ui *IpodUI) youtubeSearchView(watch bool) *View {
 					}
 				}
 				it.OnSelect = func() { ui.playVideo(e, th, nil, videos, idx, false, 0) }
-				it.LongPress = []SheetOption{{Label: "Download Options", OnSelect: func() { ui.showView(ui.ytItemView(e, th), "") }}}
+				it.LongPress = []SheetOption{ui.videoDownloadOption(e, nil),
+					{Label: "Download Options", OnSelect: func() { ui.showView(ui.ytItemView(e, th), "") }}}
 			}
 			items = append(items, it)
 		}
@@ -799,7 +800,8 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 					sub = fmt.Sprintf("In the player, %.0fp", math.Min(vf.W, vf.H))
 				}
 				items = append(items, Item{Label: "Watch Video", Sublabel: sub,
-					OnSelect: func() { ui.playVideo(e, st.thumb, i, nil, 0, false, 0) }})
+					OnSelect:  func() { ui.playVideo(e, st.thumb, i, nil, 0, false, 0) },
+					LongPress: []SheetOption{ui.videoDownloadOption(e, i)}})
 			}
 		}
 		// the cover it will get (choosing it opens the square)

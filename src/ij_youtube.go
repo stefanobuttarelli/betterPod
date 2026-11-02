@@ -56,21 +56,34 @@ func ytdlpPath() string {
 }
 
 // ytRuntime: the JavaScript runtime for yt-dlp, as its --js-runtimes
-// value ("" if none is there).
+// value ("" if none is there): Deno when it is there, else QuickJS. Deno
+// solves YouTube's challenge, the slow part of opening a video, in a fifth
+// of QuickJS's time (0.5 s against 2.4 s on the same CPU).
 func ytRuntime() string {
 	if p := os.Getenv("MIYOOPOD_YTJS"); p != "" {
 		return p
 	}
-	if p := filepath.Join(ytToolsDir(), "qjs"); fileExists(p) {
-		return "quickjs:" + p
-	}
 	if p := filepath.Join(ytToolsDir(), "deno"); fileExists(p) {
 		return "deno:" + p
+	}
+	if p := filepath.Join(ytToolsDir(), "qjs"); fileExists(p) {
+		return "quickjs:" + p
 	}
 	return ""
 }
 
 func ytToolsReady() bool { return fileExists(ytdlpPath()) && ytRuntime() != "" }
+
+// ytRuntimeName: the runtime's name, for the settings and the log.
+func ytRuntimeName() string {
+	switch rt := ytRuntime(); {
+	case strings.HasPrefix(rt, "deno"):
+		return "Deno"
+	case strings.HasPrefix(rt, "quickjs"):
+		return "QuickJS"
+	}
+	return "no JavaScript runtime"
+}
 
 // ytCommand runs yt-dlp with the common options (no config files, our
 // runtime, cache and home in the data folder). It runs in its own process
@@ -108,6 +121,7 @@ var ytTools struct {
 	busy    bool
 	status  string // "Downloading yt-dlp… 45%", an error, ""
 	version string // yt-dlp's, once known
+	denoErr string // why Deno couldn't be had (QuickJS stayed)
 }
 
 func ytToolsStatus() (bool, string) {
@@ -238,8 +252,9 @@ func checkTool(path string, args ...string) error {
 	return nil
 }
 
-// ytInstallTools downloads yt-dlp and a JavaScript runtime (QuickJS-ng,
-// else Deno). update: get them again even if they are there. Each tool is
+// ytInstallTools downloads yt-dlp and a JavaScript runtime (Deno, else
+// QuickJS-ng, smaller and slower). update: get them again even if they are
+// there; without it, Deno is added beside an older QuickJS. Each tool is
 // downloaded beside the old one, checked (checksum where the project
 // publishes one, CPU, a test run) and only then put in its place, so a
 // failed update leaves the old tools working.
@@ -253,7 +268,7 @@ func (ui *IpodUI) ytInstallTools(update bool, done func()) {
 	ytTools.mu.Unlock()
 	nudge := func() {
 		ui.post(func() {
-			if v := ui.topScreen(); v != nil && v.ID == "ytSettings" {
+			if v := ui.topScreen(); v != nil && (v.ID == "ytSettings" || v.ID == "videos") {
 				ui.refreshView(v)
 			}
 			ui.dirty = true
@@ -282,22 +297,24 @@ func (ui *IpodUI) ytInstallTools(update bool, done func()) {
 					return fmt.Errorf("yt-dlp: %s", shortErr(err))
 				}
 			}
-			if ytRuntime() == "" || update {
-				qjs := filepath.Join(dir, "qjs")
-				_, err := step("QuickJS", qjsURL, qjs+".new")
-				if err == nil {
-					if err = checkTool(qjs+".new", "-e", "1"); err == nil {
-						err = os.Rename(qjs+".new", qjs)
-					}
-				}
-				os.Remove(qjs + ".new")
+			if update || !fileExists(filepath.Join(dir, "deno")) {
+				err := ytInstallDeno(step)
+				ytTools.mu.Lock()
+				ytTools.denoErr = ""
 				if err != nil {
-					logMsg("YouTube: QuickJS: " + err.Error())
+					ytTools.denoErr = shortErr(err)
 				}
-				if err != nil && ytRuntime() == "" {
-					// Deno: bigger, but the runtime yt-dlp prefers
-					if err := ytInstallDeno(step); err != nil {
-						return fmt.Errorf("JavaScript runtime: %s", shortErr(err))
+				ytTools.mu.Unlock()
+				if err != nil {
+					logMsg("YouTube: Deno: " + err.Error())
+					// QuickJS when Deno can't be had
+					if update || ytRuntime() == "" {
+						if err := ytInstallQuickJS(step); err != nil {
+							logMsg("YouTube: QuickJS: " + err.Error())
+							if ytRuntime() == "" {
+								return fmt.Errorf("JavaScript runtime: %s", shortErr(err))
+							}
+						}
 					}
 				}
 			}
@@ -388,6 +405,19 @@ func ytInstallYtdlp(step fetchStep) error {
 		}
 		return os.Rename(file, filepath.Join(dir, "yt-dlp"))
 	})
+}
+
+// ytInstallQuickJS: QuickJS-ng's one file, checked with a test run.
+func ytInstallQuickJS(step fetchStep) error {
+	qjs := filepath.Join(ytToolsDir(), "qjs")
+	defer os.Remove(qjs + ".new")
+	if _, err := step("QuickJS", qjsURL, qjs+".new"); err != nil {
+		return err
+	}
+	if err := checkTool(qjs+".new", "-e", "1"); err != nil {
+		return err
+	}
+	return os.Rename(qjs+".new", qjs)
 }
 
 // ytInstallDeno: Deno from its zip, checked against its .sha256sum.
@@ -556,10 +586,7 @@ func (ui *IpodUI) youtubeSettingsView() *View {
 				OnSelect: func() { ui.ytInstallTools(false, nil) }})
 		case ytToolsReady():
 			ver := ytGetVersion()
-			rt := "QuickJS"
-			if strings.HasPrefix(ytRuntime(), "deno") {
-				rt = "Deno"
-			}
+			rt := ytRuntimeName()
 			sub := "yt-dlp " + ver + " · " + rt
 			if ver == "" {
 				sub = "yt-dlp · " + rt
@@ -576,7 +603,7 @@ func (ui *IpodUI) youtubeSettingsView() *View {
 					}}})
 				}})
 		default:
-			items = append(items, Item{Label: "Get the Tools", Sublabel: "yt-dlp and QuickJS from GitHub: 45 MB to get, 100 MB on the card",
+			items = append(items, Item{Label: "Get the Tools", Sublabel: "yt-dlp and Deno from GitHub: 80 MB to get, 185 MB on the card",
 				OnSelect: func() { ui.ytInstallTools(false, nil) }})
 		}
 		items = append(items, Item{Label: "Only download what you may", Sublabel: "Your own or freely licensed videos", NoArrow: true})

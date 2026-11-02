@@ -4,16 +4,19 @@ package main
 // search YouTube and watch, Recently Watched, and the player's screen. The
 // playing itself is in video.go.
 //
-// The player is a full-screen view under the header (the video's title):
-// the picture fits 640 x 440, a wide one at the top with the time and its
-// bar under it, a taller one (4:3, upright) in the middle with them over
-// it for a few seconds after a key.
+// The player fills the whole screen, over the header, as the iPod's did:
+// the picture fits 640 x 480, in the middle. Over it, for 2.5 s after a key
+// (and while it is paused, opening or waiting), the title at the top and
+// the time with its bar at the bottom; then nothing covers the picture.
 //
-//	A, START, X   play / pause (A: again at the end, or after an error)
+//	A             the title and the time, when they're hidden; else play /
+//	              pause (again at the end, or after an error)
+//	START, X      play / pause
 //	LEFT / RIGHT  10 s back / on (held: further)
-//	UP / DOWN     volume (shown in the header)
+//	UP / DOWN     volume
 //	L / R         the previous / next video of the list it came from
-//	Y (hold A)    options: Download as One Song (or Album), From the Start
+//	Y (hold A)    options: Download Video, Download as One Song (or
+//	              Album), Watch from the Start
 //	B             back: the video stops; Recently Watched keeps the place
 //
 // Off on the Miyoo: YouTube is (yt-dlp needs more memory than it has), and
@@ -59,13 +62,41 @@ func (ui *IpodUI) videosView() *View {
 			items = append(items, Item{Label: "Recently Watched", Preview: PrevVideos,
 				OnSelect: func() { ui.showView(ui.recentVideosView(), "") }})
 		}
+		if len(videosSaved()) > 0 {
+			items = append(items, Item{Label: "Downloaded", Preview: PrevVideos,
+				OnSelect: func() { ui.showView(ui.savedVideosView(), "") }})
+		}
 		if it, ok := ui.ffmpegItem(v); ok {
+			items = append(items, it)
+		}
+		if it, ok := ui.denoItem(v); ok {
 			items = append(items, it)
 		}
 		return items
 	}
 	v.Items = v.Build()
 	return v
+}
+
+// denoItem: the row that adds Deno to tools that have only QuickJS (got
+// before Deno was the first choice): yt-dlp then opens a video in about
+// half the time.
+func (ui *IpodUI) denoItem(v *View) (Item, bool) {
+	if !ytToolsReady() || !strings.HasPrefix(ytRuntime(), "quickjs") {
+		return Item{}, false
+	}
+	busy, status := ytToolsStatus()
+	ytTools.mu.Lock()
+	failed := ytTools.denoErr
+	ytTools.mu.Unlock()
+	get := func() { ui.ytInstallTools(false, func() { ui.refreshView(v) }) }
+	switch {
+	case busy:
+		return Item{Label: status, Sublabel: "Deno, from GitHub", Preview: PrevVideos, NoArrow: true}, true
+	case failed != "":
+		return Item{Label: "Couldn't get Deno", Sublabel: failed + " · press [A] to try again", Preview: PrevVideos, NoArrow: true, OnSelect: get}, true
+	}
+	return Item{Label: "Open Videos Faster", Sublabel: "Deno for yt-dlp: 40 MB to get, 85 MB on the card", Preview: PrevVideos, OnSelect: get}, true
 }
 
 // ffmpegItem: the row that gets ffmpeg, when the system has none that
@@ -304,6 +335,7 @@ func (ui *IpodUI) recentVideosView() *View {
 				OnSelect: func() { ui.playVideo(list[idx], th, nil, list, idx, false, pos) },
 				LongPress: []SheetOption{
 					{Label: "Watch from the Start", OnSelect: func() { ui.playVideo(list[idx], th, nil, list, idx, false, 0) }},
+					ui.videoDownloadOption(list[idx], nil),
 					{Label: "Remove from Recently Watched", OnSelect: func() {
 						videoForget(list[idx].ID)
 						ui.refreshView(v)
@@ -572,10 +604,13 @@ type VideoView struct {
 	urls    []string    // the proxy's, forgotten at the end
 	back    *image.RGBA // the video's picture while it opens
 	ended   bool
-	retried bool // the links were refused once and asked for again
+	retried bool      // the links were refused once and asked for again
+	openAt  time.Time // when this video began to open (for the log)
+	timed   bool      // its first frame's time is logged
 
-	ctl       *Anim // the controls over a tall picture (1 shown)
+	ctl       *Anim // the title and the controls over the picture (1 shown)
 	ctlUntil  time.Time
+	flash     *Anim   // the play mark after a pause, fading (1 shown)
 	seekTo    float64 // the place chosen with LEFT / RIGHT
 	seeking   bool
 	seekAt    time.Time
@@ -591,7 +626,7 @@ func (ui *IpodUI) playVideo(e ytEntry, th *Album, info *ytInfo, list []ytEntry, 
 	if th == nil {
 		th = &Album{Name: e.Title}
 	}
-	vv := &VideoView{e: e, thumb: th, list: list, idx: idx, autoNext: autoNext, at: at, preInfo: info, ctl: newAnim(1)}
+	vv := &VideoView{e: e, thumb: th, list: list, idx: idx, autoNext: autoNext, at: at, preInfo: info, ctl: newAnim(1), flash: newAnim(0)}
 	v := &View{ID: "video", Title: e.Title, Kind: KindFull, Custom: vv}
 	vv.v = v
 	v.onClose = func() { vv.stop(ui) }
@@ -605,9 +640,15 @@ func (vv *VideoView) open(ui *IpodUI) {
 	vv.gen++
 	gen := vv.gen
 	vv.err, vv.info, vv.ended, vv.load = "", nil, false, nil
+	vv.openAt, vv.timed = time.Now(), false
 	vv.showControls()
 	if vv.back == nil {
 		go vv.fetchBack(ui, gen, vv.e.ID)
+	}
+	if s, ok := videoSavedInfo(vv.e.ID); ok {
+		vv.preInfo = nil
+		vv.playSaved(ui, s)
+		return
 	}
 	if info := vv.preInfo; info != nil {
 		vv.preInfo = nil
@@ -627,8 +668,13 @@ func (vv *VideoView) open(ui *IpodUI) {
 				})
 			}
 		}
-		info, err := ytJSONSteps(ctx, step, "--no-playlist", vv.e.link())
+		// (no HLS: the formats played are the others, and its list is one
+		// more request)
+		info, err := ytJSONSteps(ctx, step, "--no-playlist", "--extractor-args", "youtube:skip=hls", vv.e.link())
 		cancel()
+		if err == nil {
+			logMsg(fmt.Sprintf("Videos: %s: yt-dlp opened it in %.1f s (%s)", info.ID, time.Since(vv.openAt).Seconds(), ytRuntimeName()))
+		}
 		ui.postSure(func() {
 			if gen != vv.gen {
 				return
@@ -652,8 +698,12 @@ func (vv *VideoView) fetchBack(ui *IpodUI, gen int, id string) {
 	}
 	ctx, done := context.WithTimeout(context.Background(), 20*time.Second)
 	defer done()
-	for _, u := range []string{"https://i.ytimg.com/vi/" + id + "/mqdefault.jpg", "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"} {
-		img := ytFetchImage(ctx, u)
+	saved := videoSavedImage(id) // (a downloaded video's, offline)
+	for _, u := range []string{"", "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg", "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"} {
+		img := saved
+		if u != "" {
+			img = ytFetchImage(ctx, u)
+		}
 		if img == nil {
 			continue
 		}
@@ -723,7 +773,7 @@ func (vv *VideoView) start(ui *IpodUI, info *ytInfo) {
 // play: the streams through the proxy, the music paused, the player
 // started.
 func (vv *VideoView) play(ui *IpodUI, info *ytInfo, vf, af *ytFormat) {
-	logMsg(fmt.Sprintf("Videos: %s: picture %s (%s %.0fx%.0f %.3g fps)", info.ID, vf.ID, vf.VCodec, vf.W, vf.H, vf.FPS))
+	logMsg(fmt.Sprintf("Videos: %s: picture %s (%s %.0fx%.0f %.3g fps), links checked at %.1f s", info.ID, vf.ID, vf.VCodec, vf.W, vf.H, vf.FPS, time.Since(vv.openAt).Seconds()))
 	vurl, err := videoProxy.add(vf.URL, ytHeaders(info, vf), int64(vf.Size))
 	if err != nil {
 		vv.err = "Couldn't play it · " + err.Error()
@@ -745,6 +795,23 @@ func (vv *VideoView) play(ui *IpodUI, info *ytInfo, vf, af *ytFormat) {
 	if af == nil {
 		src.Audio = ""
 	}
+	vv.playSource(ui, info, src)
+}
+
+// playSaved: a downloaded video, from its file.
+func (vv *VideoView) playSaved(ui *IpodUI, s videoSaved) {
+	logMsg(fmt.Sprintf("Videos: %s: from its file (%dx%d)", s.ID, s.W, s.H))
+	info := &ytInfo{ytEntry: s.entry()}
+	vv.info = info
+	if s.Title != "" && s.Title != vv.v.Title {
+		vv.v.Title = s.Title
+	}
+	f := videoSavedPath(s.ID, ".mp4")
+	vv.playSource(ui, info, vSource{Video: f, Audio: f, W: s.W, H: s.H, FPS: s.FPS, Duration: s.Duration})
+}
+
+// playSource: the music paused, the player started on src.
+func (vv *VideoView) playSource(ui *IpodUI, info *ytInfo, src vSource) {
 	ui.stopListenFor()         // a Listen stops (its page is under the player)
 	ui.pauseMusicFor("Videos") // the music pauses for the video, as on the iPod
 	p, err := newVideoPlayer(src, vv.at)
@@ -791,6 +858,7 @@ func (vv *VideoView) stop(ui *IpodUI) {
 		videoRemember(vv.e, pos, dur)
 		p.close()
 		vv.pl = nil
+		ui.refreshVideosMenu()
 	}
 	videoProxy.forget(vv.urls...)
 	vv.urls = nil
@@ -815,8 +883,10 @@ func (vv *VideoView) skip(ui *IpodUI, d int) bool {
 	return true
 }
 
+// showControls: the title and the controls, for 2.5 s from now (longer
+// while nothing plays: still).
 func (vv *VideoView) showControls() {
-	vv.ctlUntil = animNow().Add(3 * time.Second)
+	vv.ctlUntil = animNow().Add(2500 * time.Millisecond)
 	if vv.ctl.Target() != 1 {
 		vv.ctl.To(1, 150*time.Millisecond, easeCSS, 0)
 	}
@@ -840,6 +910,11 @@ func (vv *VideoView) togglePause(ui *IpodUI) {
 		p.paused = false
 		p.seek(0)
 	default:
+		if p.paused && p.state != vFailed {
+			// playing again: the play mark, a moment at the centre
+			vv.flash.Set(1)
+			vv.flash.To(0, 450*time.Millisecond, easeCSS, 350*time.Millisecond)
+		}
 		p.setPaused(!p.paused)
 	}
 	ui.dirty = true
@@ -909,12 +984,24 @@ func (vv *VideoView) OnKey(ui *IpodUI, k Key) bool {
 			}
 		}
 	default:
+		if k != A && k != B {
+			vv.showControls() // any other key brings them back (A: OnCenter)
+		}
 		return false
 	}
 	return true
 }
 
-func (vv *VideoView) OnCenter(ui *IpodUI) { vv.togglePause(ui) }
+// OnCenter: A shows the title and the controls when they're hidden, as a
+// tap on a phone's video does; with them shown it plays or pauses.
+func (vv *VideoView) OnCenter(ui *IpodUI) {
+	if p := vv.pl; p != nil && p.state == vPlaying && !p.paused && vv.err == "" && vv.ctl.Target() == 0 {
+		vv.showControls()
+		ui.dirty = true
+		return
+	}
+	vv.togglePause(ui)
+}
 
 // OnScroll: the wheel (and UP / DOWN) is the volume, as on Now Playing.
 func (vv *VideoView) OnScroll(ui *IpodUI, dir int, velocity float64) {
@@ -927,10 +1014,21 @@ func (vv *VideoView) OnScroll(ui *IpodUI, dir int, velocity float64) {
 	ui.videoGain()
 	ui.savePrefs()
 	ui.showVolumeOSD()
+	vv.showControls()
 }
 
 func (vv *VideoView) OnLongPress(ui *IpodUI) {
 	var opts []SheetOption
+	if p := vv.pl; p != nil && p.state != vFailed {
+		opts = append(opts, SheetOption{Label: "Watch from the Start", OnSelect: func() {
+			vv.ended, p.paused = false, false
+			p.seek(0)
+		}})
+	}
+	if vv.e.ID != "" {
+		// (offered: the video streams either way)
+		opts = append(opts, ui.videoDownloadOption(vv.e, vv.info))
+	}
 	if info := vv.info; info != nil {
 		if len(info.Chapters) >= 2 {
 			a := albumFromVideo(info, true)
@@ -939,12 +1037,6 @@ func (vv *VideoView) OnLongPress(ui *IpodUI) {
 		}
 		one := albumFromVideo(info, false)
 		opts = append(opts, SheetOption{Label: "Download as One Song", OnSelect: func() { ui.startYTDownload(info, one) }})
-	}
-	if p := vv.pl; p != nil && p.state != vFailed {
-		opts = append(opts, SheetOption{Label: "Watch from the Start", OnSelect: func() {
-			vv.ended, p.paused = false, false
-			p.seek(0)
-		}})
 	}
 	if len(opts) > 0 {
 		ui.showSheetTitled(vv.v.Title, opts)
@@ -955,7 +1047,7 @@ func (vv *VideoView) OnLongPress(ui *IpodUI) {
 // step of the spinner (12 a turn, 14 a second). (The video's frames are asked
 // for by videoTick.)
 func (vv *VideoView) Animating(now time.Time) bool {
-	if vv.ctl.Running() {
+	if vv.ctl.Running() || vv.flash.Running() {
 		return true
 	}
 	return vv.waiting() && spinnerStep(now) != vv.spinDrawn
@@ -967,9 +1059,9 @@ func (vv *VideoView) waiting() bool {
 	return vv.err == "" && (vv.load != nil || p == nil || p.state == vLoading || p.state == vBuffering)
 }
 
-// layout: the picture's size and place in a w x h screen; band: under the
-// picture there is room for the controls (a wide picture).
-func (vv *VideoView) layout(w, h int) (fw, fh, ox, oy int, band bool) {
+// layout: the picture's size and place in the w x h screen (in the
+// middle).
+func (vv *VideoView) layout(w, h int) (fw, fh, ox, oy int) {
 	switch {
 	case vv.pl != nil:
 		fw, fh = vv.pl.fw, vv.pl.fh
@@ -978,19 +1070,28 @@ func (vv *VideoView) layout(w, h int) (fw, fh, ox, oy int, band bool) {
 	default:
 		fw, fh = videoFit(16, 9, w, h)
 	}
-	band = fh <= h-px(40)
-	if band {
-		oy = (h - px(40) - fh) / 2
-	} else {
-		oy = (h - fh) / 2
-	}
-	return fw, fh, (w - fw) / 2, oy, band
+	return fw, fh, (w - fw) / 2, (h - fh) / 2
 }
 
+// Render: the view's buffer, under the header (only while it slides in or
+// out: in place, renderScreen draws it over the whole screen). The picture
+// is where it will be on the whole screen.
 func (vv *VideoView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time) {
+	vv.draw(ui, dst, -px(20), now)
+}
+
+// renderScreen: the player over the whole screen.
+func (vv *VideoView) renderScreen(ui *IpodUI, dst *image.RGBA, now time.Time) {
+	vv.draw(ui, dst, 0, now)
+}
+
+// draw: the player as on the whole 640 x 480 screen, into dst whose row 0
+// is the screen's row -top.
+func (vv *VideoView) draw(ui *IpodUI, dst *image.RGBA, top int, now time.Time) {
 	W, H := dst.Bounds().Dx(), dst.Bounds().Dy()
 	fillRect(dst, 0, 0, W, H, colBlack)
-	fw, fh, ox, oy, band := vv.layout(W, H)
+	fw, fh, ox, oy := vv.layout(W, 480)
+	oy += top
 	p := vv.pl
 	switch {
 	case p != nil && p.shown != nil:
@@ -1008,14 +1109,14 @@ func (vv *VideoView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 		blitOpaque(dst, vv.back, bx, by)
 		fillRect(dst, bx, by, bw, bh, Col{0, 0, 0, 0.55})
 	}
-	cx, cy := float64(W)/2/DPR, float64(oy+fh/2)/DPR // the picture's centre, CSS px
+	cx, cy := float64(W)/2/DPR, float64(240+top)/DPR // the screen's centre, CSS px
 	vv.spinDrawn = spinnerStep(now)
 	switch {
 	case vv.err != "":
 		l, sub, _ := strings.Cut(vv.err, " · ")
 		vv.drawCentered(dst, cx, cy-14, []string{l, sub, "Press [A] to try again"})
 	case vv.load != nil:
-		vv.drawLoading(ui, dst, cx, cy, now)
+		vv.drawLoading(dst, cx, cy, now)
 	case p == nil || p.state == vLoading || p.state == vBuffering:
 		label := "Loading…"
 		if p != nil && p.state == vBuffering {
@@ -1026,40 +1127,56 @@ func (vv *VideoView) Render(ui *IpodUI, v *View, dst *image.RGBA, now time.Time)
 	case p.state == vEnded:
 		vv.drawCentered(dst, cx, cy-8, []string{"Press [A] to watch again"})
 	case p.paused && !vv.seeking:
-		drawPauseGlyph(dst, cx, cy)
-	}
-	// the controls: under a wide picture, over a tall one for a moment
-	a := 1.0
-	if !band {
-		if !vv.still() && now.After(vv.ctlUntil) && vv.ctl.Target() != 0 {
-			vv.ctl.To(0, 300*time.Millisecond, easeCSS, 0)
+		drawPauseGlyph(dst, cx, cy, 1)
+	default:
+		if a := vv.flash.Get(now); a > 0.01 {
+			drawPlayGlyph(dst, cx, cy, a)
 		}
-		a = vv.ctl.Get(now)
 	}
-	if a > 0.01 {
-		vv.drawControls(ui, dst, a, !band, now)
+	// the title and the controls: for a moment after a key, and while
+	// nothing plays
+	if !vv.still() && now.After(vv.ctlUntil) && vv.ctl.Target() != 0 {
+		vv.ctl.To(0, 300*time.Millisecond, easeCSS, 0)
+	}
+	if a := vv.ctl.Get(now); a > 0.01 {
+		vv.drawTitle(dst, top, a)
+		vv.drawControls(ui, dst, 480-px(40)+top, a, now)
 	}
 }
 
-// drawControls: the time gone, the bar and the time left, at the bottom
-// (over the picture: on a dark gradient, faded by a).
-func (vv *VideoView) drawControls(ui *IpodUI, dst *image.RGBA, a float64, over bool, now time.Time) {
-	W, H := dst.Bounds().Dx(), dst.Bounds().Dy()
-	var layer *image.RGBA
-	target := dst
-	if a < 0.999 {
-		layer = newCanvasCached(&videoCtlLayer, W, px(40))
-		clearRGBA(layer)
-		target = layer
+// drawTitle: the video's title at the top, on a dark gradient, faded by a.
+func (vv *VideoView) drawTitle(dst *image.RGBA, top int, a float64) {
+	W := dst.Bounds().Dx()
+	l := newCanvasCached(&videoTitleLayer, W, px(40))
+	clearRGBA(l)
+	fillVGradient(l, 0, 0, W, px(40), []GradStop{{0, Col{0, 0, 0, 0.8}}, {0.6, Col{0, 0, 0, 0.55}}, {1, Col{0, 0, 0, 0}}})
+	f := face(W700, 13)
+	_, asc := lineBox(13)
+	t := ellipsize(f, vv.v.Title, float64(W)-24*DPR)
+	drawTextShadow(l, f, t, 12*DPR, (9+asc)*DPR, colWhite, colBlack)
+	blit(dst, l, 0, top, a)
+}
+
+var videoTitleLayer *image.RGBA
+
+// drawControls: the time gone, the bar and the time left at the bottom
+// (from row y0 of dst), on a dark gradient, faded by a. While the volume
+// changes, the volume instead (as on the iPod: the header that shows it
+// elsewhere is hidden here).
+func (vv *VideoView) drawControls(ui *IpodUI, dst *image.RGBA, y0 int, a float64, now time.Time) {
+	W := dst.Bounds().Dx()
+	l := newCanvasCached(&videoCtlLayer, W, px(40))
+	clearRGBA(l)
+	fillVGradient(l, 0, 0, W, px(40), []GradStop{{0, Col{0, 0, 0, 0}}, {0.35, Col{0, 0, 0, 0.6}}, {1, Col{0, 0, 0, 0.8}}})
+	y := 12.0 // (16 high, its reflection under it)
+	if now.Before(volOSD.until) {
+		blit(l, volIcon(headphonesOut(), colWhite), px(12), px(y+1), 1)
+		bx := 12.0 + 14 + 8
+		ui.drawProgressBar(l, bx, y, float64(W)/DPR-bx-12, ui.volume*100, false)
+		blit(dst, l, 0, y0, a)
+		return
 	}
-	top := H - px(40)
-	if layer != nil {
-		top = 0
-	}
-	if over {
-		fillVGradient(target, 0, top, W, px(40), []GradStop{{0, Col{0, 0, 0, 0}}, {0.35, Col{0, 0, 0, 0.6}}, {1, Col{0, 0, 0, 0.8}}})
-	}
-	pos, dur := 0.0, vv.e.Duration
+	pos, dur := vv.at, vv.e.Duration
 	if vv.info != nil && vv.info.Duration > 0 {
 		dur = vv.info.Duration
 	}
@@ -1079,30 +1196,28 @@ func (vv *VideoView) drawControls(ui *IpodUI, dst *image.RGBA, a float64, over b
 	f := face(W700, 12)
 	_, asc := lineBox(12)
 	lw := math.Max(textWidth(f, cur), textWidth(f, rem))/DPR + 2
-	y := float64(top)/DPR + 12 // (16 high, its reflection under it)
 	white := Col{255, 255, 255, 1}
-	drawText(target, f, cur, 12*DPR, (y+0.5+asc)*DPR, white)
-	drawText(target, f, rem, (float64(W)/DPR-12-textWidth(f, rem)/DPR)*DPR, (y+0.5+asc)*DPR, white)
+	drawText(l, f, cur, 12*DPR, (y+0.5+asc)*DPR, white)
+	drawText(l, f, rem, (float64(W)/DPR-12-textWidth(f, rem)/DPR)*DPR, (y+0.5+asc)*DPR, white)
 	bx := 12 + lw + 8
 	bw := float64(W)/DPR - 2*bx
 	pct := 0.0
 	if dur > 0 {
 		pct = pos / dur * 100
 	}
-	ui.drawProgressBar(target, bx, y, bw, pct, vv.seeking)
-	if layer != nil {
-		blit(dst, layer, 0, H-px(40), a)
-	}
+	ui.drawProgressBar(l, bx, y, bw, pct, vv.seeking)
+	blit(dst, l, 0, y0, a)
 }
 
 var videoCtlLayer *image.RGBA
 
-// drawLoading: yt-dlp's steps and its bar, over the picture.
-func (vv *VideoView) drawLoading(ui *IpodUI, dst *image.RGBA, cx, cy float64, now time.Time) {
+// drawLoading: the spinner while yt-dlp opens the video, with its step and
+// the seconds so far (no bar: nothing is downloaded yet, only asked for).
+func (vv *VideoView) drawLoading(dst *image.RGBA, cx, cy float64, now time.Time) {
 	l := vv.load
 	secs := int(time.Since(l.start).Seconds())
-	vv.drawCentered(dst, cx, cy-22, []string{"Opening the video", fmt.Sprintf("%s · %d s", l.stepLabel, secs)})
-	ui.drawProgressBar(dst, cx-90, cy+14, 180, math.Max(2, l.value()*100), false)
+	drawSpinnerIn(dst, cx*DPR, (cy-14)*DPR, 24, now, colWhite)
+	vv.drawCentered(dst, cx, cy+10, []string{"Opening the video", fmt.Sprintf("%s · %d s", l.stepLabel, secs)})
 }
 
 // drawCentered: lines of white text centred at cx from cy (CSS px), the
@@ -1125,12 +1240,20 @@ func (vv *VideoView) drawCentered(dst *image.RGBA, cx, cy float64, lines []strin
 	}
 }
 
-// drawPauseGlyph: two bars at the picture's centre while it is paused.
-func drawPauseGlyph(dst *image.RGBA, cx, cy float64) {
-	for _, x := range []float64{cx - 9, cx + 3} {
-		fillRoundedGradient(dst, (x)*DPR, (cy-12)*DPR, (x+6)*DPR, (cy+12)*DPR, 2*DPR,
-			[]GradStop{{0, Col{255, 255, 255, 0.9}}, {1, Col{220, 220, 220, 0.9}}}, 1)
+// drawPauseGlyph: two bars on a dark disc at the screen's centre while it
+// is paused (a: its opacity).
+func drawPauseGlyph(dst *image.RGBA, cx, cy, a float64) {
+	fillCircle(dst, cx, cy, 24, Col{0, 0, 0, 0.45 * a})
+	for _, x := range []float64{cx - 8, cx + 2} {
+		fillRoundedGradient(dst, x*DPR, (cy-10)*DPR, (x+6)*DPR, (cy+10)*DPR, 2*DPR,
+			[]GradStop{{0, Col{255, 255, 255, 0.95}}, {1, Col{225, 225, 225, 0.95}}}, a)
 	}
+}
+
+// drawPlayGlyph: the play mark on a dark disc, a moment after a pause.
+func drawPlayGlyph(dst *image.RGBA, cx, cy, a float64) {
+	fillCircle(dst, cx, cy, 24, Col{0, 0, 0, 0.45 * a})
+	fillTriangle(dst, (cx-6)*DPR, (cy-11)*DPR, (cx-6)*DPR, (cy+11)*DPR, (cx+12)*DPR, cy*DPR, Col{255, 255, 255, 0.95 * a})
 }
 
 // videoTime: m:ss (h:mm:ss for an hour or more), as long as dur's.
@@ -1188,6 +1311,11 @@ func (ui *IpodUI) videoTick(now time.Time) {
 			if !p.paused {
 				ui.app.LastActivityTime = now // no screensaver while it plays
 			}
+			if !vv.timed && p.shown != nil {
+				vv.timed = true
+				vv.showControls() // the title and the time, a moment as it starts
+				logMsg(fmt.Sprintf("Videos: %s: playing %.1f s after it was chosen", vv.e.ID, time.Since(vv.openAt).Seconds()))
+			}
 		}
 	}
 }
@@ -1231,6 +1359,36 @@ func (ui *IpodUI) videoOnTop() *VideoView {
 		}
 	}
 	return nil
+}
+
+// refreshVideosMenu: Videos' lists built again, under the screens over
+// them (a row comes or goes: Recently Watched, Downloaded; split menus
+// aren't built again when they come back on top).
+func (ui *IpodUI) refreshVideosMenu() {
+	for _, st := range [][]*View{ui.split, ui.full} {
+		for _, v := range st {
+			if (v.ID == "videos" || v.ID == "recentVideos" || v.ID == "savedVideos") && v.Build != nil {
+				idx := v.Index
+				v.Items = v.Build()
+				v.Index = max(0, min(idx, len(v.Items)-1))
+				v.dirty = true
+			}
+		}
+	}
+	ui.dirty = true
+}
+
+// videoInPlace: the player on top and still (not sliding in or out): it is
+// drawn over the whole screen, header included.
+func (ui *IpodUI) videoInPlace(now time.Time) *VideoView {
+	vv := ui.videoOnTop()
+	if vv == nil || ui.fullX.Get(now) != 0 {
+		return nil
+	}
+	if v := vv.v; v.enter.Get(now) != 0 || v.hide.Get(now) != 0 {
+		return nil
+	}
+	return vv
 }
 
 // videoPlaying: a player that is playing (to pause it with the music).

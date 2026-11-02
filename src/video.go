@@ -53,10 +53,11 @@ import (
 	"unsafe"
 )
 
-// The box a picture is fitted in: the screen under the header.
+// The box a picture is fitted in: the whole screen (the player covers the
+// header).
 const (
 	videoBoxW = 640
-	videoBoxH = 440
+	videoBoxH = 480
 	// frames decoded ahead (about a third of a second at 30 fps)
 	videoBuffers = 12
 )

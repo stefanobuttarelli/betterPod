@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1-beta.2 (2026-11-02)
+
+### Changed
+- **The video player fills the whole screen,** as the iPod's did. The title shows over the top of the picture and the time with its bar over the bottom, for 2.5 s after a key and while the video is paused or opening; then nothing covers the picture. A brings them back (with them shown, A plays and pauses; START and X always do). Playing again after a pause shows the play mark at the centre for a moment. While the volume changes, it shows in the bottom bar.
+- **Videos open sooner.** The video was already streamed: the wait came before, while yt-dlp opened it, and its bar made it look like a download. Most of that wait is YouTube's challenge, which yt-dlp solves with a JavaScript runtime, and Deno does it in a fifth of QuickJS's time (0.5 s against 2.4 s on the same CPU; the whole opening takes 2 s instead of 4.5 s there). The YouTube tools now come with Deno (QuickJS when Deno can't be had), and Videos offers **Open Videos Faster** where only QuickJS is there. HLS's list of formats is no longer asked for. While a video opens, a spinner turns instead of the bar, and the log says how long each step took.
+
+### Added
+- **Download Video,** to watch offline: Y on the player, on a result, or on Watch Video on the video's page. Videos stream as before: the download is only offered. It gets the picture and the sound the player streams, joined into one MP4, with the progress, Cancel and Try Again of the other downloads. **Videos → Downloaded** lists them (Y: Delete Download), and a downloaded video plays from its file wherever it is chosen. They are kept in the data folder's videos/, so they move with it (the music folder would take them for songs).
+
+### Fixed
+- **Album Info: the field being typed stays above the keyboard,** for every field (Album Artist, Year, Genre, a song's Disc Number…), not only those near the top: the list scrolls it up. A long text shows its end, where the caret is.
+
 ## v1.1-beta.1 (2026-11-02)
 
 ### Added

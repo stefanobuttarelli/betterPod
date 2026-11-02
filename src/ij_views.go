@@ -45,6 +45,7 @@ type Item struct {
 	Gear           func() // (search bar) a round gear button at its right, reached with RIGHT
 	Placeholder    string
 	Progress       float64 // > 0: a progress bar under the text (0..1), for a loading row
+	Typing         bool    // Sublabel is text being typed, with the keyboard's caret: too long, it is cut around the caret
 }
 
 // How a row behaves when selected (centerClick):
@@ -225,7 +226,12 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		ui.renderEmpty(dst, v.Empty)
 		return
 	}
-	tops, total := v.ensureVisible(hCSS)
+	// the keyboard over this list: the row being typed scrolls above it
+	viewH := hCSS
+	if kb := ui.keyboard; kb != nil && !kb.exiting && ui.topScreen() == v {
+		viewH = math.Max(hCSS-kbPanelH, 40)
+	}
+	tops, total := v.ensureVisible(viewH)
 	scrollable := total > hCSS+0.5
 	dfont := face(W600, 14)
 	capH := lineCapHeight(14)
@@ -393,6 +399,9 @@ func (ui *IpodUI) renderList(v *View, dst *image.RGBA) {
 		if it.Sublabel != "" {
 			sy := ty + llh + 8 - 4
 			sub := ellipsize(sfont, it.Sublabel, textW*DPR)
+			if it.Typing {
+				sub = caretFit(sfont, it.Sublabel, textW*DPR)
+			}
 			drawText(dst, sfont, sub, (x+4)*DPR, (sy+sasc)*DPR, sc)
 		}
 		if it.Value != "" || it.Checked {
