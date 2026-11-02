@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.1-beta.1 (2026-11-02)
 
 ### Added
 - **Videos, on the Anbernic (with YouTube turned on):** a new item in the main menu, after Music. Search YouTube and watch the video in a player like the iPod's: the picture fills the screen under the header (360p for a wide video), with the time and its bar under it; over a 4:3 or upright picture they show for a few seconds after a key. A or START pauses, LEFT / RIGHT go 10 s back or on (held, further), UP / DOWN set the volume, L / R go to the previous or next video of the list, Y offers Download as One Song (or as Album) and Watch from the Start. **Recently Watched** goes on where you left off. On a video's page in Music → Search → YouTube, **Watch Video** comes under Listen and plays it at once; on a playlist's, **Watch the Videos** plays them one after another (Y on one starts there). The music pauses while a video plays, and a Listen stops. Knulli's own ffmpeg decodes the picture (where a system has none, Videos offers to download a static build); the streams come through betterPod in pieces of 10 MB, as yt-dlp fetches them, so YouTube doesn't slow them down. YouTube refuses some links for a moment now and then: the next format is tried, then new links, before an error shows. Off on the Miyoo: YouTube is, and Onion has no ffmpeg.
