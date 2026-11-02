@@ -1,8 +1,8 @@
 {
-  "version": "1.1-beta.3",
-  "path": "release/betterpod-v1.1-beta.3-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.3-knulli.zip",
-  "sha256": "66836b66a891ba932da09345e8486a6c6ed83b566ff5643baaf8a82554078bfa",
-  "size": 16508952,
-  "notes": "- Videos no longer end with \"YouTube refused the stream (error 403)\": they wait the few seconds YouTube's links need.\n- Listen waits for them too.\n- From 1.1-beta.2: Videos over the whole screen, Deno to open them sooner, Download Video, Album Info above the keyboard."
+  "version": "1.1-beta.4",
+  "path": "release/betterpod-v1.1-beta.4-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.4-knulli.zip",
+  "sha256": "e16259b9afcb76e68d22edcbc1df9dbc76029e17ae6d8f1b7b22a02280d6deae",
+  "size": 16510363,
+  "notes": "- A video's options have one Download, which opens As Video and As Audio Only (As an Album when the video has chapters).\n- Delete Download comes beside it once the video is downloaded.\n- From 1.1-beta.3: Videos and Listen wait the few seconds YouTube's links need (no more error 403)."
 }
