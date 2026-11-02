@@ -37,7 +37,7 @@ func (ui *IpodUI) tickerAllowed() bool {
 		return !cf.playing
 	}
 	top := ui.topScreen()
-	if top == nil || ui.nowPlayingOnScreen() || ui.miniReserve(top) {
+	if top == nil || ui.nowPlayingOnScreen() || ui.miniReserve(top) || ui.videoOnTop() != nil {
 		return false
 	}
 	return !(len(ui.full) == 0 && ui.preview == PrevNowPlaying)

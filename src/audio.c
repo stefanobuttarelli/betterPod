@@ -104,6 +104,158 @@ int audio_vis_read(float *out, int n) {
 
 int audio_vis_rate(void) { return vis_rate; }
 
+// --- a video's sound ---------------------------------------------------------
+// ffmpeg decodes a video's sound into the mixer's own format (video.go) and
+// it is written into a ring; while a video plays, the music hook takes it
+// from there instead of the music player (the music is paused first). What
+// the hook hands over is counted: that is the clock the frames follow.
+#define VA_RING (1 << 20) // about 2.7 s at 48 kHz in float stereo
+static unsigned char *va_ring;
+static SDL_atomic_t va_r, va_w;     // bytes taken / written (wrapping)
+static SDL_atomic_t va_paused;
+static int va_hooked;
+static int va_frame = 8, va_rate = 44100, va_f32 = 1;
+static float va_gain = 1.0f;
+static SDL_SpinLock va_lock;
+static Uint64 va_played;            // sample frames handed over since the reset
+static Uint64 va_cb_start;          // va_played before the last callback
+static int va_cb_frames;            // frames of sound the last callback handed over
+static int va_cb_len;               // a callback's length (the device's chunk), frames
+static Uint64 va_cb_t;              // when (performance counter)
+
+static void SDLCALL va_hook(void *udata, Uint8 *stream, int len) {
+    (void)udata;
+    int got = 0;
+    if (!SDL_AtomicGet(&va_paused)) {
+        unsigned r = (unsigned)SDL_AtomicGet(&va_r), w = (unsigned)SDL_AtomicGet(&va_w);
+        int n = (int)(w - r);
+        if (n > len) n = len;
+        n -= n % va_frame;
+        if (n > 0) {
+            unsigned at = r & (VA_RING - 1);
+            int first = VA_RING - (int)at;
+            if (first > n) first = n;
+            memcpy(stream, va_ring + at, (size_t)first);
+            if (n > first) memcpy(stream + first, va_ring, (size_t)(n - first));
+            SDL_AtomicSet(&va_r, (int)(r + (unsigned)n));
+            got = n;
+            if (va_gain < 0.999f) {
+                // the app's own volume (MIYOOPOD_SOFT_VOLUME): hooks get no
+                // music volume from the mixer
+                if (va_f32) {
+                    float *s = (float *)stream;
+                    for (int i = 0; i < n / 4; i++) s[i] *= va_gain;
+                } else {
+                    Sint16 *s = (Sint16 *)stream;
+                    for (int i = 0; i < n / 2; i++) s[i] = (Sint16)(s[i] * va_gain);
+                }
+            }
+        }
+    }
+    // the rest stays silence (the mixer clears the buffer before the music)
+    SDL_AtomicLock(&va_lock);
+    va_cb_start = va_played;
+    va_cb_frames = got / va_frame;
+    va_played += (Uint64)va_cb_frames;
+    va_cb_len = len / va_frame;
+    va_cb_t = SDL_GetPerformanceCounter();
+    SDL_AtomicUnlock(&va_lock);
+}
+
+// video_audio_spec: the format ffmpeg must decode to (the mixer's).
+void video_audio_spec(int *rate, int *f32, int *channels) {
+    int freq = 0, ch = 0; Uint16 fmt = 0;
+    if (!Mix_QuerySpec(&freq, &fmt, &ch)) { *rate = 0; return; }
+    *rate = freq;
+    *f32 = fmt == AUDIO_F32SYS;
+    *channels = ch;
+}
+
+static void va_clear(void) {
+    SDL_AtomicSet(&va_r, 0);
+    SDL_AtomicSet(&va_w, 0);
+    va_played = va_cb_start = 0;
+    va_cb_frames = 0;
+    va_cb_t = 0;
+}
+
+// video_audio_hook: on, the video's sound replaces the music player (empty
+// and paused until video_audio_pause(0)); off, the music player is back.
+// Mix_HookMusic holds the device's lock while it swaps, so after it the
+// hook isn't running and the ring can be cleared safely.
+int video_audio_hook(int on) {
+    if (on) {
+        int rate = 0, f32 = 0, ch = 0;
+        video_audio_spec(&rate, &f32, &ch);
+        if (rate <= 0 || ch <= 0) return -1;
+        if (!va_ring && !(va_ring = malloc(VA_RING))) return -1;
+        if (va_hooked) Mix_HookMusic(NULL, NULL);
+        va_rate = rate; va_f32 = f32;
+        va_frame = ch * (f32 ? 4 : 2);
+        SDL_AtomicSet(&va_paused, 1);
+        va_clear();
+        Mix_HookMusic(va_hook, NULL);
+        va_hooked = 1;
+        return 0;
+    }
+    if (va_hooked) Mix_HookMusic(NULL, NULL);
+    va_hooked = 0;
+    va_clear();
+    return 0;
+}
+
+// video_audio_reset: the ring emptied and the clock back to 0 (a seek).
+void video_audio_reset(void) {
+    if (!va_hooked) return;
+    Mix_HookMusic(NULL, NULL);
+    SDL_AtomicSet(&va_paused, 1);
+    va_clear();
+    Mix_HookMusic(va_hook, NULL);
+}
+
+// video_audio_write: up to n bytes into the ring; returns how many it took.
+int video_audio_write(const void *p, int n) {
+    if (!va_ring) return 0;
+    unsigned r = (unsigned)SDL_AtomicGet(&va_r), w = (unsigned)SDL_AtomicGet(&va_w);
+    int room = VA_RING - (int)(w - r);
+    if (n > room) n = room;
+    if (n <= 0) return 0;
+    unsigned at = w & (VA_RING - 1);
+    int first = VA_RING - (int)at;
+    if (first > n) first = n;
+    memcpy(va_ring + at, p, (size_t)first);
+    if (n > first) memcpy(va_ring, (const unsigned char *)p + first, (size_t)(n - first));
+    SDL_AtomicSet(&va_w, (int)(w + (unsigned)n));
+    return n;
+}
+
+int video_audio_buffered(void) {
+    return (int)((unsigned)SDL_AtomicGet(&va_w) - (unsigned)SDL_AtomicGet(&va_r));
+}
+
+int video_audio_bytes_per_second(void) { return va_rate * va_frame; }
+
+void video_audio_pause(int on) { SDL_AtomicSet(&va_paused, on ? 1 : 0); }
+
+void video_audio_gain(float g) { va_gain = g; }
+
+// video_audio_pos: the seconds of sound heard since the reset. What a
+// callback hands over is heard after the device's buffer (latency: a
+// callback's length, plus extra seconds), one sample frame after another;
+// never past what was handed over.
+double video_audio_pos(double extra) {
+    SDL_AtomicLock(&va_lock);
+    Uint64 start = va_cb_start, t = va_cb_t;
+    int n = va_cb_frames, cb = va_cb_len;
+    SDL_AtomicUnlock(&va_lock);
+    if (!t || va_rate <= 0) return 0;
+    double dt = (double)(SDL_GetPerformanceCounter() - t) / (double)SDL_GetPerformanceFrequency();
+    double f = (double)start + (dt - extra) * va_rate - cb;
+    if (f > (double)(start + (Uint64)n)) f = (double)(start + (Uint64)n);
+    if (f < 0) f = 0;
+    return f / va_rate;
+}
+
 int audio_init() {
     c_log("audio_init entered");
 

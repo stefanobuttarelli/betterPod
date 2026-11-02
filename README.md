@@ -54,7 +54,8 @@ The interface is the same on both. What differs is listed in [Features by system
 - **Japanese titles too.** Latin, Greek and Cyrillic come from Inter, kana and kanji from Noto Sans JP.
 - **Search** with the iPod's wheel keyboard, across artists, albums, songs and playlists.
 - **Playlists:** Music → Playlists → New Playlist… (a name with the keyboard), and **Add to Playlist…** in a song's or an album's options (Y, or holding A), to one there is or a new one. In a playlist, a song's options remove it; a playlist's options delete it. They are plain M3U files in `<music>/Playlists`, so a computer's player reads them too, and any .m3u in the music folder shows up.
-- **YouTube (optional):** turn it on in Settings → YouTube and search in Music → Search → YouTube. The search bar's gear chooses Videos or Playlists & Albums. On a video's or playlist's page, **Listen** plays it right there (A plays and pauses), without keeping it. A video with chapters becomes an album with a track per chapter, a playlist an album with a track per video. Tracks are tagged M4A with a square cover made from the video's picture. The tools (yt-dlp, QuickJS) are downloaded from their official GitHub releases when you turn it on, checked (SHA-256 where published, CPU, a test run) and not shipped. YouTube's terms don't allow downloading: use it for your own or freely licensed videos.
+- **YouTube (optional):** turn it on in Settings → YouTube and search in Music → Search → YouTube (or watch: Videos, below). The search bar's gear chooses Videos or Playlists & Albums. On a video's or playlist's page, **Listen** plays it right there (A plays and pauses), without keeping it. A video with chapters becomes an album with a track per chapter, a playlist an album with a track per video. Tracks are tagged M4A with a square cover made from the video's picture. The tools (yt-dlp, QuickJS) are downloaded from their official GitHub releases when you turn it on, checked (SHA-256 where published, CPU, a test run) and not shipped. YouTube's terms don't allow downloading: use it for your own or freely licensed videos.
+- **Videos (optional, on the Anbernic):** with YouTube turned on, Videos in the main menu searches YouTube and plays the video in an iPod-style player: the picture fills the screen under the header (360p for a wide video), with the time and its bar; pause, 10 s back or on, the volume, the next video of the list. **Recently Watched** goes on where you left off; a video's page in Music → Search → YouTube has **Watch Video** under Listen, and a playlist's **Watch the Videos**. Knulli's own ffmpeg decodes the picture; the streams come through betterPod in 10 MB pieces, as yt-dlp fetches them.
 - **Share:** send an album or a song to a friend's betterPod with an 8-digit code (an album's or a song's options → Share; on the other one Music → Receive). It works over the internet or the same Wi-Fi, encrypted from one console to the other, through [magic-wormhole](https://magic-wormhole.readthedocs.io)'s public servers; the songs land in `Shared/` in the music folder. The cover stands on a pedestal while a laser sends it, and is built line by line on the other. The first time, betterPod asks for its name (the one friends see; Settings → Sharing changes it).
 - **betterPod Share for Mac:** a small Mac app that sends songs and albums to a betterPod the same way: drop them on its window, give your friend the 8-digit code. Songs of several albums go with one code and arrive as their albums. [Download it](https://betterpod.xyz/mac/) (see [betterPod Share for Mac](#betterpod-share-for-mac)).
 - **Apps:** Brick and Solitaire, the classic iPod games (Solitaire saves your game); **2048** (after Gabriele Cirulli's game, MIT; your game is kept); **Five Letters**, guess a five-letter word in six tries with an on-screen keyboard (words from SCOWL and ENABLE); **Guess the Song**, a quiz on your own music (a clip plays, pick its title among four, ten rounds); **Puzzles**, twelve from [Simon Tatham's Portable Puzzle Collection](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/) (MIT): Mines, Sudoku, Net, Flood, Same Game, Fifteen, Light Up, Unruly, Towers, Keen, Pattern and Tents, played with the arrows and kept when you leave; and **Weather**: search for a place and see 10 days of forecast, with glossy animated icons in the spirit of the mid-2000s (data by [Open-Meteo](https://open-meteo.com), free, no account).
@@ -111,6 +112,7 @@ The Miyoo has two slower cores and 128 MB of memory, so what would take the proc
 | Album covers | any size | up to 3000 px a side (a bigger picture needs more memory than the Miyoo has) |
 | Internet Archive, Podcasts, Weather, covers and Album Info online, Software Update | ✓ | ✓ on the Mini Plus, v4 and Flip (Wi-Fi); Internet Archive without ALAC |
 | YouTube (optional) | ✓ | — (it needs more memory than the Miyoo has) |
+| Videos (YouTube, optional) | ✓ | — (no YouTube, and Onion has no ffmpeg to decode the picture) |
 | Bluetooth headphones | ✓ | — (no Bluetooth) |
 | Headphone buttons, pause on unplug | ✓ | — |
 | Music Folder (move the music to another card) | ✓ | — (one card slot) |
@@ -203,6 +205,12 @@ On the Miyoo:
   - Y (or holding A) opens **Up Next** (also in the Music menu), the songs that will play next: A plays one at once; Y on a song offers Play Next and Remove from Up Next; Clear Up Next empties it; **Clear Now Playing**, at its end, stops the music and empties the queue (also: hold A on Now Playing in the menus);
   - up/right raise the volume and down/left lower it (in Cover Flow's Now Playing too);
   - the centre button switches to the scrubber, and then the same keys seek.
+- **Videos:**
+  - A or START pauses; at the end A plays it again, and after an error tries again;
+  - left/right go 10 s back or on (held, 5 s a step); up/down set the volume;
+  - L / R go to the previous or next video of the list it came from;
+  - Y (or holding A) offers Download as One Song (or as Album) and Watch from the Start;
+  - B stops it, and Recently Watched keeps the place.
 - **Search keyboard:** a QWERTY grid. The keys with a shortcut show its button: X space, B delete, Y 123, START search (the magnifying glass).
   - the d-pad moves between the keys;
   - A types the selected key, B deletes, holding B closes the keyboard;
@@ -370,6 +378,7 @@ tools/onion/release.sh "What's new"   # release/betterpod-v<version>-onion.zip a
 | `src/ij_musicdir.go`, `src/ij_movemusic_view.go` | Music Folder: moving the music to another card, and its screen |
 | `src/ij_keyboard.go` | The on-screen QWERTY keyboard |
 | `src/ij_youtube.go`, `src/ij_ytdl.go` | YouTube: tools and settings; search, item page, download as albums |
+| `src/ij_video.go`, `src/video.go` | Videos: the menu, Recently Watched, the player's screen and YouTube's formats; playing (ffmpeg, the frames on the sound's clock, the streams' server) |
 | `src/ij_ytcoverpick.go` | YouTube: choosing the square cover before a download |
 | `src/ij_m4a.go`, `src/ij_ytcover.go` | M4A cutting and tagging without ffmpeg; square covers from video pictures |
 | `src/ij_covers.go` | Cover search (MusicBrainz, Cover Art Archive), Search All Automatically |

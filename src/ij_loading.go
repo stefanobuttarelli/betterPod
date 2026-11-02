@@ -17,8 +17,18 @@ var useIpodUI = os.Getenv("MIYOOPOD_CLASSIC_UI") == ""
 
 // drawSpinner draws the spinner centred at (cx, cy) device px, sizeCSS wide.
 func drawSpinner(dst *image.RGBA, cx, cy, sizeCSS float64, now time.Time) {
+	drawSpinnerIn(dst, cx, cy, sizeCSS, now, colBlack)
+}
+
+// spinnerStep: which of its 12 places the spinner is at, at now.
+func spinnerStep(now time.Time) int {
+	return int(float64(now.UnixNano()%833333333)/833333333*12) % 12
+}
+
+// drawSpinnerIn: the spinner in colour c (white over a video).
+func drawSpinnerIn(dst *image.RGBA, cx, cy, sizeCSS float64, now time.Time, c Col) {
 	opac := []float64{1, 0.917, 0.833, 0.75, 0.667, 0.583, 0.5, 0.417, 0.333, 0.25, 0.167, 0.083}
-	step := int(float64(now.UnixNano()%833333333)/833333333*12) % 12
+	step := spinnerStep(now)
 	scale := sizeCSS * DPR / 2400
 	stroke := 200 * scale
 	for i := 0; i < 12; i++ {
@@ -29,7 +39,7 @@ func drawSpinner(dst *image.RGBA, cx, cy, sizeCSS float64, now time.Time) {
 		y0 := cy - math.Cos(ang)*r0
 		x1 := cx + math.Sin(ang)*r1
 		y1 := cy - math.Cos(ang)*r1
-		drawThickLine(dst, x0, y0, x1, y1, stroke, Col{0, 0, 0, opac[i]})
+		drawThickLine(dst, x0, y0, x1, y1, stroke, Col{c.R, c.G, c.B, opac[i]})
 	}
 }
 
