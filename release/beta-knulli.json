@@ -1,8 +1,8 @@
 {
-  "version": "1.1-beta.1",
-  "path": "release/betterpod-v1.1-beta.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.1-knulli.zip",
-  "sha256": "1509980af48aacb656798791b61a1b36d1915ec2171e7b01e69e20417264ab7d",
-  "size": 16484830,
-  "notes": "- Videos (with YouTube turned on): search YouTube and watch the video in an iPod-style player, from the main menu.\n- Recently Watched goes on where you left off; Watch Video on a video's page, Watch the Videos on a playlist's."
+  "version": "1.1-beta.2",
+  "path": "release/betterpod-v1.1-beta.2-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.2-knulli.zip",
+  "sha256": "f3cefe3d6dd073372a29f5d750e7ea7546efe5d687d9195c83304fddf980bb90",
+  "size": 16507766,
+  "notes": "- Videos: the player fills the whole screen; the title and the time show for a moment after a key.\n- Videos open sooner with Deno (Videos → Open Videos Faster).\n- Download Video, to watch offline (Videos → Downloaded).\n- Album Info: the field being typed stays above the keyboard."
 }
