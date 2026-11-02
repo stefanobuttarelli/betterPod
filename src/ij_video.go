@@ -15,8 +15,8 @@ package main
 //	LEFT / RIGHT  10 s back / on (held: further)
 //	UP / DOWN     volume
 //	L / R         the previous / next video of the list it came from
-//	Y (hold A)    options: Download Video, Download as One Song (or
-//	              Album), Watch from the Start
+//	Y (hold A)    options: Watch from the Start, Download (As Video, As
+//	              Audio Only, As an Album with chapters)
 //	B             back: the video stops; Recently Watched keeps the place
 //
 // Off on the Miyoo: YouTube is (yt-dlp needs more memory than it has), and
@@ -333,14 +333,13 @@ func (ui *IpodUI) recentVideosView() *View {
 			idx, pos := i, s.Pos
 			items = append(items, Item{Label: s.Title, Sublabel: strings.Join(parts, " · "), Album: th,
 				OnSelect: func() { ui.playVideo(list[idx], th, nil, list, idx, false, pos) },
-				LongPress: []SheetOption{
-					{Label: "Watch from the Start", OnSelect: func() { ui.playVideo(list[idx], th, nil, list, idx, false, 0) }},
-					ui.videoDownloadOption(list[idx], nil),
-					{Label: "Remove from Recently Watched", OnSelect: func() {
+				LongPress: append(append([]SheetOption{
+					{Label: "Watch from the Start", OnSelect: func() { ui.playVideo(list[idx], th, nil, list, idx, false, 0) }}},
+					ui.videoDownloadOptions(list[idx], nil)...),
+					SheetOption{Label: "Remove from Recently Watched", OnSelect: func() {
 						videoForget(list[idx].ID)
 						ui.refreshView(v)
-					}},
-				}})
+					}})})
 		}
 		return items
 	}
@@ -1066,16 +1065,7 @@ func (vv *VideoView) OnLongPress(ui *IpodUI) {
 	}
 	if vv.e.ID != "" {
 		// (offered: the video streams either way)
-		opts = append(opts, ui.videoDownloadOption(vv.e, vv.info))
-	}
-	if info := vv.info; info != nil {
-		if len(info.Chapters) >= 2 {
-			a := albumFromVideo(info, true)
-			opts = append(opts, SheetOption{Label: fmt.Sprintf("Download as Album (%d tracks)", len(a.Tracks)),
-				OnSelect: func() { ui.startYTDownload(info, a) }})
-		}
-		one := albumFromVideo(info, false)
-		opts = append(opts, SheetOption{Label: "Download as One Song", OnSelect: func() { ui.startYTDownload(info, one) }})
+		opts = append(opts, ui.videoDownloadOptions(vv.e, vv.info)...)
 	}
 	if len(opts) > 0 {
 		ui.showSheetTitled(vv.v.Title, opts)

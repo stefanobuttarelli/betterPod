@@ -1,7 +1,8 @@
 package main
 
-// ij_videodl.go — Videos: a video downloaded to watch offline (Y on the
-// player, on a result, or on Watch Video on the video's page). Videos are
+// ij_videodl.go — Videos: a video downloaded to watch offline (Y →
+// Download → As Video, on the player, a result, Recently Watched or Watch
+// Video on the video's page; As Audio Only is the songs' download). Videos are
 // streamed: the download is only offered. yt-dlp gets the picture and the
 // sound the player would stream (H.264 at the size that fills the screen,
 // AAC) and joins them into one MP4 with ffmpeg. It lands in the data
@@ -394,16 +395,40 @@ func (ui *IpodUI) savedVideosView() *View {
 	return v
 }
 
-// videoDownloadOption: Download Video in a video's options, or Delete
-// Download once it is downloaded.
-func (ui *IpodUI) videoDownloadOption(e ytEntry, info *ytInfo) SheetOption {
-	if _, ok := videoSavedInfo(e.ID); ok {
-		return SheetOption{Label: "Delete Download", Danger: true, OnSelect: func() {
+// videoDownloadOptions: the download rows of a video's options (Y):
+// Download, which opens a second sheet (As Video; As Audio Only, the songs'
+// download of the video's page: one song, or an album of its chapters), and
+// Delete Download once the video is downloaded (Download then offers the
+// audio only). info: the video's, when known (else the audio's album is
+// made from the list's entry, and yt-dlp reads the video when it starts).
+func (ui *IpodUI) videoDownloadOptions(e ytEntry, info *ytInfo) []SheetOption {
+	_, saved := videoSavedInfo(e.ID)
+	audio := info
+	if audio == nil {
+		audio = &ytInfo{ytEntry: e}
+	}
+	open := func() {
+		var opts []SheetOption
+		if !saved {
+			opts = append(opts, SheetOption{Label: "As Video", OnSelect: func() { ui.startVideoDownload(e, info) }})
+		}
+		one := albumFromVideo(audio, false)
+		opts = append(opts, SheetOption{Label: "As Audio Only", OnSelect: func() { ui.startYTDownload(audio, one) }})
+		if len(audio.Chapters) >= 2 {
+			a := albumFromVideo(audio, true)
+			opts = append(opts, SheetOption{Label: fmt.Sprintf("As an Album (%d tracks)", len(a.Tracks)),
+				OnSelect: func() { ui.startYTDownload(audio, a) }})
+		}
+		ui.showSheetTitled("Download", opts)
+	}
+	opts := []SheetOption{{Label: "Download", OnSelect: open}}
+	if saved {
+		opts = append(opts, SheetOption{Label: "Delete Download", Danger: true, OnSelect: func() {
 			videoDeleteSaved(e.ID)
 			ui.refreshVideosMenu()
-		}}
+		}})
 	}
-	return SheetOption{Label: "Download Video", OnSelect: func() { ui.startVideoDownload(e, info) }}
+	return opts
 }
 
 // videoPlace: where Recently Watched left a video (0: from the start).
