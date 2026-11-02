@@ -372,6 +372,37 @@ type ytFormat struct {
 	Range    string            `json:"dynamic_range"`
 	LangPref float64           `json:"language_preference"`
 	Headers  map[string]string `json:"http_headers"`
+	// when its link starts to work (Unix seconds): a few seconds after
+	// yt-dlp gets it, YouTube answers 403 before
+	AvailableAt float64 `json:"available_at"`
+}
+
+// ytLinksAt: when the links of the formats that may be played work (the
+// latest available_at of the candidates; 0: at once).
+func ytLinksAt(fs []ytFormat) float64 {
+	vids, auds, both := ytCandidates(fs)
+	at := 0.0
+	for _, l := range [][]*ytFormat{vids, auds, both} {
+		for _, f := range l {
+			at = math.Max(at, f.AvailableAt)
+		}
+	}
+	return at
+}
+
+// ytWaitLinks waits until YouTube's links work (at, Unix seconds; 0 or
+// past: no wait), 20 s at most (a clock set wrong), or until ctx ends.
+func ytWaitLinks(ctx context.Context, at float64) error {
+	d := time.Until(time.Unix(0, int64(at*1e9)))
+	if at <= 0 || d <= 0 {
+		return nil
+	}
+	select {
+	case <-time.After(min(d, 20*time.Second)):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // vcodecRank: 0 H.264, 1 VP9 (ffmpeg decodes both in software, H.264 for
@@ -606,6 +637,7 @@ type VideoView struct {
 	ended   bool
 	retried bool      // the links were refused once and asked for again
 	openAt  time.Time // when this video began to open (for the log)
+	linksAt time.Time // YouTube's links work from then (the spinner says so)
 	timed   bool      // its first frame's time is logged
 
 	ctl       *Anim // the title and the controls over the picture (1 shown)
@@ -740,7 +772,14 @@ func (vv *VideoView) start(ui *IpodUI, info *ytInfo) {
 	gen, retried := vv.gen, vv.retried
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	vv.cancel = cancel
+	if at := ytLinksAt(info.Formats); at > 0 {
+		vv.linksAt = time.Unix(0, int64(at*1e9))
+		if d := time.Until(vv.linksAt); d > 0 {
+			logMsg(fmt.Sprintf("Videos: %s: YouTube's links work in %.1f s: waiting", info.ID, d.Seconds()))
+		}
+	}
 	go func() {
+		ytWaitLinks(ctx, ytLinksAt(info.Formats))
 		vf, af, err := ytChooseStreams(ctx, info)
 		cancel()
 		if isRefusal(err) && !retried {
@@ -1121,6 +1160,8 @@ func (vv *VideoView) draw(ui *IpodUI, dst *image.RGBA, top int, now time.Time) {
 		label := "Loading…"
 		if p != nil && p.state == vBuffering {
 			label = "Buffering…"
+		} else if p == nil && now.Before(vv.linksAt) {
+			label = fmt.Sprintf("Waiting for YouTube · %d s", int(math.Ceil(vv.linksAt.Sub(now).Seconds())))
 		}
 		drawSpinnerIn(dst, cx*DPR, (cy-8)*DPR, 24, now, colWhite)
 		vv.drawCentered(dst, cx, cy+16, []string{label})

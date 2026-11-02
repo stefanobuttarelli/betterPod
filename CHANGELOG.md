@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1-beta.3 (2026-11-02)
+
+### Fixed
+- **"YouTube refused the stream (error 403)" on most videos.** YouTube now gives links that work only a few seconds after yt-dlp gets them (yt-dlp says when, as `available_at`), and betterPod tried them at once: every format was refused, then the new links too. The player now waits for that moment ("Waiting for YouTube · 4 s" under the spinner, 20 s at most), and so does Listen. With Deno opening videos sooner, it showed more often.
+
 ## v1.1-beta.2 (2026-11-02)
 
 ### Changed
