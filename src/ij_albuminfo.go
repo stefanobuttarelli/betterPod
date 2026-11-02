@@ -319,7 +319,7 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 				changed = true
 			}
 		}
-		it := Item{Label: label, Sublabel: sub, OnSelect: func() {
+		it := Item{Label: label, Sublabel: sub, Typing: st.field == field && ui.keyboardEditing(&st.text), OnSelect: func() {
 			start := val
 			if !same {
 				start = "" // different on each song: nothing to keep by mistake
@@ -492,12 +492,13 @@ func (ui *IpodUI) songInfoView(e *albumEdit, s *songEdit, list, album *View) *Vi
 	v.Build = func() []Item {
 		field := func(label, key, val, was string, number bool, set func(string)) Item {
 			sub := val
-			if st.field == key && ui.keyboardEditing(&st.text) {
+			typing := st.field == key && ui.keyboardEditing(&st.text)
+			if typing {
 				sub = ui.withCaret(&st.text)
 			} else if sub == "" {
 				sub = "—"
 			}
-			it := Item{Label: label, Sublabel: sub, OnSelect: func() {
+			it := Item{Label: label, Sublabel: sub, Typing: typing, OnSelect: func() {
 				st.field, st.text = key, val
 				ui.showKeyboard(&st.text, func() { ui.refreshView(v) }, func() {
 					x := strings.TrimSpace(st.text)

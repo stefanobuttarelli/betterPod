@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strings"
 
 	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
@@ -591,6 +592,31 @@ func textWidth(face font.Face, s string) float64 {
 }
 
 // ellipsize shortens s with "…" so it fits maxW (like text-overflow: ellipsis).
+// caretFit: text being typed, with its caret ("|"), in maxW (device px):
+// as it is when it fits; else cut at its end while the caret shows, then
+// at its start ("…" and the rest), so the caret is always in sight.
+func caretFit(face font.Face, s string, maxW float64) string {
+	if textWidth(face, s) <= maxW {
+		return s
+	}
+	c := strings.LastIndex(s, "|")
+	if c < 0 || textWidth(face, s[:c+1]+"…") <= maxW {
+		return ellipsize(face, s, maxW)
+	}
+	r := []rune(s)
+	cr := len([]rune(s[:c])) // the caret, in runes
+	// room for the "…" at the end too, when text follows the caret
+	tail := ""
+	if cr+1 < len(r) {
+		tail = "…"
+	}
+	from := 0
+	for from < cr && textWidth(face, "…"+string(r[from:cr+1])+tail) > maxW {
+		from++
+	}
+	return ellipsize(face, "…"+string(r[from:]), maxW)
+}
+
 func ellipsize(face font.Face, s string, maxW float64) string {
 	if maxW <= 0 {
 		return ""

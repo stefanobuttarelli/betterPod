@@ -1146,7 +1146,9 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	}
 
 	// full-screen views
-	if fullPx < 640 {
+	if vv := ui.videoInPlace(now); vv != nil {
+		vv.renderScreen(ui, fb, now) // the player covers the header too
+	} else if fullPx < 640 {
 		// (the top view in place covers all under the header)
 		if n := len(ui.full); n == 0 || ui.full[n-1].enter.Get(now) != 0 || ui.full[n-1].hide.Get(now) != 0 {
 			fillRect(fb, fullPx, 0, 640-fullPx, 480, th.bg)
