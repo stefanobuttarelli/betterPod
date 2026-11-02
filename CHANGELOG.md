@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1-beta.4 (2026-11-02)
+
+### Changed
+- **A video's options have one Download,** which opens As Video and As Audio Only (the songs' download: one song, or As an Album when the video has chapters). It is the same on the player, a result, Recently Watched and Watch Video. Once the video is downloaded, Delete Download comes beside it, and Download offers the audio only. On a result, Download Options is now **Video Page**.
+
 ## v1.1-beta.3 (2026-11-02)
 
 ### Fixed
