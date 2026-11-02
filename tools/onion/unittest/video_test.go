@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func f(id, vc, ac string, w, h, fps, abr float64) ytFormat {
@@ -455,5 +456,37 @@ func TestCaretFit(t *testing.T) {
 	mid := caretFit(fc, long+"|"+long, w)
 	if !strings.Contains(mid, "|") || textWidth(fc, mid) > w {
 		t.Errorf("caret in the middle: %q", mid)
+	}
+}
+
+// YouTube's links answer 403 until their available_at: the player and
+// Listen wait for the latest of the formats that may be played.
+func TestWaitLinks(t *testing.T) {
+	now := float64(time.Now().UnixNano()) / 1e9
+	v, a, hls := f("134", "avc1", "none", 640, 360, 30, 0), f("140", "none", "mp4a.40.2", 0, 0, 0, 129), f("hls", "avc1", "mp4a", 640, 360, 30, 0)
+	v.AvailableAt, a.AvailableAt = now+3, now+4
+	hls.Protocol, hls.AvailableAt = "m3u8_native", now+60 // (never played: not waited for)
+	if got := ytLinksAt([]ytFormat{v, a, hls}); got != now+4 {
+		t.Errorf("ytLinksAt: %.1f s from now, want 4", got-now)
+	}
+	if ytLinksAt([]ytFormat{f("18", "avc1", "mp4a.40.2", 640, 360, 30, 0)}) != 0 {
+		t.Error("no available_at: no wait")
+	}
+	for _, at := range []float64{0, now - 5} {
+		t0 := time.Now()
+		if err := ytWaitLinks(context.Background(), at); err != nil || time.Since(t0) > 50*time.Millisecond {
+			t.Errorf("at %v: waited %v (%v)", at, time.Since(t0), err)
+		}
+	}
+	t0 := time.Now()
+	ytWaitLinks(context.Background(), now+0.3)
+	if d := time.Since(t0); d < 250*time.Millisecond || d > 600*time.Millisecond {
+		t.Errorf("waited %v for 0.3 s", d)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	t0 = time.Now()
+	if err := ytWaitLinks(ctx, now+10); err == nil || time.Since(t0) > 400*time.Millisecond {
+		t.Errorf("cancelled: %v after %v", err, time.Since(t0))
 	}
 }

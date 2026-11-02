@@ -77,15 +77,19 @@ func ytOpenStream(ctx context.Context, link string, infoJSON []byte) (*ytStream,
 		return nil, fmt.Errorf("yt-dlp: %v", err)
 	}
 	var j struct {
-		URL      string            `json:"url"`
-		Headers  map[string]string `json:"http_headers"`
-		Protocol string            `json:"protocol"`
+		URL         string            `json:"url"`
+		Headers     map[string]string `json:"http_headers"`
+		Protocol    string            `json:"protocol"`
+		AvailableAt float64           `json:"available_at"`
 	}
 	if err := json.Unmarshal(lastJSONLine(out), &j); err != nil || j.URL == "" {
 		return nil, errNoStream
 	}
 	if j.Protocol != "" && j.Protocol != "https" && j.Protocol != "http" {
 		return nil, errNoStream // (an HLS or DASH manifest, not a file)
+	}
+	if err := ytWaitLinks(ctx, j.AvailableAt); err != nil { // (403 before)
+		return nil, err
 	}
 	return ytStreamFrom(ctx, j.URL, j.Headers)
 }
