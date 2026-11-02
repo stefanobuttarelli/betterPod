@@ -38,6 +38,7 @@ var dataItems = []string{
 	"ipodjs_settings.json",
 	"album_merges.json",
 	"recent_searches.json",
+	"videos.json",
 	"podcasts.json",
 	"weather.json",
 	"share_count.txt",

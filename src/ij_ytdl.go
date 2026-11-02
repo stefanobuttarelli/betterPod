@@ -1,7 +1,7 @@
 package main
 
 // ij_ytdl.go — Music → Search → YouTube: search videos or playlists and
-// download them as albums.
+// download them as albums (or watch them: Videos, ij_video.go).
 //
 //   - A video with chapters becomes an album with a track per chapter (one
 //     download, then cut: ij_m4a.go); without chapters, one song.
@@ -68,6 +68,10 @@ type ytInfo struct {
 	Thumbnail   string      `json:"thumbnail"`
 	WebURL      string      `json:"webpage_url"`
 	Entries     []ytEntry   `json:"entries"`
+	// for watching (Videos, ij_video.go)
+	Formats     []ytFormat        `json:"formats"`
+	HTTPHeaders map[string]string `json:"http_headers"`
+	IsLive      bool              `json:"is_live"`
 
 	raw []byte // yt-dlp's answer, given back to it for the download
 }
@@ -246,7 +250,13 @@ func ytSearch(ctx context.Context, q string, playlists bool) ([]ytEntry, error) 
 
 // youtubeView: the search row (the keyboard opens at once), Videos /
 // Playlists, and the results. A YouTube link opens that video or playlist.
-func (ui *IpodUI) youtubeView() *View {
+func (ui *IpodUI) youtubeView() *View { return ui.youtubeSearchView(false) }
+
+// youtubeWatchView: Videos → Search YouTube: videos only, and choosing one
+// plays it (Y: its page, to download it). A link to a video plays it.
+func (ui *IpodUI) youtubeWatchView() *View { return ui.youtubeSearchView(true) }
+
+func (ui *IpodUI) youtubeSearchView(watch bool) *View {
 	st := &struct {
 		term, ran, status string
 		busy, playlists   bool
@@ -272,15 +282,18 @@ func (ui *IpodUI) youtubeView() *View {
 			ui.refreshView(v)
 		}
 		bar := ui.searchField(&st.term, "Search YouTube or paste a link", note, edit, nil)
-		// what it searches for: by the search bar's gear (as Weather's)
-		bar.Gear = func() {
-			ui.showView(ui.ytSearchSettingsView(&st.playlists, func() {
-				if st.ran != "" {
-					run()
-				} else {
-					ui.refreshView(v)
-				}
-			}), "")
+		// what it searches for: by the search bar's gear (as Weather's);
+		// watching: videos only
+		if !watch {
+			bar.Gear = func() {
+				ui.showView(ui.ytSearchSettingsView(&st.playlists, func() {
+					if st.ran != "" {
+						run()
+					} else {
+						ui.refreshView(v)
+					}
+				}), "")
+			}
 		}
 		items := []Item{bar}
 		kind := "Videos"
@@ -305,6 +318,12 @@ func (ui *IpodUI) youtubeView() *View {
 				run()
 			}, func() { ui.refreshView(v) })...)
 		}
+		var videos []ytEntry // (watching: L / R go through these)
+		for _, e := range st.res {
+			if !e.isPlaylist() {
+				videos = append(videos, e)
+			}
+		}
 		for _, e := range st.res {
 			e := e
 			var parts []string
@@ -325,8 +344,20 @@ func (ui *IpodUI) youtubeView() *View {
 				th = &Album{Name: e.Title} // the default art until the thumbnail comes
 				st.thumbs[e.ID+e.URL] = th
 			}
-			items = append(items, Item{Label: e.Title, Sublabel: strings.Join(parts, " · "), Album: th,
-				OnSelect: func() { ui.showView(ui.ytItemView(e, th), "") }})
+			it := Item{Label: e.Title, Sublabel: strings.Join(parts, " · "), Album: th,
+				OnSelect: func() { ui.showView(ui.ytItemView(e, th), "") }}
+			if watch && !e.isPlaylist() {
+				idx := len(videos)
+				for i, o := range videos {
+					if o.ID == e.ID && o.URL == e.URL {
+						idx = i
+						break
+					}
+				}
+				it.OnSelect = func() { ui.playVideo(e, th, nil, videos, idx, false, 0) }
+				it.LongPress = []SheetOption{{Label: "Download Options", OnSelect: func() { ui.showView(ui.ytItemView(e, th), "") }}}
+			}
+			items = append(items, it)
 		}
 		return items
 	}
@@ -340,7 +371,12 @@ func (ui *IpodUI) youtubeView() *View {
 			if !strings.HasPrefix(strings.ToLower(q), "http") {
 				q = "https://" + q
 			}
-			ui.showView(ui.ytItemView(ytEntry{URL: q, Title: q}, nil), "")
+			e := ytEntry{URL: q, Title: q}
+			if watch && !e.isPlaylist() {
+				ui.playVideo(e, nil, nil, nil, 0, false, 0)
+				return
+			}
+			ui.showView(ui.ytItemView(e, nil), "")
 			return
 		}
 		if st.cancel != nil {
@@ -354,7 +390,7 @@ func (ui *IpodUI) youtubeView() *View {
 		st.busy, st.status, st.ran, st.res = true, "", q, nil
 		v.Index = 0
 		ui.refreshView(v)
-		playlists := st.playlists
+		playlists := st.playlists && !watch
 		// the thumbnails load after the results, until the view is left or
 		// searches again
 		ctx2, cancel2 := context.WithCancel(context.Background())
@@ -386,6 +422,9 @@ func (ui *IpodUI) youtubeView() *View {
 		ui.showKeyboard(&st.term, func() { ui.refreshView(v) }, run)
 	} else {
 		v.Index = 2 // the recent searches (the field above opens the keyboard)
+	}
+	if !isOnion {
+		go ffmpegReady() // (checked before a video is chosen: it takes a moment)
 	}
 	return v
 }
@@ -632,6 +671,19 @@ func albumFromVideo(i *ytInfo, asAlbum bool) ytAlbum {
 	return a
 }
 
+// ytPlaylistVideos: a playlist's videos that are still on YouTube.
+func ytPlaylistVideos(i *ytInfo) []ytEntry {
+	var out []ytEntry
+	for _, e := range i.Entries {
+		if e.ID == "" || e.Avail == "private" || e.Avail == "needs_auth" ||
+			e.Title == "[Deleted video]" || e.Title == "[Private video]" {
+			continue // gone from YouTube
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 // albumFromPlaylist: a track per video.
 func albumFromPlaylist(i *ytInfo) ytAlbum {
 	a := ytAlbum{Year: ytYear(i)}
@@ -643,11 +695,7 @@ func albumFromPlaylist(i *ytInfo) ytAlbum {
 	if a.Artist == "" {
 		a.Artist = "Various Artists"
 	}
-	for _, e := range i.Entries {
-		if e.ID == "" || e.Avail == "private" || e.Avail == "needs_auth" ||
-			e.Title == "[Deleted video]" || e.Title == "[Private video]" {
-			continue // gone from YouTube
-		}
+	for _, e := range ytPlaylistVideos(i) {
 		t := ytClean(e.Title)
 		if ar, ti, ok := splitArtist(t); ok && strings.EqualFold(ar, a.Artist) {
 			t = ti
@@ -737,6 +785,23 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			}
 			items = append(items, ui.previewRow(key, songs, 0, "Listen", sub, refresh))
 		}
+		// then Watch: the video in the player (Videos, ij_video.go; off on
+		// the Miyoo, see onion.go)
+		if !isOnion {
+			if list := ytPlaylistVideos(i); e.isPlaylist() || len(i.Entries) > 0 {
+				if len(list) > 0 {
+					items = append(items, Item{Label: "Watch the Videos", Sublabel: "In the player, one after another",
+						OnSelect: func() { ui.playVideo(list[0], nil, nil, list, 0, true, 0) }})
+				}
+			} else {
+				sub := "In the player"
+				if vf, _, err := ytPickFormats(i.Formats); err == nil {
+					sub = fmt.Sprintf("In the player, %.0fp", math.Min(vf.W, vf.H))
+				}
+				items = append(items, Item{Label: "Watch Video", Sublabel: sub,
+					OnSelect: func() { ui.playVideo(e, st.thumb, i, nil, 0, false, 0) }})
+			}
+		}
 		// the cover it will get (choosing it opens the square)
 		switch {
 		case st.coverSrc != nil:
@@ -772,6 +837,7 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			n := len(a.Tracks)
 			items = append(items, Item{Label: fmt.Sprintf("Download as Album · %d %s", n, pluralize(n, "song", "songs")),
 				Sublabel: a.Artist + " — " + a.Album, OnSelect: func() { ui.previewStop(); ui.startYTDownload(i, withCover(a)) }})
+			list := ytPlaylistVideos(i)
 			for n, t := range a.Tracks {
 				row := Item{Label: t.Title, Value: lengthOrEmpty(t.Duration), NoArrow: true}
 				if len(songs) == len(a.Tracks) {
@@ -780,6 +846,11 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 					if row.Sublabel == "" {
 						row.Value = lengthOrEmpty(t.Duration)
 					}
+				}
+				if !isOnion && n < len(list) {
+					// Y: in the player, and the next ones after it (Videos)
+					k := n
+					row.LongPress = []SheetOption{{Label: "Watch Video", OnSelect: func() { ui.playVideo(list[k], nil, nil, list, k, true, 0) }}}
 				}
 				items = append(items, row)
 			}

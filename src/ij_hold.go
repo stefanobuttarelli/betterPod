@@ -367,6 +367,9 @@ func (ui *IpodUI) mediaKey(ev int) bool {
 	if ev < 0 {
 		return true
 	}
+	if ui.videoMediaKey(k) {
+		return true // a video on screen takes them (ij_video.go)
+	}
 	p := ui.app.Playing
 	playing := p != nil && p.Track != nil && p.State == StatePlaying
 	logMsg(fmt.Sprintf("Media key %d (playing=%v)", int(k), playing))
@@ -406,6 +409,10 @@ func (ui *IpodUI) mediaKey(ev int) bool {
 }
 
 func (ui *IpodUI) pauseIfPlaying(why string) {
+	if vv := ui.videoPlaying(); vv != nil {
+		vv.pause(ui) // (a video, as the music)
+		logMsg(why + ": the video paused")
+	}
 	if p := ui.app.Playing; p != nil && p.Track != nil && p.State == StatePlaying {
 		ui.app.togglePlayPause()
 		logMsg(why + ": paused")

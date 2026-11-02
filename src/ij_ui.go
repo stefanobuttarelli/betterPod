@@ -1253,11 +1253,16 @@ func (ui *IpodUI) drawHeader(dst *image.RGBA, x, w int, now time.Time) {
 	iconsLeft := batX - iconGap
 	iconsLeft = ui.drawStatusIcons(sub, iconsLeft, 3.5, th.headerText, false)
 	p := ui.app.Playing
-	if p != nil && p.Track != nil && p.State != StateStopped {
-		name := "play"
+	name := ""
+	if vv := ui.videoOnTop(); vv != nil && ui.hdrActive {
+		name = vv.headerIcon() // the video's, on its screen (the music is paused)
+	} else if p != nil && p.Track != nil && p.State != StateStopped {
+		name = "play"
 		if p.State == StatePaused {
 			name = "pause"
 		}
+	}
+	if name != "" {
 		iconsLeft = putIcon(sub, ui.asset(name), iconsLeft, 3.5)
 	}
 
@@ -1595,6 +1600,7 @@ func (ui *IpodUI) Run() {
 		}
 		ui.tickOverlays(now)
 		ui.saverTick(now)
+		ui.videoTick(now)      // (Videos: the frame for the sound heard, ij_video.go)
 		ui.onionSleepTick(now) // (Onion's sleep timer, onion_sleep.go)
 		if ui.saver != nil && !ui.saver.exiting && !app.Locked {
 			ui.saverFrame(now)
@@ -1708,6 +1714,9 @@ func (ui *IpodUI) Run() {
 
 		if isOnion && app.Locked {
 			frame = onionLockedFrame() // Onion: POWER and the volume keys answer within 0.1 s (onion_sleep.go)
+		}
+		if d, ok := ui.videoFrameWait(); ok && !app.Locked && d < frame {
+			frame = d // a video's next frame is due sooner
 		}
 		if presentBlocked && frame == 16*time.Millisecond {
 			continue // vsync already paced this frame

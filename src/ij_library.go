@@ -21,6 +21,14 @@ func (ui *IpodUI) homeView() *View {
 			items = append(items[:2], append([]Item{{Label: "Podcasts", Preview: PrevMusic,
 				OnSelect: func() { ui.showView(ui.podcastsView(), "") }}}, items[2:]...)...)
 		}
+		if ytEnabled && !isOnion { // Videos plays YouTube (off on the Miyoo, see onion.go)
+			at := 2
+			if podsInMenu {
+				at = 3
+			}
+			items = append(items[:at], append([]Item{{Label: "Videos", Preview: PrevVideos,
+				OnSelect: func() { ui.showView(ui.videosView(), "") }}}, items[at:]...)...)
+		}
 		// Now Playing while its block is there (playing, or paused not
 		// long ago); else Genius starts something
 		if ui.miniPlayerTrack() != nil {

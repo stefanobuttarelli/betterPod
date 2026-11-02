@@ -1,7 +1,8 @@
 package main
 
 // ij_youtube.go — YouTube (off by default; Settings → YouTube): the tools
-// and the settings page. Searching and downloading are in ij_ytdl.go.
+// and the settings page. Searching and downloading are in ij_ytdl.go,
+// watching in ij_video.go.
 //
 // The work is done by yt-dlp (github.com/yt-dlp/yt-dlp), which needs a
 // JavaScript runtime for YouTube: QuickJS-ng (small) or, failing that,
@@ -498,12 +499,13 @@ func ytVersion() string {
 
 // ytRemoveTools deletes the tools (and their cache and work files).
 func ytRemoveTools() {
-	for _, n := range []string{"cache", "tmp", "work", "ytdlp", "yt-dlp", "qjs", "deno"} {
+	for _, n := range []string{"cache", "tmp", "work", "ytdlp", "yt-dlp", "qjs", "deno", "ffmpeg"} {
 		os.RemoveAll(filepath.Join(ytToolsDir(), n))
 	}
 	ytTools.mu.Lock()
 	ytTools.version = ""
 	ytTools.mu.Unlock()
+	ffmpegRecheck() // (the one Videos downloaded, if any, is gone too)
 }
 
 // refreshTop rebuilds the view on top (its Build reads shared state).
@@ -536,7 +538,7 @@ func (ui *IpodUI) youtubeSettingsView() *View {
 	}
 	v.Build = func() []Item {
 		busy, status := ytToolsStatus()
-		items := []Item{{Label: "YouTube", Value: onOff(ytEnabled), Sublabel: "Search and download in Music → Search", NoArrow: true,
+		items := []Item{{Label: "YouTube", Value: onOff(ytEnabled), Sublabel: "Watch in Videos, download in Music → Search", NoArrow: true,
 			OnSelect: func() {
 				ytEnabled = !ytEnabled
 				ui.savePrefs()
