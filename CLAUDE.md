@@ -61,6 +61,10 @@ Each system has its own launcher, package, build and update manifest. The interf
 
 The binary is built from the file list `src/*.go`, not as a package, because `main.go` and `pz_*.go` include C files (`main.c`, `audio.c`, `onion.c`, `src/puzzles/*.c`). Go's build cache doesn't see those C files change: `tools/onion/build.sh` puts their hash in `CGO_CFLAGS`.
 
+## Album Info tags
+
+`tagwrite.go` writes only edited fields in MP3, FLAC, Ogg and M4A. M4A edits (`tagwrite_m4a.go`) use the box parser in `ij_m4a.go`, without rebuilding the sound track: audio stays at its original offsets, untouched boxes and tags are copied byte for byte, and the edited `moov` goes at the end. A temporary file is synced and renamed over the original only after the write succeeds. Movie metadata is limited to 16 MB; fragmented files and metadata layouts that can't be safely read are refused. Track and disc totals are kept when only their numbers change. Onion still skips M4A because its mixer has no decoder. `tools/onion/unittest.sh` installs ffmpeg to verify real AAC and ALAC edits by decoding before and after, alongside malformed-file and metadata-preservation tests.
+
 ## Software Update
 
 Settings → Software Update reads `release/latest-<system>.json` (`updateDistro()`: `knulli` or `onion`) through GitHub's API, with raw.githubusercontent.com as the fallback, and downloads the zip at its `path`, checking size and SHA-256. Knulli's zip holds `betterPod.sh` and `betterpod/`; Onion's holds `App/betterpod/` (unzipped at the root of the card by hand), and the update takes what is under `App/`. Every file is first copied next to its target (`.kpnew`), then renamed into place, the binary last; the old binary is kept as `betterpod.prev`, and `conf/` is never touched.
