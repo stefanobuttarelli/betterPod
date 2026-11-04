@@ -1,8 +1,8 @@
 {
-  "version": "1.1-beta.6",
-  "path": "release/betterpod-v1.1-beta.6-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.6-knulli.zip",
-  "sha256": "f00885c4b3a2e4296d0f36a1ae1263a5596226757c77826a85b7387606c79cfd",
-  "size": 16520427,
-  "notes": "- Album Info: Save Changes uses a blue selection and blue text when not selected, in light and dark themes.\n- From 1.1-beta.5: save M4A (AAC and ALAC) tags, including albums downloaded from YouTube."
+  "version": "1.1-beta.7",
+  "path": "release/betterpod-v1.1-beta.7-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.7-knulli.zip",
+  "sha256": "0769188879d68e6f4922f2457b6f1e524946660308543b734409b5e180169d26",
+  "size": 16524120,
+  "notes": "- Album Info replaces all metadata supplied by the selected online result, including existing values, spelling and edition notes.\n- Complete tracklists with the same song count use numbered order to fix shifted YouTube chapter titles. Original YouTube filenames can also repair previously saved wrong numbers.\n- Track artists, track totals and single-disc numbers are corrected. Missing source values are preserved; partial matches and different song counts are shown for review."
 }
