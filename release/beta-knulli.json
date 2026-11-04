@@ -1,8 +1,8 @@
 {
-  "version": "1.1-beta.4",
-  "path": "release/betterpod-v1.1-beta.4-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.4-knulli.zip",
-  "sha256": "e16259b9afcb76e68d22edcbc1df9dbc76029e17ae6d8f1b7b22a02280d6deae",
-  "size": 16510363,
-  "notes": "- A video's options have one Download, which opens As Video and As Audio Only (As an Album when the video has chapters).\n- Delete Download comes beside it once the video is downloaded.\n- From 1.1-beta.3: Videos and Listen wait the few seconds YouTube's links need (no more error 403)."
+  "version": "1.1-beta.5",
+  "path": "release/betterpod-v1.1-beta.5-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.5-knulli.zip",
+  "sha256": "cfd335cff726dd42dcc4e3422190ff59b801868fd03c12b073f8193c852c0a9c",
+  "size": 16520460,
+  "notes": "- Album Info saves M4A (AAC and ALAC) tags, including albums downloaded from YouTube.\n- Rename albums and edit song information while keeping audio, embedded covers and other tags.\n- Unsupported formats such as WAV and AIFF show a clear explanation instead of \"No changes\"."
 }
