@@ -17,7 +17,7 @@ package main
 // (ij_infosources.go) at once, with the checks of the cover search first;
 // choosing a result fills in the album and pairs its songs with ours
 // (matchTracks). Nothing is written until Save Changes: then the tags go
-// into the MP3, FLAC and Ogg files (tagwrite.go) and the library is
+// into the MP3, FLAC, Ogg and M4A files (tagwrite.go) and the library is
 // scanned again. Every field can also be typed with the keyboard (START
 // keeps it, holding B leaves it as it was).
 
@@ -379,8 +379,10 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 		items = append(items, ui.mergeItems(e, nil, func() { ui.closeAlbumInfo(e) })...) // (ij_albummerge.go)
 		if n, w := e.changed(); n > 0 {
 			sub := e.summary()
-			if n > w {
-				sub += fmt.Sprintf(" · %d %s can't take tags (M4A, WAV, AIFF…)", n-w, pluralize(n-w, "song", "songs"))
+			if w == 0 {
+				sub = "Only MP3, FLAC, Ogg and M4A tags can be saved"
+			} else if n > w {
+				sub += fmt.Sprintf(" · %d %s can't be saved (WAV, AIFF…)", n-w, pluralize(n-w, "song", "songs"))
 				if e.albumChanged() {
 					sub += ": they'd stay in the old album"
 				}
@@ -388,7 +390,7 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 			items = append(items,
 				Item{Label: "Save Changes", Sublabel: sub, OnSelect: func() {
 					if w == 0 {
-						e.status = "None of these songs can take tags (M4A, WAV, AIFF…)"
+						e.status = sub
 						ui.refreshView(v)
 						return
 					}

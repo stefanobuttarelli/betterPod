@@ -60,6 +60,59 @@ func id3Size(b []byte) int {
 	return 10 + syncsafe(b[6:10])
 }
 
+func TestAlbumInfoRenameSaveMessage(t *testing.T) {
+	t.Setenv("MIYOOPOD_DATA_DIR", t.TempDir())
+	for _, ext := range []string{".m4a", ".wav", ".aiff", ".mp3", ".flac", ".ogg"} {
+		t.Run(ext, func(t *testing.T) {
+			track := &Track{Path: filepath.Join(t.TempDir(), "song"+ext), Title: "Song", Album: "Old album"}
+			al := &Album{Name: "Old album", Tracks: []*Track{track}}
+			ui := &IpodUI{}
+			v := ui.albumInfoView(al)
+			item := func(label string) *Item {
+				t.Helper()
+				for i := range v.Items {
+					if v.Items[i].Label == label {
+						return &v.Items[i]
+					}
+				}
+				t.Fatalf("missing %q", label)
+				return nil
+			}
+			item("Album").OnSelect()
+			*ui.keyboard.text = "New album"
+			ui.keyboard.enter(ui)
+			if got := item("Album"); got.Value != "changed" || got.Sublabel != "New album" {
+				t.Fatalf("edited album: %+v", got)
+			}
+			save := item("Save Changes")
+			if strings.Contains(save.Sublabel, "No changes") {
+				t.Fatalf("a pending rename says %q", save.Sublabel)
+			}
+			if canWriteTags(track.Path) {
+				if save.Sublabel != "Album" {
+					t.Errorf("save summary = %q, want Album", save.Sublabel)
+				}
+			} else {
+				if !strings.Contains(save.Sublabel, "MP3, FLAC, Ogg and M4A") {
+					t.Errorf("unsupported format is not explained: %q", save.Sublabel)
+				}
+				save.OnSelect()
+				if len(ui.sheets) != 0 {
+					t.Error("unsupported files offered a write confirmation")
+				}
+				item("Only MP3, FLAC, Ogg and M4A tags can be saved")
+			}
+			item("Undo Changes").OnSelect()
+			if got := item("Album"); got.Value != "" || got.Sublabel != "Old album" {
+				t.Errorf("undo did not restore the album: %+v", got)
+			}
+			if al.Name != "Old album" || track.Album != "Old album" {
+				t.Error("editing without saving changed the library")
+			}
+		})
+	}
+}
+
 func TestWriteTags(t *testing.T) {
 	for _, tool := range []string{"lame", "flac", "oggenc", "ogginfo", "oggdec"} {
 		if _, err := exec.LookPath(tool); err != nil {

@@ -1,8 +1,8 @@
 package main
 
 // tagwrite.go — writes a song's tags into its file: ID3v2 for MP3, Vorbis
-// comments for FLAC and Ogg Vorbis (the formats the library reads tags
-// from with dhowden/tag). Used by Podcasts (ij_podcasts.go) for the
+// comments for FLAC and Ogg Vorbis, iTunes metadata for M4A (the formats
+// the library reads with dhowden/tag). Used by Podcasts (ij_podcasts.go) for the
 // episodes it downloads, and by Album Info (ij_albuminfo.go).
 //
 // Only the fields of songTags are written; every other tag and the cover
@@ -39,7 +39,7 @@ var errNoTags = errors.New("this kind of file has no tags betterPod can write")
 // canWriteTags: the formats writeTags handles.
 func canWriteTags(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".mp3", ".flac", ".ogg", ".oga":
+	case ".mp3", ".flac", ".ogg", ".oga", ".m4a":
 		return true
 	}
 	return false
@@ -112,6 +112,8 @@ func writeTagsMasked(path, ext string, t songTags, mask tagMask) error {
 		return writeFLACTags(path, t, mask)
 	case ".ogg", ".oga":
 		return writeOggTags(path, t, mask)
+	case ".m4a":
+		return writeM4ATags(path, t, mask)
 	}
 	return errNoTags
 }

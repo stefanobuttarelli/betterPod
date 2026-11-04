@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1-beta.5 (2026-11-04)
+
+### Added
+- **Album Info saves M4A tags (AAC and ALAC),** including albums downloaded from YouTube. Album, album artist, artist, year, genre and each song's title, track and disc numbers can be edited. Only the selected fields change; audio, embedded covers and other tags stay as they were, including totals when only track or disc numbers change. No external tools are needed.
+
+### Fixed
+- **Album Info explains when tags can't be saved.** Editing an album made of unsupported files (WAV, AIFF…) showed "changed", then "No changes" under Save Changes. It now lists the formats it can save.
+
 ## v1.1-beta.4 (2026-11-02)
 
 ### Changed
