@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.1-beta.6 (2026-11-04)
 
 ### Fixed
 - **Album Info: Save Changes is blue.** Its confirmation uses the normal blue selection and blue text when not selected, in both themes.
