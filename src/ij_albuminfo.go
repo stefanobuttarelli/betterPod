@@ -395,7 +395,7 @@ func (ui *IpodUI) albumInfoView(al *Album) *View {
 						return
 					}
 					ui.showSheetTitled(fmt.Sprintf("Write into %d %s? %s. It can't be undone.", w, pluralize(w, "file", "files"), e.summary()),
-						[]SheetOption{{Label: "Save Changes", Danger: true, OnSelect: func() { ui.saveAlbumEdit(e, v) }}})
+						[]SheetOption{{Label: "Save Changes", Accent: true, OnSelect: func() { ui.saveAlbumEdit(e, v) }}})
 				}},
 				Item{Label: "Undo Changes", OnSelect: func() {
 					for _, s := range e.songs {
