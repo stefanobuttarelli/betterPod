@@ -226,8 +226,8 @@ func TestWikiClean(t *testing.T) {
 const wikiGame = "{{Infobox video game\n| title = Colin McRae Rally 2.0\n| developer = [[Codemasters]]{{efn|GBA by Spellbound}}\n" +
 	"| composer = \n| released = '''PlayStation'''{{vgrelease|UK|9 June 2000}}\n}}"
 
-// Album Info with fake sources: the songs are paired, the album title kept
-// when only an edition note differs, the empty artists filled in.
+// Album Info with fake sources: songs are paired by length when they have
+// no numbers, and the selected album title and artists replace old tags.
 func TestAlbumInfoSources(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -259,11 +259,11 @@ func TestAlbumInfoSources(t *testing.T) {
 	}
 	for _, s := range e.songs {
 		g := s.tags
-		if g.Album != "Colin McRae Rally 2.0" || g.AlbumArtist != "Codemasters" || g.Artist != "Codemasters" || g.Year != 2000 || g.TrackTotal != 2 {
+		if g.Album != it.Title || g.AlbumArtist != "Codemasters" || g.Artist != "Codemasters" || g.Year != 2000 || g.TrackTotal != 2 {
 			t.Errorf("after iTunes: %+v", g)
 		}
 	}
-	// unnumbered, same count: in the album's order (a, b) → Intro, Rally
+	// Unnumbered: the lengths, not the alphabetical order, identify Intro and Rally.
 	if e.songs[0].tags.Title != "Intro" || e.songs[1].tags.Title != "Rally" || e.songs[1].tags.Track != 2 {
 		t.Errorf("pairing: %+v / %+v", e.songs[0].tags, e.songs[1].tags)
 	}
