@@ -16,6 +16,7 @@ type SheetOption struct {
 	Label    string
 	Icon     string // "queue_next", "queue_last": drawn before the label
 	Danger   bool   // a destructive action (Delete): red
+	Accent   bool   // a primary action (Save): blue text when not selected
 	Selected bool
 	OnSelect func()
 }
@@ -156,6 +157,11 @@ func (s *Sheet) render(ui *IpodUI) *image.RGBA {
 		danger := s.opts[i].Danger
 		if danger {
 			tc = hex("#e0352b")
+		} else if s.opts[i].Accent {
+			tc = hex("#0066cc")
+			if th.dark {
+				tc = hex("#6cb8ff")
+			}
 		}
 		if i == s.index {
 			// the selected option: the list's blue (red for a destructive
