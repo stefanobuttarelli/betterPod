@@ -15,8 +15,9 @@ package main
 // Library → Missing Info, the albums without an artist or track numbers.
 // Find Info Online asks MusicBrainz, iTunes, Deezer and Wikipedia
 // (ij_infosources.go) at once, with the checks of the cover search first;
-// choosing a result fills in the album and pairs its songs with ours
-// (matchTracks). Nothing is written until Save Changes: then the tags go
+// choosing a result replaces the fields it supplies. Complete tracklists
+// use numbered order before old titles; partial ones use matchTracks.
+// Nothing is written until Save Changes: then the tags go
 // into the MP3, FLAC, Ogg and M4A files (tagwrite.go) and the library is
 // scanned again. Every field can also be typed with the keyboard (START
 // keeps it, holding B leaves it as it was).
@@ -135,55 +136,94 @@ func (e *albumEdit) query() albumQuery {
 	return q
 }
 
-// apply fills the album in from a result and returns how many of its
-// songs were paired with the result's.
-func (e *albumEdit) apply(a *albumInfo) int {
+// youtubeTrackNumbers recovers the original download order, even after
+// wrong titles have been matched and saved with wrong track numbers.
+// The downloader's NN Title.m4a names do not change when tags are edited.
+func (e *albumEdit) youtubeTrackNumbers() []songTags {
+	root := filepath.Join(musicRoot(), "YouTube")
+	numbers := make([]songTags, len(e.songs))
+	dir := ""
+	for i, s := range e.songs {
+		p := filepath.Clean(s.t.Path)
+		d := filepath.Dir(p)
+		if filepath.Dir(filepath.Dir(d)) != root || (dir != "" && d != dir) || filepath.Ext(p) != ".m4a" {
+			return nil
+		}
+		dir = d
+		prefix, _, ok := strings.Cut(filepath.Base(p), " ")
+		n, err := strconv.Atoi(prefix)
+		if !ok || err != nil || n < 1 || fmt.Sprintf("%02d", n) != prefix {
+			return nil
+		}
+		numbers[i] = songTags{Track: n, Disc: 1}
+	}
+	return numbers
+}
+
+// trackMatches uses a complete numbered order before comparing existing
+// titles. Songs without an established order still need individual matches;
+// their position in e.songs may just be alphabetical.
+func (e *albumEdit) trackMatches(a *albumInfo) []int {
 	ours := make([]songTags, len(e.songs))
 	secs := make([]float64, len(e.songs))
 	for i, s := range e.songs {
 		ours[i], secs[i] = s.tags, s.t.Duration
 	}
-	m := matchTracks(ours, secs, a.Tracks)
-	a.Title, a.Artist, a.Genre = infoText(a.Title), infoText(a.Artist), infoText(a.Genre)
-	cur, _ := e.common(func(g *songTags) string { return g.Album })
-	keepTitle := cur != "" && sameTitle(cur, a.Title) // "Rumours" stays "Rumours", not "Rumours (Deluxe)"
-	discs, perDisc := 0, map[int]int{}
+	if a.Count == 0 || a.Count == len(a.Tracks) {
+		if m := matchNumberedTracks(e.youtubeTrackNumbers(), a.Tracks); m != nil {
+			return m
+		}
+		if m := matchNumberedTracks(ours, a.Tracks); m != nil {
+			return m
+		}
+	}
+	return matchTracks(ours, secs, a.Tracks)
+}
+
+// apply replaces every field the selected result supplies, including
+// existing values and spelling or edition notes. Missing source fields
+// do not erase tags. Nothing is written until Save Changes.
+func (e *albumEdit) apply(a *albumInfo) int {
+	m := e.trackMatches(a)
+	title, artist, genre := infoText(a.Title), infoText(a.Artist), infoText(a.Genre)
+	complete := (a.Count == 0 || a.Count == len(a.Tracks)) && numberedTrackOrder(a.Tracks) != nil
+	perDisc := map[int]int{}
 	for _, t := range a.Tracks {
-		discs = max(discs, t.Disc)
 		perDisc[max(t.Disc, 1)]++
 	}
 	year, _ := strconv.Atoi(a.Year)
 	n := 0
 	for i, s := range e.songs {
 		g := &s.tags
-		if !keepTitle && a.Title != "" {
-			g.Album = a.Title
+		if title != "" {
+			g.Album = title
 		}
-		if a.Artist != "" {
-			g.AlbumArtist = a.Artist
+		if artist != "" {
+			g.AlbumArtist, g.Artist = artist, artist
 		}
-		if year > 0 {
+		if year >= 1000 && year <= 9999 {
 			g.Year = year
 		}
-		if a.Genre != "" {
-			g.Genre = a.Genre
+		if genre != "" {
+			g.Genre = genre
 		}
 		if j := m[i]; j >= 0 {
 			x := a.Tracks[j]
 			x.Title, x.Artist, x.Num, x.Disc = infoText(x.Title), infoText(x.Artist), max(x.Num, 0), max(x.Disc, 0)
 			n++
-			if x.Title != "" && !sameTitle(g.Title, x.Title) { // ours stays when only an edition note differs
+			if x.Title != "" {
 				g.Title = x.Title
 			}
 			if x.Artist != "" {
 				g.Artist = x.Artist
 			}
 			if x.Num > 0 {
-				g.Track, g.TrackTotal = x.Num, perDisc[max(x.Disc, 1)]
+				g.Track = x.Num
+				if complete {
+					g.TrackTotal = perDisc[max(x.Disc, 1)]
+				}
 			}
-			if discs > 1 {
-				g.Disc = x.Disc
-			}
+			g.Disc = max(x.Disc, 1)
 		}
 		if g.Artist == "" {
 			g.Artist = g.AlbumArtist
@@ -776,9 +816,15 @@ func (ui *IpodUI) infoSearchView(e *albumEdit, album *View) *View {
 							return
 						}
 						n := e.apply(h.a)
-						e.status = fmt.Sprintf("From %s: %d of %d songs paired · check, then Save Changes", h.a.Source, n, len(e.songs))
+						e.status = fmt.Sprintf("From %s: %d of %d songs updated · check, then Save Changes", h.a.Source, n, len(e.songs))
+						if n < len(e.songs) {
+							e.status = fmt.Sprintf("From %s: only %d of %d songs updated · check unmatched songs before saving", h.a.Source, n, len(e.songs))
+						}
+						if len(h.a.Tracks) != len(e.songs) {
+							e.status = fmt.Sprintf("From %s: %d of %d songs updated · %d songs online; check the tracklist before saving", h.a.Source, n, len(e.songs), len(h.a.Tracks))
+						}
 						if len(h.a.Tracks) == 0 {
-							e.status = fmt.Sprintf("From %s: album artist, year and genre · check, then Save Changes", h.a.Source)
+							e.status = fmt.Sprintf("From %s: album details updated · check, then Save Changes", h.a.Source)
 						}
 						logMsg(fmt.Sprintf("Album Info: %q: %s %q by %q (%s), %d songs paired", e.al.Name, h.a.Source, h.a.Title, h.a.Artist, h.a.ID, n))
 						if ui.topScreen() == v && ui.keyboard == nil && ui.activeSheet() == nil {

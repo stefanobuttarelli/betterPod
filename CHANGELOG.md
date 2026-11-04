@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Album Info replaces wrong metadata with the selected online result.** All supplied fields replace existing values, including spelling and edition notes, individual artists or the album artist when a track credit is missing, and single-disc numbers. A complete tracklist with the same song count uses numbered order before old titles or lengths, so wrong YouTube chapter titles cannot shift the names. YouTube downloads keep their original order in their filenames, which also repairs numbers saved by an earlier correction. Incomplete or unnumbered lists still need individual matches; the result says when songs remain unmatched or counts differ. Existing tags are kept when the source has no value, and changes are written only with Save Changes.
+
 ## v1.1-beta.6 (2026-11-04)
 
 ### Fixed

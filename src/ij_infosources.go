@@ -477,8 +477,76 @@ func (a *albumInfo) detail() error {
 
 // ---- matching the songs ----
 
+// numberedTrackOrder returns the indexes in disc and track order, only
+// for a complete sequence: discs from 1, each with tracks from 1. Empty,
+// missing or repeated numbers cannot establish an album's order.
+func numberedTrackOrder(tracks []infoTrack) []int {
+	if len(tracks) == 0 {
+		return nil
+	}
+	order := make([]int, len(tracks))
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool {
+		a, b := tracks[order[i]], tracks[order[j]]
+		if max(a.Disc, 1) != max(b.Disc, 1) {
+			return max(a.Disc, 1) < max(b.Disc, 1)
+		}
+		return a.Num < b.Num
+	})
+	disc, num := 1, 1
+	for _, i := range order {
+		t := tracks[i]
+		d := max(t.Disc, 1)
+		if num > 1 && d == disc+1 && t.Num == 1 {
+			disc, num = d, 1
+		}
+		if d != disc || t.Num != num {
+			return nil
+		}
+		num++
+	}
+	return order
+}
+
+// matchNumberedTracks replaces a whole tracklist in its numbered order.
+// Existing titles and lengths may be wrong, especially after a YouTube
+// download. A single numbered list can also be split into the source's
+// discs. Nil means that a complete order could not be established.
+func matchNumberedTracks(ours []songTags, theirs []infoTrack) []int {
+	if len(ours) != len(theirs) {
+		return nil
+	}
+	to := numberedTrackOrder(theirs)
+	if to == nil {
+		return nil
+	}
+	local := make([]infoTrack, len(ours))
+	for i, t := range ours {
+		local[i] = infoTrack{Disc: t.Disc, Num: t.Track}
+	}
+	from := numberedTrackOrder(local)
+	if from == nil {
+		// Globally numbered tracks still have an order when the old
+		// disc tags are wrong (for example, every song says disc 2).
+		for i := range local {
+			local[i].Disc = 1
+		}
+		from = numberedTrackOrder(local)
+	}
+	if from == nil {
+		return nil
+	}
+	m := make([]int, len(ours))
+	for i, j := range from {
+		m[j] = to[i]
+	}
+	return m
+}
+
 // matchTracks pairs the album's songs with the result's, only where it's
-// sure, since the result's titles and numbers go into the files:
+// sure, when a complete numbered tracklist could not be paired:
 //
 //  1. the same title (an edition note aside);
 //  2. the same disc and number, when the lengths agree (within 5 s), or
