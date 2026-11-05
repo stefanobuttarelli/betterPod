@@ -1,0 +1,255 @@
+mod app;
+mod app_maintenance;
+pub use betterpod_rust::files;
+pub use betterpod_rust::{
+    art, audio, bluetooth, games, input, library, pcm, platform, playlists, puzzles, render,
+    storage, timing,
+};
+pub use betterpod_rust::{curation, saver};
+pub use betterpod_rust::{downloads, metadata, online, podcasts};
+pub use betterpod_rust::{maintenance, updater};
+pub use betterpod_rust::{share, video, weather};
+
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("betterPod Rust: {error}");
+        std::process::exit(1);
+    }
+}
+fn env_path(name: &str, default: impl Into<PathBuf>) -> PathBuf {
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default.into())
+}
+fn run() -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let assets = env_path(
+        "BETTERPOD_RUST_ASSETS_DIR",
+        if cwd.join("assets").is_dir() {
+            cwd.join("assets")
+        } else {
+            cwd.join("port/betterpod/assets")
+        },
+    );
+    let default_data = env_path("BETTERPOD_RUST_DATA_DIR", cwd.join("build/rust/local-conf"));
+    let bootstrap = env_path("BETTERPOD_RUST_BOOTSTRAP_DIR", default_data.clone());
+    let default_music = env_path("BETTERPOD_RUST_MUSIC_DIR", cwd.join("music"));
+    let (mut music, mut data) =
+        maintenance::resolve_paths(&bootstrap, &default_music, &default_data);
+    let import = std::env::var_os("BETTERPOD_RUST_IMPORT_CACHE").map(PathBuf::from);
+    let exit_after = std::env::var("BETTERPOD_RUST_EXIT_AFTER_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok());
+    let benchmark = std::env::var("BETTERPOD_RUST_BENCHMARK").map_or(false, |s| s == "1");
+    let screenshot = std::env::var_os("BETTERPOD_RUST_SCREENSHOT").map(PathBuf::from);
+    let target = std::env::var("BETTERPOD_RUST_FPS")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(60.0)
+        .clamp(15.0, 120.0);
+    eprintln!(
+        "betterPod Rust {} / independent experimental app",
+        env!("CARGO_PKG_VERSION")
+    );
+    eprintln!("Music: {} / data: {}", music.display(), data.display());
+    let sdl = sdl2::init()?;
+    let video = sdl.video()?;
+    let audio_subsystem = sdl.audio()?;
+    platform::install_signal_handlers();
+    let attr = video.gl_attr();
+    attr.set_double_buffer(true);
+    attr.set_depth_size(0);
+    attr.set_stencil_size(0);
+    if cfg!(target_os = "macos") {
+        attr.set_context_profile(sdl2::video::GLProfile::Core);
+        attr.set_context_version(3, 2);
+    } else {
+        attr.set_context_profile(sdl2::video::GLProfile::GLES);
+        attr.set_context_version(2, 0);
+    }
+    let mut builder = video.window("betterPod Rust", 640, 480);
+    builder.opengl().position_centered();
+    if cfg!(target_os = "linux")
+        && std::env::var("BETTERPOD_RUST_FULLSCREEN").map_or(false, |s| s == "1")
+    {
+        builder.fullscreen_desktop();
+    }
+    let window = builder.build().map_err(|e| e.to_string())?;
+    let context = window.gl_create_context()?;
+    // SDL's macOS display-link can wait indefinitely when a test window is
+    // occluded or the display sleeps. Keep local Mac pacing on our own clock.
+    let request_vsync =
+        std::env::var("BETTERPOD_RUST_VSYNC").map_or(!cfg!(target_os = "macos"), |s| s != "0");
+    let interval = if request_vsync {
+        sdl2::video::SwapInterval::VSync
+    } else {
+        sdl2::video::SwapInterval::Immediate
+    };
+    let vsync = request_vsync && video.gl_set_swap_interval(interval).is_ok();
+    if !request_vsync {
+        video.gl_set_swap_interval(interval)?;
+    }
+    let (width, height) = window.drawable_size();
+    let mut renderer = render::Renderer::new(
+        &video,
+        &assets.join("ui_font.ttf"),
+        width as i32,
+        height as i32,
+    )?;
+    eprintln!(
+        "Renderer: {} / swap interval accepted: {vsync} / nominal target: {target}",
+        renderer.backend
+    );
+    let mut input = input::Input::new(&sdl)?;
+    let installation = env_path("BETTERPOD_RUST_INSTALLATION", cwd.parent().unwrap_or(&cwd));
+    let stable = installation.join("betterpod");
+    let mut protected = Vec::new();
+    if stable.join("betterpod").is_file() {
+        protected.push(stable);
+    }
+    if let Some(path) = import.as_ref().and_then(|p| p.parent()) {
+        protected.push(path.to_path_buf());
+    }
+    if let Some(path) = std::env::var_os("BETTERPOD_RUST_PROTECTED_DATA") {
+        protected.push(path.into());
+    }
+    maintenance::validate_private_data(&bootstrap, &data, &protected)?;
+    std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
+    let update_config = updater::Config {
+        installation,
+        current_version: env!("CARGO_PKG_VERSION").into(),
+        feed: std::env::var("BETTERPOD_RUST_UPDATE_FEED").ok(),
+    };
+    if updater::recover_installation_if_needed(&update_config)? {
+        eprintln!("Recovered an interrupted Rust update; reopen the app before playback");
+        return Ok(());
+    }
+    let started = Instant::now();
+    let mut previous = started;
+    let mut last_present = started;
+    let mut clock = timing::FrameClock::new(target);
+    let mut metrics = if benchmark {
+        Some(timing::Metrics::new())
+    } else {
+        None
+    };
+    let mut frame_count = 0u64;
+    let mut black_shown = false;
+    loop {
+        let mut app = app::App::new(
+            music.clone(),
+            data.clone(),
+            assets.clone(),
+            import.clone(),
+            &renderer,
+        )?;
+        app.install_maintenance(app_maintenance::Controller::new(
+            maintenance::Config {
+                bootstrap: bootstrap.clone(),
+                music: music.clone(),
+                data: data.clone(),
+                protected: protected.clone(),
+            },
+            update_config.clone(),
+        )?);
+        while app.running && !platform::quit_requested() {
+            let frame = Instant::now();
+            let dt = frame.duration_since(previous).as_secs_f32().min(0.1);
+            previous = frame;
+            for action in input.poll() {
+                app.handle(action);
+            }
+            let elapsed = started.elapsed().as_secs_f64();
+            if benchmark {
+                app.benchmark(elapsed);
+            }
+            app.tick(dt, &renderer);
+            if let Some(limit) = exit_after {
+                if elapsed >= limit {
+                    app.running = false;
+                }
+            }
+            if app.screen_off {
+                if !black_shown {
+                    renderer.begin(render::BLACK);
+                    renderer.finish();
+                    window.gl_swap_window();
+                    black_shown = true;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+                clock.reset();
+                continue;
+            }
+            black_shown = false;
+            app.draw(&mut renderer, elapsed);
+            renderer.finish();
+            if !app.running {
+                if let Some(path) = &screenshot {
+                    renderer.screenshot(path)?;
+                }
+            }
+            let present = Instant::now();
+            window.gl_swap_window();
+            let completed = Instant::now();
+            frame_count += 1;
+            if let Some(metrics) = &mut metrics {
+                let snap = &app.audio_snapshot;
+                metrics.push(timing::FrameSample {
+                    phase: app.phase,
+                    elapsed,
+                    work_ms: completed.duration_since(frame).as_secs_f64() * 1000.0,
+                    present_ms: completed.duration_since(present).as_secs_f64() * 1000.0,
+                    gap_ms: completed.duration_since(last_present).as_secs_f64() * 1000.0,
+                    playing: snap.playing,
+                    position: snap.position,
+                    audio: app.audio_telemetry(),
+                });
+            }
+            last_present = completed;
+            clock.wait(completed);
+        }
+        let request = app.maintenance_request.take();
+        app.shutdown(&renderer)?;
+        // Drop joins all clients and Store before any filesystem mutation starts.
+        drop(app);
+        let Some(request) = request else { break };
+        if platform::quit_requested() {
+            break;
+        }
+        match app_maintenance::run(request, &mut renderer, &mut input, &window) {
+            Ok(true) => {
+                eprintln!("Update complete; reopen betterPod Rust to run the new binary");
+                break;
+            }
+            Ok(false) => {}
+            Err(error) => eprintln!("Maintenance: {error}"),
+        }
+        (music, data) = maintenance::resolve_paths(&bootstrap, &default_music, &default_data);
+        clock.reset();
+        previous = Instant::now();
+        last_present = previous;
+        black_shown = false;
+    }
+    if let Some(metrics) = &metrics {
+        let path = env_path("BETTERPOD_RUST_METRICS", data.join("frames.csv"));
+        metrics.save(&path)?;
+        eprintln!(
+            "Metrics: {} samples written to {}",
+            metrics.samples.len(),
+            path.display()
+        );
+    }
+    eprintln!(
+        "Clean exit: {frame_count} frames, {:.3}s",
+        started.elapsed().as_secs_f64()
+    );
+    drop(renderer);
+    drop(context);
+    drop(window);
+    drop(audio_subsystem);
+    drop(sdl);
+    Ok(())
+}
