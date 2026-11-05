@@ -32,6 +32,7 @@ func installCrashHandler() {
 		}
 
 		// Re-raise the signal with default handler to get normal crash behavior
+		closeKnulliIdle()
 		signal.Reset(sig.(syscall.Signal))
 		syscall.Kill(syscall.Getpid(), sig.(syscall.Signal))
 	}()

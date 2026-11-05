@@ -80,6 +80,7 @@ func watchQuitSignals() {
 		app.savePlaybackState()
 		restoreBrightness()
 		app.restoreCPUGovernor()
+		closeKnulliIdle()
 		os.Exit(0)
 	})
 }

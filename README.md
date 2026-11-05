@@ -71,6 +71,7 @@ The interface is the same on both. What differs is listed in [Features by system
   - wired and Bluetooth media buttons work, even in Hold;
   - unplugging pauses the music, like on an iPod;
   - a Bluetooth icon shows in the status bar.
+- **Playback through idle on Knulli.** Music, Listen and videos keep the system's idle battery saver from muting or suspending playback. Its automatic idle settings apply again when playback is paused or stopped. MENU can still turn the screen off while music plays.
 - **The time in the header while you play:** Show the Time in a game's START menu.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
