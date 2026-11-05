@@ -66,6 +66,7 @@
   - unplugging pauses the music, like on an iPod;
   - a Bluetooth icon shows in the status bar.
 - **Playback through idle on Knulli.** Music, Listen and videos keep the system's idle battery saver from muting or suspending playback. Its automatic idle settings apply again when playback is paused or stopped. MENU can still turn the screen off while music plays.
+- **Steady UI pacing with audio headroom.** Animations target 30 fps using whole-loop deadlines. Artwork loads in background workers, preference changes are saved in batches, and hidden Cover Flow layers are skipped. Audio keeps its native sample rate, float mixing and existing buffers. [On-device performance measurements](docs/performance.md).
 - **The time in the header while you play:** Show the Time in a game's START menu.
 - **Hold switch.** SELECT locks the controls and dims the screen while the music keeps playing.
 - **Light, dark or automatic theme**, with dark from 20:00 to 7:00.
@@ -259,6 +260,7 @@ Advanced switches are environment variables. Uncomment them in `betterPod.sh`:
 | `BETTERPOD_PERF=1` | Log frame timings every second (for reporting stutter) |
 | `BETTERPOD_VSYNC=0` | Disable vertical sync |
 | `BETTERPOD_CLASSIC_UI=1` | Use the classic list interface |
+| `BETTERPOD_GO_DRAW=1` | Use the Go pixel loops instead of the default C renderer |
 
 The log is written to `betterpod/betterpod.log`.
 

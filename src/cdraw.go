@@ -5,16 +5,16 @@ package main
 */
 import "C"
 
-// cdraw.go provides optional C implementations of pixel loops. Unit tests
-// compare their output with the Go implementations. BETTERPOD_C_DRAW=1
-// enables them; BETTERPOD_GO_DRAW=1 keeps the Go implementations.
+// cdraw.go provides the C pixel loops used by default on Knulli. Unit tests
+// compare their output with the Go implementations. BETTERPOD_C_DRAW=0 or
+// BETTERPOD_GO_DRAW=1 selects the Go fallback.
 
 import (
 	"image"
 	"unsafe"
 )
 
-var cDraw = envGet("BETTERPOD_GO_DRAW") != "1" && envGet("BETTERPOD_C_DRAW") == "1"
+var cDraw = envGet("BETTERPOD_GO_DRAW") != "1" && envGet("BETTERPOD_C_DRAW") != "0"
 
 func pixPtr(img *image.RGBA, off int) *C.uint8_t {
 	return (*C.uint8_t)(unsafe.Pointer(&img.Pix[off]))

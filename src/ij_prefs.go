@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 )
 
 type ipodPrefs struct {
@@ -28,7 +29,10 @@ type ipodPrefs struct {
 	GameClock   []string `json:"gameClock,omitempty"`   // the games that show the time in the header
 }
 
-func ipodPrefsPath() string { return dataPath("ipodjs_settings.json") }
+const ipodPrefsFile = "ipodjs_settings.json"
+
+// Saving resolves a path without touching the filesystem on each key press.
+func ipodPrefsPath() string { return filepath.Join(dataDir(), ipodPrefsFile) }
 
 func (ui *IpodUI) loadPrefs() {
 	data, err := os.ReadFile(ipodPrefsPath())
@@ -103,5 +107,5 @@ func (ui *IpodUI) savePrefs() {
 	data, _ := json.Marshal(ipodPrefs{Volume: ui.volume, ShuffleMode: ui.shuffleMode, RepeatMode: rep, HoldBright: hold.level, Theme: themeMode, YouTube: ytEnabled, NoPodcasts: !podsInMenu, Effects: effectsMode,
 		SaverAfter: saverAfter, SaverDim: saverDim, SaverLevel: saverLevel,
 		SaverStyle: saverStyle, SaverEffect: saverEffect, SaverColors: saverColors, Apple: appleMode, ShareName: shareName, Beta: betaUpdates, GameClock: gameClockList()})
-	_ = writeFileAtomic(ipodPrefsPath(), data)
+	queuePrefs(data)
 }

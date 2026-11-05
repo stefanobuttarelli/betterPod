@@ -102,6 +102,10 @@ func readMusicDirPointer() string {
 
 // setMusicRoot makes dir the music folder and remembers it.
 func setMusicRoot(dir string) error {
+	return withPrefsPathChange(func() error { return setMusicRootNow(dir) })
+}
+
+func setMusicRootNow(dir string) error {
 	dir = filepath.Clean(dir)
 	p := musicPointerPath()
 	if p == "" {
@@ -689,6 +693,9 @@ func (j *moveJob) switchTo(ui *IpodUI) error {
 	// deleted): copied here first, then again on the UI goroutine what
 	// changed meanwhile, so nothing is written while it switches
 	if j.dataRel != "" {
+		if err := flushPrefs(); err != nil {
+			return err
+		}
 		from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
 		if err := copyItems(from, to, folderItems(from), false, nil); err != nil {
 			return err
@@ -698,6 +705,10 @@ func (j *moveJob) switchTo(ui *IpodUI) error {
 	ui.postSure(func() {
 		if j.dataRel != "" {
 			ui.savePrefs()
+			if err := flushPrefs(); err != nil {
+				res <- err
+				return
+			}
 			from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
 			if err := copyItems(from, to, folderItems(from), true, nil); err != nil {
 				res <- err
@@ -708,7 +719,11 @@ func (j *moveJob) switchTo(ui *IpodUI) error {
 				return
 			}
 		}
-		res <- setMusicRoot(j.to)
+		err := setMusicRoot(j.to)
+		if err == nil {
+			ui.artc.clear()
+		}
+		res <- err
 	})
 	return <-res
 }
@@ -1041,6 +1056,7 @@ func (ui *IpodUI) askMusicMove(c musicCard) {
 					ui.showToast("Couldn't: " + shortErr(err))
 					return
 				}
+				ui.artc.clear()
 				ui.clearNowPlaying()
 				ui.rescanLibrary()
 				ui.showToast("Music folder: " + c.Name)

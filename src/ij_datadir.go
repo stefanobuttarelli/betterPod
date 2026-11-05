@@ -235,10 +235,13 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 		})
 	}
 	go func() {
-		if replace {
+		err := flushPrefs()
+		if err == nil && replace {
 			removeDatabase(dir)
 		}
-		err := copyDatabase(old, dir, false, progress)
+		if err == nil {
+			err = copyDatabase(old, dir, false, progress)
+		}
 		if err == nil {
 			// what the app saved meanwhile (artwork, playback position):
 			// here, not on the UI goroutine (it's I/O)
@@ -246,7 +249,7 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 		}
 		ui.postSure(func() {
 			if err == nil {
-				err = setDataDir(dir)
+				err = switchDataDirWithPrefs(old, dir)
 			}
 			if err != nil {
 				logMsg("DATABASE: move failed: " + err.Error())
@@ -255,12 +258,16 @@ func (ui *IpodUI) moveDataDir(dir string, replace bool) {
 				return
 			}
 			rebaseArtPaths(app.Library)
+			ui.artc.clear()
+			if lib := app.Library; lib != nil {
+				go ui.prefetchArt(lib) // the library pointer did not change
+			}
 			dbStatus = "Database moved to " + dir
 			ui.refreshBuilt()
 			go func() {
 				// what was saved in the old folder until the switch; the
 				// old copy goes only if this worked, and only what was copied
-				err := copyDatabase(old, dir, true, nil)
+				err := copyDatabaseAfterSwitch(old, dir)
 				if app.Library != nil {
 					if err := app.saveLibraryJSON(); err != nil {
 						logMsg("DATABASE: " + err.Error())
@@ -296,6 +303,7 @@ func (ui *IpodUI) useDataDir(dir string) {
 		return
 	}
 	logMsg("DATABASE: using " + dir)
+	ui.artc.clear() // queued covers still refer to the previous database
 	dbBusy, dbStatus = true, "Loading the library…"
 	ui.backToDatabase()
 	ui.refreshBuilt()
@@ -314,12 +322,16 @@ func (ui *IpodUI) useDataDir(dir string) {
 		err := app.loadLibraryJSON()
 		ui.post(func() {
 			dbBusy = false
+			ui.artc.clear()
 			if err != nil {
 				logMsg("DATABASE: " + err.Error() + ", rescanning")
 				dbStatus = "No usable library there: rescanning"
 				ui.rescanLibrary()
 			} else {
 				dbStatus = "Using the database in " + dir
+				if lib := app.Library; lib != nil {
+					go ui.prefetchArt(lib)
+				}
 			}
 			ui.kb.initialized = false
 			ui.refreshBuilt()

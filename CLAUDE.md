@@ -16,7 +16,7 @@ betterPod is an iPod-style music player for Anbernic handhelds running Knulli on
 - **Hardware:** Allwinner H700, four Cortex-A53 cores, 1 GB RAM, aarch64, 640×480 display. Go can use all cores.
 - **Launch:** `port/betterPod.sh` → `/userdata/roms/ports/betterPod.sh`; application files in `ports/betterpod/`, binary `betterpod`. PortMaster's `control.txt` supplies controller mappings.
 - **Paths:** `/userdata/music` (the network music share), otherwise `betterpod/music`; database defaults to `betterpod/conf`, movable in Settings → Database; additional cards under `/media`. App log `betterpod/betterpod.log`, launcher output `betterpod/log.txt`.
-- **Video:** system SDL2 with vsync. C pixel loops remain an optional optimization (`BETTERPOD_C_DRAW=1`); Go drawing is the default. Settings → Effects offers Full (default) and Light.
+- **Video:** system SDL2 with vsync. C pixel loops are the default, verified against the Go implementations; `BETTERPOD_GO_DRAW=1` or `BETTERPOD_C_DRAW=0` selects the fallback. UI animation uses 30 fps monotonic whole-loop deadlines, including input/callback work. Idle polling remains 25 ms; screen-off polling 200 ms; video can request an earlier audio-clock deadline. Settings → Effects offers Full (default) and Light.
 - **Audio:** bundled SDL_mixer, patched for ALAC, AAC and 24-bit FLAC; float mixing and native sample-rate switching. Volume uses PipeWire's default sink through `pactl`, followed with `pactl subscribe`. Bluetooth uses `bluetoothctl` and PipeWire.
 - **Controls:** SDL game controller and PortMaster mapping; sticks act as arrows or a wheel (`BETTERPOD_STICK_WHEEL=1`). MENU tap turns the screen off; hold 5 seconds quits. System volume and POWER remain owned by Knulli. Wired/Bluetooth headphone buttons are read from input devices.
 - **Backlight:** `/dev/disp` ioctl, then system brightness tools, then sysfs. The launcher restores brightness and governors after the app exits.
@@ -30,6 +30,14 @@ The binary is built from the explicit `src/*.go` file list, because `main.go` an
 - `tools/docker-build.sh` builds for `aarch64-linux-gnu.2.28`, verifies ELF dependencies and GLIBC requirements, and writes `build/betterpod`, `dist/betterpod-knulli.zip` and the old KnulliPod bridge package.
 - `tools/build.sh` is the native build; it needs `SDL2_SYSROOT`, Go and Zig (`CC` can override the compiler).
 - `tools/unittest.sh` runs `tools/unittest/*_test.go` natively against Debian SDL2 in Docker. Test files carry `//go:build ignore` and are copied into `src` by the harness. Tests cover playback, streaming, metadata edits, updates, database/file safety, drawing and the idle guard.
+
+## UI persistence and artwork
+
+`savePrefs` makes an immutable snapshot on the UI goroutine. A single lazy writer coalesces changes (250 ms debounce, at most two seconds during a burst) and keeps atomic Write/Sync/Rename. `flushPrefs` is a durability barrier for folder transitions; `closePrefs` flushes and stops the worker before exit/Exec. `withPrefsPathChange` serializes snapshots and database/music root changes. Do not copy stale preference files over a newly active database after switching.
+
+Artwork frame lookups are RAM-only. Bounded foreground workers do disk reads, decoding and resizing, with two decoder slots and foreground priority. Epochs reject stale results after clear, replacement and database changes. Common default artwork sizes are prepared before the UI loop. Hidden Cover Flow skips rasterization while its state still advances.
+
+`BETTERPOD_PERF=1` distinguishes drawn/presented/unchanged frames and records full-loop work plus continuous-animation gaps over 50 ms. These are diagnostics, not proof of physical LCD scanout timing. Benchmark percentiles and PipeWire error deltas together; preserve audio buffers/quality when optimizing the UI.
 
 ## Software Update and releases
 
@@ -66,7 +74,7 @@ An online result replaces every supplied field, including existing titles, numbe
 | `src/main.c`, `src/audio.c` | SDL2 input/display and SDL_mixer playback |
 | `src/knulli.go`, `src/knulli_idle.go` | Knulli hardware helpers and playback idle protection |
 | `src/compat.go` | Compatibility with existing Knulli data and launchers |
-| `src/cdraw.*`, `src/ij_effects.go` | Optional C pixel loops and Full/Light effects |
+| `src/cdraw.*`, `src/ij_effects.go` | C pixel loops and Go fallback and Full/Light effects |
 | `port/` | Launcher, assets, fonts and bundled libraries |
 | `tools/` | Build, tests, release tooling and historical recovery utilities |
 | `release/` | Knulli packages and stable/beta manifests |

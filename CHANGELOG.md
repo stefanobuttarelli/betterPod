@@ -14,6 +14,10 @@ betterPod 1.1 is the stable release of the eight 1.1 betas, dedicated to Knulli 
 - **Album Info replaces wrong metadata with the selected online result.** Complete tracklists match by numbered order before old titles; downloaded YouTube albums can recover their original order from filenames. Partial matches are reported. Edited fields stay visible above the keyboard, and Save Changes uses the normal blue selection.
 
 ### Changed
+- **UI animations use a steady 30 fps target with audio headroom.** Whole-loop deadlines include input, callbacks and drawing; late frames skip missed slots instead of producing catch-up bursts. Video timing still follows its audio clock.
+- **Volume changes no longer wait for SD synchronization.** Preference writes are coalesced in a background worker and flushed on exit, updates and database changes.
+- **Album artwork loads outside the drawing loop.** Bounded workers read and resize covers; stale results are discarded after artwork or database changes. Common placeholders are ready before browsing starts.
+- **Drawing uses the faster C pixel loops,** verified against the Go output; Cover Flow also skips rendering beneath settled opaque pages. Full effects and audio quality are preserved.
 - **Knulli is the only supported console platform.** Support for Miyoo handhelds and Onion OS has ended. Removed their hardware layer, launchers, packages, update manifests, build tools and restrictions from the shared player and interface. Documentation and tests now describe Knulli.
 - **Advanced options use `BETTERPOD_*`.** Existing Knulli launchers and saved databases remain compatible during an update. The app log is now `betterpod.log`.
 

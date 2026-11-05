@@ -65,6 +65,10 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/bette
 
 **Brick:** left/right move the paddle, and A launches the ball.
 
+## UI performance
+
+Animations target 30 fps with deadlines that include input, rendering and presentation. Artwork loads in background workers. Repeated preference changes are saved together, with a final flush on exit and database changes. The audio format, sample rate and buffers are unchanged.
+
 ## Audio quality
 
 - Each track plays at its original sample rate (44.1, 48, 96, 192 kHz…) in 32-bit float, with no conversion in the app. 24-bit FLAC and ALAC reach the system mixer untouched.
@@ -97,6 +101,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/bette
 - `BETTERPOD_PERF=1`: log the drawing times every second (useful if something stutters).
 - `BETTERPOD_VSYNC=0`: disable vertical sync.
 - `BETTERPOD_CLASSIC_UI=1`: use the classic list interface.
+- `BETTERPOD_GO_DRAW=1`: use Go drawing instead of the default C pixel loops.
 
 ## Notes
 

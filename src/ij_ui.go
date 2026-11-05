@@ -80,8 +80,8 @@ type IpodUI struct {
 // are uploaded (refreshFramebufferRows).
 //
 
-// BETTERPOD_PERF=1 logs frame timings once a second (render, present,
-// late and unchanged frames).
+// BETTERPOD_PERF=1 logs draw/presentation counts, drawing cost, whole-loop
+// work and continuous-animation presentation gaps over 50 ms each second.
 var perfLog = envGet("BETTERPOD_PERF") != ""
 var (
 	perfFrames         int
@@ -114,6 +114,7 @@ func newIpodUI(app *BetterPod) *IpodUI {
 	}
 	ui.loadPrefs()
 	ui.updateTheme()
+	ui.prepareDefaultArt()
 	if v := initSystemVolume(); v >= 0 {
 		// the console volume is the player volume; SDL_mixer stays at 100%
 		// (the wheel and the console keys move the same value)
@@ -1051,12 +1052,22 @@ func fillRectClipped(dst *image.RGBA, x, y, w, h int, c Col, clip image.Rectangl
 	fillRect(dst, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), c)
 }
 
+// coverFlowCovered reports whether an opaque full-screen view is settled
+// over Cover Flow. Sliding views still expose the flow and need it drawn.
+func (ui *IpodUI) coverFlowCovered(now time.Time) bool {
+	cf := ui.cover
+	if cf == nil || len(ui.full) <= cf.fullBase || ui.fullX.Get(now) != 0 {
+		return false
+	}
+	v := ui.full[len(ui.full)-1]
+	return v.Kind == KindFull && !v.exiting && v.enter.Get(now) == 0 && v.hide.Get(now) == 0
+}
+
 func (ui *IpodUI) renderFrame(now time.Time) {
 	ui.frameNo++
 	marqueeActive = false
 	marqSyncMoving, marqSyncWake = false, time.Time{}
 	mini.marqOn = false
-	artSyncLeft = artSyncBudget
 	fb := ui.fb
 	// the screensaver covering the screen: nothing under it is drawn
 	if s := ui.saver; s != nil && !s.exiting && s.fade.Get(now) >= 1 {
@@ -1082,6 +1093,9 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		op := cf.fadeIn.Get(now)
 		if cf.exiting && !cf.fadeIn.Running() {
 			ui.cover = nil
+		} else if ui.coverFlowCovered(now) {
+			// Keep the hidden flow's state current without rasterizing it.
+			ui.advanceCoverFlowState(now)
 		} else {
 			// (no background: the header and the flow cover the layer)
 			l := newCanvasCached(&coverLayer, 640, 480)
@@ -1448,6 +1462,7 @@ func (ui *IpodUI) present() bool {
 
 func (ui *IpodUI) Run() {
 	app := ui.app
+	defer ui.artc.close()
 	if pf := envGet("BETTERPOD_PPROF"); pf != "" {
 		if f, err := os.Create(pf); err == nil {
 			pprof.StartCPUProfile(f)
@@ -1455,9 +1470,10 @@ func (ui *IpodUI) Run() {
 		}
 	}
 	vsync := displayVsync()
-	var perfPresent time.Duration
-	var perfLate, perfSkipped int
-	var lastFrame time.Time
+	var perfPresent, perfWork, perfWorkMax time.Duration
+	var perfGaps, perfSkipped, perfLoops int
+	var lastPresented time.Time
+	lastPresentedAnimated := false
 	lastMinute := -1
 	lastState := PlayState(-1)
 	lastMiniHas := false // (the Now Playing block was there)
@@ -1469,7 +1485,9 @@ func (ui *IpodUI) Run() {
 	wasAnim := false    // an animation was running at the last frame
 	blackShown := false // the screen off's black frame is on screen
 	var prefetched *Library
+	var pacer framePacer
 	for app.Running {
+		loopStarted := time.Now()
 		// thumbnails of a newly loaded library are prefetched
 		if lib := app.Library; lib != nil && lib != prefetched && !app.LibScanRunning && len(lib.Albums) > 0 {
 			prefetched = lib
@@ -1617,12 +1635,14 @@ func (ui *IpodUI) Run() {
 		}
 		// locked (screen off): nothing moves, so nothing is animated
 		anim := !app.Locked && ui.animating(now)
+		if !anim {
+			lastPresentedAnimated = false // idle gaps are not animation gaps
+		}
 		// the frame after an animation ends is drawn too: its last frame
 		// may have been drawn well before the end (a slow frame), and the
 		// screen would stay half-way (a view half slid in) until a key
 		ended := wasAnim && !anim
 		wasAnim = anim
-		presentBlocked := false
 		// Screen off: present the black frame once, rather than on each
 		// redraw requested by playback progress.
 		black := app.Locked
@@ -1641,8 +1661,6 @@ func (ui *IpodUI) Run() {
 			t1 := time.Now()
 			presented := ui.present()
 			tp := time.Since(t1)
-			// with vsync, a present that took a while waited for the display
-			presentBlocked = presented && vsync && tp > 3*time.Millisecond
 			if perfLog {
 				perfFrames++
 				perfTotal += t1.Sub(t0)
@@ -1650,47 +1668,53 @@ func (ui *IpodUI) Run() {
 				if d := time.Since(t0); d > perfMax {
 					perfMax = d
 				}
-				if anim && !lastFrame.IsZero() && t0.Sub(lastFrame) > 24*time.Millisecond && t0.Sub(lastFrame) < 200*time.Millisecond {
-					perfLate++
-				}
-				lastFrame = t0
-				if !presented {
+				if presented {
+					stamp := t1.Add(tp)
+					if anim && lastPresentedAnimated && stamp.Sub(lastPresented) > 50*time.Millisecond {
+						perfGaps++
+					}
+					lastPresented, lastPresentedAnimated = stamp, anim
+				} else {
 					perfSkipped++
 				}
-				if time.Since(perfStart) > time.Second {
-					logMsg(fmt.Sprintf("PERF: %d frames (%d unchanged), render %.1fms, present %.1fms avg, max %.1fms, late %d",
-						perfFrames, perfSkipped, float64(perfTotal.Microseconds())/1000/float64(perfFrames),
-						float64(perfPresent.Microseconds())/1000/float64(perfFrames), float64(perfMax.Microseconds())/1000, perfLate))
-					perfFrames, perfTotal, perfMax, perfStart = 0, 0, 0, time.Now()
-					perfPresent, perfSkipped, perfLate = 0, 0, 0
-				}
 			}
 		}
-		// frame pacing: ~60 fps while animating, 40 fps idle polling;
-		// the Ken Burns preview alone runs at 20 fps (30 while fading or
-		// scrolling a title)
-		frame := 16 * time.Millisecond
+		if perfLog {
+			work := time.Since(loopStarted)
+			perfLoops++
+			perfWork += work
+			perfWorkMax = max(perfWorkMax, work)
+			if time.Since(perfStart) > time.Second {
+				renderAvg, presentAvg := 0.0, 0.0
+				if perfFrames > 0 {
+					renderAvg = float64(perfTotal.Microseconds()) / 1000 / float64(perfFrames)
+					presentAvg = float64(perfPresent.Microseconds()) / 1000 / float64(perfFrames)
+				}
+				logMsg(fmt.Sprintf("PERF: %d drawn, %d presented (%d unchanged), render %.1fms avg, present %.1fms avg, draw max %.1fms, loop work %.1fms avg / %.1fms max, animated gaps>50ms %d",
+					perfFrames, perfFrames-perfSkipped, perfSkipped, renderAvg, presentAvg,
+					float64(perfMax.Microseconds())/1000, float64(perfWork.Microseconds())/1000/float64(perfLoops),
+					float64(perfWorkMax.Microseconds())/1000, perfGaps))
+				perfFrames, perfTotal, perfMax, perfStart = 0, 0, 0, time.Now()
+				perfPresent, perfSkipped, perfGaps = 0, 0, 0
+				perfWork, perfWorkMax, perfLoops = 0, 0, 0
+			}
+		}
+		// Poll idle controls promptly, and give continuous motion a regular
+		// 30 fps budget. The deadline includes input, callbacks and rendering.
+		frame := animatedFrameInterval
 		if app.Locked {
-			frame = 200 * time.Millisecond // screen off: poll slowly
-		} else if sv := ui.saver; anim && sv != nil && sv.viz != nil && !sv.exiting {
-			frame = 33 * time.Millisecond // the Visualizer: 30 frames a second
+			frame = 200 * time.Millisecond
 		} else if !anim {
 			frame = 25 * time.Millisecond
-		} else if ui.onlyKenBurns(now) {
-			frame = 50 * time.Millisecond // slow pan: fewer frames save battery
-			if !ui.kb.transStart.IsZero() || ui.listMarquee(now) || marqueeActive {
-				frame = 33 * time.Millisecond
-			}
 		}
-
-		if d, ok := ui.videoFrameWait(); ok && !app.Locked && d < frame {
-			frame = d // a video's next frame is due sooner
+		var videoDeadline time.Time
+		if d, ok := ui.videoFrameWait(); ok && !app.Locked {
+			// frameWait uses the audio position sampled during this tick.
+			// Subtract rendering time instead of adding it to the video's wait.
+			videoDeadline = now.Add(d)
 		}
-		if presentBlocked && frame == 16*time.Millisecond {
-			continue // vsync already paced this frame
-		}
-		if el := time.Since(now); el < frame {
-			time.Sleep(frame - el)
+		if d := pacer.delay(loopStarted, time.Now(), frame, videoDeadline); d > 0 {
+			time.Sleep(d)
 		}
 	}
 }

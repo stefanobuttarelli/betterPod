@@ -116,6 +116,10 @@ func dataDir() string {
 
 // setDataDir makes dir the database folder and remembers the choice.
 func setDataDir(dir string) error {
+	return withPrefsPathChange(func() error { return setDataDirAfterPrefs(dir) })
+}
+
+func setDataDirAfterPrefs(dir string) error {
 	dir = filepath.Clean(dir)
 	def := defaultDataDir()
 	ptr := filepath.Join(def, dataDirPointer)
@@ -137,6 +141,22 @@ func setDataDir(dir string) error {
 	dataDirMu.Unlock()
 	dataDirMissing = ""
 	return nil
+}
+
+// switchDataDirWithPrefs copies the latest preferences immediately before a
+// database move switches folders. Later saves can only target the destination.
+func switchDataDirWithPrefs(from, to string) error {
+	return withPrefsPathChange(func() error {
+		src := filepath.Join(from, ipodPrefsFile)
+		if _, err := os.Stat(src); err == nil {
+			if err := copyFile(src, filepath.Join(to, ipodPrefsFile)); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return setDataDirAfterPrefs(to)
+	})
 }
 
 // checkWritable tells whether the database could be written in dir. If dir
@@ -179,6 +199,19 @@ func hasDatabase(dir string) bool {
 // pass of a move, for what the app wrote while copying).
 func copyDatabase(src, dst string, onlyNewer bool, progress func(int)) error {
 	return copyItems(src, dst, dataItems, onlyNewer, progress)
+}
+
+// copyDatabaseAfterSwitch finishes a move without overwriting preferences
+// already saved in the destination. Their last old-folder snapshot was copied
+// under the switch barrier before the destination became current.
+func copyDatabaseAfterSwitch(src, dst string) error {
+	items := make([]string, 0, len(dataItems))
+	for _, item := range dataItems {
+		if item != ipodPrefsFile {
+			items = append(items, item)
+		}
+	}
+	return copyItems(src, dst, items, true, nil)
 }
 
 // copyItems: copyDatabase for the items named.

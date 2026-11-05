@@ -89,6 +89,10 @@ func (app *BetterPod) performClearAppData() {
 	dc.DrawStringAnchored("Clearing app data...", SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 0.5, 0.5)
 	app.triggerRefresh()
 
+	if err := closePrefs(); err != nil {
+		logMsg("Preferences before restart: " + err.Error())
+	}
+
 	// Delete library cache
 	if err := os.Remove(LIBRARY_JSON_PATH()); err != nil && !os.IsNotExist(err) {
 		logMsg(fmt.Sprintf("WARNING: Failed to remove library cache: %v", err))

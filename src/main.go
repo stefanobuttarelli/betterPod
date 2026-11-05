@@ -188,6 +188,7 @@ func createApp() *BetterPod {
 }
 
 func main() {
+	defer func() { _ = closePrefs() }()
 	initKnulliIdle()
 	defer closeKnulliIdle()
 
@@ -365,6 +366,10 @@ func main() {
 			sleepDur = 50 * time.Millisecond
 		}
 		time.Sleep(sleepDur)
+	}
+
+	if err := closePrefs(); err != nil {
+		logMsg("Preferences at exit: " + err.Error())
 	}
 
 	// Save playback state before exit

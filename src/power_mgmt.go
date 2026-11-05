@@ -61,6 +61,9 @@ func watchQuitSignals() {
 	// if the main loop can't get there in time
 	time.AfterFunc(3*time.Second, func() {
 		logMsg("Signal: the main loop didn't quit in 3 s, quitting here")
+		if err := closePrefs(); err != nil {
+			logMsg("Preferences during shutdown: " + err.Error())
+		}
 		app.savePlaybackState()
 		restoreBrightness()
 		app.restoreCPUGovernor()
