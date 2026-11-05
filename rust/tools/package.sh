@@ -14,6 +14,7 @@ for file in port/betterpod/LICENSE* port/betterpod/THIRD_PARTY_LICENSES.md; do
 done
 cp rust/README.md "$PKG/betterpod-rust/README.md"
 cp rust/VALIDATION.md "$PKG/betterpod-rust/VALIDATION.md"
+cp rust/PARITY.md "$PKG/betterpod-rust/PARITY.md"
 cp rust/THIRD_PARTY_NOTICES.txt "$PKG/betterpod-rust/"
 printf '{"application":"betterpod-rust"}\n' > "$PKG/betterpod-rust/.rust-app.json"
 cat > "$PKG/betterpod-rust/port.json" <<'JSON'

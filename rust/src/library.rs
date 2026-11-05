@@ -8,11 +8,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::storage::atomic_write;
 
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 6;
 const CACHE_NAME: &str = "library.json";
 const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ART_BYTES: usize = 16 * 1024 * 1024;
@@ -38,6 +38,8 @@ pub struct Track {
     pub lossless: bool,
     /// Private logical grouping, independent from physical music tags/folders.
     pub album_group: String,
+    /// True only for songs moved into another album, not its original songs.
+    pub added_album: bool,
     pub cover: Option<PathBuf>,
 }
 
@@ -57,12 +59,33 @@ pub struct Library {
     pub albums: Vec<Album>,
     pub artists: Vec<String>,
     pub scan_folders: Vec<ScanFolder>,
+    pub scan_stats: Option<ScanStatistics>,
 }
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScanFolder {
     pub path: PathBuf,
     pub tracks: usize,
+    pub other: usize,
     pub skipped: Option<String>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScanStatistics {
+    pub when_unix: u64,
+    pub took_seconds: f64,
+    pub files: usize,
+    pub audio_files: usize,
+    pub audio_bytes: u64,
+    pub by_format: BTreeMap<String, usize>,
+    pub skipped_formats: BTreeMap<String, usize>,
+}
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+struct InventoryCounts {
+    files: usize,
+    audio_bytes: u64,
+    skipped_formats: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -103,6 +126,8 @@ struct Inventory {
     override_digest: String,
     #[serde(default)]
     folders: Vec<ScanFolder>,
+    #[serde(default)]
+    counts: InventoryCounts,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -144,6 +169,7 @@ impl Library {
         data: &Path,
         import_cache: Option<&Path>,
     ) -> Result<Self, String> {
+        let started = Instant::now();
         let music = fs::canonicalize(music)
             .map_err(|e| format!("Open music folder {}: {e}", music.display()))?;
         if !music.is_dir() {
@@ -164,6 +190,7 @@ impl Library {
                 // Rebuild derived indices rather than trusting cached integer offsets.
                 let mut library = Self::from_tracks(cache.library.tracks);
                 library.scan_folders = inventory.folders;
+                library.scan_stats = cache.library.scan_stats;
                 return Ok(library);
             }
         }
@@ -210,6 +237,39 @@ impl Library {
         crate::curation::apply(&data, &mut tracks);
         let mut library = Self::from_tracks(tracks);
         library.scan_folders = inventory.folders.clone();
+        let mut by_format = BTreeMap::new();
+        for track in &library.tracks {
+            let extension = track
+                .path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let name = match extension.as_str() {
+                "m4a" | "mp4" => {
+                    if track.lossless {
+                        "ALAC".to_owned()
+                    } else {
+                        "AAC".to_owned()
+                    }
+                }
+                "aif" | "aiff" => "AIFF".to_owned(),
+                _ => extension.to_ascii_uppercase(),
+            };
+            *by_format.entry(name).or_default() += 1;
+        }
+        library.scan_stats = Some(ScanStatistics {
+            when_unix: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            took_seconds: started.elapsed().as_secs_f64(),
+            files: inventory.counts.files,
+            audio_files: library.tracks.len(),
+            audio_bytes: inventory.counts.audio_bytes,
+            by_format,
+            skipped_formats: inventory.counts.skipped_formats.clone(),
+        });
         let cache = Cache {
             version: CACHE_VERSION,
             root: music,
@@ -294,6 +354,7 @@ impl Library {
                     .map(|(path, tracks)| ScanFolder {
                         path,
                         tracks,
+                        other: 0,
                         skipped: None,
                     })
                     .collect()
@@ -301,6 +362,7 @@ impl Library {
             tracks,
             albums,
             artists: artists.into_values().collect(),
+            scan_stats: None,
         }
     }
 }
@@ -324,6 +386,7 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
     }
     let mut visited = HashSet::new();
     let mut folders = Vec::new();
+    let mut counts = InventoryCounts::default();
     while let Some(dir) = stack.pop() {
         if !visited.insert(dir.clone()) {
             continue;
@@ -334,6 +397,7 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
                 folders.push(ScanFolder {
                     path: dir.clone(),
                     tracks: 0,
+                    other: 0,
                     skipped: Some(format!("Unreadable: {error}")),
                 });
                 eprintln!("Skip unreadable music folder {}: {error}", dir.display());
@@ -345,6 +409,7 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
         folders.push(ScanFolder {
             path: dir.clone(),
             tracks: 0,
+            other: 0,
             skipped: None,
         });
         for entry in entries {
@@ -371,6 +436,7 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
                     folders.push(ScanFolder {
                         path,
                         tracks: 0,
+                        other: 0,
                         skipped: Some(reason.into()),
                     });
                 }
@@ -381,6 +447,7 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
                 folders.push(ScanFolder {
                     path,
                     tracks: 0,
+                    other: 0,
                     skipped: Some("Symlink not followed".into()),
                 });
                 continue;
@@ -396,19 +463,32 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
                 Ok(metadata) => metadata,
                 Err(_) => continue,
             };
+            counts.files += 1;
             if audio_path(&path) {
                 folders[folder_index].tracks += 1;
+                counts.audio_bytes = counts.audio_bytes.saturating_add(metadata.len());
                 music.push(Fingerprint::from_metadata(path, &metadata));
                 if music.len() > MAX_TRACKS {
                     return Err(format!("Library exceeds {MAX_TRACKS} tracks"));
                 }
-            } else if let Some(priority) = cover_priority(&name) {
-                covers.push(Fingerprint::from_metadata(path.clone(), &metadata));
-                let cover = folder_covers
-                    .entry(dir.clone())
-                    .or_insert_with(|| (priority, path.clone()));
-                if priority < cover.0 || (priority == cover.0 && path < cover.1) {
-                    *cover = (priority, path);
+            } else {
+                folders[folder_index].other += 1;
+                let extension = path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if let Some(format) = unsupported_format(&extension) {
+                    *counts.skipped_formats.entry(format.into()).or_default() += 1;
+                }
+                if let Some(priority) = cover_priority(&name) {
+                    covers.push(Fingerprint::from_metadata(path.clone(), &metadata));
+                    let cover = folder_covers
+                        .entry(dir.clone())
+                        .or_insert_with(|| (priority, path.clone()));
+                    if priority < cover.0 || (priority == cover.0 && path < cover.1) {
+                        *cover = (priority, path);
+                    }
                 }
             }
         }
@@ -442,9 +522,22 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
             overrides,
             override_digest,
             folders,
+            counts,
         },
         folder_covers,
     ))
+}
+
+fn unsupported_format(extension: &str) -> Option<&'static str> {
+    match extension {
+        "wma" => Some("WMA"),
+        "dsf" | "dff" => Some("DSD"),
+        "mpc" => Some("Musepack"),
+        "ac3" => Some("AC3"),
+        "mka" => Some("MKA"),
+        "amr" => Some("AMR"),
+        _ => None,
+    }
 }
 
 fn hidden_or_system(name: &str) -> bool {
@@ -755,7 +848,10 @@ fn album_dir(path: &Path) -> PathBuf {
     }
 }
 
-fn album_key(track: &Track) -> String {
+/// The original album identity: private logical override, or physical folder
+/// (coalescing disc folders) and album title. Playback shuffle uses the same
+/// identity as the library instead of merging equal titles across folders.
+pub fn album_key(track: &Track) -> String {
     if !track.album_group.is_empty() {
         return track.album_group.clone();
     }
@@ -859,6 +955,58 @@ mod tests {
     fn dummy(path: &Path) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"not audio; test metadata fallback").unwrap();
+    }
+
+    #[test]
+    fn scan_statistics_count_other_files_and_survive_warm_cache() {
+        let root = temporary("scan-statistics");
+        let music = root.join("music");
+        let data = root.join("rust");
+        fs::create_dir_all(music.join("Only/Child")).unwrap();
+        fs::create_dir_all(music.join("Empty")).unwrap();
+        fs::create_dir_all(music.join("Other")).unwrap();
+        wave(&music.join("song.wav"));
+        wave(&music.join("Only/Child/second.wav"));
+        fs::write(music.join("Other/notes.txt"), b"notes").unwrap();
+        fs::write(music.join("Other/song.wma"), b"unsupported").unwrap();
+        fs::write(music.join("Other/cover.png"), b"cover fallback").unwrap();
+        fs::write(music.join(".ignored.mp3"), b"hidden").unwrap();
+        let library = Library::load_or_scan(&music, &data, None).unwrap();
+        let stats = library.scan_stats.as_ref().unwrap();
+        assert!(stats.when_unix > 0);
+        assert!(stats.took_seconds >= 0.0);
+        assert_eq!(stats.files, 5);
+        assert_eq!(stats.audio_files, 2);
+        assert_eq!(
+            stats.audio_bytes,
+            fs::metadata(music.join("song.wav")).unwrap().len()
+                + fs::metadata(music.join("Only/Child/second.wav"))
+                    .unwrap()
+                    .len()
+        );
+        assert_eq!(stats.by_format.get("WAV"), Some(&2));
+        assert_eq!(stats.skipped_formats.get("WMA"), Some(&1));
+        let other = library
+            .scan_folders
+            .iter()
+            .find(|f| f.path.ends_with("Other"))
+            .unwrap();
+        assert_eq!((other.tracks, other.other), (0, 3));
+        let empty = library
+            .scan_folders
+            .iter()
+            .find(|f| f.path.ends_with("Empty"))
+            .unwrap();
+        assert_eq!((empty.tracks, empty.other), (0, 0));
+        let cached = Library::load_or_scan(&music, &data, None).unwrap();
+        let cached = cached.scan_stats.unwrap();
+        assert_eq!(cached.when_unix, stats.when_unix);
+        assert_eq!(cached.took_seconds, stats.took_seconds);
+        assert_eq!(cached.files, stats.files);
+        let old: ScanFolder =
+            serde_json::from_str(r#"{"path":"old","tracks":2,"skipped":null}"#).unwrap();
+        assert_eq!(old.other, 0);
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn wave(path: &Path) {

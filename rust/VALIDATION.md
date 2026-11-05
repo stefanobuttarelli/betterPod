@@ -1,8 +1,37 @@
-# Local validation — 2026-11-05
+# Local validation — 2026-11-06
 
 Branch: `hello-rust`. Target: a separate RG35XX Plus / Knulli application with the betterPod 1.1 feature set. No console connection, installation, publication or release was performed during these checks.
 
-## Executed checks
+## Current source-port checks
+
+The local source-port implementation and integration pass is complete. Its finite
+scope, visual differences and deferred acceptance are recorded in
+[PARITY.md](PARITY.md).
+
+- Ordinary final suite: 202 library, 65 application and 6 proxy tests pass.
+- Both Go and Rust repeat all 65 fixed captures independently; their captured
+  semantic states match. Pixels differ, including antialiasing.
+- Ten real audio formats and actual FFmpeg A/V transport fixtures pass locally.
+  A separate HTTP Range/AAC fixture preserves every original compressed packet.
+- Actual SDL/GLES application tests verify the menu routes and Listen/video
+  ownership, cancellation, retry and restoration with a private PulseAudio null
+  sink. Physical audio and Bluetooth are not used.
+- Linux native, AArch64/glibc2.28 and bundled, locally signed Mac release builds
+  are produced locally, without deployment or publication.
+
+Current logs are `build/rust/parity-final-all-build.log`,
+`parity-final-app-check.log`, `parity-final-mac-build.log`,
+`parity-media-check.log`, `listen-aac-roundtrip.log` and
+`visual-parity/final65-compare.log` under the same directory. No current hardware
+performance result is available.
+
+## Historical prototype evidence
+
+The checks and timings below predate the source-faithful UI and behavior pass.
+They do not validate the current animation workload. Hardware testing is a
+separate, deferred stage.
+
+### Executed prototype checks
 
 | Check | Result |
 |---|---|
@@ -19,7 +48,7 @@ Branch: `hello-rust`. Target: a separate RG35XX Plus / Knulli application with t
 
 The normal test run intentionally ignores the two real-codec tests and the SDL/GLES route test; they were executed separately with their required fixtures. Media and graphics checks use dummy audio. Share checks use local rendezvous/transit servers and synthetic music only.
 
-## Local timing
+### Historical local timing
 
 Both final runs used 120 tracks / 12 albums, a 60 Hz app target and all five benchmark phases for 30 seconds. The Linux run presented 1,798 frames; the Mac run presented 1,799. Startup and the final PNG capture are excluded from the percentiles below.
 

@@ -2,9 +2,9 @@
 //! Run with rust/tools/check-app.sh; no product-only test routes are introduced.
 use super::*;
 fn settle(app: &mut App, r: &mut Renderer, window: &sdl2::video::Window) {
-    for frame in 0..18 {
+    for _ in 0..42 {
         app.tick(1.0 / 60.0, r);
-        app.draw(r, frame as f64 / 60.0);
+        app.draw(r, app.visual_time);
         r.finish();
         window.gl_swap_window();
         std::thread::sleep(Duration::from_millis(2));
@@ -36,7 +36,7 @@ fn capture(
     name: &str,
 ) {
     settle(app, r, window);
-    app.draw(r, 1.0);
+    app.draw(r, app.visual_time);
     r.finish();
     r.screenshot(&out.join(format!("{name}.png"))).unwrap();
 }
@@ -47,32 +47,14 @@ fn controller_routes_and_real_screens() {
         PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_MUSIC").expect("QA music fixture"));
     let assets = PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").expect("QA assets"));
     let out = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_OUTPUT").expect("QA output"));
-    let data = out.join("private-data");
+    let data = out.join(format!(
+        "private-data-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     std::fs::create_dir_all(&data).unwrap();
-    let profile_library = Library::from_tracks(
-        (0..10_000)
-            .map(|i| Track {
-                path: format!("/profile/album{}/song{i}.wav", i / 20).into(),
-                title: format!("Song {i}"),
-                artist: format!("Artist {}", i % 100),
-                album: format!("Album {}", i / 20),
-                ..Default::default()
-            })
-            .collect(),
-    );
-    let started = Instant::now();
-    let projections = ScannedLibrary::new(profile_library);
-    let prepared = started.elapsed();
-    let started = Instant::now();
-    for _ in 0..10_000 {
-        std::hint::black_box(Arc::clone(&projections.songs));
-    }
-    eprintln!(
-        "10k-track row preparation {:?} (worker); 10k cached navigation clones {:?}",
-        prepared,
-        started.elapsed()
-    );
-    drop(projections);
     let sdl = sdl2::init().unwrap();
     let video = sdl.video().unwrap();
     let _audio = sdl.audio().unwrap();
@@ -110,6 +92,8 @@ fn controller_routes_and_real_screens() {
                 installation: out.join("no-installation"),
                 current_version: "0.1.0".into(),
                 feed: None,
+                beta_feed: None,
+                allow_beta: false,
             },
         )
         .unwrap(),
@@ -122,7 +106,12 @@ fn controller_routes_and_real_screens() {
     assert!(app.cover_card.is_some());
     capture(&mut app, &mut r, &window, &out, "02-coverflow-flip");
     app.handle(Action::Select);
+    // Go CoverFlow.center enters its playing view from the selected card;
+    // the Rust screen enum represents that nested playing state as NP.
     assert_eq!(app.screen(), Screen::NowPlaying);
+    assert!(!app.queue.is_empty());
+    settle(&mut app, &mut r, &window);
+    // Go NowPlaying.OnCenter: progress → scrubber → options.
     app.handle(Action::Select);
     assert_eq!(app.np_mode, 1);
     app.handle(Action::Right);
@@ -136,7 +125,11 @@ fn controller_routes_and_real_screens() {
     app.handle(Action::Back);
     app.handle(Action::Start);
     assert_eq!(app.screen(), Screen::CoverFlow);
-    app.handle(Action::Start);
+    assert!(
+        app.cover_card.is_some(),
+        "START opens the original album card"
+    );
+    app.handle(Action::Back);
     assert_eq!(app.screen(), Screen::NowPlaying);
     app.handle(Action::BackHeld);
     assert_eq!(app.screen(), Screen::Home);
@@ -172,40 +165,45 @@ fn controller_routes_and_real_screens() {
     assert_eq!(app.screen(), Screen::Puzzle);
     capture(&mut app, &mut r, &window, &out, "06-puzzle");
     app.handle(Action::BackHeld);
-    select(&mut app, "Apps");
-    select(&mut app, "Visualizer");
-    assert_eq!(app.screen(), Screen::Visualizer);
+    select(&mut app, "Settings");
+    select(&mut app, "Screensaver");
+    assert_eq!(app.screen(), Screen::Screensaver);
+    app.settings.screensaver_style = "viz".into();
+    select(&mut app, "Start Now");
+    assert!(app.auto_saver);
     app.handle(Action::Right);
     app.handle(Action::Start);
     capture(&mut app, &mut r, &window, &out, "07-visualizer-clock");
+    app.handle(Action::Back);
     app.handle(Action::BackHeld);
     select(&mut app, "Settings");
+    select(&mut app, "Library");
+    assert_eq!(app.screen(), Screen::Library);
     select(&mut app, "Missing Covers");
     assert_eq!(app.screen(), Screen::Curation);
     capture(&mut app, &mut r, &window, &out, "08-missing-covers");
     app.handle(Action::BackHeld);
     select(&mut app, "Settings");
+    select(&mut app, "Library");
     select(&mut app, "Browse Files");
     assert_eq!(app.screen(), Screen::Files);
     capture(&mut app, &mut r, &window, &out, "09-file-browser");
     app.handle(Action::BackHeld);
     select(&mut app, "Settings");
-    select(&mut app, "Library Information");
+    select(&mut app, "Library");
+    assert!(app
+        .pages
+        .last()
+        .unwrap()
+        .rows
+        .iter()
+        .any(|row| row.label == "Songs"));
     capture(&mut app, &mut r, &window, &out, "10-library-statistics");
-    app.handle(Action::BackHeld);
-    select(&mut app, "Settings");
     select(&mut app, "Scanned Folders");
+    assert_eq!(app.screen(), Screen::Files);
     capture(&mut app, &mut r, &window, &out, "11-scanned-folders");
     app.handle(Action::BackHeld);
-    select(&mut app, "Settings");
-    select(&mut app, "Maintenance");
-    assert_eq!(app.screen(), Screen::Maintenance);
-    app.handle(Action::Select);
-    assert_eq!(app.maintenance.as_ref().unwrap().title(), "Confirm");
-    app.handle(Action::Back);
-    assert!(app.maintenance_request.is_none());
-    capture(&mut app, &mut r, &window, &out, "12-maintenance-cancel");
-    app.handle(Action::BackHeld);
+    app.settings.screensaver_style = "cover".into();
     app.handle(Action::HoldDown);
     app.handle(Action::Options);
     app.handle(Action::HoldUp);
@@ -214,4 +212,554 @@ fn controller_routes_and_real_screens() {
     capture(&mut app, &mut r, &window, &out, "13-mosaic");
     app.handle(Action::Back);
     app.shutdown(&r).unwrap();
+}
+
+#[test]
+#[ignore = "requires SDL/GLES, ffmpeg and an isolated WAV fixture; run check-app.sh"]
+fn inline_preview_remote_pause_unplug_and_restore_use_real_decoder() {
+    use betterpod_rust::online::{OnlineItem, Provider};
+    use std::{
+        collections::HashMap,
+        io::{Read, Write},
+        net::TcpListener,
+        os::unix::fs::PermissionsExt,
+        sync::atomic::{AtomicBool, Ordering},
+    };
+    let music =
+        PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_MUSIC").expect("QA music fixture"));
+    let assets = PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").expect("QA assets"));
+    let out = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_OUTPUT").expect("QA output"));
+    let data = out.join(format!(
+        "private-inline-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(data.join("fixture")).unwrap();
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let _audio = sdl.audio().unwrap();
+    video
+        .gl_attr()
+        .set_context_profile(sdl2::video::GLProfile::GLES);
+    video.gl_attr().set_context_version(2, 0);
+    let window = video
+        .window("Rust Listen lifecycle regression", 640, 480)
+        .opengl()
+        .build()
+        .unwrap();
+    let _context = window.gl_create_context().unwrap();
+    let mut renderer = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+    let mut app = App::new(music, data.clone(), assets, None, &renderer).unwrap();
+    fn until(
+        app: &mut App,
+        r: &mut Renderer,
+        window: &sdl2::video::Window,
+        label: &str,
+        predicate: impl Fn(&App) -> bool,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            app.tick(0.01, r);
+            assert!(
+                app.extras
+                    .preview_row_state()
+                    .is_none_or(|state| state.error.is_none()),
+                "{label}: {:?}",
+                app.extras.preview_row_state()
+            );
+            if predicate(app) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Timed out {label}: mixer={:?}, player={:?}, cache={:?}, row={:?}",
+                app.audio_snapshot,
+                app.video.as_ref().map(|v| v.snapshot()),
+                app.extras.preview_cache_snapshot(),
+                app.extras.preview_row_state()
+            );
+            app.draw(r, app.visual_time);
+            r.finish();
+            window.gl_swap_window();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    until(&mut app, &mut renderer, &window, "fixture scan", |app| {
+        !app.scanning
+    });
+    let original = app
+        .library
+        .tracks
+        .iter()
+        .find(|track| track.path.extension().is_some_and(|ext| ext == "wav"))
+        .expect("WAV fixture")
+        .path
+        .clone();
+    let local = data.join("fixture/music.wav");
+    let status = std::process::Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-stream_loop",
+            "-1",
+            "-i",
+        ])
+        .arg(&original)
+        .args([
+            "-t",
+            "20",
+            "-vn",
+            "-c:a",
+            "pcm_s16le",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            "-y",
+        ])
+        .arg(&local)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let mut bodies = HashMap::new();
+    for (name, length) in [
+        ("first", 4.0),
+        ("second", 3.0),
+        ("short", 1.4),
+        ("race", 4.0),
+    ] {
+        let path = data.join(format!("fixture/{name}.wav"));
+        let status = std::process::Command::new("ffmpeg")
+            .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-i"])
+            .arg(&local)
+            .args(["-t", &length.to_string(), "-c:a", "copy", "-y"])
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        bodies.insert(format!("/{name}.wav"), std::fs::read(path).unwrap());
+    }
+    let movie = data.join("fixture/movie.mp4");
+    let status = std::process::Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=navy:size=160x120:rate=15",
+            "-i",
+        ])
+        .arg(&local)
+        .args([
+            "-t",
+            "4",
+            "-c:v",
+            "mpeg4",
+            "-q:v",
+            "7",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "96k",
+            "-movflags",
+            "+faststart",
+            "-y",
+        ])
+        .arg(&movie)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    bodies.insert("/movie.mp4".into(), std::fs::read(&movie).unwrap());
+    struct Server {
+        url: String,
+        first: Arc<AtomicBool>,
+        race: Arc<AtomicBool>,
+        stop: Arc<AtomicBool>,
+        worker: Option<std::thread::JoinHandle<()>>,
+    }
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Release);
+            self.first.store(true, Ordering::Release);
+            self.race.store(true, Ordering::Release);
+            if let Some(worker) = self.worker.take() {
+                let _ = worker.join();
+            }
+        }
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let first = Arc::new(AtomicBool::new(false));
+    let race = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
+    let (first_gate, race_gate, stopped) = (first.clone(), race.clone(), stop.clone());
+    let worker = std::thread::spawn(move || {
+        while !stopped.load(Ordering::Acquire) {
+            let Ok((mut socket, _)) = listener.accept() else {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
+            };
+            socket.set_nonblocking(false).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            socket
+                .set_write_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut bytes = Vec::new();
+            let mut buffer = [0; 4096];
+            while !bytes.windows(4).any(|w| w == b"\r\n\r\n") && bytes.len() < 16384 {
+                let n = socket.read(&mut buffer).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&buffer[..n]);
+            }
+            if bytes.is_empty() {
+                continue;
+            }
+            let request = String::from_utf8_lossy(&bytes);
+            let path = request.split_whitespace().nth(1).unwrap_or("/");
+            let Some(body) = bodies.get(path) else {
+                let _ = socket.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length:0\r\nConnection:close\r\n\r\n",
+                );
+                continue;
+            };
+            let gate = if path == "/first.wav" {
+                Some(&first_gate)
+            } else if path == "/race.wav" {
+                Some(&race_gate)
+            } else {
+                None
+            };
+            while gate.is_some_and(|gate| !gate.load(Ordering::Acquire))
+                && !stopped.load(Ordering::Acquire)
+            {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            if stopped.load(Ordering::Acquire) {
+                break;
+            }
+            let range = request.lines().find_map(|line| {
+                line.split_once(':')
+                    .filter(|(key, _)| key.eq_ignore_ascii_case("range"))
+                    .map(|(_, value)| value.trim())
+            });
+            let (start, end) = range
+                .and_then(|r| r.strip_prefix("bytes="))
+                .and_then(|r| r.split_once('-'))
+                .map(|(a, b)| {
+                    (
+                        a.parse::<usize>().unwrap(),
+                        b.parse::<usize>()
+                            .unwrap_or(body.len() - 1)
+                            .min(body.len() - 1),
+                    )
+                })
+                .unwrap_or((0, body.len() - 1));
+            let response = if range.is_some() {
+                format!(
+                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{}\r\n",
+                    body.len()
+                )
+            } else {
+                "HTTP/1.1 200 OK\r\n".into()
+            };
+            let response = format!(
+                "{response}Content-Length:{}\r\nAccept-Ranges:bytes\r\nConnection:close\r\n\r\n",
+                end - start + 1
+            );
+            if socket.write_all(response.as_bytes()).is_ok() {
+                let _ = socket.write_all(&body[start..=end]);
+            }
+        }
+    });
+    let server = Server {
+        url,
+        first,
+        race,
+        stop,
+        worker: Some(worker),
+    };
+    let item = |name: &str, seconds: f64| {
+        let mut item = OnlineItem::new(Provider::Archive);
+        item.url = format!("{}/{}.wav", server.url, name);
+        item.id = name.into();
+        item.title = format!("Listen {name}");
+        item.kind = "audio".into();
+        item.seconds = seconds;
+        item
+    };
+    app.install_library(
+        ScannedLibrary::new(Library::from_tracks(vec![Track {
+            path: local.clone(),
+            title: "Own music".into(),
+            artist: "QA".into(),
+            album: "QA".into(),
+            duration: 20.,
+            sample_rate: 44100,
+            bit_depth: 16,
+            lossless: true,
+            ..Default::default()
+        }])),
+        &renderer,
+    );
+    app.queue = Arc::new(vec![local.clone()]);
+    app.queue_index = 0;
+    app.play_current(1.0);
+    until(&mut app, &mut renderer, &window, "own music plays", |app| {
+        app.audio_snapshot.playing && app.audio_snapshot.position > 1.03
+    });
+    app.extras
+        .qa_listen_page(vec![item("first", 4.), item("second", 3.)]);
+    app.open(Screen::Extra);
+    app.handle(Action::Select);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "Listen owns loading before response",
+        |app| app.inline_preview && app.audio_snapshot.paused && app.extras.preview_waiting(),
+    );
+    assert!(!app.stream_restore.as_ref().unwrap().paused);
+    assert!(app.extras.preview_row_state().unwrap().loading);
+    server.first.store(true, Ordering::Release);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "real cached Listen plays",
+        |app| {
+            app.video
+                .as_ref()
+                .is_some_and(|v| v.snapshot().playing && v.snapshot().position > 0.03)
+        },
+    );
+    assert_eq!(app.screen(), Screen::Extra);
+    assert!(!app.video_open);
+    assert!(!app.audio_snapshot.playing);
+    let index = app.video_index;
+    for action in [
+        Action::MediaPlayPause,
+        Action::MediaPlay,
+        Action::MediaNext,
+        Action::MediaPrevious,
+    ] {
+        app.handle(action);
+    }
+    for _ in 0..8 {
+        app.tick(0.01, &renderer);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.video.as_ref().unwrap().snapshot().playing);
+    assert_eq!(
+        app.video_index, index,
+        "generic transport must not pick Listen tracks"
+    );
+    app.handle(Action::Select);
+    until(&mut app, &mut renderer, &window, "row A pauses", |app| {
+        app.video.as_ref().unwrap().snapshot().paused
+    });
+    assert!(app.pending_stream_paused);
+    app.handle(Action::Select);
+    until(&mut app, &mut renderer, &window, "row A resumes", |app| {
+        app.video.as_ref().unwrap().snapshot().playing
+    });
+    app.handle(Action::MediaUnplug);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "unplug pauses preview",
+        |app| app.video.as_ref().unwrap().snapshot().paused,
+    );
+    assert!(app.stream_restore.as_ref().unwrap().paused);
+    assert!(app.pending_stream_paused);
+    app.handle(Action::Select);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "row A resumes after unplug",
+        |app| app.video.as_ref().unwrap().snapshot().playing,
+    );
+    assert!(
+        !app.pending_stream_paused,
+        "explicit row resume must clear the pending pause intent"
+    );
+    assert!(app
+        .video
+        .as_ref()
+        .unwrap()
+        .command(VideoCommand::Seek(3.85)));
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "prefetched next track plays after unplug-resume",
+        |app| {
+            app.video_index == 1
+                && app.video.as_ref().unwrap().snapshot().playing
+                && app.video.as_ref().unwrap().snapshot().position > 0.03
+        },
+    );
+    assert!(!app.pending_stream_paused);
+    app.handle(Action::MediaUnplug);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "next preview pauses safely",
+        |app| app.video.as_ref().unwrap().snapshot().paused,
+    );
+    let saved_position = app.stream_restore.as_ref().unwrap().position;
+    app.stop_inline_preview();
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "stop restores paused own music",
+        |app| {
+            !app.inline_preview
+                && app.stream_restore.is_none()
+                && !app.video.as_ref().unwrap().snapshot().playing
+        },
+    );
+    assert!(!app.audio_snapshot.playing);
+    assert!(app.restored);
+    assert_eq!(app.queue.as_ref(), &vec![local.clone()]);
+    assert_eq!(app.restored_position, saved_position);
+
+    // Actual delayed local resolver: old Listen must finish/restore own music
+    // without canceling a different video's in-flight resolution.
+    app.play_pause();
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "own music resumes explicitly",
+        |app| app.audio_snapshot.playing,
+    );
+    app.extras.qa_listen_page(vec![item("short", 1.4)]);
+    app.handle(Action::Select);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "short preview plays",
+        |app| app.inline_preview && app.video.as_ref().unwrap().snapshot().playing,
+    );
+    let saved_position = app.stream_restore.as_ref().unwrap().position;
+    let tools = data.join("tools");
+    std::fs::create_dir_all(&tools).unwrap();
+    let resolver = tools.join("yt-dlp");
+    let movie_url = format!("{}/movie.mp4", server.url);
+    let reply=serde_json::json!({"title":"Resolved QA movie","duration":4.0,"formats":[{"url":movie_url,"protocol":"http","vcodec":"mpeg4","acodec":"aac","height":120,"tbr":160}]}).to_string();
+    std::fs::write(resolver.with_extension("json"), reply).unwrap();
+    std::fs::write(
+        &resolver,
+        b"#!/bin/sh\nsleep 2\ncat -- \"${0%.json}.json\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&resolver, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut future = OnlineItem::new(Provider::YouTube);
+    future.url = "https://youtube.com/watch?v=fixture-local-only".into();
+    future.id = "fixture-local-only".into();
+    future.title = "Resolved QA movie".into();
+    future.kind = "video".into();
+    future.seconds = 4.;
+    app.extras
+        .resolve_media(future.clone(), vec![future], 0, true, 0.);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "video opening coexists with old Listen",
+        |app| app.inline_preview && app.visual_video_has_opening(),
+    );
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "old Listen EOF restores music without canceling resolver",
+        |app| !app.inline_preview && app.audio_snapshot.playing && app.visual_video_has_opening(),
+    );
+    assert!(app.audio_snapshot.position + 0.15 >= saved_position);
+    assert!(app.audio_snapshot.position < saved_position + 1.0);
+    assert_eq!(app.audio_snapshot.path.as_ref(), Some(&local));
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "delayed resolver still completes and actual movie plays",
+        |app| {
+            !app.visual_video_has_opening()
+                && app.video_open
+                && app.video.as_ref().unwrap().snapshot().playing
+        },
+    );
+    assert_eq!(app.video_title, "Resolved QA movie");
+    assert!(!app.inline_preview);
+    app.handle(Action::Back);
+    until(&mut app, &mut renderer, &window, "movie closes", |app| {
+        app.screen() == Screen::Extra && !app.video_open
+    });
+
+    // Deterministically queue saved/direct Stream before an already completed
+    // Listen Ready, so Extras.tick returns [Opening, Stream, stale Preview].
+    app.play_pause();
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "own music restarts for race",
+        |app| app.audio_snapshot.playing,
+    );
+    app.extras.qa_listen_page(vec![item("race", 4.)]);
+    app.handle(Action::Select);
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "race preview waits in cache",
+        |app| app.inline_preview && app.extras.preview_waiting(),
+    );
+    server.race.store(true, Ordering::Release);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.extras.qa_listen_worker_phase() != betterpod_rust::listen::Phase::Ready {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    let mut direct = OnlineItem::new(Provider::Archive);
+    direct.url = movie_url;
+    direct.title = "Direct QA movie".into();
+    direct.kind = "video".into();
+    direct.seconds = 4.;
+    app.extras
+        .resolve_media(direct.clone(), vec![direct], 0, true, 0.);
+    app.tick(0.01, &renderer);
+    assert!(
+        !app.inline_preview,
+        "stale Ready must not retake audio after a newer full-screen Stream"
+    );
+    assert_eq!(app.video_title, "Direct QA movie");
+    until(
+        &mut app,
+        &mut renderer,
+        &window,
+        "direct movie keeps ownership",
+        |app| app.video_open && app.video.as_ref().unwrap().snapshot().playing,
+    );
+    assert!(!app.inline_preview);
+    assert_eq!(app.video_title, "Direct QA movie");
+    app.shutdown(&renderer).unwrap();
 }

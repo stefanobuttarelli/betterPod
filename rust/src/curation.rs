@@ -18,11 +18,99 @@ use std::{
 const MAX_MANIFEST: u64 = 64 * 1024 * 1024;
 const MAX_COVER: usize = 8 * 1024 * 1024;
 static WRITER: Mutex<()> = Mutex::new(());
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CoverQuery {
     pub paths: Vec<PathBuf>,
     pub album: String,
     pub artist: String,
+    pub tracks: Vec<crate::cover_match::TrackContext>,
+}
+impl CoverQuery {
+    /// Projection only; callers run this on their library/service worker.
+    pub fn from_album(album: &crate::library::Album, library: &crate::library::Library) -> Self {
+        let tracks = album
+            .track_indices
+            .iter()
+            .filter_map(|&i| library.tracks.get(i))
+            .collect::<Vec<_>>();
+        Self {
+            paths: tracks.iter().map(|t| t.path.clone()).collect(),
+            album: album.name.clone(),
+            artist: album.artist.clone(),
+            tracks: tracks
+                .into_iter()
+                .map(|t| crate::cover_match::TrackContext {
+                    artist: t.artist.clone(),
+                    album_artist: t.album_artist.clone(),
+                    genre: t.genre.clone(),
+                })
+                .collect(),
+        }
+    }
+    pub fn from_paths(
+        paths: Vec<PathBuf>,
+        album: String,
+        artist: String,
+        library: &crate::library::Library,
+    ) -> Self {
+        let selected = paths.iter().collect::<HashSet<_>>();
+        let tracks = library
+            .tracks
+            .iter()
+            .filter(|t| selected.contains(&t.path))
+            .map(|t| crate::cover_match::TrackContext {
+                artist: t.artist.clone(),
+                album_artist: t.album_artist.clone(),
+                genre: t.genre.clone(),
+            })
+            .collect();
+        Self {
+            paths,
+            album,
+            artist,
+            tracks,
+        }
+    }
+    pub fn album_query(&self) -> crate::cover_match::AlbumQuery {
+        crate::cover_match::AlbumQuery::new(&self.album, &self.artist, &self.tracks)
+    }
+}
+#[path = "curation_search.rs"]
+mod search;
+pub use search::search_items as search_cover_items;
+/// Detailed state for the original Find Missing Covers view. It travels in
+/// this job's existing progress channel, keeping other service events stable.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct CoverSearchProgress {
+    pub total: usize,
+    pub index: usize,
+    pub found: usize,
+    pub failed: usize,
+    pub current: String,
+    pub artist: String,
+    pub finished: bool,
+    pub cancelled: bool,
+    pub errors: usize,
+    pub error: String,
+    pub missed: Vec<String>,
+}
+const COVER_PROGRESS: &str = "betterpod-cover-search:";
+impl CoverSearchProgress {
+    fn publish(&self, context: &Context) {
+        if let Ok(json) = serde_json::to_string(self) {
+            let status = format!("{COVER_PROGRESS}{json}");
+            if self.finished {
+                let _ =
+                    context.progress_important(self.index as u64, Some(self.total as u64), status);
+            } else {
+                context.progress(self.index as u64, Some(self.total as u64), status);
+            }
+        }
+    }
+    pub fn from_status(status: &str) -> Option<Self> {
+        serde_json::from_str(status.strip_prefix(COVER_PROGRESS)?).ok()
+    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -32,6 +120,8 @@ struct Override {
     group: String,
     cover: Option<PathBuf>,
     prior: Option<BeforeMerge>,
+    disc: Option<u32>,
+    added: bool,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -40,6 +130,8 @@ struct BeforeMerge {
     artist: Option<String>,
     group: String,
     cover: Option<PathBuf>,
+    disc: Option<u32>,
+    added: bool,
 }
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -87,6 +179,10 @@ pub(crate) fn apply(data: &Path, tracks: &mut [Track]) {
         if !over.group.is_empty() {
             track.album_group.clone_from(&over.group);
         }
+        if let Some(disc) = over.disc {
+            track.disc = disc;
+        }
+        track.added_album = over.added;
         if let Some(cover) = &over.cover {
             if let (Some(root), Ok(path)) = (&cover_root, fs::canonicalize(cover)) {
                 if path.starts_with(root) && path.is_file() {
@@ -247,9 +343,41 @@ pub fn merge(
         return Err("Invalid target album name".into());
     }
     context.check()?;
+    // Read the existing numbers on the service worker, with picture extraction
+    // disabled by metadata's reader. No music bytes are changed by a merge.
+    let mut positions = BTreeMap::new();
+    for path in source.iter().chain(target.iter()) {
+        context.check()?;
+        if positions.contains_key(path) {
+            continue;
+        }
+        let tags = metadata::read_album_tags(std::slice::from_ref(path), context)
+            .ok()
+            .and_then(|mut v| v.pop())
+            .map(|(_, tags)| (tags.disc.unwrap_or(0), tags.track.unwrap_or(0)))
+            .unwrap_or((0, 0));
+        positions.insert(path.clone(), tags);
+    }
     let _lock = WRITER.lock().map_err(|e| e.to_string())?;
     context.check()?;
     let mut manifest = read(data);
+    for (path, position) in &mut positions {
+        if let Some(disc) = manifest.tracks.get(path).and_then(|v| v.disc) {
+            position.0 = disc;
+        }
+    }
+    let target_positions = target
+        .iter()
+        .filter_map(|p| positions.get(p))
+        .copied()
+        .collect::<Vec<_>>();
+    let source_positions = source
+        .iter()
+        .filter_map(|p| positions.get(p))
+        .copied()
+        .collect::<Vec<_>>();
+    let next_disc = merge_disc_positions(&target_positions, &source_positions);
+    let source_set = source.iter().cloned().collect::<HashSet<_>>();
     let first = &target[0];
     let group = manifest
         .tracks
@@ -266,24 +394,52 @@ pub fn merge(
         .iter()
         .find_map(|p| manifest.tracks.get(p).and_then(|v| v.cover.clone()));
     for path in source.into_iter().chain(target) {
-        let entry = manifest.tracks.entry(path).or_default();
+        let entry = manifest.tracks.entry(path.clone()).or_default();
         if entry.prior.is_none() {
             entry.prior = Some(BeforeMerge {
                 album: entry.album.clone(),
                 artist: entry.artist.clone(),
                 group: entry.group.clone(),
                 cover: entry.cover.clone(),
+                disc: entry.disc,
+                added: entry.added,
             });
         }
         entry.group = group.clone();
         entry.album = Some(album.into());
         entry.artist = Some(artist.into());
+        entry.added |= source_set.contains(&path);
+        if next_disc > 0 && source_set.contains(&path) {
+            let own = positions.get(&path).map_or(1, |p| p.0.max(1));
+            entry.disc = Some(next_disc.saturating_add(own - 1));
+        }
         if cover.is_some() {
             entry.cover = cover.clone();
         }
     }
     save(data, &manifest)
 }
+/// Return to each song's embedded/folder art without altering its private
+/// logical album membership, disc assignment or another song's chosen art.
+pub fn reset_chosen_cover(
+    data: &Path,
+    music: Option<&Path>,
+    paths: &[PathBuf],
+    context: &Context,
+) -> Result<(), String> {
+    let paths = validate_paths(data, music, paths)?;
+    context.check()?;
+    let _lock = WRITER.lock().map_err(|e| e.to_string())?;
+    context.check()?;
+    let mut manifest = read(data);
+    for path in paths {
+        if let Some(entry) = manifest.tracks.get_mut(&path) {
+            entry.cover = None;
+        }
+    }
+    save(data, &manifest)
+}
+
 pub fn unmerge(
     data: &Path,
     music: Option<&Path>,
@@ -304,20 +460,34 @@ pub fn unmerge(
             entry.artist = prior.artist;
             entry.group = prior.group;
             entry.cover = prior.cover;
+            entry.disc = prior.disc;
+            entry.added = prior.added;
         } else {
             entry.album = None;
             entry.artist = None;
             entry.group.clear();
+            entry.disc = None;
+            entry.added = false;
         }
     }
     save(data, &manifest)
 }
-fn normalized(value: &str) -> String {
-    value
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
+/// Original ij_albummerge.go: only a numbered position collision moves songs
+/// to the next disc; unnumbered songs keep their own disc.
+pub fn merge_disc_positions(target: &[(u32, u32)], moving: &[(u32, u32)]) -> u32 {
+    let have = target
+        .iter()
+        .map(|(d, n)| ((*d).max(1), *n))
+        .collect::<HashSet<_>>();
+    let last = target.iter().map(|(d, _)| *d).max().unwrap_or(1).max(1);
+    if moving
+        .iter()
+        .any(|(d, n)| *n > 0 && have.contains(&(1.max(*d), *n)))
+    {
+        last.saturating_add(1)
+    } else {
+        0
+    }
 }
 pub fn find_covers(
     data: &Path,
@@ -328,58 +498,186 @@ pub fn find_covers(
     if albums.len() > 2000 {
         return Err("Choose at most 2000 albums for one cover search".into());
     }
-    let mut found = 0;
+    let mut state = CoverSearchProgress {
+        total: albums.len(),
+        ..Default::default()
+    };
+    let mut consecutive_errors = 0;
     for (index, album) in albums.iter().enumerate() {
-        context.check()?;
+        if context.check().is_err() {
+            state.cancelled = true;
+            break;
+        }
         let paths = validate_paths(data, music, &album.paths)?;
-        context.progress(
-            index as u64,
-            Some(albums.len() as u64),
-            format!("Finding cover · {}", album.album),
-        );
-        let query = format!("{} {}", album.artist, album.album);
-        for provider in [
-            Provider::MusicBrainz,
-            Provider::Itunes,
-            Provider::Deezer,
-            Provider::Wikipedia,
-        ] {
-            context.check()?;
-            let Ok((items, _)) = metadata::search(context, provider, &query) else {
-                context.check()?;
-                continue;
-            };
-            let item = items.into_iter().find(|i| {
-                !i.cover.is_empty()
-                    && normalized(&i.title) == normalized(&album.album)
-                    && (album.artist.is_empty()
-                        || normalized(&i.artist) == normalized(&album.artist))
-            });
-            let Some(item) = item else {
-                continue;
-            };
-            let Ok(bytes) = context.get_bytes(&item.cover, MAX_COVER) else {
-                context.check()?;
-                continue;
-            };
-            if set_cover(data, &paths, &bytes, context).is_ok() {
-                found += 1;
-                break;
+        state.index = index;
+        state.current = album.album.clone();
+        state.artist = album.artist.clone();
+        state.publish(context);
+        match search::find_cover(context, &album.album_query()) {
+            Ok(Some(bytes)) => match set_cover(data, &paths, &bytes, context) {
+                Ok(()) => {
+                    state.found += 1;
+                    consecutive_errors = 0;
+                }
+                Err(error) => {
+                    if context.check().is_err() {
+                        state.cancelled = true;
+                        break;
+                    }
+                    state.failed += 1;
+                    state.errors += 1;
+                    state.error = error;
+                    consecutive_errors += 1;
+                }
+            },
+            Ok(None) => {
+                state.failed += 1;
+                state.missed.push(album.album.clone());
+                consecutive_errors = 0;
             }
-            context.check()?;
+            Err(error) => {
+                if context.check().is_err() {
+                    state.cancelled = true;
+                    break;
+                }
+                state.failed += 1;
+                state.errors += 1;
+                state.error = error;
+                consecutive_errors += 1;
+            }
+        }
+        state.index = index + 1;
+        state.publish(context);
+        if consecutive_errors >= 3 {
+            break;
         }
     }
-    context.progress(
-        albums.len() as u64,
-        Some(albums.len() as u64),
-        format!("Found {found} covers"),
-    );
-    Ok(found)
+    state.finished = true;
+    state.current.clear();
+    state.artist.clear();
+    state.index = state.total;
+    state.publish(context);
+    Ok(state.found)
 }
 
 #[cfg(test)]
+#[path = "curation_cover_test.rs"]
+mod cover_integration_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cancelled_search_finishes_before_validating_or_accessing_any_music_path() {
+        let context = Context::standalone();
+        context.cancel_for_test();
+        let queries = vec![CoverQuery {
+            paths: vec!["/not-an-authorized-test-path/song.flac".into()],
+            album: "Never requested".into(),
+            artist: String::new(),
+            ..Default::default()
+        }];
+        assert_eq!(
+            find_covers(Path::new("/nonexistent"), None, &queries, &context).unwrap(),
+            0
+        );
+    }
+    #[test]
+    fn cumulative_cover_report_keeps_missing_errors_and_cancellation_distinct() {
+        let report = CoverSearchProgress {
+            total: 4,
+            index: 4,
+            found: 1,
+            failed: 2,
+            current: String::new(),
+            artist: String::new(),
+            finished: true,
+            cancelled: true,
+            errors: 1,
+            error: "Connection unavailable".into(),
+            missed: vec!["An unmatched album".into()],
+        };
+        let status = format!(
+            "{COVER_PROGRESS}{}",
+            serde_json::to_string(&report).unwrap()
+        );
+        let restored = CoverSearchProgress::from_status(&status).unwrap();
+        assert_eq!(
+            (restored.found, restored.failed, restored.errors),
+            (1, 2, 1)
+        );
+        assert_eq!(restored.missed, vec!["An unmatched album"]);
+        assert!(restored.finished && restored.cancelled);
+        assert!(CoverSearchProgress::from_status("ordinary download progress").is_none());
+    }
+    #[test]
+    fn resetting_cover_preserves_merge_disc_other_choices_and_original_bytes() {
+        let root =
+            std::env::temp_dir().join(format!("betterpod-reset-cover-{}", std::process::id()));
+        let music = root.join("music");
+        let data = root.join("rust");
+        fs::create_dir_all(&music).unwrap();
+        fs::create_dir_all(data.join("chosen-covers")).unwrap();
+        let one = music.join("one.mp3");
+        let two = music.join("two.mp3");
+        fs::write(&one, b"original one").unwrap();
+        fs::write(&two, b"original two").unwrap();
+        let one = fs::canonicalize(one).unwrap();
+        let two = fs::canonicalize(two).unwrap();
+        let art = data.join("chosen-covers/retained.png");
+        fs::write(&art, b"cache retained").unwrap();
+        let mut manifest = Manifest::default();
+        manifest.tracks.insert(
+            one.clone(),
+            Override {
+                album: Some("Merged".into()),
+                artist: Some("Artist".into()),
+                group: "logical-group".into(),
+                cover: Some(art.clone()),
+                disc: Some(3),
+                prior: Some(BeforeMerge {
+                    album: Some("Before".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        manifest.tracks.insert(
+            two.clone(),
+            Override {
+                cover: Some(art.clone()),
+                ..Default::default()
+            },
+        );
+        save(&data, &manifest).unwrap();
+        reset_chosen_cover(
+            &data,
+            Some(&music),
+            std::slice::from_ref(&one),
+            &Context::standalone(),
+        )
+        .unwrap();
+        let result = read(&data);
+        let changed = &result.tracks[&one];
+        assert!(changed.cover.is_none());
+        assert_eq!(changed.album.as_deref(), Some("Merged"));
+        assert_eq!(changed.artist.as_deref(), Some("Artist"));
+        assert_eq!(changed.group, "logical-group");
+        assert_eq!(changed.disc, Some(3));
+        assert_eq!(
+            changed.prior.as_ref().unwrap().album.as_deref(),
+            Some("Before")
+        );
+        assert_eq!(result.tracks[&two].cover.as_ref(), Some(&art));
+        assert!(art.is_file());
+        assert_eq!(fs::read(&one).unwrap(), b"original one");
+        assert_eq!(fs::read(&two).unwrap(), b"original two");
+        let outside = root.join("outside.mp3");
+        fs::write(&outside, b"outside").unwrap();
+        assert!(
+            reset_chosen_cover(&data, Some(&music), &[outside], &Context::standalone()).is_err()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn private_cover_and_logical_merge_survive_rescan_and_retagging() {
         let root = std::env::temp_dir().join(format!("betterpod-curation-{}", std::process::id()));
@@ -418,6 +716,22 @@ mod tests {
         assert_eq!(library.albums.len(), 1);
         assert_eq!(library.albums[0].name, "Together");
         assert_eq!(library.albums[0].artist, "Album Artist");
+        assert!(
+            library
+                .tracks
+                .iter()
+                .find(|t| t.path == fs::canonicalize(&one).unwrap())
+                .unwrap()
+                .added_album
+        );
+        assert!(
+            !library
+                .tracks
+                .iter()
+                .find(|t| t.path == fs::canonicalize(&two).unwrap())
+                .unwrap()
+                .added_album
+        );
         assert!(library.albums[0]
             .cover
             .as_ref()
@@ -433,6 +747,7 @@ mod tests {
         let separated = crate::library::Library::load_or_scan(&music, &data, None).unwrap();
         assert_eq!(separated.albums.len(), 2);
         assert!(separated.tracks.iter().all(|t| t.album_group.is_empty()));
+        assert!(separated.tracks.iter().all(|t| !t.added_album));
         assert!(separated
             .tracks
             .iter()
@@ -449,6 +764,12 @@ mod tests {
             1
         );
         fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn original_number_collision_places_next_disc_and_preserves_unnumbered_tracks() {
+        assert_eq!(merge_disc_positions(&[(1, 1), (3, 7)], &[(0, 1)]), 4);
+        assert_eq!(merge_disc_positions(&[(1, 1), (3, 7)], &[(2, 1)]), 0);
+        assert_eq!(merge_disc_positions(&[(1, 0)], &[(0, 0)]), 0);
     }
     #[test]
     fn malicious_source_paths_and_cover_symlinks_are_rejected() {

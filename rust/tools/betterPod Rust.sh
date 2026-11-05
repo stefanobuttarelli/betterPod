@@ -5,15 +5,31 @@ GAMEDIR=${BETTERPOD_RUST_DIR:-$LAUNCHER_DIR/betterpod-rust}
 STABLE_DIR="$LAUNCHER_DIR/betterpod"
 XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 controlfolder=""
-for folder in /opt/system/Tools/PortMaster /opt/tools/PortMaster "$XDG_DATA_HOME/PortMaster" /roms/ports/PortMaster; do
-  if [ -f "$folder/control.txt" ]; then controlfolder=$folder; break; fi
-done
-if [ -n "$controlfolder" ]; then
-  # PortMaster supplies mappings and firmware helpers, not app implementation.
-  source "$controlfolder/control.txt"
-  [ ! -f "$controlfolder/mod_${CFW_NAME:-}.txt" ] || source "$controlfolder/mod_${CFW_NAME}.txt"
-  get_controls
-  export SDL_GAMECONTROLLERCONFIG="${sdl_controllerconfig:-${SDL_GAMECONTROLLERCONFIG:-}}"
+if command -v knulli-version >/dev/null 2>&1; then
+  # Modern Knulli configgen already supplies SDL mappings. Its legacy
+  # PortMaster control can attempt to patch an obsolete Python path, so
+  # this independent app does not source it or alter firmware files.
+  if [ -z "${SDL_GAMECONTROLLERCONFIG:-}" ]; then
+    controller_db="${SDL_GAMECONTROLLERCONFIG_FILE:-}"
+    if [ ! -f "$controller_db" ] || [ ! -r "$controller_db" ]; then
+      controller_db=/tmp/gamecontrollerdb.txt
+    fi
+    if [ -f "$controller_db" ] && [ -r "$controller_db" ]; then
+      export SDL_GAMECONTROLLERCONFIG_FILE="$controller_db"
+      export SDL_GAMECONTROLLERCONFIG="$(cat -- "$controller_db")"
+    fi
+  fi
+else
+  for folder in /opt/system/Tools/PortMaster /opt/tools/PortMaster "$XDG_DATA_HOME/PortMaster" /roms/ports/PortMaster; do
+    if [ -f "$folder/control.txt" ]; then controlfolder=$folder; break; fi
+  done
+  if [ -n "$controlfolder" ]; then
+    # Other firmware keeps the existing optional PortMaster integration.
+    source "$controlfolder/control.txt"
+    [ ! -f "$controlfolder/mod_${CFW_NAME:-}.txt" ] || source "$controlfolder/mod_${CFW_NAME}.txt"
+    get_controls
+    export SDL_GAMECONTROLLERCONFIG="${sdl_controllerconfig:-${SDL_GAMECONTROLLERCONFIG:-}}"
+  fi
 fi
 [ -x "$GAMEDIR/betterpod-rust" ] || { echo "Missing Rust app: $GAMEDIR/betterpod-rust" >&2; exit 1; }
 mkdir -p "$GAMEDIR/conf"
@@ -56,8 +72,10 @@ old_governors=""
 for file in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
   [ ! -f "$file" ] || old_governors="$old_governors $file=$(cat "$file" 2>/dev/null)"
 done
-bright_tool=$(command -v batocera-brightness 2>/dev/null || true)
+bright_tool=$(command -v knulli-brightness 2>/dev/null || command -v batocera-brightness 2>/dev/null || true)
 old_bright=""
+# Both firmware helpers read a percentage with no arguments; a single
+# numeric argument restores it ("get" is not their command-line API).
 [ -z "$bright_tool" ] || old_bright=$("$bright_tool" 2>/dev/null)
 paused_es=""
 app_pid=""

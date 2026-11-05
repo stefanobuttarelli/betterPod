@@ -13,7 +13,7 @@ use std::{
     sync::Mutex,
     time::{Duration, Instant},
 };
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TagEdit {
     pub title: Option<String>,
@@ -28,7 +28,7 @@ pub struct TagEdit {
     pub cover: Option<PathBuf>,
 }
 static MB_NEXT: Mutex<Option<Instant>> = Mutex::new(None);
-fn mb_wait(context: &Context) -> Result<(), String> {
+pub(crate) fn mb_wait(context: &Context) -> Result<(), String> {
     let now = Instant::now();
     let at = {
         let mut next = MB_NEXT.lock().map_err(|e| e.to_string())?;
@@ -773,11 +773,120 @@ fn write_m4a(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Result<(
 
 /// Match a complete numbered tracklist by order before considering old titles.
 /// For partial lists, only unambiguous title/duration matches replace song fields.
+#[derive(Clone, Debug)]
+pub struct AlbumInfoPlan {
+    pub edits: Vec<(PathBuf, TagEdit)>,
+    pub matched: usize,
+    pub total: usize,
+}
+
+/// Load editable fields only. Artwork remains in its existing display cache;
+/// reading tags never extracts or writes embedded pictures.
+pub fn read_album_tags(
+    paths: &[PathBuf],
+    context: &Context,
+) -> Result<Vec<(PathBuf, TagEdit)>, String> {
+    let mut tags = Vec::with_capacity(paths.len());
+    for (index, path) in paths.iter().enumerate() {
+        context.check()?;
+        context.progress(
+            index as u64,
+            Some(paths.len() as u64),
+            format!("Reading tags · {} of {}", index + 1, paths.len()),
+        );
+        tags.push((path.clone(), read_tag_fields(path)?));
+    }
+    Ok(tags)
+}
+fn read_tag_fields(path: &Path) -> Result<TagEdit, String> {
+    let file = lofty::probe::Probe::open(path)
+        .map_err(|e| e.to_string())?
+        .guess_file_type()
+        .map_err(|e| e.to_string())?
+        .options(
+            lofty::config::ParseOptions::new()
+                .read_cover_art(false)
+                .read_properties(false),
+        )
+        .read()
+        .map_err(|e| e.to_string())?;
+    let tag = file.primary_tag().or_else(|| file.first_tag());
+    Ok(TagEdit {
+        title: Some(
+            tag.and_then(|t| t.title())
+                .map(|s| s.into_owned())
+                .unwrap_or_default(),
+        ),
+        artist: Some(
+            tag.and_then(|t| t.artist())
+                .map(|s| s.into_owned())
+                .unwrap_or_default(),
+        ),
+        album: Some(
+            tag.and_then(|t| t.album())
+                .map(|s| s.into_owned())
+                .unwrap_or_default(),
+        ),
+        album_artist: Some(
+            tag.and_then(|t| t.get_string(ItemKey::AlbumArtist))
+                .unwrap_or_default()
+                .to_owned(),
+        ),
+        genre: Some(
+            tag.and_then(|t| t.genre())
+                .map(|s| s.into_owned())
+                .unwrap_or_default(),
+        ),
+        year: Some(
+            tag.and_then(|t| {
+                t.get_string(ItemKey::RecordingDate)
+                    .or_else(|| t.get_string(ItemKey::Year))
+            })
+            .and_then(|v| v.get(..4).unwrap_or(v).parse::<u32>().ok())
+            .unwrap_or(0),
+        ),
+        track: Some(tag.and_then(|t| t.track()).unwrap_or(0)),
+        track_total: Some(tag.and_then(|t| t.track_total()).unwrap_or(0)),
+        disc: Some(tag.and_then(|t| t.disk()).unwrap_or(0)),
+        cover: None,
+    })
+}
+pub fn write_album_tags(edits: &[(PathBuf, TagEdit)], context: &Context) -> Result<(), String> {
+    for (index, (path, edit)) in edits.iter().enumerate() {
+        context.check()?;
+        context.progress(
+            index as u64,
+            Some(edits.len() as u64),
+            format!("Saving tags · {} of {}", index + 1, edits.len()),
+        );
+        write_tags_cancellable(path, edit, context)?;
+    }
+    Ok(())
+}
+/// Compute source-field replacements with the same complete/partial matching
+/// as Save, without changing any audio file or private curation state.
+pub fn preview_album_info(
+    paths: &[PathBuf],
+    item: &OnlineItem,
+    context: &Context,
+) -> Result<AlbumInfoPlan, String> {
+    album_info_plan(paths, item, Some(context))
+}
 pub fn apply_album_info(
     paths: &[PathBuf],
     item: &OnlineItem,
     context: &Context,
 ) -> Result<usize, String> {
+    let plan = preview_album_info(paths, item, context)?;
+    write_album_tags(&plan.edits, context)?;
+    Ok(plan.matched)
+}
+
+fn album_info_plan(
+    paths: &[PathBuf],
+    item: &OnlineItem,
+    context: Option<&Context>,
+) -> Result<AlbumInfoPlan, String> {
     let theirs = item.raw["tracks"]
         .as_array()
         .map(Vec::as_slice)
@@ -803,8 +912,14 @@ pub fn apply_album_info(
         && unique;
     let mut ours = Vec::new();
     for (index, path) in paths.iter().enumerate() {
-        context.check()?;
-        let file = lofty::read_from_path(path).map_err(|e| e.to_string())?;
+        check(context)?;
+        let file = lofty::probe::Probe::open(path)
+            .map_err(|e| e.to_string())?
+            .guess_file_type()
+            .map_err(|e| e.to_string())?
+            .options(lofty::config::ParseOptions::new().read_cover_art(false))
+            .read()
+            .map_err(|e| e.to_string())?;
         let tag = file.primary_tag().or_else(|| file.first_tag());
         use lofty::file::AudioFile;
         let duration = file.properties().duration().as_secs_f64();
@@ -898,8 +1013,10 @@ pub fn apply_album_info(
         }
     }
     let genre = normalized_genre(&item.raw);
+    let matched = mapping.iter().flatten().count();
+    let mut edits = Vec::with_capacity(paths.len());
     for (index, path) in paths.iter().enumerate() {
-        context.check()?;
+        check(context)?;
         let mut edit = TagEdit {
             album: (!item.title.is_empty()).then_some(item.title.clone()),
             album_artist: (!item.artist.is_empty()).then_some(item.artist.clone()),
@@ -929,18 +1046,24 @@ pub fn apply_album_info(
                 );
             }
         }
-        context.progress(
-            index as u64,
-            Some(paths.len() as u64),
-            format!(
-                "Saving metadata · {} of {} matched",
-                mapping.iter().flatten().count(),
-                paths.len()
-            ),
-        );
-        write_tags_cancellable(path, &edit, context)?;
+        if let Some(context) = context {
+            context.progress(
+                index as u64,
+                Some(paths.len() as u64),
+                format!(
+                    "Preview metadata · {} of {} matched",
+                    mapping.iter().flatten().count(),
+                    paths.len()
+                ),
+            );
+        }
+        edits.push((path.clone(), edit));
     }
-    Ok(mapping.iter().flatten().count())
+    Ok(AlbumInfoPlan {
+        edits,
+        matched,
+        total: paths.len(),
+    })
 }
 fn normalize_title(title: &str) -> String {
     title
@@ -953,6 +1076,60 @@ fn normalize_title(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "Requires local BETTERPOD_METADATA_FIXTURES; no network or user files"]
+    fn album_preview_reads_all_fields_and_changes_nothing_until_save() {
+        let fixtures = PathBuf::from(
+            std::env::var_os("BETTERPOD_METADATA_FIXTURES").expect("local codec fixtures"),
+        );
+        let root = temporary_dir("preview-editor");
+        let mut paths = Vec::new();
+        let mut bytes = Vec::new();
+        for (name, extension) in [
+            ("aac", "m4a"),
+            ("alac", "m4a"),
+            ("mp3", "mp3"),
+            ("flac", "flac"),
+            ("ogg", "ogg"),
+        ] {
+            let path = root.join(format!("{name}.{extension}"));
+            fs::copy(fixtures.join(format!("{name}-original.{extension}")), &path).unwrap();
+            let tag = read_tag_fields(&path).unwrap();
+            assert_eq!(tag.track, Some(2));
+            assert_eq!(tag.track_total, Some(11));
+            assert_eq!(tag.year, Some(1998));
+            assert!(tag.title.as_ref().is_some_and(|v| !v.is_empty()));
+            bytes.push(fs::read(&path).unwrap());
+            paths.push(path);
+        }
+        let mut item = OnlineItem::new(Provider::MusicBrainz);
+        item.title = "Preview Album".into();
+        item.artist = "Preview Album Artist".into();
+        item.year = "2026".into();
+        item.raw = json!({"tracks":(0..5).map(|i|json!({"number":i+1,"disc":1,"title":format!("New Song {}",i+1),"artist":format!("Per-Song Artist {}",i+1)})).collect::<Vec<_>>()});
+        let plan = album_info_plan(&paths, &item, None).unwrap();
+        assert_eq!((plan.matched, plan.total), (5, 5));
+        for (index, (path, patch)) in plan.edits.iter().enumerate() {
+            assert_eq!(
+                fs::read(path).unwrap(),
+                bytes[index],
+                "preview wrote a file"
+            );
+            assert_eq!(patch.title, Some(format!("New Song {}", index + 1)));
+            assert_eq!(patch.track_total, Some(5));
+            assert_eq!(patch.genre, None);
+        }
+        for (index, (path, patch)) in plan.edits.iter().enumerate() {
+            write_tags(path, patch).unwrap();
+            let tag = read_tag_fields(path).unwrap();
+            assert_eq!(tag.title, Some(format!("New Song {}", index + 1)));
+            assert_eq!(tag.artist, Some(format!("Per-Song Artist {}", index + 1)));
+            assert_eq!(tag.album_artist, Some("Preview Album Artist".into()));
+            assert_eq!(tag.track_total, Some(5));
+            assert_eq!(tag.year, Some(2026));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
     fn temporary_dir(name: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("betterpod-rust-tags-{name}-{}", std::process::id()));

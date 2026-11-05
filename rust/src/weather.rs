@@ -1,6 +1,11 @@
 //! Open-Meteo weather with a single bounded worker. Cached forecasts remain
 //! available offline; no HTTP request, JSON parse or write runs while drawing.
 use crate::{render::Renderer, storage};
+#[path = "weather_icons.rs"]
+mod reference_icons;
+pub use reference_icons::{
+    close_icons, draw_icon as draw_reference_icon, poll_icons, sky, warm_icons,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     io::Read,
@@ -443,7 +448,10 @@ fn fetch(place: &Place, stop: &AtomicBool) -> Result<Forecast, String> {
     Ok(forecast)
 }
 pub fn temperature(c: f64, fahrenheit: bool) -> String {
-    format!("{:.0}°", if fahrenheit { c * 9.0 / 5.0 + 32.0 } else { c })
+    format!(
+        "{}°",
+        (if fahrenheit { c * 9.0 / 5.0 + 32.0 } else { c }).round() as i64
+    )
 }
 pub fn wind(kmh: f64, direction: f64, fahrenheit: bool) -> String {
     let degrees = if direction.is_finite() {
@@ -454,8 +462,8 @@ pub fn wind(kmh: f64, direction: f64, fahrenheit: bool) -> String {
     let compass =
         ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][((degrees / 45.0).round() as usize) % 8];
     format!(
-        "{:.0} {} {compass}",
-        if fahrenheit { kmh * 0.621371 } else { kmh },
+        "{} {} {compass}",
+        (if fahrenheit { kmh * 0.621371 } else { kmh }).round() as i64,
         if fahrenheit { "mph" } else { "km/h" }
     )
 }
@@ -488,6 +496,7 @@ pub fn label(code: i32) -> &'static str {
         _ => "Cloudy",
     }
 }
+/// The legacy call signature now delegates to the native-resolution Go icon.
 pub fn draw_icon(
     r: &mut Renderer,
     code: i32,
@@ -497,97 +506,19 @@ pub fn draw_icon(
     size: f32,
     elapsed: f32,
 ) {
-    let cx = x + size * 0.5;
-    let cy = y + size * 0.43;
-    if code <= 2 {
-        let sun_x = if code == 2 { x + size * 0.66 } else { cx };
-        let sun_y = if code == 2 { y + size * 0.30 } else { cy };
-        if is_day {
-            for i in 0..10 {
-                let a = i as f32 * std::f32::consts::TAU / 10.0 + elapsed * 0.1;
-                r.line(
-                    sun_x + size * 0.22 * a.cos(),
-                    sun_y + size * 0.22 * a.sin(),
-                    sun_x + size * 0.30 * a.cos(),
-                    sun_y + size * 0.30 * a.sin(),
-                    size * 0.035,
-                    [1.0, 0.8, 0.24, 1.0],
-                );
-            }
-            r.circle(sun_x, sun_y, size * 0.18, [1.0, 0.78, 0.16, 1.0]);
+    draw_reference_icon(
+        r,
+        code,
+        is_day,
+        x,
+        y,
+        size,
+        if elapsed < 0. {
+            -1.
         } else {
-            r.circle(sun_x, sun_y, size * 0.23, [0.93, 0.95, 0.99, 1.0]);
-            r.circle(
-                sun_x + size * 0.10,
-                sun_y - size * 0.09,
-                size * 0.22,
-                [0.11, 0.19, 0.35, 1.0],
-            );
-        }
-    }
-    if code >= 2 {
-        let sway = (elapsed * 0.55).sin() * size * 0.025;
-        let c = [0.88, 0.92, 0.97, 1.0];
-        r.rect(
-            x + size * 0.2 + sway,
-            y + size * 0.48,
-            size * 0.62,
-            size * 0.19,
-            c,
-        );
-        for (a, b, rad) in [(0.27, 0.48, 0.16), (0.47, 0.39, 0.23), (0.68, 0.47, 0.18)] {
-            r.circle(x + size * a + sway, y + size * b, size * rad, c);
-        }
-    }
-    if matches!(code, 45 | 48) {
-        for i in 0..3 {
-            r.line(
-                x + size * 0.1,
-                y + size * (0.71 + i as f32 * 0.09),
-                x + size * 0.9,
-                y + size * (0.71 + i as f32 * 0.09),
-                size * 0.025,
-                [0.82, 0.87, 0.93, 0.75],
-            );
-        }
-    } else if code >= 51 && code < 95 {
-        for i in 0..4 {
-            let phase = (elapsed * 0.7 + i as f32 * 0.27).fract();
-            let xx = x + size * (0.23 + i as f32 * 0.17);
-            let yy = y + size * (0.62 + phase * 0.30);
-            if matches!(code, 71..=77 | 85 | 86) {
-                r.circle(xx, yy, size * 0.027, [1.; 4]);
-            } else {
-                r.line(
-                    xx,
-                    yy,
-                    xx - size * 0.04,
-                    yy + size * 0.1,
-                    size * 0.025,
-                    [0.35, 0.7, 1.0, 0.9],
-                );
-            }
-        }
-    }
-    if code >= 95 {
-        let c = [1.0, 0.85, 0.2, 1.0];
-        r.triangle(
-            [
-                [cx, cy + size * 0.1],
-                [cx - size * 0.13, cy + size * 0.36],
-                [cx + size * 0.04, cy + size * 0.31],
-            ],
-            c,
-        );
-        r.triangle(
-            [
-                [cx - size * 0.02, cy + size * 0.27],
-                [cx + size * 0.13, cy + size * 0.25],
-                [cx - size * 0.08, cy + size * 0.58],
-            ],
-            c,
-        );
-    }
+            (elapsed as f64 / 3.).rem_euclid(1.)
+        },
+    );
 }
 pub fn draw_forecast(r: &mut Renderer, place: &Place, day: usize, fahrenheit: bool, elapsed: f32) {
     let Some(f) = place.forecast.as_ref().filter(|f| f.days() > 0) else {
@@ -744,6 +675,8 @@ mod tests {
     #[test]
     fn units_and_compass_are_consistent() {
         assert_eq!(temperature(0., true), "32°");
+        assert_eq!(temperature(-0.1, false), "0°");
+        assert_eq!(temperature(0.5, false), "1°");
         assert_eq!(temperature(20., false), "20°");
         assert_eq!(wind(16.09344, 90., true), "10 mph E");
         assert_eq!(wind(10., -45., false), "10 km/h NW");

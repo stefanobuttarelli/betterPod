@@ -122,6 +122,8 @@ fn run() -> Result<(), String> {
         installation,
         current_version: env!("CARGO_PKG_VERSION").into(),
         feed: std::env::var("BETTERPOD_RUST_UPDATE_FEED").ok(),
+        beta_feed: std::env::var("BETTERPOD_RUST_BETA_UPDATE_FEED").ok(),
+        allow_beta: false,
     };
     if updater::recover_installation_if_needed(&update_config)? {
         eprintln!("Recovered an interrupted Rust update; reopen the app before playback");
@@ -138,7 +140,18 @@ fn run() -> Result<(), String> {
     };
     let mut frame_count = 0u64;
     let mut black_shown = false;
+    let mut pending_transfer: Option<(PathBuf, std::sync::Arc<library::Library>, bool)> = None;
     loop {
+        maintenance::validate_private_data(&bootstrap, &data, &protected)?;
+        let recovered = maintenance::recover_transferred_clients(&maintenance::Config {
+            bootstrap: bootstrap.clone(),
+            music: music.clone(),
+            data: data.clone(),
+            protected: protected.clone(),
+        })?;
+        if recovered > 0 {
+            eprintln!("Recovered saved library paths for {recovered} Rust transfer(s)");
+        }
         let mut app = app::App::new(
             music.clone(),
             data.clone(),
@@ -146,7 +159,7 @@ fn run() -> Result<(), String> {
             import.clone(),
             &renderer,
         )?;
-        app.install_maintenance(app_maintenance::Controller::new(
+        let mut controller = app_maintenance::Controller::new(
             maintenance::Config {
                 bootstrap: bootstrap.clone(),
                 music: music.clone(),
@@ -154,13 +167,20 @@ fn run() -> Result<(), String> {
                 protected: protected.clone(),
             },
             update_config.clone(),
-        )?);
+        )?;
+        if let Some((manifest, library, visible)) = pending_transfer.take() {
+            controller.adopt_verified_transfer(manifest, library, visible)?;
+        }
+        app.install_maintenance(controller);
         while app.running && !platform::quit_requested() {
             let frame = Instant::now();
             let dt = frame.duration_since(previous).as_secs_f32().min(0.1);
             previous = frame;
             for action in input.poll() {
                 app.handle(action);
+                if !app.running {
+                    break;
+                }
             }
             let elapsed = started.elapsed().as_secs_f64();
             if benchmark {
@@ -169,6 +189,7 @@ fn run() -> Result<(), String> {
             app.tick(dt, &renderer);
             if let Some(limit) = exit_after {
                 if elapsed >= limit {
+                    app.user_quit = true;
                     app.running = false;
                 }
             }
@@ -211,15 +232,57 @@ fn run() -> Result<(), String> {
             last_present = completed;
             clock.wait(completed);
         }
+        let maintenance_dark = app.dark();
+        let maintenance_library = app.maintenance_library();
+        let shutdown = app.shutdown(&renderer);
+        let user_quit = app.user_quit;
         let request = app.maintenance_request.take();
-        app.shutdown(&renderer)?;
-        // Drop joins all clients and Store before any filesystem mutation starts.
+        // Drop joins every remaining client and Store even if a peripheral
+        // cleanup failed; metadata finalization always follows this barrier.
         drop(app);
-        let Some(request) = request else { break };
-        if platform::quit_requested() {
+        let Some(request) = request else {
+            shutdown?;
+            break;
+        };
+        if let app_maintenance::Request::FinalizeTransfer {
+            manifest, visible, ..
+        } = request
+        {
+            (music, data) = maintenance::resolve_paths(&bootstrap, &default_music, &default_data);
+            maintenance::validate_private_data(&bootstrap, &data, &protected)?;
+            app_maintenance::prepare_verified_transfer_clients(
+                maintenance::Config {
+                    bootstrap: bootstrap.clone(),
+                    music: music.clone(),
+                    data: data.clone(),
+                    protected: protected.clone(),
+                },
+                manifest.clone(),
+            )?;
+            shutdown?;
+            if user_quit || platform::quit_requested() {
+                break;
+            }
+            pending_transfer = Some((manifest, maintenance_library, visible));
+            clock.reset();
+            previous = Instant::now();
+            last_present = previous;
+            black_shown = false;
+            continue;
+        }
+        shutdown?;
+        if user_quit || platform::quit_requested() {
             break;
         }
-        match app_maintenance::run(request, &mut renderer, &mut input, &window) {
+        match app_maintenance::run(
+            request,
+            &mut renderer,
+            &mut input,
+            &window,
+            &assets,
+            maintenance_dark,
+            maintenance_library,
+        ) {
             Ok(true) => {
                 eprintln!("Update complete; reopen betterPod Rust to run the new binary");
                 break;

@@ -79,6 +79,32 @@ impl OnlineItem {
 }
 #[derive(Clone, Debug)]
 pub enum Task {
+    VideoCatalog,
+    DeleteSavedVideo {
+        path: PathBuf,
+    },
+    ForgetVideo {
+        id: String,
+    },
+    RememberVideoInfo {
+        item: OnlineItem,
+        position: f64,
+    },
+    InstallFfmpeg,
+    PrepareCoverQuery {
+        paths: Arc<Vec<PathBuf>>,
+        album: String,
+        artist: String,
+        library: Arc<crate::library::Library>,
+    },
+    SearchCovers {
+        provider: Provider,
+        album: Arc<CoverQuery>,
+        query: Option<String>,
+    },
+    ArchiveStatus {
+        item: OnlineItem,
+    },
     DownloadWithCover {
         request: DownloadRequest,
         cover: PathBuf,
@@ -105,6 +131,9 @@ pub enum Task {
         paths: Vec<PathBuf>,
         cover: PathBuf,
     },
+    ResetChosenCover {
+        paths: Vec<PathBuf>,
+    },
     MergeAlbums {
         paths: Vec<PathBuf>,
         target_paths: Vec<PathBuf>,
@@ -115,6 +144,16 @@ pub enum Task {
         albums: Vec<CoverQuery>,
     },
     ApplyAlbumInfo {
+        paths: Vec<PathBuf>,
+        item: OnlineItem,
+    },
+    ReadAlbumTags {
+        paths: Vec<PathBuf>,
+    },
+    WriteAlbumTags {
+        edits: Vec<(PathBuf, TagEdit)>,
+    },
+    PreviewAlbumInfo {
         paths: Vec<PathBuf>,
         item: OnlineItem,
     },
@@ -145,9 +184,22 @@ pub enum Task {
         edit: TagEdit,
     },
     Tools,
+    RemoveTools,
+    ToolsStatus,
 }
 #[derive(Clone, Debug)]
 pub enum Output {
+    VideoCatalog(crate::video_catalog::Snapshot),
+    CoverQuery(Arc<CoverQuery>),
+    ArchiveStatus {
+        have: std::collections::BTreeMap<String, (usize, u64)>,
+    },
+    AlbumTags(Vec<(PathBuf, TagEdit)>),
+    AlbumInfoPreview {
+        edits: Vec<(PathBuf, TagEdit)>,
+        matched: usize,
+        total: usize,
+    },
     CurationApplied {
         matched: usize,
         total: usize,
@@ -170,6 +222,8 @@ pub enum Output {
     Files(Vec<PathBuf>),
     Saved,
     ToolsReady,
+    ToolsRemoved,
+    ToolsStatus(downloads::ToolStatus),
 }
 #[derive(Clone, Debug)]
 pub struct StreamSource {
@@ -179,6 +233,7 @@ pub struct StreamSource {
     pub duration: f64,
     pub title: String,
     pub available_at: Option<f64>,
+    pub chapters: usize,
 }
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -226,6 +281,14 @@ pub struct Context {
     events: mpsc::SyncSender<Event>,
 }
 impl Context {
+    /// Interrupt a standalone worker's bounded request or external tool.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+    #[cfg(test)]
+    pub(crate) fn cancel_for_test(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
     pub fn check(&self) -> Result<(), String> {
         if self.cancelled.load(Ordering::Acquire) {
             Err("Cancelled".into())
@@ -240,6 +303,23 @@ impl Context {
             total,
             status: status.into(),
         });
+    }
+    /// A final cumulative report must precede Finished. Only service workers
+    /// call this; closing the receiver during shutdown releases the send.
+    pub fn progress_important(
+        &self,
+        done: u64,
+        total: Option<u64>,
+        status: impl Into<String>,
+    ) -> bool {
+        self.events
+            .send(Event::Progress {
+                id: self.id,
+                done,
+                total,
+                status: status.into(),
+            })
+            .is_ok()
     }
     pub fn sleep(&self, duration: Duration) -> Result<(), String> {
         let until = Instant::now() + duration;
@@ -452,6 +532,73 @@ impl Drop for Services {
         self.shutdown();
     }
 }
+fn validated_tag_paths(
+    data: &std::path::Path,
+    music: Option<&std::path::Path>,
+    paths: &[PathBuf],
+) -> Result<Vec<PathBuf>, String> {
+    let mut roots = Vec::new();
+    if let Some(music) = music {
+        roots.push(std::fs::canonicalize(music).map_err(|e| e.to_string())?);
+    }
+    if let Ok(downloads) = std::fs::canonicalize(data.join("downloads")) {
+        roots.push(downloads);
+    }
+    if paths.len() > 10000 {
+        return Err("Too many selected songs".into());
+    }
+    let mut result = Vec::with_capacity(paths.len());
+    for path in paths {
+        let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Select regular music files".into());
+        }
+        let path = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
+        if !roots.iter().any(|root| path.starts_with(root)) {
+            return Err("Selected song is outside the music library".into());
+        }
+        result.push(path);
+    }
+    Ok(result)
+}
+#[cfg(test)]
+mod album_path_tests {
+    use super::*;
+    #[test]
+    fn editor_paths_are_regular_files_contained_by_music_or_private_downloads() {
+        let root =
+            std::env::temp_dir().join(format!("betterpod-tags-paths-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let music = root.join("music");
+        let data = root.join("data");
+        let downloads = data.join("downloads");
+        std::fs::create_dir_all(&music).unwrap();
+        std::fs::create_dir_all(&downloads).unwrap();
+        let song = music.join("song.mp3");
+        let private = downloads.join("episode.m4a");
+        let outside = root.join("outside.mp3");
+        for path in [&song, &private, &outside] {
+            std::fs::write(path, b"fixture").unwrap();
+        }
+        assert_eq!(
+            validated_tag_paths(&data, Some(&music), &[song.clone(), private.clone()])
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(validated_tag_paths(&data, Some(&music), &[outside.clone()]).is_err());
+        assert!(validated_tag_paths(&data, Some(&music), &[music.clone()]).is_err());
+        #[cfg(unix)]
+        {
+            let link = music.join("escape.mp3");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(validated_tag_paths(&data, Some(&music), &[link]).is_err());
+        }
+        assert!(validated_tag_paths(&data, None, &[song]).is_err());
+        assert!(validated_tag_paths(&data, None, &[private]).is_ok());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
 fn execute(
     data: &std::path::Path,
     music: Option<&std::path::Path>,
@@ -460,6 +607,34 @@ fn execute(
 ) -> Result<Output, String> {
     context.check()?;
     match task {
+        Task::PrepareCoverQuery {
+            paths,
+            album,
+            artist,
+            library,
+        } => Ok(Output::CoverQuery(Arc::new(CoverQuery::from_paths(
+            paths.as_ref().clone(),
+            album,
+            artist,
+            &library,
+        )))),
+        Task::SearchCovers {
+            provider,
+            album,
+            query,
+        } => {
+            let items = curation::search_cover_items(
+                context,
+                provider,
+                &album.album_query(),
+                query.as_deref(),
+            )?;
+            let total = items.len();
+            Ok(Output::Search { items, total })
+        }
+        Task::ArchiveStatus { item } => Ok(Output::ArchiveStatus {
+            have: downloads::archive_status(context, data, &item)?,
+        }),
         Task::DownloadWithCover {
             request,
             cover,
@@ -497,6 +672,13 @@ fn execute(
                 total: paths.len(),
             })
         }
+        Task::ResetChosenCover { paths } => {
+            curation::reset_chosen_cover(data, music, &paths, context)?;
+            Ok(Output::CurationApplied {
+                matched: paths.len(),
+                total: paths.len(),
+            })
+        }
         Task::MergeAlbums {
             paths,
             target_paths,
@@ -521,8 +703,52 @@ fn execute(
                 total: paths.len(),
             })
         }
+        Task::ReadAlbumTags { paths } => {
+            let paths = validated_tag_paths(data, music, &paths)?;
+            Ok(Output::AlbumTags(metadata::read_album_tags(
+                &paths, context,
+            )?))
+        }
+        Task::WriteAlbumTags { edits } => {
+            let paths: Vec<_> = edits.iter().map(|(path, _)| path.clone()).collect();
+            let paths = validated_tag_paths(data, music, &paths)?;
+            let edits: Vec<_> = paths
+                .into_iter()
+                .zip(edits.into_iter().map(|(_, edit)| edit))
+                .collect();
+            metadata::write_album_tags(&edits, context)?;
+            Ok(Output::Saved)
+        }
+        Task::PreviewAlbumInfo { paths, item } => {
+            let paths = validated_tag_paths(data, music, &paths)?;
+            let plan = metadata::preview_album_info(&paths, &item, context)?;
+            Ok(Output::AlbumInfoPreview {
+                edits: plan.edits,
+                matched: plan.matched,
+                total: plan.total,
+            })
+        }
+        Task::VideoCatalog => Ok(Output::VideoCatalog(crate::video_catalog::catalog(
+            context, data,
+        )?)),
+        Task::DeleteSavedVideo { path } => {
+            crate::video_catalog::delete_saved(context, data, &path)?;
+            Ok(Output::Saved)
+        }
+        Task::ForgetVideo { id } => {
+            crate::video_catalog::forget(data, &id)?;
+            Ok(Output::Saved)
+        }
+        Task::RememberVideoInfo { item, position } => {
+            crate::video_catalog::remember(data, &item, position)?;
+            Ok(Output::Saved)
+        }
+        Task::InstallFfmpeg => {
+            crate::video_catalog::install_ffmpeg(context, data)?;
+            Ok(Output::Saved)
+        }
         Task::VideoHistory => {
-            let items = video_history(data)?;
+            let items = crate::video_catalog::catalog(context, data)?.recent;
             let total = items.len();
             Ok(Output::Search { items, total })
         }
@@ -531,7 +757,10 @@ fn execute(
             title,
             position,
         } => {
-            remember_video(data, &url, &title, position)?;
+            let mut item = OnlineItem::new(Provider::YouTube);
+            item.url = url;
+            item.title = title;
+            crate::video_catalog::remember(data, &item, position)?;
             Ok(Output::Saved)
         }
         Task::Downloaded => Ok(Output::Files(downloads::downloaded(data))),
@@ -572,6 +801,11 @@ fn execute(
                 metadata::write_tags_cancellable(path, &edit, context)?;
             }
             Ok(Output::Saved)
+        }
+        Task::ToolsStatus => Ok(Output::ToolsStatus(downloads::tool_status(context, data)?)),
+        Task::RemoveTools => {
+            downloads::remove_tools(context, data)?;
+            Ok(Output::ToolsRemoved)
         }
         Task::Tools => {
             downloads::install_tools(context, data)?;
@@ -817,7 +1051,8 @@ fn archive_details(context: &Context, id: &str) -> Result<OnlineItem, String> {
             .push(file);
     }
     for files in groups.values_mut() {
-        files.as_array_mut().unwrap().sort_by_key(|f| {
+        let files = files.as_array_mut().unwrap();
+        files.sort_by_key(|f| {
             (
                 text(f, "track")
                     .split('/')
@@ -828,6 +1063,11 @@ fn archive_details(context: &Context, id: &str) -> Result<OnlineItem, String> {
                 text(f, "name"),
             )
         });
+        let total = files.len();
+        for (index, file) in files.iter_mut().enumerate() {
+            file["_betterpod_track"] = json!(index + 1);
+            file["_betterpod_total"] = json!(total);
+        }
     }
     item.count = groups
         .values()

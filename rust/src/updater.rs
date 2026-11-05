@@ -27,6 +27,8 @@ pub struct Config {
     pub installation: PathBuf,
     pub current_version: String,
     pub feed: Option<String>,
+    pub beta_feed: Option<String>,
+    pub allow_beta: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
@@ -41,6 +43,8 @@ pub struct Manifest {
 }
 #[derive(Clone, Debug)]
 pub enum Command {
+    /// Channel changes are atomic and are never dropped behind queued jobs.
+    SetBeta(bool),
     Check,
     CheckIfDue {
         state: PathBuf,
@@ -79,6 +83,7 @@ pub struct Updater {
     tx: Option<mpsc::SyncSender<Command>>,
     rx: mpsc::Receiver<Event>,
     stop: Arc<AtomicBool>,
+    allow_beta: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 impl Updater {
@@ -87,6 +92,8 @@ impl Updater {
         let (events, rx) = mpsc::sync_channel(32);
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = stop.clone();
+        let allow_beta = Arc::new(AtomicBool::new(config.allow_beta));
+        let worker_beta = allow_beta.clone();
         let worker = std::thread::Builder::new()
             .name("rust-updater".into())
             .spawn(move || {
@@ -101,7 +108,13 @@ impl Updater {
                         stop: &worker_stop,
                         events: &events,
                     };
+                    let mut config = config.clone();
+                    config.allow_beta = worker_beta.load(Ordering::Acquire);
                     let result = match command {
+                        Command::SetBeta(value) => {
+                            worker_beta.store(value, Ordering::Release);
+                            Ok(())
+                        }
                         Command::Check => check(&config, &ctx),
                         Command::CheckIfDue { state } => {
                             let startup = !auto_started;
@@ -154,6 +167,7 @@ impl Updater {
             tx: Some(tx),
             rx,
             stop,
+            allow_beta,
             worker: Some(worker),
         })
     }
@@ -170,6 +184,13 @@ impl Updater {
         while self.rx.try_recv().is_ok() {}
     }
     pub fn command(&self, command: Command) -> bool {
+        if let Command::SetBeta(value) = command {
+            if self.stop.load(Ordering::Acquire) {
+                return false;
+            }
+            self.allow_beta.store(value, Ordering::Release);
+            return true;
+        }
         self.tx
             .as_ref()
             .is_some_and(|tx| tx.try_send(command).is_ok())
@@ -258,10 +279,7 @@ fn version(text: &str) -> Result<semver::Version, String> {
 fn newer(candidate: &str, current: &str) -> Result<bool, String> {
     Ok(version(candidate)?.cmp_precedence(&version(current)?) == std::cmp::Ordering::Greater)
 }
-fn fetch_status(config: &Config, ctx: &Context<'_>) -> Result<Status, String> {
-    let Some(feed) = config.feed.as_ref().filter(|s| !s.is_empty()) else {
-        return Ok(Status::LocalBuild);
-    };
+fn fetch_manifest(feed: &str, ctx: &Context<'_>) -> Result<Manifest, String> {
     validate_url(feed)?;
     ctx.check()?;
     let response = ureq::get(feed)
@@ -274,10 +292,74 @@ fn fetch_status(config: &Config, ctx: &Context<'_>) -> Result<Status, String> {
     let manifest: Manifest =
         serde_json::from_slice(&bytes).map_err(|e| format!("Invalid Rust update manifest: {e}"))?;
     validate_manifest(&manifest)?;
-    if newer(&manifest.version, &config.current_version)? {
+    Ok(manifest)
+}
+fn feeds(config: &Config) -> Vec<&str> {
+    let mut urls = Vec::with_capacity(2);
+    if let Some(url) = config.feed.as_deref().filter(|s| !s.is_empty()) {
+        urls.push(url);
+    }
+    if config.allow_beta {
+        if let Some(url) = config.beta_feed.as_deref().filter(|s| !s.is_empty()) {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+    }
+    urls
+}
+fn channel_key(config: &Config) -> Option<String> {
+    if feeds(config).is_empty() {
+        return None;
+    }
+    // Include disabled beta URL too: changing either configured channel must
+    // invalidate an old offer, and a beta offer must never leak into stable.
+    let bytes = serde_json::to_vec(&(
+        config.feed.as_deref(),
+        config.beta_feed.as_deref(),
+        config.allow_beta,
+    ))
+    .ok()?;
+    Some(format!("{:x}", Sha256::digest(bytes)))
+}
+fn fetch_status(config: &Config, ctx: &Context<'_>) -> Result<Status, String> {
+    let urls = feeds(config);
+    if urls.is_empty() {
+        return Ok(Status::LocalBuild);
+    }
+    let current = version(&config.current_version)?;
+    let mut chosen: Option<(semver::Version, Manifest)> = None;
+    let mut valid = false;
+    let mut errors = Vec::new();
+    for url in urls {
+        ctx.check()?;
+        match fetch_manifest(url, ctx) {
+            Ok(manifest) => {
+                valid = true;
+                let candidate = version(&manifest.version)?;
+                if !config.allow_beta && !candidate.pre.is_empty() {
+                    continue;
+                }
+                if candidate.cmp_precedence(&current).is_gt()
+                    && chosen
+                        .as_ref()
+                        .is_none_or(|(prior, _)| candidate.cmp_precedence(prior).is_gt())
+                {
+                    chosen = Some((candidate, manifest));
+                }
+            }
+            Err(error) => {
+                ctx.check()?;
+                errors.push(error);
+            }
+        }
+    }
+    if let Some((_, manifest)) = chosen {
         Ok(Status::Available(manifest))
-    } else {
+    } else if valid {
         Ok(Status::UpToDate)
+    } else {
+        Err(errors.join("; "))
     }
 }
 fn check(config: &Config, ctx: &Context<'_>) -> Result<(), String> {
@@ -303,10 +385,9 @@ fn check_if_due(
     startup: bool,
     ctx: &Context<'_>,
 ) -> Result<(), String> {
-    let Some(feed) = config.feed.as_ref().filter(|s| !s.is_empty()) else {
+    let Some(key) = channel_key(config) else {
         return ctx.send(Event::Status(Status::LocalBuild));
     };
-    validate_url(feed)?;
     if state_path.file_name().and_then(|s| s.to_str()) != Some("update-check.json") {
         return Err(
             "Automatic update cache must be named update-check.json in private Rust data".into(),
@@ -338,13 +419,15 @@ fn check_if_due(
         .filter(|m| m.len() < 128 * 1024)
         .and_then(|_| fs::read(state_path).ok())
         .and_then(|b| serde_json::from_slice::<CheckState>(&b).ok())
-        .filter(|s| s.feed == *feed)
+        .filter(|s| s.feed == key)
         .unwrap_or_else(|| CheckState {
-            feed: feed.clone(),
+            feed: key,
             ..CheckState::default()
         });
     cached.available = cached.available.filter(|m| {
-        validate_manifest(m).is_ok() && newer(&m.version, &config.current_version).unwrap_or(false)
+        validate_manifest(m).is_ok()
+            && newer(&m.version, &config.current_version).unwrap_or(false)
+            && (config.allow_beta || version(&m.version).is_ok_and(|v| v.pre.is_empty()))
     });
     if let Some(manifest) = &cached.available {
         ctx.send(Event::Status(Status::Available(manifest.clone())))?;
@@ -920,6 +1003,8 @@ mod tests {
                     installation: ports,
                     current_version: "0.1.0".into(),
                     feed: None,
+                    beta_feed: None,
+                    allow_beta: false,
                 },
                 root,
             }
@@ -992,6 +1077,164 @@ mod tests {
         data[20..24].copy_from_slice(&1u32.to_le_bytes());
         data[52..54].copy_from_slice(&64u16.to_le_bytes());
         data
+    }
+    fn serve_feeds(
+        responses: Vec<(&'static str, u16, Vec<u8>)>,
+        requests: usize,
+    ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut paths = Vec::new();
+            let deadline = std::time::Instant::now() + Duration::from_secs(8);
+            while paths.len() < requests {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(v) => v,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "missing fixture feed request"
+                        );
+                        std::thread::sleep(Duration::from_millis(2));
+                        continue;
+                    }
+                    Err(e) => panic!("{e}"),
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut req = [0; 4096];
+                let n = stream.read(&mut req).unwrap();
+                let path = String::from_utf8_lossy(&req[..n])
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or("")
+                    .to_owned();
+                let (status, body) = responses
+                    .iter()
+                    .find(|(p, _, _)| *p == path)
+                    .map(|(_, status, body)| (*status, body.as_slice()))
+                    .unwrap_or((404, b"missing"));
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+                paths.push(path);
+            }
+            paths
+        });
+        (format!("http://{address}"), server)
+    }
+    #[test]
+    fn two_feed_channel_selects_newest_and_preserves_valid_stable_on_beta_error() {
+        let f = Fixture::new();
+        let (_, base) = f.archive(None);
+        for (stable, beta, beta_status, expected) in [
+            ("1.2", "1.3-beta.2", 200, "1.3-beta.2"),
+            ("1.3", "1.3-beta.9", 200, "1.3"),
+            ("1.2", "1.4-beta.1", 500, "1.2"),
+        ] {
+            let mut sm = base.clone();
+            sm.version = stable.into();
+            let mut bm = base.clone();
+            bm.version = beta.into();
+            let (url, server) = serve_feeds(
+                vec![
+                    ("/stable", 200, serde_json::to_vec(&sm).unwrap()),
+                    ("/beta", beta_status, serde_json::to_vec(&bm).unwrap()),
+                ],
+                2,
+            );
+            let mut config = f.config.clone();
+            config.feed = Some(format!("{url}/stable"));
+            config.beta_feed = Some(format!("{url}/beta"));
+            config.allow_beta = true;
+            f.ctx(|ctx|assert!(matches!(fetch_status(&config,ctx).unwrap(),Status::Available(m) if m.version==expected)));
+            assert_eq!(server.join().unwrap(), vec!["/stable", "/beta"]);
+        }
+        f.preserved();
+    }
+    #[test]
+    fn stable_channel_ignores_prereleases_and_does_not_fetch_beta() {
+        let f = Fixture::new();
+        let (_, mut manifest) = f.archive(None);
+        manifest.version = "1.3-beta.7".into();
+        let (url, server) = serve_feeds(
+            vec![("/stable", 200, serde_json::to_vec(&manifest).unwrap())],
+            1,
+        );
+        let mut config = f.config.clone();
+        config.feed = Some(format!("{url}/stable"));
+        config.beta_feed = Some(format!("{url}/beta"));
+        f.ctx(|ctx| {
+            assert!(matches!(
+                fetch_status(&config, ctx).unwrap(),
+                Status::UpToDate
+            ))
+        });
+        assert_eq!(server.join().unwrap(), vec!["/stable"]);
+    }
+    #[test]
+    fn beta_cache_never_survives_channel_or_feed_change() {
+        let f = Fixture::new();
+        let (_, mut stable) = f.archive(None);
+        stable.version = "1.2".into();
+        let mut beta = stable.clone();
+        beta.version = "1.3-beta.2".into();
+        let (url, server) = serve_feeds(
+            vec![
+                ("/stable", 200, serde_json::to_vec(&stable).unwrap()),
+                ("/beta", 200, serde_json::to_vec(&beta).unwrap()),
+            ],
+            3,
+        );
+        let mut config = f.config.clone();
+        config.feed = Some(format!("{url}/stable"));
+        config.beta_feed = Some(format!("{url}/beta"));
+        config.allow_beta = true;
+        let cache = config.installation.join(APP).join("conf/update-check.json");
+        fs::write(
+            cache.parent().unwrap().join(".betterpod-rust.json"),
+            b"{\"application\":\"betterpod-rust\",\"ready\":true}",
+        )
+        .unwrap();
+        f.ctx(|ctx| check_if_due(&config, &cache, false, ctx).unwrap());
+        let initial: CheckState = serde_json::from_slice(&fs::read(&cache).unwrap()).unwrap();
+        assert_eq!(initial.available.unwrap().version, "1.3-beta.2");
+        config.allow_beta = false;
+        f.ctx(|ctx| check_if_due(&config, &cache, false, ctx).unwrap());
+        let stable_state: CheckState = serde_json::from_slice(&fs::read(&cache).unwrap()).unwrap();
+        assert_eq!(stable_state.available.unwrap().version, "1.2");
+        assert_ne!(initial.feed, stable_state.feed);
+        let old = channel_key(&config);
+        config.beta_feed = Some(format!("{url}/changed"));
+        assert_ne!(old, channel_key(&config));
+        assert_eq!(server.join().unwrap(), vec!["/stable", "/beta", "/stable"]);
+        f.preserved();
+    }
+    #[test]
+    fn beta_toggle_is_not_lost_when_request_queue_is_full() {
+        let (tx, _requests) = mpsc::sync_channel(2);
+        let (_events, rx) = mpsc::sync_channel(2);
+        tx.try_send(Command::Check).unwrap();
+        tx.try_send(Command::Check).unwrap();
+        let mut updater = Updater {
+            tx: Some(tx),
+            rx,
+            stop: Arc::new(AtomicBool::new(false)),
+            allow_beta: Arc::new(AtomicBool::new(false)),
+            worker: None,
+        };
+        assert!(!updater.command(Command::Check));
+        assert!(updater.command(Command::SetBeta(true)));
+        assert!(updater.allow_beta.load(Ordering::Acquire));
+        updater.shutdown();
+        assert!(!updater.command(Command::SetBeta(false)));
     }
     #[test]
     fn no_feed_is_real_local_build_status_without_network() {

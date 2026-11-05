@@ -21,6 +21,8 @@ pub struct Settings {
     pub volume: f32,
     pub theme: String,
     pub shuffle: bool,
+    pub shuffle_mode: String,
+    pub beta_updates: bool,
     pub repeat: String,
     pub screensaver_seconds: u32,
     pub effects: String,
@@ -42,8 +44,10 @@ impl Default for Settings {
             volume: 0.7,
             theme: "light".into(),
             shuffle: false,
+            shuffle_mode: "off".into(),
+            beta_updates: false,
             repeat: "off".into(),
-            screensaver_seconds: 120,
+            screensaver_seconds: 0,
             effects: "full".into(),
             apple: false,
             hide_podcasts: false,
@@ -53,8 +57,8 @@ impl Default for Settings {
             screensaver_colors: 0,
             game_clock: Vec::new(),
             hold_brightness: 15,
-            screensaver_dim: 15,
-            sharing_name: "betterPod Rust".into(),
+            screensaver_dim: 0,
+            sharing_name: String::new(),
         }
     }
 }
@@ -67,6 +71,15 @@ impl Settings {
         self.volume = self.volume.clamp(0.0, 1.0);
         if !matches!(self.theme.as_str(), "light" | "dark" | "auto") {
             self.theme = "light".into();
+        }
+        if !matches!(self.shuffle_mode.as_str(), "off" | "songs" | "albums") {
+            self.shuffle_mode = "off".into();
+        }
+        if self.shuffle && self.shuffle_mode == "off" {
+            self.shuffle_mode = "songs".into();
+        }
+        if !self.shuffle {
+            self.shuffle_mode = "off".into();
         }
         if !matches!(self.repeat.as_str(), "off" | "all" | "one") {
             self.repeat = "off".into();
@@ -88,13 +101,10 @@ impl Settings {
             .sharing_name
             .chars()
             .filter(|c| !c.is_control())
-            .take(80)
+            .take(32)
             .collect::<String>()
             .trim()
             .to_string();
-        if self.sharing_name.is_empty() {
-            self.sharing_name = "betterPod Rust".into();
-        }
         self
     }
 }
@@ -106,6 +116,8 @@ pub struct Playback {
     pub index: usize,
     pub position: f64,
     pub paused: bool,
+    /// Physical list before shuffle, needed to restore Shuffle Off after restart.
+    pub original_queue: Option<Vec<PathBuf>>,
 }
 
 impl Playback {
@@ -116,6 +128,18 @@ impl Playback {
         self.index = self.index.min(self.queue.len() - 1);
         if !self.position.is_finite() || self.position < 0.0 {
             self.position = 0.0;
+        }
+        if self.original_queue.as_ref().is_some_and(|original| {
+            if original.len() != self.queue.len() {
+                return true;
+            }
+            let mut a = original.iter().collect::<Vec<_>>();
+            let mut b = self.queue.iter().collect::<Vec<_>>();
+            a.sort();
+            b.sort();
+            a != b
+        }) {
+            self.original_queue = None;
         }
         Some(self)
     }
@@ -146,6 +170,7 @@ enum Payload {
         index: usize,
         position: f64,
         paused: bool,
+        original_queue: Option<Arc<Vec<PathBuf>>>,
     },
     Bytes(Vec<u8>),
 }
@@ -157,6 +182,8 @@ impl Payload {
             index: usize,
             position: f64,
             paused: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            original_queue: Option<&'a [PathBuf]>,
         }
         let bytes = match self {
             Self::Settings(settings) => {
@@ -167,12 +194,14 @@ impl Payload {
                 index,
                 position,
                 paused,
+                original_queue,
             } => Cow::Owned(
                 serde_json::to_vec(&PlaybackRef {
                     queue: queue.as_slice(),
                     index: *index,
                     position: *position,
                     paused: *paused,
+                    original_queue: original_queue.as_ref().map(|q| q.as_slice()),
                 })
                 .map_err(|e| e.to_string())?,
             ),
@@ -254,11 +283,15 @@ impl Store {
     }
 
     pub fn save_playback(&self, playback: &Playback) -> Result<(), String> {
-        self.save_playback_shared(
+        self.save_playback_shared_order(
             Arc::new(playback.queue.clone()),
             playback.index,
             playback.position,
             playback.paused,
+            playback
+                .original_queue
+                .as_ref()
+                .map(|queue| Arc::new(queue.clone())),
         )
     }
     /// Constant-size enqueue for the UI. Cache this immutable queue Arc until
@@ -269,6 +302,18 @@ impl Store {
         index: usize,
         position: f64,
         paused: bool,
+    ) -> Result<(), String> {
+        self.save_playback_shared_order(queue, index, position, paused, None)
+    }
+    /// Both immutable orders are retained by Arc; their path traversal and
+    /// JSON serialization belong exclusively to the background state writer.
+    pub fn save_playback_shared_order(
+        &self,
+        queue: Arc<Vec<PathBuf>>,
+        index: usize,
+        position: f64,
+        paused: bool,
+        original_queue: Option<Arc<Vec<PathBuf>>>,
     ) -> Result<(), String> {
         let index = index.min(queue.len().saturating_sub(1));
         let position = if position.is_finite() && position >= 0.0 {
@@ -283,6 +328,7 @@ impl Store {
                 index,
                 position,
                 paused,
+                original_queue,
             },
         )
     }
@@ -503,7 +549,7 @@ pub(crate) fn sync_directory(path: &Path) -> std::io::Result<()> {
     }
 }
 #[cfg(unix)]
-fn sync_open_directory(directory: &File) -> std::io::Result<()> {
+pub(crate) fn sync_open_directory(directory: &File) -> std::io::Result<()> {
     match directory.sync_all() {
         Err(error)
             if error
@@ -686,6 +732,63 @@ pub(crate) fn atomic_write_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn physical_shuffle_order_survives_restart_and_plain_saves_clear_it() {
+        let root = temporary("physical-shuffle-order");
+        let physical = Arc::new(vec![
+            PathBuf::from("/music/a.flac"),
+            PathBuf::from("/music/b.flac"),
+            PathBuf::from("/music/a.flac"),
+            PathBuf::from("/music/c.flac"),
+        ]);
+        let playing = Arc::new(vec![
+            physical[3].clone(),
+            physical[0].clone(),
+            physical[1].clone(),
+            physical[2].clone(),
+        ]);
+        {
+            let store = Store::new(root.clone()).unwrap();
+            store
+                .save_playback_shared_order(playing.clone(), 1, 37.25, true, Some(physical.clone()))
+                .unwrap();
+            store.flush().unwrap();
+        }
+        let store = Store::new(root.clone()).unwrap();
+        let loaded = store.load_playback().unwrap();
+        assert_eq!(loaded.queue, *playing);
+        assert_eq!(loaded.original_queue.as_ref(), Some(physical.as_ref()));
+        assert_eq!(loaded.index, 1);
+        assert_eq!(loaded.position, 37.25);
+        assert!(loaded.paused);
+        // The compatibility wrapper starts a new unshuffled snapshot; it may
+        // not leave a stale physical queue from a prior coalesced payload.
+        store
+            .save_playback_shared(physical.clone(), 2, 0.0, false)
+            .unwrap();
+        store.flush().unwrap();
+        let loaded = store.load_playback().unwrap();
+        assert_eq!(loaded.queue, *physical);
+        assert!(loaded.original_queue.is_none());
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn playback_defaults_old_snapshots_and_rejects_foreign_physical_members() {
+        let legacy: Playback =
+            serde_json::from_str(r#"{"queue":["/music/a"],"index":0,"position":5,"paused":true}"#)
+                .unwrap();
+        assert!(legacy.normalize().unwrap().original_queue.is_none());
+        let malformed = Playback {
+            queue: vec!["/music/a".into(), "/music/b".into()],
+            original_queue: Some(vec!["/music/a".into(), "/other/x".into()]),
+            ..Default::default()
+        }
+        .normalize()
+        .unwrap();
+        assert!(malformed.original_queue.is_none());
+        assert_eq!(malformed.queue.len(), 2);
+    }
 
     fn temporary(name: &str) -> PathBuf {
         let id = TEMP_ID.fetch_add(1, Ordering::Relaxed);
@@ -693,6 +796,17 @@ mod tests {
             std::env::temp_dir().join(format!("betterpod-rust-{name}-{}-{id}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[test]
+    fn sharing_name_stays_unset_until_chosen_and_bounds_unicode_without_splitting() {
+        assert!(Settings::default().normalize().sharing_name.is_empty());
+        let mut settings = Settings::default();
+        settings.sharing_name = "é".repeat(40);
+        assert_eq!(settings.normalize().sharing_name, "é".repeat(32));
+        let mut settings = Settings::default();
+        settings.sharing_name = " \n ".into();
+        assert!(settings.normalize().sharing_name.is_empty());
     }
 
     #[test]
@@ -809,7 +923,7 @@ mod tests {
             assert_eq!(settings.theme, "light");
             assert_eq!(settings.repeat, "off");
             assert_eq!(settings.screensaver_dim, 100);
-            assert_eq!(Settings::default().screensaver_dim, 15);
+            assert_eq!(Settings::default().screensaver_dim, 0);
             assert!(store.load_playback().is_none());
         }
         fs::remove_dir_all(root).unwrap();

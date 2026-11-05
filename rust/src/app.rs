@@ -10,6 +10,34 @@ use app_files::{Effect as FilesEffect, Files, Mode as FilesMode};
 #[path = "app_qa.rs"]
 mod qa;
 use app_settings::SettingValue;
+#[path = "app_parity_model.rs"]
+mod app_parity_model;
+#[path = "app_queue_order.rs"]
+mod app_queue_order;
+#[path = "app_search.rs"]
+mod app_search;
+#[path = "app_visual_menu.rs"]
+mod app_visual_menu;
+#[path = "app_visual_player.rs"]
+mod app_visual_player;
+#[path = "app_visual_video.rs"]
+mod app_visual_video;
+use app_search::SearchResults;
+use app_visual_menu::MenuVisual;
+pub(crate) use app_visual_menu::RowVisual;
+use app_visual_player::PlayerVisual;
+use app_visual_video::VideoVisual;
+#[path = "app_feedback.rs"]
+mod app_feedback;
+use app_feedback::Feedback;
+#[path = "app_compositor.rs"]
+mod app_compositor;
+#[path = "app_keyboard.rs"]
+mod app_keyboard;
+#[path = "app_stream_control.rs"]
+mod app_stream_control;
+use app_keyboard::{Keyboard, KeyboardEffect};
+use betterpod_rust::visual_assets::VisualAssets;
 #[path = "app_quiz.rs"]
 mod app_quiz;
 use app_curation::{Curation, CurationEffect, Mode as CurationMode};
@@ -21,7 +49,7 @@ use crate::app_maintenance::{
 };
 use crate::art::Artwork;
 use crate::audio::{AudioCommand, AudioEngine, AudioSnapshot};
-use crate::games::{GameKind, Games};
+use crate::games::{GameCommand, GameEffect, GameKind, Games};
 use crate::input::Action;
 use crate::library::{Library, Track};
 use crate::platform::{IdleGuard, Platform, SystemVolume};
@@ -40,14 +68,14 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const BG: Color = [0.96, 0.96, 0.97, 1.0];
-const FG: Color = [0.10, 0.11, 0.13, 1.0];
-const MUTED: Color = [0.43, 0.45, 0.49, 1.0];
+const BG: Color = [1.0, 1.0, 1.0, 1.0];
+const FG: Color = [0.0, 0.0, 0.0, 1.0];
+const MUTED: Color = [100.0 / 255.0, 100.0 / 255.0, 100.0 / 255.0, 1.0];
 const WHITE: Color = [1.0; 4];
 const BLUE: Color = [0.12, 0.48, 0.88, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Screen {
+pub(crate) enum Screen {
     Home,
     Music,
     Albums,
@@ -60,6 +88,7 @@ enum Screen {
     Apps,
     About,
     Search,
+    SearchResults(u8),
     NowPlaying,
     CoverFlow,
     Visualizer,
@@ -69,13 +98,38 @@ enum Screen {
     Puzzle,
     Video,
     GameClocks,
+    GameHistory,
     Quiz,
     Curation,
     Maintenance,
     Files,
+    Library,
+    Screensaver,
+    SearchHub,
+    YouTubeSettings,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ViewKind {
+    Split,
+    Full,
+    CoverFlow,
+}
+impl Screen {
+    fn default_kind(self) -> ViewKind {
+        match self {
+            Self::Home
+            | Self::Music
+            | Self::Settings
+            | Self::Apps
+            | Self::SearchHub
+            | Self::Puzzles => ViewKind::Split,
+            Self::CoverFlow => ViewKind::CoverFlow,
+            _ => ViewKind::Full,
+        }
+    }
 }
 #[derive(Clone)]
-enum Intent {
+pub(crate) enum Intent {
     Open(Screen),
     Song(usize),
     QueueSong(usize),
@@ -99,6 +153,9 @@ enum Intent {
     AlbumInfo(usize),
     Puzzle(usize),
     DownloadMedia(bool),
+    VideoRestart,
+    DownloadVideoChapters,
+    VideoDownloadMenu,
     ShareTrack(usize),
     ShareAlbum(usize),
     SongInfo(usize),
@@ -124,66 +181,101 @@ enum Intent {
     MergeSong(usize),
     SeparateSong(usize),
     ClearUpcoming,
+    AskClearUpcoming,
+    AskClearNowPlaying,
+    MoveQueueNext(usize),
+    EndQueueMusic,
     ClearNowPlaying,
     Setting(SettingValue),
     Files(FilesMode),
+    Noop,
+    Quit,
+    QuitColumn,
+    SoftwareUpdate,
+    SharingSettings,
+    SharingName,
+    YouTubeSettings,
+    ToggleBeta,
+    QuizNewGame,
+    StopQuiz,
+    GameCommand(GameCommand),
+    PuzzleNew,
+    PuzzleUndo,
+    QuitPuzzle,
 }
 #[derive(Clone)]
-struct Row {
-    label: String,
-    detail: String,
-    cover: Option<PathBuf>,
-    intent: Intent,
-    arrow: bool,
+pub(crate) struct Row {
+    pub(crate) label: String,
+    pub(crate) detail: String,
+    pub(crate) cover: Option<PathBuf>,
+    pub(crate) intent: Intent,
+    pub(crate) arrow: bool,
+    pub(crate) visual: RowVisual,
 }
 impl Row {
-    fn new(label: impl Into<String>, intent: Intent) -> Self {
+    pub(crate) fn new(label: impl Into<String>, intent: Intent) -> Self {
         Self {
             label: label.into(),
             detail: String::new(),
             cover: None,
             intent,
             arrow: true,
+            visual: RowVisual::default(),
         }
     }
 }
-struct Page {
-    screen: Screen,
-    title: String,
-    rows: Arc<Vec<Row>>,
-    selected: usize,
-    scroll: f32,
-    target_scroll: f32,
-    enter: f32,
+#[derive(Clone)]
+pub(crate) struct Page {
+    pub(crate) screen: Screen,
+    pub(crate) kind: ViewKind,
+    pub(crate) mini: bool,
+    pub(crate) title: String,
+    pub(crate) rows: Arc<Vec<Row>>,
+    pub(crate) selected: usize,
+    pub(crate) scroll: f32,
+    pub(crate) target_scroll: f32,
+    pub(crate) enter: f32,
 }
 impl Page {
     fn split(&self) -> bool {
-        matches!(
-            self.screen,
-            Screen::Home | Screen::Music | Screen::Settings | Screen::Apps
-        )
+        self.kind == ViewKind::Split
     }
-    fn row_height(&self) -> f32 {
-        if matches!(
-            self.screen,
-            Screen::Albums | Screen::Songs | Screen::Queue | Screen::Search
-        ) {
-            54.0
-        } else {
-            44.0
+    pub(crate) fn reveal_selection(&mut self) {
+        self.reveal_selection_in(440.0);
+    }
+    pub(crate) fn reveal_selection_in(&mut self, available: f32) {
+        if self.rows.is_empty() {
+            self.selected = 0;
+            self.scroll = 0.0;
+            self.target_scroll = 0.0;
+            return;
         }
-    }
-    fn reveal_selection(&mut self) {
-        let h = self.row_height();
-        let available = 350.0;
-        let top = self.selected as f32 * h;
+        self.selected = self.selected.min(self.rows.len() - 1);
+        if self.rows[self.selected].visual.header {
+            self.selected = (self.selected + 1).min(self.rows.len() - 1);
+        }
+        let top = self
+            .rows
+            .iter()
+            .take(self.selected)
+            .map(app_visual_menu::row_height)
+            .sum::<f32>();
+        let height = app_visual_menu::row_height(&self.rows[self.selected]);
+        // Every list owns440px below its header; designated views reserve116
+        // for their mini-player at draw time, where exact ensureVisible is applied.
+        let available = available.clamp(1.0, 440.0);
         if top < self.target_scroll {
             self.target_scroll = top;
+        } else if top + height > self.target_scroll + available {
+            self.target_scroll = top + height - available;
         }
-        if top + h > self.target_scroll + available {
-            self.target_scroll = top + h - available;
-        }
-        self.target_scroll = self.target_scroll.max(0.0);
+        let total = self
+            .rows
+            .iter()
+            .map(app_visual_menu::row_height)
+            .sum::<f32>();
+        self.target_scroll = self.target_scroll.clamp(0.0, (total - available).max(0.0));
+        self.scroll = self.target_scroll;
     }
 }
 #[derive(Clone)]
@@ -211,8 +303,9 @@ impl ScannedLibrary {
                 .enumerate()
                 .map(|(i, t)| {
                     let mut row = Row::new(&t.title, Intent::Song(i));
-                    row.detail = t.artist.clone();
+                    row.detail = format!("{} • {}", t.artist, t.album);
                     row.cover = t.cover.clone();
+                    row.visual.thumbnail = true;
                     row.arrow = false;
                     row
                 })
@@ -227,6 +320,7 @@ impl ScannedLibrary {
                     let mut row = Row::new(&a.name, Intent::Open(Screen::Album(i)));
                     row.detail = a.artist.clone();
                     row.cover = a.cover.clone();
+                    row.visual.thumbnail = true;
                     row
                 })
                 .collect::<Vec<_>>(),
@@ -243,17 +337,23 @@ impl ScannedLibrary {
             .albums
             .iter()
             .map(|a| {
-                Arc::new(
-                    a.track_indices
-                        .iter()
-                        .filter_map(|&i| {
-                            songs.get(i).cloned().map(|mut row| {
-                                row.detail = time_label(library.tracks[i].duration);
-                                row
-                            })
-                        })
-                        .collect(),
-                )
+                let mut header = Row::new(
+                    if a.artist.is_empty() {
+                        a.name.clone()
+                    } else {
+                        format!("{} · {}", a.name, a.artist)
+                    },
+                    Intent::Noop,
+                );
+                header.visual.header = true;
+                header.arrow = false;
+                let mut rows = vec![header];
+                for &i in &a.track_indices {
+                    let mut row = Row::new(&library.tracks[i].title, Intent::Song(i));
+                    row.arrow = false;
+                    rows.push(row);
+                }
+                Arc::new(rows)
             })
             .collect();
         let mut by_artist: HashMap<&str, Vec<Row>> = HashMap::new();
@@ -266,7 +366,14 @@ impl ScannedLibrary {
         let artist_albums = library
             .artists
             .iter()
-            .map(|a| Arc::new(by_artist.remove(a.as_str()).unwrap_or_default()))
+            .map(|a| {
+                let mut header = Row::new(a, Intent::Noop);
+                header.visual.header = true;
+                header.arrow = false;
+                let mut rows = vec![header];
+                rows.extend(by_artist.remove(a.as_str()).unwrap_or_default());
+                Arc::new(rows)
+            })
             .collect();
         let by_path = library
             .tracks
@@ -285,10 +392,11 @@ impl ScannedLibrary {
         }
     }
 }
-struct Keyboard {
-    layout: u8,
-    selected: usize,
-    query: String,
+#[derive(Clone, Copy)]
+enum KeyboardContext {
+    Library,
+    Curation,
+    Sharing,
 }
 struct Toast {
     text: String,
@@ -297,6 +405,7 @@ struct Toast {
 
 pub struct App {
     pub running: bool,
+    pub user_quit: bool,
     pub screen_off: bool,
     pub phase: &'static str,
     pub audio_snapshot: AudioSnapshot,
@@ -317,8 +426,12 @@ pub struct App {
     library: Arc<Library>,
     by_path: HashMap<PathBuf, usize>,
     pages: Vec<Page>,
+    selection_layout: Option<(Arc<Vec<Row>>, usize, Screen, u32)>,
     queue: Arc<Vec<PathBuf>>,
     queue_index: usize,
+    queue_original: Option<Arc<Vec<PathBuf>>>,
+    queued_marks: HashMap<PathBuf, String>,
+    detached_next: Option<usize>,
     now_track: Option<Track>,
     restored_position: f64,
     restored: bool,
@@ -335,8 +448,9 @@ pub struct App {
     views_album_tracks: Vec<Arc<Vec<Row>>>,
     views_artist_albums: Vec<Arc<Vec<Row>>>,
     search_rows: Arc<Vec<Row>>,
+    search_views: [Arc<Vec<Row>>; 4],
     library_generation: u64,
-    search_result: Option<mpsc::Receiver<(u64, Arc<Vec<Row>>)>>,
+    search_result: Option<mpsc::Receiver<(u64, String, SearchResults)>>,
     search_worker: Option<thread::JoinHandle<()>>,
     search_pending: Option<String>,
     scanning: bool,
@@ -356,22 +470,31 @@ pub struct App {
     cover_from_np: bool,
     search_query: String,
     keyboard: Option<Keyboard>,
+    keyboard_context: KeyboardContext,
     options: Option<Page>,
     game: Option<Games>,
     quiz: Option<Quiz>,
+    retired_quiz: Option<Quiz>,
+    retired_game: Option<Games>,
     curation: Curation,
     files: Files,
+    library_info_revision: u64,
     quiz_restore: Option<SavedPlayback>,
     puzzle: Option<PuzzleGame>,
     game_saves: HashMap<String, Vec<u8>>,
     video: Option<VideoPlayer>,
     video_open: bool,
+    video_visual: VideoVisual,
     video_texture: Option<Texture>,
     video_overlay: Instant,
     video_title: String,
     video_cover: Option<PathBuf>,
     video_origin: String,
     video_audio_only: bool,
+    inline_preview: bool,
+    pending_stream_paused: bool,
+    wired_headphones: bool,
+    last_bt_audio: Option<bool>,
     video_queue: Vec<betterpod_rust::online::OnlineItem>,
     video_index: usize,
     video_ended_generation: u64,
@@ -399,6 +522,13 @@ pub struct App {
     benchmark_phase: usize,
     benchmark_step: u64,
     closed: bool,
+    visual_time: f64,
+    paused_at: f64,
+    visual_assets: VisualAssets,
+    status_watcher: betterpod_rust::status::Watcher,
+    visual_menu: MenuVisual,
+    player_visual: PlayerVisual,
+    feedback: Feedback,
 }
 
 impl App {
@@ -425,6 +555,7 @@ impl App {
         }
         let mut app = Self {
             running: true,
+            user_quit: false,
             screen_off: false,
             phase: "home",
             audio_snapshot: AudioSnapshot::default(),
@@ -445,8 +576,12 @@ impl App {
             library: Arc::new(Library::default()),
             by_path: HashMap::new(),
             pages: Vec::new(),
+            selection_layout: None,
             queue: Arc::new(Vec::new()),
             queue_index: 0,
+            queue_original: None,
+            queued_marks: HashMap::new(),
+            detached_next: None,
             now_track: None,
             restored_position: 0.0,
             restored: false,
@@ -463,6 +598,7 @@ impl App {
             views_album_tracks: Vec::new(),
             views_artist_albums: Vec::new(),
             search_rows: Arc::new(Vec::new()),
+            search_views: std::array::from_fn(|_| Arc::new(Vec::new())),
             library_generation: 0,
             search_result: None,
             search_worker: None,
@@ -484,22 +620,31 @@ impl App {
             cover_from_np: false,
             search_query: String::new(),
             keyboard: None,
+            keyboard_context: KeyboardContext::Library,
             options: None,
             game: None,
             quiz: None,
+            retired_quiz: None,
+            retired_game: None,
             curation: Curation::new(),
             files: Files::new(music.clone(), data.clone()),
+            library_info_revision: 0,
             quiz_restore: None,
             puzzle: None,
             game_saves,
             video: None,
             video_open: false,
+            video_visual: VideoVisual::new(),
             video_texture: None,
             video_overlay: Instant::now(),
             video_title: String::new(),
             video_cover: None,
             video_origin: String::new(),
             video_audio_only: false,
+            inline_preview: false,
+            pending_stream_paused: false,
+            wired_headphones: false,
+            last_bt_audio: None,
             video_queue: Vec::new(),
             video_index: 0,
             video_ended_generation: u64::MAX,
@@ -529,10 +674,19 @@ impl App {
             benchmark_phase: usize::MAX,
             benchmark_step: 0,
             closed: false,
+            visual_time: 0.0,
+            paused_at: 0.0,
+            visual_assets: VisualAssets::new(renderer, &assets)?,
+            status_watcher: betterpod_rust::status::Watcher::new()?,
+            visual_menu: MenuVisual::new(),
+            player_visual: PlayerVisual::new(),
+            feedback: Feedback::new(),
         };
         app.extras.set_youtube(app.settings.youtube);
         app.extras
             .set_sharing_name(app.settings.sharing_name.clone());
+        app.saver.configure_assets(&assets)?;
+        app.saver.set_assets(&app.visual_assets);
         app.configure_saver(false);
         app.pages.push(app.page(Screen::Home));
         app.rescan();
@@ -542,7 +696,7 @@ impl App {
     fn screen(&self) -> Screen {
         self.pages.last().map_or(Screen::Home, |p| p.screen)
     }
-    fn dark(&self) -> bool {
+    pub(crate) fn dark(&self) -> bool {
         if self.settings.theme == "auto" {
             #[cfg(unix)]
             unsafe {
@@ -555,12 +709,15 @@ impl App {
         }
         self.settings.theme == "dark"
     }
+    pub(crate) fn maintenance_library(&self) -> Arc<Library> {
+        Arc::clone(&self.library)
+    }
     fn colors(&self) -> (Color, Color, Color) {
         if self.dark() {
             (
-                [0.075, 0.08, 0.095, 1.0],
-                [0.96, 0.97, 0.99, 1.0],
-                [0.65, 0.67, 0.72, 1.0],
+                [22.0 / 255.0, 23.0 / 255.0, 25.0 / 255.0, 1.0],
+                [238.0 / 255.0, 239.0 / 255.0, 241.0 / 255.0, 1.0],
+                [150.0 / 255.0, 153.0 / 255.0, 158.0 / 255.0, 1.0],
             )
         } else {
             (BG, FG, MUTED)
@@ -569,7 +726,7 @@ impl App {
     fn notify(&mut self, text: impl Into<String>) {
         self.toast = Some(Toast {
             text: text.into(),
-            until: Instant::now() + Duration::from_secs(3),
+            until: Instant::now() + Duration::from_millis(1600),
         });
     }
     fn send(&mut self, command: AudioCommand) {
@@ -643,9 +800,25 @@ impl App {
         let pages = std::mem::take(&mut self.pages);
         self.art.invalidate(renderer);
         self.library = Arc::new(library);
+        self.curation.set_library(Arc::clone(&self.library));
+        self.extras.set_library_snapshot(Arc::clone(&self.library));
+        if let Some(controller) = self.maintenance.as_mut() {
+            controller.set_library(Arc::clone(&self.library));
+        }
+        if let Err(error) = self.files.refresh_library(Arc::clone(&self.library)) {
+            self.notify(error);
+        }
         let retired_index = std::mem::replace(&mut self.by_path, by_path);
         self.library_generation = self.library_generation.wrapping_add(1);
         if let Some(saved) = self.restore.take() {
+            self.queue_original = saved.original_queue.map(|order| {
+                Arc::new(
+                    order
+                        .into_iter()
+                        .filter(|p| self.by_path.contains_key(p))
+                        .collect::<Vec<_>>(),
+                )
+            });
             let current = saved.queue.get(saved.index).cloned();
             self.queue = saved
                 .queue
@@ -680,10 +853,27 @@ impl App {
                     .albums
                     .get(i)
                     .and_then(|old| {
+                        let key = old
+                            .track_indices
+                            .first()
+                            .and_then(|&i| previous.tracks.get(i))
+                            .map(betterpod_rust::library::album_key)?;
+                        let surviving = old
+                            .track_indices
+                            .iter()
+                            .filter_map(|&i| previous.tracks.get(i))
+                            .filter_map(|track| self.by_path.get(&track.path).copied())
+                            .collect::<Vec<_>>();
+                        let track = surviving
+                            .iter()
+                            .find(|&&i| {
+                                betterpod_rust::library::album_key(&self.library.tracks[i]) == key
+                            })
+                            .or_else(|| surviving.first())?;
                         self.library
                             .albums
                             .iter()
-                            .position(|a| a.name == old.name && a.artist == old.artist)
+                            .position(|a| a.track_indices.contains(track))
                     })
                     .map(Screen::Album)
                     .unwrap_or(Screen::Albums),
@@ -700,7 +890,8 @@ impl App {
             page.scroll = old.scroll;
             page.target_scroll = old.target_scroll;
             page.enter = 0.0;
-            page.reveal_selection();
+            let height = self.visual_menu_content_height(&page);
+            page.reveal_selection_in(height);
             self.pages.push(page);
         }
         if self.pages.is_empty() {
@@ -723,51 +914,15 @@ impl App {
         let mut cached: Option<Arc<Vec<Row>>> = None;
         let title: String = match screen {
             Screen::Home => {
-                rows.push(Row::new("Cover Flow", Intent::Open(Screen::CoverFlow)));
-                rows.push(Row::new("Music", Intent::Open(Screen::Music)));
-                if !self.settings.hide_podcasts {
-                    rows.push(Row::new("Podcasts", Intent::Extra(ExtraPage::Podcasts)));
-                }
-                if self.settings.youtube {
-                    rows.push(Row::new("Videos", Intent::Extra(ExtraPage::Videos)));
-                }
-                if self
-                    .maintenance
-                    .as_ref()
-                    .is_some_and(|m| m.update_available())
-                {
-                    rows.push(Row::new(
-                        "Update Available",
-                        Intent::Maintenance(MaintenanceMode::Update),
-                    ));
-                }
-                rows.push(Row::new("Genius", Intent::Genius));
-                rows.push(Row::new("Apps", Intent::Open(Screen::Apps)));
-                rows.push(Row::new("Settings", Intent::Open(Screen::Settings)));
-                if self.now_track.is_some() {
-                    rows.push(Row::new("Now Playing", Intent::Open(Screen::NowPlaying)));
-                }
+                rows = self.reference_home_rows();
                 if self.settings.apple {
                     "iPod".into()
                 } else {
-                    "betterPod Rust".into()
+                    "betterPod".into()
                 }
             }
             Screen::Music => {
-                rows.push(Row::new("Cover Flow", Intent::Open(Screen::CoverFlow)));
-                rows.push(Row::new("Playlists", Intent::Extra(ExtraPage::Playlists)));
-                rows.push(Row::new("Albums", Intent::Open(Screen::Albums)));
-                rows.push(Row::new("Artists", Intent::Open(Screen::Artists)));
-                rows.push(Row::new("Songs", Intent::Open(Screen::Songs)));
-                rows.push(Row::new("Search", Intent::Open(Screen::Search)));
-                rows.push(Row::new(
-                    "Search Online",
-                    Intent::Extra(ExtraPage::SearchSources),
-                ));
-                rows.push(Row::new("Downloaded", Intent::Extra(ExtraPage::Downloads)));
-                rows.push(Row::new("Receive Music", Intent::Extra(ExtraPage::Receive)));
-                rows.push(Row::new("Shuffle Songs", Intent::ShuffleSongs));
-                rows.push(Row::new("Up Next", Intent::Open(Screen::Queue)));
+                rows = self.reference_music_rows();
                 "Music".into()
             }
             Screen::Albums => {
@@ -780,227 +935,56 @@ impl App {
             }
             Screen::Artist(index) => {
                 cached = self.views_artist_albums.get(index).cloned();
-                self.library
-                    .artists
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| "Artist".into())
+                "Artists".into()
             }
             Screen::Album(index) => {
                 cached = self.views_album_tracks.get(index).cloned();
-                self.library
-                    .albums
-                    .get(index)
-                    .map_or("Album", |a| a.name.as_str())
-                    .into()
+                "Albums".into()
             }
             Screen::Songs => {
                 cached = Some(Arc::clone(&self.views_songs));
                 "Songs".into()
             }
             Screen::Queue => {
-                for (i, path) in self.queue.iter().enumerate() {
-                    let track = self
-                        .by_path
-                        .get(path)
-                        .and_then(|&i| self.library.tracks.get(i));
-                    let label = track.map(|t| t.title.clone()).unwrap_or_else(|| {
-                        path.file_stem()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .into_owned()
-                    });
-                    let mut row = Row::new(label, Intent::QueueSong(i));
-                    row.detail = track.map(|t| t.artist.clone()).unwrap_or_default();
-                    row.cover = track.and_then(|t| t.cover.clone());
-                    rows.push(row);
-                }
-                rows.push(Row::new("Clear Up Next", Intent::ClearUpcoming));
-                rows.push(Row::new("Clear Now Playing", Intent::ClearNowPlaying));
+                rows = self.reference_queue_rows();
                 "Up Next".into()
             }
             Screen::Settings => {
-                rows.push(Row::new(
-                    format!("Volume: {}%", (self.settings.volume * 100.0).round() as u32),
-                    Intent::Volume,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Shuffle: {}",
-                        if self.settings.shuffle { "On" } else { "Off" }
-                    ),
-                    Intent::Shuffle,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Repeat: {}",
-                        match self.settings.repeat.as_str() {
-                            "all" => "All",
-                            "one" => "One",
-                            _ => "Off",
-                        }
-                    ),
-                    Intent::Repeat,
-                ));
-                rows.push(Row::new(
-                    format!("Theme: {}", self.settings.theme),
-                    Intent::Theme,
-                ));
-                if self.maintenance.is_some() {
-                    rows.push(Row::new(
-                        "Music Folder",
-                        Intent::Maintenance(MaintenanceMode::Music),
-                    ));
-                    rows.push(Row::new(
-                        "Database",
-                        Intent::Maintenance(MaintenanceMode::Database),
-                    ));
-                    rows.push(Row::new(
-                        "Maintenance",
-                        Intent::Maintenance(MaintenanceMode::Maintenance),
-                    ));
-                    rows.push(Row::new(
-                        "Software Update",
-                        Intent::Maintenance(MaintenanceMode::Update),
-                    ));
-                }
-                rows.push(Row::new(
-                    format!("Sharing: {}", self.settings.sharing_name),
-                    Intent::Extra(ExtraPage::Sharing),
-                ));
-                rows.push(Row::new("Bluetooth", Intent::Extra(ExtraPage::Bluetooth)));
-                rows.push(Row::new("YouTube Tools", Intent::Extra(ExtraPage::Tools)));
-                rows.push(Row::new(
-                    "Library Information",
-                    Intent::Files(FilesMode::Stats),
-                ));
-                rows.push(Row::new("Browse Files", Intent::Files(FilesMode::Browse)));
-                rows.push(Row::new(
-                    "Scanned Folders",
-                    Intent::Files(FilesMode::Scanned),
-                ));
-                rows.push(Row::new("Rescan Library", Intent::Rescan));
-                rows.push(Row::new(
-                    "Missing Info",
-                    Intent::Curation(CurationMode::MissingInfo),
-                ));
-                rows.push(Row::new(
-                    "Missing Covers",
-                    Intent::Curation(CurationMode::MissingCovers),
-                ));
-                rows.push(Row::new("Visualizer", Intent::Open(Screen::Visualizer)));
-                rows.push(Row::new(
-                    format!(
-                        "Effects: {}",
-                        if self.settings.effects == "light" {
-                            "Light"
-                        } else {
-                            "Full"
-                        }
-                    ),
-                    Intent::Effects,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Turn It Apple: {}",
-                        if self.settings.apple { "On" } else { "Off" }
-                    ),
-                    Intent::Apple,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "YouTube: {}",
-                        if self.settings.youtube { "On" } else { "Off" }
-                    ),
-                    Intent::YouTube,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Show Podcasts: {}",
-                        if self.settings.hide_podcasts {
-                            "Off"
-                        } else {
-                            "On"
-                        }
-                    ),
-                    Intent::Podcasts,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Screensaver: {}",
-                        if self.settings.screensaver_seconds == 0 {
-                            "Never".into()
-                        } else {
-                            format!("{} min", self.settings.screensaver_seconds / 60)
-                        }
-                    ),
-                    Intent::SaverTime,
-                ));
-                rows.push(Row::new("Start Screensaver Now", Intent::StartSaver));
-                rows.push(Row::new(
-                    format!(
-                        "Screensaver Dimming: {}",
-                        if self.settings.screensaver_dim == 0 {
-                            "Off".into()
-                        } else {
-                            format!("{}%", self.settings.screensaver_dim)
-                        }
-                    ),
-                    Intent::SaverDim,
-                ));
-                rows.push(Row::new(
-                    format!("Screensaver Style: {}", self.settings.screensaver_style),
-                    Intent::SaverStyle,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Saver Effect: {}",
-                        saver::effect_name(
-                            &self.settings.screensaver_style,
-                            self.settings.screensaver_effect
-                        )
-                    ),
-                    Intent::SaverEffect,
-                ));
-                rows.push(Row::new(
-                    format!(
-                        "Saver Colors: {}",
-                        saver::palette_name(self.settings.screensaver_colors)
-                    ),
-                    Intent::SaverColors,
-                ));
-                rows.push(Row::new("Game Clocks", Intent::Open(Screen::GameClocks)));
-                rows.push(Row::new("About", Intent::Open(Screen::About)));
+                rows = self.reference_settings_rows();
                 "Settings".into()
             }
             Screen::Apps => {
-                rows.push(Row::new("Guess Song", Intent::Quiz));
-                rows.push(Row::new("2048", Intent::Game(GameKind::TwentyFortyEight)));
-                rows.push(Row::new("Brick", Intent::Game(GameKind::Brick)));
-                rows.push(Row::new("Solitaire", Intent::Game(GameKind::Solitaire)));
-                rows.push(Row::new(
-                    "Five Letters",
-                    Intent::Game(GameKind::FiveLetters),
-                ));
-                rows.push(Row::new("Puzzles", Intent::Open(Screen::Puzzles)));
-                rows.push(Row::new("Weather", Intent::Extra(ExtraPage::Weather)));
-                rows.push(Row::new("Visualizer", Intent::Open(Screen::Visualizer)));
+                rows = self.reference_apps_rows();
                 "Apps".into()
+            }
+            Screen::Screensaver => {
+                rows = self.reference_saver_rows();
+                "Screensaver".into()
+            }
+            Screen::YouTubeSettings => {
+                rows = self.reference_youtube_rows();
+                "YouTube".into()
+            }
+            Screen::Library => {
+                rows = self.reference_library_rows();
+                "Library".into()
+            }
+            Screen::SearchHub => {
+                rows = self.reference_search_rows();
+                "Search".into()
             }
             Screen::Search => {
                 if self.search_rows.is_empty() {
-                    rows.push(Row::new(
-                        if self.search_query.is_empty() {
-                            "Type a Search".into()
-                        } else {
-                            format!("Search: {}", self.search_query)
-                        },
-                        Intent::SearchKeyboard,
-                    ));
+                    rows.push(app_search::search_field(&self.search_query));
                 } else {
                     cached = Some(Arc::clone(&self.search_rows));
                 }
                 "Search".into()
+            }
+            Screen::SearchResults(category) => {
+                let i = (category as usize).min(3);
+                cached = Some(Arc::clone(&self.search_views[i]));
+                ["Artists", "Albums", "Songs", "Playlists"][i].into()
             }
             Screen::Files => self.files.title().into(),
             Screen::Maintenance => self
@@ -1009,8 +993,11 @@ impl App {
                 .map_or("Maintenance", |m| m.title())
                 .into(),
             Screen::Curation => "Library".into(),
-            Screen::Quiz => "Guess Song".into(),
-            Screen::About => "About".into(),
+            Screen::Quiz => "Guess the Song".into(),
+            Screen::About => {
+                rows = self.reference_about_rows();
+                "About".into()
+            }
             Screen::NowPlaying => "Now Playing".into(),
             Screen::CoverFlow => "Cover Flow".into(),
             Screen::Visualizer => "Visualizer".into(),
@@ -1022,6 +1009,18 @@ impl App {
                 } else {
                     self.video_title.clone()
                 }
+            }
+            Screen::GameHistory => {
+                if let Some(game) = self.game.as_ref() {
+                    for entry in game.history_rows() {
+                        let mut row = Row::new(entry.label, Intent::Noop);
+                        row.detail = entry.detail;
+                        row.visual.header = entry.header;
+                        row.arrow = false;
+                        rows.push(row);
+                    }
+                }
+                "History".into()
             }
             Screen::GameClocks => {
                 for name in ["2048", "Brick", "Solitaire", "Five Letters", "Guess Song"]
@@ -1044,17 +1043,42 @@ impl App {
             }
             Screen::Puzzles => {
                 for (i, info) in PUZZLES.iter().enumerate() {
-                    rows.push(Row::new(info.name, Intent::Puzzle(i)));
+                    let mut row = Row::new(info.name, Intent::Puzzle(i));
+                    row.detail = info.description.into();
+                    row.visual.preview = app_visual_menu::PreviewKind::Icon {
+                        asset: format!("pz_{}", info.id),
+                        title: info.name.into(),
+                        subtitle: String::new(),
+                    };
+                    rows.push(row);
                 }
                 "Puzzles".into()
             }
             Screen::Puzzle => self.puzzle.as_ref().map_or("Puzzle", |p| p.title()).into(),
         };
         Page {
+            kind: screen.default_kind(),
+            mini: matches!(
+                screen,
+                Screen::Home
+                    | Screen::Music
+                    | Screen::Apps
+                    | Screen::Settings
+                    | Screen::Artists
+                    | Screen::Artist(_)
+                    | Screen::Albums
+                    | Screen::Album(_)
+                    | Screen::Songs
+                    | Screen::SearchResults(_)
+            ),
             screen,
             title,
             rows: cached.unwrap_or_else(|| Arc::new(rows)),
-            selected: 0,
+            selected: if matches!(screen, Screen::Album(_) | Screen::Artist(_)) {
+                1
+            } else {
+                0
+            },
             scroll: 0.0,
             target_scroll: 0.0,
             enter: 1.0,
@@ -1076,11 +1100,26 @@ impl App {
             self.notify("The queue is empty");
         }
         if self.screen() != screen {
+            if self.screen() == Screen::Extra {
+                self.extras.retain_current_visual();
+            }
+            let previous = self.pages.last().cloned();
             self.pages.push(self.page(screen));
+            if !previous.as_ref().is_some_and(|p| {
+                matches!(p.screen, Screen::NowPlaying | Screen::CoverFlow)
+                    && matches!(screen, Screen::NowPlaying | Screen::CoverFlow)
+            }) {
+                self.visual_menu_navigation(previous, true);
+            }
         }
         self.preview_focus = false;
         if screen == Screen::Settings {
             self.refresh_setting_preview();
+        }
+        if screen == Screen::Search {
+            self.keyboard_context = KeyboardContext::Library;
+            self.keyboard = Some(Keyboard::new(self.search_query.clone()));
+            self.start_search();
         }
     }
     fn refresh_page(&mut self) {
@@ -1092,7 +1131,8 @@ impl App {
         page.scroll = scroll;
         page.target_scroll = scroll;
         page.enter = 0.0;
-        page.reveal_selection();
+        let height = self.visual_menu_content_height(&page);
+        page.reveal_selection_in(height);
         if let Some(last) = self.pages.last_mut() {
             *last = page;
         }
@@ -1118,23 +1158,36 @@ impl App {
             (
                 Arc::clone(&self.queue),
                 self.queue_index,
-                if self.restored {
+                if self.detached_next.is_some() {
+                    0.0
+                } else if self.restored {
                     self.restored_position
                 } else {
                     self.audio_snapshot.position
                 },
-                !self.audio_snapshot.playing,
+                self.detached_next.is_some() || !self.audio_snapshot.playing,
             )
         };
-        if let Err(error) = self
-            .store
-            .save_playback_shared(queue, index, position, paused)
-        {
+        if let Err(error) = self.store.save_playback_shared_order(
+            queue,
+            index,
+            position,
+            paused,
+            self.queue_original.clone(),
+        ) {
             eprintln!("Playback state: {error}");
         }
         self.last_saved = Instant::now();
     }
     fn set_volume(&mut self, delta: f32) {
+        self.visual_player_volume_changed(self.visual_time);
+        self.saver.volume_changed(self.visual_time);
+        if self.screen() != Screen::NowPlaying {
+            self.visual_menu_volume_changed(self.visual_time);
+        }
+        if self.screen() == Screen::Video {
+            self.visual_video_volume_changed(self.visual_time);
+        }
         self.settings.volume = (self.settings.volume + delta).clamp(0.0, 1.0);
         if self.volume.set(self.settings.volume) {
             self.send(AudioCommand::Volume(1.0));
@@ -1152,19 +1205,27 @@ impl App {
         if self.screen() == Screen::Settings {
             self.refresh_page();
         }
-        self.notify(format!(
-            "Volume {}%",
-            (self.settings.volume * 100.0).round() as u32
-        ));
     }
     fn current_index(&self) -> Option<usize> {
+        if let Some(track) = self.now_track.as_ref() {
+            return self.by_path.get(&track.path).copied();
+        }
         self.queue
             .get(self.queue_index)
             .and_then(|p| self.by_path.get(p))
             .copied()
     }
     fn play_current(&mut self, start: f64) {
-        self.extras.cancel_media();
+        self.play_current_inner(start, false);
+    }
+    fn play_current_inner(&mut self, start: f64, preserve_video_resolution: bool) {
+        if self.inline_preview {
+            self.inline_preview = false;
+            self.extras.stop_preview();
+        }
+        if !preserve_video_resolution {
+            self.extras.cancel_media();
+        }
         self.np_seek = None;
         self.np_mode = 0;
         self.stream_restore = None;
@@ -1206,7 +1267,10 @@ impl App {
         } else {
             self.send(command);
         }
+        self.queued_marks.remove(&track.path);
+        self.detached_next = None;
         self.now_track = Some(track);
+        self.refresh_playback_menus();
         self.restored = false;
         self.restored_position = 0.0;
         if let Some(path) = self.queue.get(self.queue_index + 1) {
@@ -1215,6 +1279,18 @@ impl App {
         self.save_playback();
     }
     fn song(&mut self, index: usize) {
+        if self.library.tracks.get(index).is_some_and(|t| {
+            self.now_track
+                .as_ref()
+                .is_some_and(|now| now.path == t.path)
+        }) && (self.audio_snapshot.playing || self.audio_snapshot.paused || self.restored)
+        {
+            self.open(Screen::NowPlaying);
+            return;
+        }
+        self.queue_original = None;
+        self.queued_marks.clear();
+        self.visual_player_track_direction(1);
         let screen = self.screen();
         let mut order: Vec<usize> = match screen {
             Screen::Album(album) => self
@@ -1224,7 +1300,7 @@ impl App {
                 .map(|a| a.track_indices.clone())
                 .unwrap_or_default(),
             Screen::Songs => (0..self.library.tracks.len()).collect(),
-            Screen::Search => self
+            Screen::Search | Screen::SearchResults(2) => self
                 .pages
                 .last()
                 .map(|p| {
@@ -1271,26 +1347,37 @@ impl App {
         self.rng
     }
     fn shuffle_remaining(&mut self) {
-        let first = self.queue_index.saturating_add(1);
-        for i in (first + 1..self.queue.len()).rev() {
-            let j = first + self.random() as usize % (i - first + 1);
-            Arc::make_mut(&mut self.queue).swap(i, j);
-        }
+        self.reference_shuffle_remaining();
     }
     fn next(&mut self, manual: bool) {
+        if self.inline_preview {
+            return;
+        }
+        self.visual_player_track_direction(1);
+        self.saver.set_track_direction(1);
         if let Some(quiz) = self.quiz.as_mut() {
             let effect = quiz.next(&self.library);
             self.quiz_effect(effect);
             return;
         }
-        if self.video_open || self.screen() == Screen::Video {
+        if self.inline_preview || self.video_open || self.screen() == Screen::Video {
             self.video_next(1);
             return;
         }
         if self.queue.is_empty() {
+            if self.now_track.is_some() {
+                self.show_end_queue(manual);
+            }
             return;
         }
-        if !manual && self.settings.repeat == "one" {
+        if let Some(next) = self.detached_next.take() {
+            if next < self.queue.len() {
+                self.queue_index = next;
+                self.play_current(0.0);
+                return;
+            }
+            self.queue_index = self.queue.len() - 1;
+        } else if !manual && self.settings.repeat == "one" {
             self.play_current(0.0);
             return;
         }
@@ -1301,38 +1388,58 @@ impl App {
             self.queue_index = 0;
             self.play_current(0.0);
         } else {
-            if !manual {
-                self.send(AudioCommand::Stop);
-                self.save_playback();
-            }
-            if !self.auto_saver && !self.held {
-                self.options = Some(Page {
-                    screen: self.screen(),
-                    title: "End of the Queue".into(),
-                    rows: vec![
-                        Row::new("Genius — 50 Random Songs", Intent::Genius),
-                        Row::new("Go to Music", Intent::Open(Screen::Music)),
-                        Row::new("Not Now", Intent::CloseOptions),
-                    ]
-                    .into(),
-                    selected: 0,
-                    scroll: 0.0,
-                    target_scroll: 0.0,
-                    enter: 0.0,
-                });
-            }
+            self.show_end_queue(manual);
+        }
+    }
+    fn show_end_queue(&mut self, manual: bool) {
+        if self.now_track.is_none() || self.library.tracks.is_empty() {
+            return;
+        }
+        if !manual {
+            self.send(AudioCommand::Stop);
+            self.save_playback();
+        }
+        if !self.auto_saver && !self.held {
+            self.options = Some(Page {
+                kind: ViewKind::Full,
+                mini: false,
+                screen: self.screen(),
+                title: "End of the Queue".into(),
+                rows: vec![
+                    Row::new("Genius", Intent::Genius),
+                    Row::new("Go to Music", Intent::EndQueueMusic),
+                    Row::new("Not Now", Intent::CloseOptions),
+                ]
+                .into(),
+                selected: 0,
+                scroll: 0.0,
+                target_scroll: 0.0,
+                enter: 0.0,
+            });
         }
     }
     fn previous(&mut self) {
+        if self.inline_preview {
+            return;
+        }
+        self.visual_player_track_direction(-1);
+        self.saver.set_track_direction(-1);
         if self.quiz.is_some() {
             self.send(AudioCommand::Pause);
             return;
         }
-        if self.video_open || self.screen() == Screen::Video {
+        if self.inline_preview || self.video_open || self.screen() == Screen::Video {
             self.video_next(-1);
             return;
         }
         if self.queue.is_empty() {
+            if self
+                .now_track
+                .as_ref()
+                .is_some_and(|t| self.audio_snapshot.path.as_ref() == Some(&t.path))
+            {
+                self.send(AudioCommand::Seek(0.0));
+            }
             return;
         }
         if self.audio_snapshot.position > 3.0 {
@@ -1343,11 +1450,21 @@ impl App {
         }
     }
     fn play_pause(&mut self) {
+        if self.inline_preview {
+            return;
+        }
+        if self.visual_video_media(Action::MediaPlayPause) {
+            return;
+        }
         if self.quiz.is_some() {
             self.send(AudioCommand::TogglePause);
             return;
         }
-        if self.video_open || self.pending_stream.is_some() {
+        if self.inline_preview || self.video_open || self.pending_stream.is_some() {
+            if self.pending_stream.is_some() {
+                self.pending_stream_paused = !self.pending_stream_paused;
+                return;
+            }
             if let Some(video) = self.video.as_ref() {
                 let state = video.snapshot();
                 video.command(VideoCommand::Pause(!state.paused));
@@ -1367,6 +1484,60 @@ impl App {
     }
     fn execute(&mut self, intent: Intent) {
         match intent {
+            Intent::PuzzleNew => {
+                if let Some(puzzle) = self.puzzle.as_mut() {
+                    puzzle.new_game();
+                }
+            }
+            Intent::PuzzleUndo => {
+                if let Some(puzzle) = self.puzzle.as_mut() {
+                    puzzle.undo();
+                }
+            }
+            Intent::QuitPuzzle => {
+                self.save_games();
+                if self.screen() == Screen::Puzzle && self.pages.len() > 1 {
+                    let previous = self.pages.pop();
+                    self.visual_menu_navigation(previous, false);
+                }
+            }
+            Intent::StopQuiz => self.quiz_effect(QuizEffect::Exit),
+            Intent::QuizNewGame => {
+                if let Some(quiz) = self.quiz.as_mut() {
+                    let effect = quiz.new_game(&self.library);
+                    self.quiz_effect(effect);
+                }
+            }
+            Intent::GameCommand(GameCommand::History) => self.open(Screen::GameHistory),
+            Intent::GameCommand(command) => {
+                if let Some(game) = self.game.as_mut() {
+                    game.command(command);
+                }
+            }
+            Intent::Noop => {}
+            Intent::Quit => {
+                self.user_quit = true;
+                self.running = false;
+            }
+            Intent::QuitColumn | Intent::SoftwareUpdate | Intent::SharingSettings => {
+                self.preview_focus = true;
+            }
+            Intent::YouTubeSettings => {
+                self.open_youtube_settings();
+            }
+            Intent::SharingName => {
+                self.keyboard_context = KeyboardContext::Sharing;
+                self.keyboard = Some(Keyboard::new(self.settings.sharing_name.clone()));
+                self.refresh_setting_preview();
+            }
+            Intent::ToggleBeta => {
+                self.settings.beta_updates = !self.settings.beta_updates;
+                if let Some(m) = self.maintenance.as_mut() {
+                    m.set_beta(self.settings.beta_updates);
+                }
+                self.save_settings();
+                self.refresh_setting_preview();
+            }
             Intent::Open(screen) => {
                 if screen == Screen::Visualizer {
                     self.configure_saver(true);
@@ -1376,12 +1547,17 @@ impl App {
             Intent::Song(i) => self.song(i),
             Intent::QueueSong(i) => {
                 if i < self.queue.len() {
+                    for path in self.queue.iter().take(i).skip(self.queue_index + 1) {
+                        self.queued_marks.remove(path);
+                    }
                     self.queue_index = i;
                     self.play_current(0.0);
                     self.open(Screen::NowPlaying);
                 }
             }
             Intent::PlayAlbum(i) => {
+                self.queue_original = None;
+                self.queued_marks.clear();
                 if let Some(a) = self.library.albums.get(i) {
                     self.queue = a
                         .track_indices
@@ -1395,6 +1571,8 @@ impl App {
                 }
             }
             Intent::ShuffleSongs => {
+                self.queue_original = None;
+                self.queued_marks.clear();
                 self.queue = self
                     .library
                     .tracks
@@ -1412,10 +1590,12 @@ impl App {
                 }
             }
             Intent::Shuffle => {
-                self.settings.shuffle = !self.settings.shuffle;
-                if self.settings.shuffle {
-                    self.shuffle_remaining();
-                }
+                let mode = match self.shuffle_label() {
+                    "Off" => "songs",
+                    "Songs" => "albums",
+                    _ => "off",
+                };
+                self.set_shuffle_mode(mode);
                 self.save_settings();
                 self.refresh_page();
             }
@@ -1434,14 +1614,27 @@ impl App {
                 self.open(Screen::Files);
             }
             Intent::Setting(value) => self.apply_setting(value),
+            Intent::AskClearUpcoming => self.reference_confirm(
+                "Clear the songs up next?",
+                "Clear Up Next",
+                Intent::ClearUpcoming,
+            ),
+            Intent::AskClearNowPlaying => self.reference_confirm(
+                "Stop the music and clear Now Playing?",
+                "Clear Now Playing",
+                Intent::ClearNowPlaying,
+            ),
+            Intent::EndQueueMusic => {
+                self.pages.clear();
+                self.pages.push(self.page(Screen::Home));
+                self.open(Screen::Music);
+            }
             Intent::ClearUpcoming => {
-                if let Some(path) = self.queue.get(self.queue_index).cloned() {
-                    self.queue = Arc::new(vec![path]);
-                    self.queue_index = 0;
-                } else {
-                    self.queue = Arc::new(Vec::new());
-                    self.queue_index = 0;
-                }
+                let keep = self.detached_next.unwrap_or(self.queue_index + 1);
+                self.queue = Arc::new(self.queue.iter().take(keep).cloned().collect());
+                self.queue_index = self.queue_index.min(self.queue.len().saturating_sub(1));
+                self.queue_original = None;
+                self.queued_marks.clear();
                 self.save_playback();
                 self.refresh_page();
             }
@@ -1451,8 +1644,20 @@ impl App {
                 self.queue = Arc::new(Vec::new());
                 self.queue_index = 0;
                 self.now_track = None;
+                self.queued_marks.clear();
+                self.queue_original = None;
+                self.detached_next = None;
+                self.refresh_playback_menus();
                 self.restored = false;
                 self.save_playback();
+                for _ in 0..2 {
+                    if matches!(self.screen(), Screen::NowPlaying | Screen::Queue)
+                        && self.pages.len() > 1
+                    {
+                        let previous = self.pages.pop();
+                        self.visual_menu_navigation(previous, false);
+                    }
+                }
                 self.refresh_page();
             }
             Intent::Playlist(playlist) => {
@@ -1492,9 +1697,12 @@ impl App {
                 }
             }
             Intent::Maintenance(mode) => {
+                let modal = matches!(mode, MaintenanceMode::DeleteAlbum(_));
                 if let Some(maintenance) = self.maintenance.as_mut() {
                     maintenance.open(mode);
-                    self.open(Screen::Maintenance);
+                    if !modal {
+                        self.open(Screen::Maintenance);
+                    }
                 }
             }
             Intent::AddAlbumPlaylist(album) => {
@@ -1513,43 +1721,26 @@ impl App {
                 self.open(Screen::Extra);
             }
             Intent::QueueAlbum(album, next) => {
-                if let Some(a) = self.library.albums.get(album) {
-                    let paths = a
-                        .track_indices
-                        .iter()
-                        .map(|&i| self.library.tracks[i].path.clone())
-                        .collect::<Vec<_>>();
-                    let at = if next {
-                        (self.queue_index + 1).min(self.queue.len())
-                    } else {
-                        self.queue.len()
-                    };
-                    Arc::make_mut(&mut self.queue).splice(at..at, paths);
-                    self.save_playback();
-                    self.notify(if next {
-                        "Album will play next"
-                    } else {
-                        "Album added to queue"
-                    });
+                if let Some(album) = self.library.albums.get(album) {
+                    self.enqueue_paths(
+                        album
+                            .track_indices
+                            .iter()
+                            .map(|&i| self.library.tracks[i].path.clone())
+                            .collect(),
+                        next,
+                    );
                 }
             }
-            Intent::RemoveQueue(index) => {
-                if index < self.queue.len() {
-                    Arc::make_mut(&mut self.queue).remove(index);
-                    if index < self.queue_index {
-                        self.queue_index -= 1;
-                    } else if index == self.queue_index {
-                        if self.queue.is_empty() {
-                            self.send(AudioCommand::Stop);
-                            self.now_track = None;
-                        } else {
-                            self.queue_index = self.queue_index.min(self.queue.len() - 1);
-                            self.play_current(0.0);
-                        }
-                    }
-                    self.save_playback();
-                    self.refresh_page();
-                }
+            Intent::RemoveQueue(index) => self.remove_queued(index),
+            Intent::MoveQueueNext(index) => self.move_queued_next(index),
+            Intent::Curation(CurationMode::Covers {
+                paths,
+                album,
+                artist,
+            }) => {
+                self.extras.open_cover_search_all(paths, album, artist);
+                self.open(Screen::Extra);
             }
             Intent::Curation(mode) => {
                 self.curation.open(mode, Arc::clone(&self.library));
@@ -1573,31 +1764,29 @@ impl App {
                 self.notify("Scanning music in the background");
             }
             Intent::SearchKeyboard => {
-                self.keyboard = Some(Keyboard {
-                    layout: 0,
-                    selected: 0,
-                    query: self.search_query.clone(),
-                })
+                self.keyboard_context = KeyboardContext::Library;
+                self.keyboard = Some(Keyboard::new(self.search_query.clone()))
             }
             Intent::Game(kind) => {
                 let mut game = Games::new(kind);
-                if let Some(saved) = self.game_saves.get(game.title()) {
-                    let _ = game.restore_snapshot(saved);
+                if kind != GameKind::Brick {
+                    if let Some(saved) = self.game_saves.get(game.title()) {
+                        let _ = game.restore_snapshot(saved);
+                    }
                 }
+                game.set_assets(&self.visual_assets);
+                game.set_clock_shown(
+                    self.settings
+                        .game_clock
+                        .iter()
+                        .any(|name| name == game.title()),
+                );
                 self.game = Some(game);
                 self.open(Screen::Game);
             }
             Intent::AddNext(i) | Intent::AddLater(i) => {
                 if let Some(t) = self.library.tracks.get(i) {
-                    let path = t.path.clone();
-                    if matches!(intent, Intent::AddNext(_)) && !self.queue.is_empty() {
-                        let at = (self.queue_index + 1).min(self.queue.len());
-                        Arc::make_mut(&mut self.queue).insert(at, path);
-                    } else {
-                        Arc::make_mut(&mut self.queue).push(path);
-                    }
-                    self.save_playback();
-                    self.notify("Added to the queue");
+                    self.enqueue_paths(vec![t.path.clone()], matches!(intent, Intent::AddNext(_)));
                 }
             }
             Intent::Stop => {
@@ -1648,12 +1837,10 @@ impl App {
             }
             Intent::StartSaver => self.enter_saver(),
             Intent::SaverDim => {
-                self.settings.screensaver_dim = match self.settings.screensaver_dim {
-                    0 => 5,
-                    5 => 15,
-                    15 => 30,
-                    30 => 50,
-                    _ => 0,
+                self.settings.screensaver_dim = if self.settings.screensaver_dim == 0 {
+                    15
+                } else {
+                    0
                 };
                 self.save_settings();
                 self.refresh_page();
@@ -1754,21 +1941,33 @@ impl App {
                     self.open(Screen::Extra);
                 }
             }
+            Intent::VideoRestart => self.visual_video_restart(),
+            Intent::VideoDownloadMenu => self.visual_video_download_options(),
+            Intent::DownloadVideoChapters => {
+                let url = self.visual_video_download_origin().to_owned();
+                self.extras
+                    .download(betterpod_rust::downloads::DownloadRequest::YouTube {
+                        url,
+                        video: false,
+                        split_chapters: true,
+                    });
+                self.open(Screen::Extra);
+            }
             Intent::DownloadMedia(video) => {
-                if self.video_origin.contains("youtube.com/")
-                    || self.video_origin.contains("youtu.be/")
-                {
+                let origin = self.visual_video_download_origin().to_owned();
+                let title = self.visual_video_download_title().to_owned();
+                if origin.contains("youtube.com/") || origin.contains("youtu.be/") {
                     self.extras
                         .download(betterpod_rust::downloads::DownloadRequest::YouTube {
-                            url: self.video_origin.clone(),
+                            url: origin,
                             video,
                             split_chapters: false,
                         });
                 } else {
                     self.extras
                         .download(betterpod_rust::downloads::DownloadRequest::File {
-                            url: self.video_origin.clone(),
-                            name: self.video_title.clone(),
+                            url: origin,
+                            name: title,
                             category: if video { "videos" } else { "audio" }.into(),
                             tags: None,
                         });
@@ -1817,7 +2016,12 @@ impl App {
     }
 
     pub fn handle(&mut self, action: Action) {
-        self.last_activity = Instant::now();
+        if self.visual_video_media(action) {
+            return;
+        }
+        if !matches!(action, Action::Headphones(_)) {
+            self.last_activity = Instant::now();
+        }
         match action {
             Action::HoldDown => {
                 self.hold_pressed = true;
@@ -1844,31 +2048,39 @@ impl App {
                 }
                 return;
             }
+            Action::Headphones(connected) => {
+                self.wired_headphones = connected;
+                self.visual_menu.status.headphones =
+                    connected || self.last_bt_audio.unwrap_or(false);
+                return;
+            }
+            Action::MediaUnplug | Action::MediaPause => {
+                self.pause_media();
+                return;
+            }
+            Action::MediaVolumeUp | Action::MediaVolumeDown => {
+                self.set_volume(if action == Action::MediaVolumeUp {
+                    0.04
+                } else {
+                    -0.04
+                });
+                return;
+            }
             Action::MediaPlayPause => {
                 self.play_pause();
                 return;
             }
             Action::MediaPlay => {
-                if self.video_open {
+                if self.inline_preview {
+                    return;
+                }
+                if self.video_open || self.pending_stream.is_some() {
+                    self.pending_stream_paused = false;
                     if let Some(video) = self.video.as_ref() {
                         video.command(VideoCommand::Pause(false));
                     }
-                } else if self.quiz.is_some() {
-                    self.send(AudioCommand::Resume);
-                } else if self.restored {
-                    self.play_current(self.restored_position);
-                } else {
-                    self.send(AudioCommand::Resume);
-                }
-                return;
-            }
-            Action::MediaPause => {
-                if self.video_open {
-                    if let Some(video) = self.video.as_ref() {
-                        video.command(VideoCommand::Pause(true));
-                    }
-                } else {
-                    self.send(AudioCommand::Pause);
+                } else if !self.audio_snapshot.playing {
+                    self.play_pause();
                 }
                 return;
             }
@@ -1886,11 +2098,14 @@ impl App {
             self.hold_consumed = true;
             match action {
                 Action::Start => {
+                    self.user_quit = true;
                     self.running = false;
                     return;
                 }
                 Action::Options => {
-                    self.enter_saver();
+                    if !self.held {
+                        self.enter_saver();
+                    }
                     return;
                 }
                 _ => {}
@@ -1905,19 +2120,74 @@ impl App {
             self.save_settings();
             return;
         }
+        if !self.held && !self.screen_off && self.visual_menu_confirm_handle(action) {
+            return;
+        }
+        if !self.held && !self.auto_saver && !self.screen_off && self.visual_player_handle(action) {
+            return;
+        }
+        if !self.held
+            && !self.auto_saver
+            && !self.screen_off
+            && self.options.is_none()
+            && self.visual_video_handle(action)
+        {
+            return;
+        }
+        if !self.held
+            && !self.screen_off
+            && self.options.is_none()
+            && (self.auto_saver || self.screen() == Screen::Visualizer)
+            && matches!(
+                action,
+                Action::Up
+                    | Action::Down
+                    | Action::Left
+                    | Action::Right
+                    | Action::Select
+                    | Action::Back
+                    | Action::Options
+                    | Action::Start
+                    | Action::SelectHeld
+                    | Action::BackHeld
+            )
+        {
+            let event = self.saver.input(if action == Action::BackHeld {
+                Action::Back
+            } else {
+                action
+            });
+            if self.settings.screensaver_effect != self.saver.effect()
+                || self.settings.screensaver_colors != self.saver.palette()
+            {
+                self.settings.screensaver_effect = self.saver.effect();
+                self.settings.screensaver_colors = self.saver.palette();
+                self.save_settings();
+            }
+            if let Some(event) = event {
+                self.saver_action(event);
+            }
+            return;
+        }
         if matches!(action, Action::SelectHeld | Action::BackHeld) {
             if self.held {
                 return;
             }
             if self.keyboard.is_some() {
-                self.keyboard = None;
+                self.keyboard_action(action);
                 return;
             }
             if self.screen() == Screen::Extra && self.extras.is_typing() {
-                self.extras.cancel_typing();
+                self.extras.handle(action);
                 return;
             }
             if action == Action::SelectHeld {
+                if self.screen() == Screen::Files {
+                    if let Some(effect) = self.files.handle(action) {
+                        self.files_effect(effect);
+                    }
+                    return;
+                }
                 if self.screen() == Screen::Game {
                     if let Some(g) = self.game.as_mut() {
                         g.handle(action);
@@ -1937,14 +2207,23 @@ impl App {
                 }
                 return;
             }
+            if !self.inline_preview {
+                self.visual_video_stop();
+            }
+            self.stop_inline_preview();
             self.leave_saver();
             self.save_games();
             self.quiz_effect_if_active();
             self.game = None;
             self.puzzle = None;
             self.curation.close();
+            self.files.leave();
+            self.options = None;
+            self.preview_focus = false;
+            self.feedback = Feedback::new();
             self.pages.clear();
             self.pages.push(self.page(Screen::Home));
+            self.visual_menu_snap_state(self.visual_time);
             return;
         }
         if self.held
@@ -1972,6 +2251,8 @@ impl App {
                 | Action::Start
                 | Action::Options
                 | Action::PlayPause
+                | Action::Next
+                | Action::Previous
         ) {
             if self.keyboard.is_some() {
                 self.keyboard_action(action);
@@ -1984,15 +2265,94 @@ impl App {
         }
         if matches!(action, Action::Start | Action::Next | Action::Previous) {
             if self.screen() == Screen::Game {
-                if let Some(game) = self.game.as_mut() {
+                if action == Action::Start
+                    && self.game.as_ref().is_some_and(|g| g.title() != "Solitaire")
+                {
+                    if let Some(game) = self.game.as_mut() {
+                        let title = game.title().to_owned();
+                        let mut rows = game
+                            .menu_items()
+                            .into_iter()
+                            .map(|item| Row::new(item.label, Intent::GameCommand(item.command)))
+                            .collect::<Vec<_>>();
+                        rows.push(Row::new("Cancel", Intent::CloseOptions));
+                        self.options = Some(Page {
+                            kind: ViewKind::Full,
+                            mini: false,
+                            screen: Screen::Game,
+                            title,
+                            rows: Arc::new(rows),
+                            selected: 0,
+                            scroll: 0.0,
+                            target_scroll: 0.0,
+                            enter: 0.0,
+                        });
+                    }
+                } else if let Some(game) = self.game.as_mut() {
                     game.handle(action);
                 }
                 return;
             }
             if self.screen() == Screen::Puzzle {
-                if let Some(puzzle) = self.puzzle.as_mut() {
+                if action == Action::Start {
+                    let title = self
+                        .puzzle
+                        .as_ref()
+                        .map(|p| p.title().to_owned())
+                        .unwrap_or_default();
+                    let rows = vec![
+                        Row::new("New Game", Intent::PuzzleNew),
+                        Row::new("Undo", Intent::PuzzleUndo),
+                        Row::new(
+                            if self.settings.game_clock.contains(&title) {
+                                "Hide the Time"
+                            } else {
+                                "Show the Time"
+                            },
+                            Intent::GameClock(title.clone()),
+                        ),
+                        Row::new(format!("Quit {title}"), Intent::QuitPuzzle),
+                        Row::new("Cancel", Intent::CloseOptions),
+                    ];
+                    self.options = Some(Page {
+                        kind: ViewKind::Full,
+                        mini: false,
+                        screen: Screen::Puzzle,
+                        title,
+                        rows: Arc::new(rows),
+                        selected: 0,
+                        scroll: 0.0,
+                        target_scroll: 0.0,
+                        enter: 0.0,
+                    });
+                } else if let Some(puzzle) = self.puzzle.as_mut() {
                     puzzle.handle(action);
                 }
+                return;
+            }
+        }
+        if self.screen() == Screen::Quiz && self.options.is_none() {
+            if let Some(effect) = self
+                .quiz
+                .as_mut()
+                .and_then(|q| q.handle(action, &self.library))
+            {
+                self.quiz_effect(effect);
+            }
+            if matches!(
+                action,
+                Action::Start
+                    | Action::Up
+                    | Action::Down
+                    | Action::Left
+                    | Action::Right
+                    | Action::Select
+                    | Action::Back
+                    | Action::PlayPause
+                    | Action::Next
+                    | Action::Previous
+                    | Action::Options
+            ) {
                 return;
             }
         }
@@ -2003,42 +2363,8 @@ impl App {
             self.saver.input(action);
             return;
         }
-        if action == Action::Start && self.screen() == Screen::NowPlaying {
-            self.flip_now_playing();
-            return;
-        }
-        if action == Action::Start && self.screen() == Screen::CoverFlow && self.cover_from_np {
-            self.cover_card = None;
-            self.cover_from_np = false;
-            if self.pages.len() > 1 {
-                self.pages.pop();
-            }
-            return;
-        }
         if action == Action::Start {
             self.play_pause();
-            return;
-        }
-        if action == Action::Back
-            && self.options.is_none()
-            && self.screen() == Screen::NowPlaying
-            && self.np_mode > 0
-        {
-            self.np_mode = 0;
-            return;
-        }
-        if action == Action::Back
-            && self.options.is_none()
-            && self.screen() == Screen::CoverFlow
-            && self.cover_card.is_some()
-        {
-            self.cover_card = None;
-            if self.cover_from_np {
-                self.cover_from_np = false;
-                if self.pages.len() > 1 {
-                    self.pages.pop();
-                }
-            }
             return;
         }
         if action == Action::Back {
@@ -2056,61 +2382,10 @@ impl App {
                 return;
             }
         }
-        if self.screen() == Screen::Video && self.options.is_none() {
-            self.video_overlay = Instant::now();
-            match action {
-                Action::PlayPause | Action::Select => {
-                    if let Some(video) = self.video.as_ref() {
-                        let snap = video.snapshot();
-                        video.command(VideoCommand::Pause(!snap.paused));
-                    }
-                    return;
-                }
-                Action::Left | Action::Right => {
-                    if let Some(video) = self.video.as_ref() {
-                        let snap = video.snapshot();
-                        video.command(VideoCommand::Seek(
-                            (snap.position + if action == Action::Left { -10.0 } else { 10.0 })
-                                .max(0.0),
-                        ));
-                    }
-                    return;
-                }
-                Action::Back => {
-                    self.remember_video();
-                    self.pending_stream = None;
-                    if let Some(video) = self.video.as_ref() {
-                        video.command(VideoCommand::Stop);
-                    }
-                    self.video_open = false;
-                    self.restore_stream_music();
-                    if self.pages.len() > 1 {
-                        self.pages.pop();
-                    }
-                    return;
-                }
-                Action::Options => {
-                    self.options = Some(Page {
-                        screen: Screen::Video,
-                        title: "Download".into(),
-                        rows: vec![
-                            Row::new("As Video", Intent::DownloadMedia(true)),
-                            Row::new("As Audio Only", Intent::DownloadMedia(false)),
-                            Row::new("Cancel", Intent::CloseOptions),
-                        ]
-                        .into(),
-                        selected: 0,
-                        scroll: 0.0,
-                        target_scroll: 0.0,
-                        enter: 0.0,
-                    });
-                    return;
-                }
-                _ => {}
-            }
-        }
+
         match action {
             Action::Quit => {
+                self.user_quit = true;
                 self.running = false;
                 return;
             }
@@ -2124,6 +2399,7 @@ impl App {
             Action::MenuUp => {
                 if let Some(start) = self.menu_down.take() {
                     if start.elapsed() >= Duration::from_secs(5) {
+                        self.user_quit = true;
                         self.running = false;
                     } else if !self.menu_used {
                         self.screen_off = !self.screen_off;
@@ -2154,6 +2430,10 @@ impl App {
                     };
                 if let Err(e) = self.platform.set_brightness(value) {
                     self.notify(e);
+                } else {
+                    self.visual_menu_brightness_changed(value.clamp(1, 100), self.visual_time);
+                    self.saver
+                        .brightness_changed(value.clamp(1, 100), self.visual_time);
                 }
                 return;
             }
@@ -2184,7 +2464,7 @@ impl App {
             }
             return;
         }
-        if self.auto_saver || self.screen() == Screen::Visualizer {
+        if (self.auto_saver || self.screen() == Screen::Visualizer) && self.options.is_none() {
             let effect = self.saver.input(action);
             if self.settings.screensaver_effect != self.saver.effect()
                 || self.settings.screensaver_colors != self.saver.palette()
@@ -2194,23 +2474,7 @@ impl App {
                 self.save_settings();
             }
             if let Some(effect) = effect {
-                match effect {
-                    SaverAction::Exit => {
-                        if self.auto_saver {
-                            self.leave_saver();
-                        } else if self.pages.len() > 1 {
-                            self.pages.pop();
-                        }
-                    }
-                    SaverAction::OpenAlbum(index) => {
-                        self.leave_saver();
-                        self.open(Screen::Album(index));
-                    }
-                    SaverAction::PlayTrack(index) => {
-                        self.leave_saver();
-                        self.song(index);
-                    }
-                }
+                self.saver_action(effect);
             }
             return;
         }
@@ -2247,6 +2511,12 @@ impl App {
             }
             return;
         }
+        if self.maintenance.as_ref().is_some_and(|m| m.has_options()) {
+            if let Some(effect) = self.maintenance.as_mut().and_then(|m| m.handle(action)) {
+                self.maintenance_effect(effect);
+            }
+            return;
+        }
         if self.screen() == Screen::Files {
             if let Some(effect) = self.files.handle(action) {
                 self.files_effect(effect);
@@ -2266,6 +2536,10 @@ impl App {
             return;
         }
         if self.screen() == Screen::Extra {
+            if let Some(page) = self.extras.visual_page() {
+                let height = self.visual_menu_content_height(&page);
+                self.extras.set_viewport_height(height);
+            }
             self.extras.handle(action);
             return;
         }
@@ -2275,25 +2549,20 @@ impl App {
         if action == Action::Back {
             if self.pages.len() > 1 {
                 let leaving = self.screen();
+                let previous = self.pages.last().cloned();
                 self.save_games();
                 self.pages.pop();
-                if leaving == Screen::Game {
-                    self.game = None;
-                }
-                if leaving == Screen::Puzzle {
-                    self.puzzle = None;
-                }
+                self.visual_menu_navigation(previous, false);
+                // Retain custom view models while their original exit transition draws.
+                let _ = leaving;
                 self.refresh_page();
             }
             return;
         }
         if action == Action::Search {
+            self.keyboard_context = KeyboardContext::Library;
             self.open(Screen::Search);
-            self.keyboard = Some(Keyboard {
-                layout: 0,
-                selected: 0,
-                query: self.search_query.clone(),
-            });
+            self.keyboard = Some(Keyboard::new(self.search_query.clone()));
             return;
         }
         match self.screen() {
@@ -2358,9 +2627,9 @@ impl App {
                         ));
                     } else if self.np_mode == 2 {
                         if positive {
-                            self.np_option = (self.np_option + 1) % 3;
+                            self.np_option = (self.np_option + 1) % 2;
                         } else {
-                            self.np_option = (self.np_option + 2) % 3;
+                            self.np_option = (self.np_option + 1) % 2;
                         }
                     } else {
                         self.set_volume(if positive { 0.05 } else { -0.05 });
@@ -2395,23 +2664,21 @@ impl App {
                 Action::Up => {
                     if let Some(p) = self.pages.last_mut() {
                         p.selected = p.selected.saturating_sub(1);
-                        p.reveal_selection();
                     }
                 }
                 Action::Down => {
                     if let Some(p) = self.pages.last_mut() {
                         p.selected = (p.selected + 1).min(p.rows.len().saturating_sub(1));
-                        p.reveal_selection();
                     }
                 }
-                Action::Left | Action::Right => {
-                    if self.screen() == Screen::Settings
-                        && self.pages.last().is_some_and(|p| p.selected == 0)
-                    {
-                        self.set_volume(if action == Action::Left { -0.05 } else { 0.05 });
+                Action::Left => {
+                    if self.pages.len() > 1 {
+                        let previous = self.pages.pop();
+                        self.visual_menu_navigation(previous, false);
+                        self.refresh_page();
                     }
                 }
-                Action::Select => {
+                Action::Right | Action::Select => {
                     let intent = self
                         .pages
                         .last()
@@ -2425,6 +2692,7 @@ impl App {
                 _ => {}
             },
         }
+        self.ensure_selection_viewport();
         if self.screen() == Screen::Settings && !self.preview_focus {
             self.refresh_setting_preview();
         }
@@ -2433,16 +2701,34 @@ impl App {
         match effect {
             FilesEffect::Exit => {
                 if self.screen() == Screen::Files && self.pages.len() > 1 {
-                    self.pages.pop();
+                    let previous = self.pages.pop();
+                    self.visual_menu_navigation(previous, false);
                 }
             }
             FilesEffect::Notice(message) => self.notify(message),
             FilesEffect::Rescan => self.rescan(),
-            FilesEffect::Play(path) => {
-                self.queue = Arc::new(vec![path]);
-                self.queue_index = 0;
-                self.play_current(0.0);
-                self.open(Screen::NowPlaying);
+            FilesEffect::Deleted(paths) => {
+                let removed = |p: &PathBuf| paths.iter().any(|r| p == r || p.starts_with(r));
+                let old_index = self.detached_next.unwrap_or(self.queue_index);
+                let before = self
+                    .queue
+                    .iter()
+                    .take(old_index)
+                    .filter(|p| !removed(p))
+                    .count();
+                let current = self.now_track.as_ref().map(|t| t.path.clone());
+                self.queue = Arc::new(self.queue.iter().filter(|p| !removed(p)).cloned().collect());
+                self.queue_original = None;
+                self.queued_marks.retain(|p, _| !removed(p));
+                self.detached_next = if current.as_ref().is_some_and(removed) {
+                    Some(before)
+                } else {
+                    self.detached_next.map(|_| before)
+                };
+                self.queue_index = current
+                    .and_then(|p| self.queue.iter().position(|q| q == &p))
+                    .unwrap_or_else(|| before.min(self.queue.len().saturating_sub(1)));
+                self.save_playback();
             }
         }
     }
@@ -2472,8 +2758,16 @@ impl App {
     pub fn audio_telemetry(&self) -> crate::audio::AudioTelemetry {
         self.audio.telemetry()
     }
-    pub fn install_maintenance(&mut self, controller: MaintenanceController) {
+    pub fn install_maintenance(&mut self, mut controller: MaintenanceController) {
+        let visible = controller.has_visible_transfer();
+        controller.set_beta(self.settings.beta_updates);
+        if !self.scanning {
+            controller.set_library(Arc::clone(&self.library));
+        }
         self.maintenance = Some(controller);
+        if visible {
+            self.open(Screen::Maintenance);
+        }
     }
     fn maintenance_effect(&mut self, effect: MaintenanceEffect) {
         match effect {
@@ -2491,6 +2785,7 @@ impl App {
                 }
             }
             MaintenanceEffect::Notice(message) => self.notify(message),
+            MaintenanceEffect::PauseMusic => self.pause_media(),
             MaintenanceEffect::Run(request) => {
                 self.maintenance_request = Some(request);
                 self.running = false;
@@ -2505,9 +2800,16 @@ impl App {
                     self.pages.pop();
                 }
             }
+            CurationEffect::StartCoverSearch(albums) => {
+                match self.extras.start_missing_covers(albums) {
+                    Ok(handle) => self.curation.cover_search_started(handle),
+                    Err(error) => self.curation.cover_search_failed(error),
+                }
+            }
+            CurationEffect::Rescan => self.rescan(),
             CurationEffect::OpenAlbum(index) => self.open(Screen::Album(index)),
+            CurationEffect::AlbumOptions(index) => self.show_album_options(index),
             CurationEffect::EditInfo { paths, title, edit } => {
-                self.close_curation_page();
                 self.extras.edit_album(paths, title, edit);
                 self.open(Screen::Extra);
             }
@@ -2517,20 +2819,30 @@ impl App {
                 artist,
                 provider,
             } => {
-                self.close_curation_page();
                 self.extras
                     .open_cover_search(paths, album, artist, provider);
                 self.open(Screen::Extra);
             }
+            CurationEffect::SearchCoversAll {
+                paths,
+                album,
+                artist,
+            } => {
+                self.extras.open_cover_search_all(paths, album, artist);
+                self.open(Screen::Extra);
+            }
+            CurationEffect::SearchInput(query) => {
+                self.keyboard_context = KeyboardContext::Curation;
+                self.keyboard = Some(Keyboard::new(query));
+            }
             CurationEffect::Task(task) => {
-                self.close_curation_page();
                 self.extras.curation_task(task);
                 self.open(Screen::Extra);
             }
         }
     }
     fn start_quiz(&mut self) {
-        if self.video_open || self.pending_stream.is_some() {
+        if self.inline_preview || self.video_open || self.pending_stream.is_some() {
             self.notify("Close the video or stream before starting Guess Song");
             return;
         }
@@ -2538,6 +2850,12 @@ impl App {
         match Quiz::new(&self.library, seed) {
             Err(error) => self.notify(error),
             Ok(mut quiz) => {
+                quiz.set_best(
+                    self.game_saves
+                        .get("Guess the Song Best")
+                        .and_then(|b| serde_json::from_slice(b).ok())
+                        .unwrap_or(0),
+                );
                 self.quiz_restore = Some(SavedPlayback {
                     queue: self.queue.clone(),
                     index: self.queue_index,
@@ -2562,9 +2880,41 @@ impl App {
                 self.send(command);
             }
             QuizEffect::Pause => self.send(AudioCommand::Pause),
+            QuizEffect::Menu => {
+                let mut rows = Vec::new();
+                if self.quiz.as_ref().is_some_and(Quiz::has_songs) {
+                    rows.push(Row::new("New Game", Intent::QuizNewGame));
+                }
+                rows.push(Row::new(
+                    if self
+                        .settings
+                        .game_clock
+                        .iter()
+                        .any(|n| n == "Guess the Song")
+                    {
+                        "Hide the Time"
+                    } else {
+                        "Show the Time"
+                    },
+                    Intent::GameClock("Guess the Song".into()),
+                ));
+                rows.push(Row::new("Quit Guess the Song", Intent::StopQuiz));
+                rows.push(Row::new("Cancel", Intent::CloseOptions));
+                self.options = Some(Page {
+                    screen: Screen::Quiz,
+                    kind: ViewKind::Full,
+                    mini: false,
+                    title: "Guess the Song".into(),
+                    rows: Arc::new(rows),
+                    selected: 0,
+                    scroll: 0.0,
+                    target_scroll: 0.0,
+                    enter: 0.0,
+                });
+            }
             QuizEffect::Exit => {
                 self.send(AudioCommand::Stop);
-                self.quiz = None;
+                self.retired_quiz = self.quiz.take();
                 if let Some(saved) = self.quiz_restore.take() {
                     self.queue = saved.queue;
                     self.queue_index = saved.index;
@@ -2576,12 +2926,15 @@ impl App {
                     }
                 }
                 if self.screen() == Screen::Quiz && self.pages.len() > 1 {
-                    self.pages.pop();
+                    let previous = self.pages.pop();
+                    self.visual_menu_navigation(previous, false);
                 }
             }
         }
     }
     fn genius(&mut self) {
+        self.queue_original = None;
+        self.queued_marks.clear();
         let mut pool: Vec<usize> = self
             .library
             .tracks
@@ -2634,51 +2987,20 @@ impl App {
             return;
         };
         let mut rows = vec![
-            Row::new("Play Album", Intent::PlayAlbum(album)),
-            Row::new("Send Album", Intent::ShareAlbum(album)),
             Row::new("Play Next", Intent::QueueAlbum(album, true)),
             Row::new("Add to End of Queue", Intent::QueueAlbum(album, false)),
-            Row::new("Add to Playlist", Intent::AddAlbumPlaylist(album)),
+            Row::new("Add to Playlist…", Intent::AddAlbumPlaylist(album)),
+            Row::new("Share", Intent::ShareAlbum(album)),
         ];
-        if let Some(&track) = a.track_indices.first() {
-            rows.push(Row::new("Album Info", Intent::AlbumInfo(track)));
-            let paths = a
-                .track_indices
-                .iter()
-                .map(|&i| self.library.tracks[i].path.clone())
-                .collect::<Vec<_>>();
-            rows.push(Row::new(
-                "Choose Cover",
-                Intent::Curation(CurationMode::Covers {
-                    paths: paths.clone(),
-                    album: a.name.clone(),
-                    artist: a.artist.clone(),
-                }),
-            ));
-            rows.push(Row::new(
-                "Merge with Album",
-                Intent::Curation(CurationMode::Merge { paths }),
-            ));
-        }
-        if self.maintenance.is_some() {
-            rows.push(Row::new(
-                "Delete Album",
-                Intent::Maintenance(MaintenanceMode::DeleteAlbum(
-                    a.track_indices
-                        .iter()
-                        .map(|&i| self.library.tracks[i].path.clone())
-                        .collect(),
-                )),
-            ));
-        }
-        if a.track_indices
-            .iter()
-            .any(|&i| !self.library.tracks[i].album_group.is_empty())
-        {
-            rows.push(Row::new("Separate Added Songs", Intent::Unmerge(album)));
+        rows[0].visual.queue_mark = "queue_next".into();
+        rows[1].visual.queue_mark = "queue_last".into();
+        if let Some(&index) = a.track_indices.first() {
+            rows.push(Row::new("Edit", Intent::AlbumInfo(index)));
         }
         rows.push(Row::new("Cancel", Intent::CloseOptions));
         self.options = Some(Page {
+            kind: ViewKind::Full,
+            mini: false,
             screen: self.screen(),
             title: a.name.clone(),
             rows: Arc::new(rows),
@@ -2690,8 +3012,7 @@ impl App {
     }
     fn show_options(&mut self) {
         let album = match self.screen() {
-            Screen::Album(i) => Some(i),
-            Screen::Albums => self
+            Screen::Albums | Screen::Artist(_) => self
                 .pages
                 .last()
                 .and_then(|p| p.rows.get(p.selected))
@@ -2721,35 +3042,60 @@ impl App {
             });
         let mut rows = Vec::new();
         if self.screen() == Screen::Queue {
-            if let Some(index) = self
+            if let Some((index, title)) = self
                 .pages
                 .last()
-                .map(|p| p.selected)
-                .filter(|&i| i < self.queue.len())
+                .and_then(|p| p.rows.get(p.selected))
+                .and_then(|r| {
+                    if let Intent::QueueSong(i) = r.intent {
+                        Some((i, r.label.clone()))
+                    } else {
+                        None
+                    }
+                })
             {
-                rows.push(Row::new("Remove from Queue", Intent::RemoveQueue(index)));
+                let mut next = Row::new("Play Next", Intent::MoveQueueNext(index));
+                next.visual.queue_mark = "queue_next".into();
+                self.options = Some(Page {
+                    screen: Screen::Queue,
+                    kind: ViewKind::Full,
+                    mini: false,
+                    title,
+                    rows: Arc::new(vec![
+                        next,
+                        Row::new("Remove from Up Next", Intent::RemoveQueue(index)),
+                        Row::new("Cancel", Intent::CloseOptions),
+                    ]),
+                    selected: 0,
+                    scroll: 0.0,
+                    target_scroll: 0.0,
+                    enter: 0.0,
+                });
             }
-            rows.push(Row::new("Save Queue as Playlist", Intent::AddQueuePlaylist));
+            return;
         }
         if let Some(i) = selected {
-            rows.push(Row::new("Play Next", Intent::AddNext(i)));
-            rows.push(Row::new("Play Later", Intent::AddLater(i)));
-            rows.push(Row::new("Add to Playlist", Intent::AddToPlaylist(i)));
-            rows.push(Row::new("Album Info", Intent::AlbumInfo(i)));
-            rows.push(Row::new("Song Info", Intent::SongInfo(i)));
-            rows.push(Row::new("Send Song", Intent::ShareTrack(i)));
-            rows.push(Row::new("Add to Another Album", Intent::MergeSong(i)));
-            if !self.library.tracks[i].album_group.is_empty() {
-                rows.push(Row::new("Separate Added Song", Intent::SeparateSong(i)));
-            }
+            self.visual_player_song_options(i);
+            return;
         }
-        if self.now_track.is_some() {
-            rows.push(Row::new("Now Playing", Intent::Open(Screen::NowPlaying)));
-            rows.push(Row::new("Up Next", Intent::Open(Screen::Queue)));
-            rows.push(Row::new("Stop Playback", Intent::Stop));
+        let now_playing = self
+            .pages
+            .last()
+            .and_then(|p| p.rows.get(p.selected))
+            .is_some_and(|r| matches!(r.intent, Intent::Open(Screen::NowPlaying)));
+        if now_playing {
+            if self.visual_menu_ask_clear_now_playing() {
+                return;
+            }
+            rows.push(Row::new("Clear Now Playing", Intent::ClearNowPlaying));
+        }
+        if rows.is_empty() {
+            return;
         }
         rows.push(Row::new("Cancel", Intent::CloseOptions));
         self.options = Some(Page {
+            kind: ViewKind::Full,
+            mini: false,
             screen: Screen::Home,
             title: "Options".into(),
             rows: Arc::new(rows),
@@ -2768,47 +3114,12 @@ impl App {
         let playlists = self.extras.playlists_snapshot();
         let query = self.search_query.clone();
         let generation = self.library_generation;
-        self.search_rows = Arc::new(Vec::new());
         let (tx, rx) = mpsc::sync_channel(1);
         match thread::Builder::new()
             .name("library-search".into())
             .spawn(move || {
-                let mut rows = vec![Row::new(
-                    if query.is_empty() {
-                        "Type a Search".into()
-                    } else {
-                        format!("Search: {query}")
-                    },
-                    Intent::SearchKeyboard,
-                )];
-                if !query.is_empty() {
-                    let needle = query.to_lowercase();
-                    for p in playlists
-                        .iter()
-                        .filter(|p| p.name.to_lowercase().contains(&needle))
-                    {
-                        let mut row = Row::new(&p.name, Intent::Playlist(p.clone()));
-                        row.detail = format!("Playlist — {} songs", p.tracks.len());
-                        rows.push(row);
-                    }
-                    for (i, t) in library
-                        .tracks
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, t)| {
-                            t.title.to_lowercase().contains(&needle)
-                                || t.artist.to_lowercase().contains(&needle)
-                                || t.album.to_lowercase().contains(&needle)
-                        })
-                        .take(500)
-                    {
-                        let mut row = Row::new(&t.title, Intent::Song(i));
-                        row.detail = t.artist.clone();
-                        row.cover = t.cover.clone();
-                        rows.push(row);
-                    }
-                }
-                let _ = tx.send((generation, Arc::new(rows)));
+                let result = app_search::search(&library, &playlists, &query);
+                let _ = tx.send((generation, query, result));
             }) {
             Ok(worker) => {
                 self.search_result = Some(rx);
@@ -2818,62 +3129,63 @@ impl App {
         }
     }
     fn keyboard_action(&mut self, action: Action) {
-        let Some(k) = self.keyboard.as_mut() else {
+        let Some(keyboard) = self.keyboard.as_mut() else {
             return;
         };
-        let action = match action {
-            Action::Start => {
-                k.selected = 39;
-                Action::Select
-            }
-            Action::PlayPause => {
-                k.query.push(' ');
-                return;
-            }
-            Action::Options => {
-                k.layout = (k.layout + 1) % 3;
-                return;
-            }
-            Action::Back if !k.query.is_empty() => {
-                k.query.pop();
-                return;
-            }
-            a => a,
-        };
-        match action {
-            Action::Up => k.selected = k.selected.saturating_sub(10),
-            Action::Down => k.selected = (k.selected + 10).min(39),
-            Action::Left => k.selected = k.selected.saturating_sub(1),
-            Action::Right => k.selected = (k.selected + 1).min(39),
-            Action::Back => {
-                self.keyboard = None;
-                return;
-            }
-            Action::Select => match k.selected {
-                0..=35 => {
-                    if k.query.chars().count() < 120 {
-                        k.query.push(keyboard_char(k.layout, k.selected));
+        let effect = keyboard.handle(action);
+        let query = keyboard.query.clone();
+        match effect {
+            KeyboardEffect::Submit | KeyboardEffect::Close => {
+                keyboard.hide(self.visual_time);
+                match self.keyboard_context {
+                    KeyboardContext::Curation => {
+                        if matches!(effect, KeyboardEffect::Submit) {
+                            self.curation.search_changed(&query);
+                        }
+                    }
+                    KeyboardContext::Sharing => {
+                        self.settings.sharing_name = query.trim().chars().take(32).collect();
+                        self.extras
+                            .set_sharing_name(self.settings.sharing_name.clone());
+                        self.save_settings();
+                        self.refresh_page();
+                        self.refresh_setting_preview();
+                    }
+                    KeyboardContext::Library => {
+                        self.search_query = query;
+                        self.start_search();
+                        self.refresh_page();
                     }
                 }
-                36 => k.query.push(' '),
-                37 => {
-                    k.query.pop();
-                }
-                38 => k.query.clear(),
-                _ => {
-                    self.search_query = k.query.clone();
-                    self.keyboard = None;
+            }
+            KeyboardEffect::Changed => match self.keyboard_context {
+                KeyboardContext::Curation => self.curation.search_changed(&query),
+                KeyboardContext::Sharing => self.refresh_setting_preview(),
+                KeyboardContext::Library => {
+                    self.search_query = query;
                     self.start_search();
-                    self.refresh_page();
-                    return;
                 }
             },
-            _ => {}
+            KeyboardEffect::None => {}
         }
     }
 
     pub fn tick(&mut self, dt: f32, renderer: &Renderer) {
-        if let Some((generation, rows)) = self
+        self.visual_time += dt as f64;
+        self.visual_video_tick(self.visual_time);
+        if self.visual_menu_outgoing_page().is_none() {
+            self.retired_quiz = None;
+            self.retired_game = None;
+            self.extras.release_previous_visual();
+        }
+        if let Some(status) = self.status_watcher.poll() {
+            self.visual_menu.status.battery = status.battery;
+            self.visual_menu.status.charging = status.charging;
+            self.visual_menu.status.external_power = status.external_power;
+            self.visual_menu.status.wifi = status.wifi;
+        }
+
+        if let Some((generation, query, result)) = self
             .search_result
             .as_ref()
             .and_then(|rx| rx.try_recv().ok())
@@ -2882,8 +3194,9 @@ impl App {
             if let Some(worker) = self.search_worker.take() {
                 let _ = worker.join();
             }
-            if generation == self.library_generation {
-                self.search_rows = rows;
+            if generation == self.library_generation && query == self.search_query {
+                self.search_rows = result.rows;
+                self.search_views = result.categories;
             } else {
                 self.search_pending = Some(self.search_query.clone());
             }
@@ -2927,7 +3240,14 @@ impl App {
             }
             drained += 1;
         }
+        let was_playing = self.audio_snapshot.playing;
         self.audio_snapshot = self.audio.snapshot();
+        if was_playing && !self.audio_snapshot.playing {
+            self.paused_at = self.visual_time;
+        }
+        if was_playing != self.audio_snapshot.playing {
+            self.refresh_playback_menus();
+        }
         if self.idle_play_pending.is_some_and(|start| {
             self.audio_snapshot.playing
                 || self.audio_snapshot.loading
@@ -2974,9 +3294,25 @@ impl App {
                 self.rescan();
             }
         }
+        self.curation.set_time(self.visual_time);
+        self.files.set_time(self.visual_time);
         let effects = self.files.tick();
         for effect in effects {
             self.files_effect(effect);
+        }
+        if self.screen() == Screen::Files {
+            if let Some((previous, forward, started)) = self.files.take_navigation() {
+                let current = self.files.visual_page();
+                let depth = self.files.navigation_depth();
+                self.visual_menu_external_navigation(previous, current, depth, forward, started);
+            }
+        }
+        let revision = self.files.library_revision();
+        if revision != self.library_info_revision {
+            self.library_info_revision = revision;
+            if self.screen() == Screen::Library {
+                self.refresh_page();
+            }
         }
         if let Some(maintenance) = self.maintenance.as_mut() {
             let effects = maintenance.tick();
@@ -2985,16 +3321,44 @@ impl App {
             }
         }
         let effects = self.extras.tick(dt);
+        while let Some(event) = self.extras.poll_cover_search() {
+            if let Some(effect) = self.curation.cover_search_event(event) {
+                self.curation_effect(effect);
+            }
+        }
+        if let Some(connected) = self.extras.bluetooth_audio_connected() {
+            if self.last_bt_audio == Some(true) && !connected {
+                self.pause_media();
+            }
+            self.last_bt_audio = Some(connected);
+            self.visual_menu.status.bluetooth = connected;
+            self.visual_menu.status.headphones = connected || self.wired_headphones;
+        }
         for effect in effects {
             match effect {
                 ExtraEffect::Exit => {
+                    self.stop_inline_preview();
                     if self.screen() == Screen::Extra && self.pages.len() > 1 {
                         self.pages.pop();
                     }
                 }
+                ExtraEffect::PreviewOpening { item, queue, index } => {
+                    self.begin_inline_preview(item, queue, index)
+                }
+                ExtraEffect::VideoOpening {
+                    item,
+                    queue,
+                    index,
+                    start,
+                } => self.visual_video_opening(item, queue, index, start),
+                ExtraEffect::VideoResolveError { origin, error } => {
+                    self.visual_video_resolve_failed(&origin, error)
+                }
                 ExtraEffect::Notice(message) => self.notify(message),
                 ExtraEffect::MediaArtwork { origin, path } => {
-                    if origin == self.video_origin {
+                    if !self.visual_video_artwork(&origin, path.clone())
+                        && origin == self.video_origin
+                    {
                         self.video_cover = Some(path);
                     }
                 }
@@ -3003,12 +3367,73 @@ impl App {
                     self.save_settings();
                 }
                 ExtraEffect::Rescan => self.rescan(),
+                ExtraEffect::DeleteAlbum(paths) => {
+                    self.execute(Intent::Maintenance(MaintenanceMode::DeleteAlbum(paths)))
+                }
+                ExtraEffect::MergeAlbum(paths) => {
+                    self.curation
+                        .open(CurationMode::Merge { paths }, Arc::clone(&self.library));
+                    self.open(Screen::Curation);
+                }
+                ExtraEffect::ChooseAlbumCover {
+                    paths,
+                    album,
+                    artist,
+                } => {
+                    self.extras.open_cover_search_all(paths, album, artist);
+                }
+                ExtraEffect::MergeApplied => {
+                    if self.screen() == Screen::Extra && self.pages.len() > 1 {
+                        self.pages.pop();
+                    }
+                    self.close_curation_page();
+                }
+                ExtraEffect::MergeFailed(error) => {
+                    if self.screen() == Screen::Extra && self.pages.len() > 1 {
+                        self.pages.pop();
+                    }
+                    self.notify(error);
+                }
+                ExtraEffect::Queue { paths, next } => self.enqueue_paths(paths, next),
+                ExtraEffect::SharePaths(paths) => self.extras.send_paths_share(paths),
                 ExtraEffect::Play { paths, index } => {
+                    self.queue_original = None;
+                    self.queued_marks.clear();
                     self.queue = Arc::new(paths);
                     self.queue_index = index.min(self.queue.len().saturating_sub(1));
                     self.play_current(0.0);
                     self.open(Screen::NowPlaying);
                 }
+                ExtraEffect::YouTubeEnabled(enabled) => {
+                    self.settings.youtube = enabled;
+                    self.save_settings();
+                }
+                ExtraEffect::Preview {
+                    source,
+                    origin,
+                    queue,
+                    index,
+                } => {
+                    if !self.inline_preview || !self.extras.preview_can_open(&origin) {
+                        continue;
+                    }
+                    if let Err(error) =
+                        self.begin_stream(source, false, origin, 0.0, queue, index, true, renderer)
+                    {
+                        self.inline_preview_failed(error);
+                    }
+                }
+                ExtraEffect::TogglePreview => {
+                    if let Some(video) = self.video.as_ref() {
+                        let state = video.snapshot();
+                        let paused = !state.paused;
+                        if video.command(VideoCommand::Pause(paused)) {
+                            self.pending_stream_paused = paused;
+                            self.extras.preview_set_paused(paused);
+                        }
+                    }
+                }
+                ExtraEffect::StopPreview => self.stop_inline_preview(),
                 ExtraEffect::Stream {
                     source,
                     video,
@@ -3017,63 +3442,60 @@ impl App {
                     queue,
                     index,
                 } => {
-                    self.leave_saver();
-                    self.pending_music = None;
-                    self.video_queue = queue;
-                    self.video_index = index;
-                    if self.video.is_none() {
-                        match VideoPlayer::new() {
-                            Ok(player) => self.video = Some(player),
-                            Err(error) => {
-                                self.notify(error);
-                                continue;
-                            }
-                        }
-                    }
-                    self.remember_video();
-                    if self.stream_restore.is_none() {
-                        self.stream_restore = Some(SavedPlayback {
-                            queue: self.queue.clone(),
-                            index: self.queue_index,
-                            position: if self.restored {
-                                self.restored_position
-                            } else {
-                                self.audio_snapshot.position
-                            },
-                            paused: !self.audio_snapshot.playing,
-                        });
-                    }
-                    self.send(AudioCommand::Pause);
-                    if self.video_open {
-                        if let Some(player) = self.video.as_ref() {
-                            player.command(VideoCommand::Stop);
-                        }
-                    }
-                    if let Some(texture) = self.video_texture.take() {
-                        renderer.delete_texture(texture);
-                    }
-                    self.video_cover = None;
-                    self.video_title = source.title.clone();
-                    self.video_origin = origin;
-                    self.video_audio_only = !video;
-                    self.pending_stream = Some((source, start, !video));
-                    self.video_overlay = Instant::now();
-                    self.open(Screen::Video);
-                    if let Some(page) = self.pages.last_mut() {
-                        page.title = if self.video_audio_only {
-                            "Listen".into()
-                        } else {
-                            self.video_title.clone()
-                        };
+                    let opening_origin = origin.clone();
+                    if let Err(error) = self
+                        .begin_stream(source, video, origin, start, queue, index, false, renderer)
+                    {
+                        self.visual_video_resolve_failed(&opening_origin, error);
                     }
                 }
             }
         }
         if self.screen() == Screen::Extra {
-            if let Some(page) = self.pages.last_mut() {
-                page.title = self.extras.title().into();
+            if let Some((previous, forward, started)) = self.extras.take_navigation() {
+                if let Some(current) = self.extras.visual_page() {
+                    let depth = self.extras.navigation_depth();
+                    self.visual_menu_external_navigation(
+                        previous, current, depth, forward, started,
+                    );
+                }
             }
         }
+        if self.screen() == Screen::Curation {
+            if let Some((previous, forward, started)) = self.curation.take_navigation() {
+                if let Some(current) = self.curation.visual_page() {
+                    let depth = self.curation.navigation_depth();
+                    self.visual_menu_external_navigation(
+                        previous, current, depth, forward, started,
+                    );
+                }
+            }
+        }
+        if self.screen() == Screen::Extra {
+            if let Some(snapshot) = self.extras.visual_page() {
+                if let Some(page) = self.pages.last_mut() {
+                    *page = snapshot;
+                }
+            }
+        } else if self.screen() == Screen::Files {
+            let snapshot = self.files.visual_page();
+            if let Some(page) = self.pages.last_mut() {
+                *page = snapshot;
+            }
+        } else if self.screen() == Screen::Curation {
+            if let Some(snapshot) = self.curation.visual_page() {
+                if let Some(page) = self.pages.last_mut() {
+                    *page = snapshot;
+                }
+            }
+        } else if self.screen() == Screen::Maintenance {
+            if let Some(snapshot) = self.maintenance.as_mut().and_then(|m| m.visual_page()) {
+                if let Some(page) = self.pages.last_mut() {
+                    *page = snapshot;
+                }
+            }
+        }
+
         if self.pending_stream.is_some()
             && !self.audio_snapshot.playing
             && !self.audio_snapshot.loading
@@ -3090,7 +3512,10 @@ impl App {
                             start,
                             audio_only,
                         }) {
-                            self.video_open = true;
+                            self.video_open = !self.inline_preview;
+                            if self.pending_stream_paused {
+                                video.command(VideoCommand::Pause(true));
+                            }
                             video.command(VideoCommand::Volume(if self.volume.get().is_some() {
                                 1.0
                             } else {
@@ -3132,15 +3557,36 @@ impl App {
                 }
             }
         }
-        if self.video_open && self.pending_stream.is_none() {
+        if (self.video_open || self.inline_preview) && self.pending_stream.is_none() {
             if let Some(video) = self.video.as_ref() {
                 let state = video.snapshot();
-                if state.ended && state.generation != self.video_ended_generation {
+                let accepted = if self.inline_preview {
+                    self.extras.preview_transport_accepts(state.generation)
+                } else {
+                    self.screen() == Screen::Video && self.visual_video_auto_next()
+                };
+                if accepted && state.ended && state.generation != self.video_ended_generation {
                     self.video_ended_generation = state.generation;
                     self.video_next(1);
                 }
             }
         }
+        if self.inline_preview {
+            if let Some(video) = self.video.as_ref() {
+                let state = video.snapshot();
+                let accepted = self.extras.preview_transport_accepts(state.generation);
+                self.extras.set_preview_state(&self.video_origin, &state);
+                if accepted
+                    && state.error.is_some()
+                    && !state.loading
+                    && self.pending_stream.is_none()
+                {
+                    let error = state.error.clone().unwrap();
+                    self.inline_preview_failed(error);
+                }
+            }
+        }
+        betterpod_rust::weather::poll_icons(renderer);
         self.art.poll(renderer);
         if let Some(page) = self.pages.last_mut() {
             page.enter = (page.enter - dt / 0.3).max(0.0);
@@ -3153,17 +3599,54 @@ impl App {
             * (1.0 - (-dt * 20.0).exp());
         self.cover_position +=
             (self.cover_selected as f32 - self.cover_position) * (1.0 - (-dt * 14.0).exp());
-        if self.screen() == Screen::Game {
+        if self.screen() == Screen::Game || self.visual_menu_outgoing_screen() == Some(Screen::Game)
+        {
             if let Some(game) = self.game.as_mut() {
+                game.set_menu_open(self.options.is_some());
                 game.tick(dt);
             }
         }
-        if self.screen() == Screen::Puzzle {
+        if let Some(effect) = self.game.as_mut().and_then(Games::take_effect) {
+            match effect {
+                GameEffect::Quit => {
+                    self.save_games();
+                    self.retired_game = self.game.take();
+                    if self.pages.len() > 1 {
+                        let previous = self.pages.pop();
+                        self.visual_menu_navigation(previous, false);
+                    }
+                }
+                GameEffect::ToggleClock => {
+                    if let Some(game) = self.game.as_ref() {
+                        self.execute(Intent::GameClock(game.title().into()));
+                    }
+                }
+            }
+        }
+        if self.screen() == Screen::Puzzle
+            || self.visual_menu_outgoing_screen() == Some(Screen::Puzzle)
+        {
             if let Some(puzzle) = self.puzzle.as_mut() {
                 puzzle.tick(dt);
             }
         }
         if self.auto_saver || matches!(self.screen(), Screen::Visualizer | Screen::NowPlaying) {
+            self.saver.set_time(self.visual_time);
+            self.saver.set_playback(
+                self.audio_snapshot.playing,
+                self.audio_snapshot.paused,
+                self.settings.volume,
+            );
+            self.saver.set_dark(self.dark());
+            let status = self.visual_menu.status;
+            self.saver.set_status(saver::SaverStatus {
+                battery: status.battery.map(i32::from),
+                charging: status.charging,
+                wifi: status.wifi,
+                bluetooth: status.bluetooth,
+                headphones: status.headphones,
+                held: self.held,
+            });
             self.audio.visualizer(&mut self.samples);
             let rms = (self.samples.iter().map(|s| s * s).sum::<f32>() / self.samples.len() as f32)
                 .sqrt();
@@ -3179,13 +3662,20 @@ impl App {
                 self.saver.update(dt, &self.library, self.current_index());
             }
         }
-        let video_active = self.pending_stream.is_some()
-            || self.video_open
+        if let Some(action) = self.saver.poll() {
+            self.saver_action(action);
+        }
+        let preview_waiting = self.inline_preview && self.extras.preview_waiting();
+        let resolving_video = self.visual_video_waiting();
+        let video_active = preview_waiting
+            || resolving_video
+            || self.pending_stream.is_some()
+            || (self.video_open || self.inline_preview)
                 && self.video.as_ref().is_some_and(|video| {
                     let state = video.snapshot();
                     state.playing || state.loading
                 });
-        let video_paused = if self.video_open {
+        let video_paused = if self.video_open || self.inline_preview {
             self.video.as_ref().map(|video| video.snapshot().paused)
         } else {
             None
@@ -3193,7 +3683,9 @@ impl App {
         let paused_intent = idle_pause_intent(
             self.audio_snapshot.paused,
             video_paused,
-            self.pending_stream.is_some()
+            preview_waiting
+                || resolving_video
+                || self.pending_stream.is_some()
                 || self.pending_music.is_some()
                 || self.idle_play_pending.is_some(),
             self.idle_stopped,
@@ -3215,6 +3707,7 @@ impl App {
             .menu_down
             .is_some_and(|start| start.elapsed() >= Duration::from_secs(5))
         {
+            self.user_quit = true;
             self.running = false;
         }
         if self
@@ -3224,6 +3717,12 @@ impl App {
         {
             self.toast = None;
         }
+        if let Some(best) = self.quiz.as_mut().and_then(Quiz::take_best) {
+            if let Ok(bytes) = serde_json::to_vec(&best) {
+                self.game_saves.insert("Guess the Song Best".into(), bytes);
+                self.save_games();
+            }
+        }
         if self.audio_snapshot.playing && self.last_saved.elapsed() > Duration::from_secs(15) {
             self.save_playback();
             self.save_games();
@@ -3232,6 +3731,7 @@ impl App {
             && self.audio_snapshot.playing
             && self.quiz.is_none()
             && !self.screen_off
+            && !self.extras.prevents_screensaver()
             && self.last_activity.elapsed()
                 > Duration::from_secs(self.settings.screensaver_seconds as u64)
             && self.screen() != Screen::Visualizer
@@ -3255,6 +3755,17 @@ impl App {
     }
 
     pub fn draw(&mut self, renderer: &mut Renderer, elapsed: f64) {
+        self.visual_time = elapsed;
+        self.visual_player_tick(elapsed, 0.0);
+
+        if self.screen() == Screen::Extra {
+            if let Some(page) = self.extras.visual_page() {
+                let height = self.visual_menu_content_height(&page);
+                self.extras.set_viewport_height(height);
+            }
+        }
+        self.ensure_selection_viewport();
+        self.visual_menu_tick(elapsed);
         let (bg, fg, muted) = self.colors();
         renderer.begin(if self.screen_off {
             [0.0, 0.0, 0.0, 1.0]
@@ -3265,7 +3776,23 @@ impl App {
             return;
         }
         let screen = self.screen();
+        let shared_split =
+            screen == Screen::Extra && self.extras.visual_page().is_some_and(|page| page.split());
+        let shared_menu = app_visual_menu::is_menu(screen) || shared_split;
         if self.auto_saver {
+            if self.screen() == Screen::NowPlaying {
+                self.visual_player_saver_hide(self.saver.fly_hides_np());
+                self.visual_player_draw_now_playing(renderer);
+                let title = self
+                    .pages
+                    .last()
+                    .map(|p| p.title.clone())
+                    .unwrap_or_default();
+                self.visual_menu_draw_header(renderer, &title, 0.0, 640.0, true);
+            } else if shared_menu {
+                self.visual_menu_draw(renderer, elapsed, fg, muted);
+            }
+            self.saver.set_time(elapsed);
             let current = self.current_index();
             if let Err(error) =
                 self.saver
@@ -3274,107 +3801,77 @@ impl App {
                 eprintln!("Screensaver: {error}");
             }
         } else {
-            match screen {
-                Screen::CoverFlow => self.draw_coverflow(renderer, fg, muted),
-                Screen::NowPlaying => self.draw_now_playing(renderer, elapsed, fg, muted),
-                Screen::Visualizer => {
-                    let current = self.current_index();
-                    if let Err(error) = self.saver.draw(
-                        renderer,
-                        &mut self.art,
-                        &self.library,
-                        current,
-                        &self.clock,
-                    ) {
-                        eprintln!("Visualizer: {error}");
-                    }
-                }
-                Screen::Files => {
-                    let dark = self.dark();
-                    self.files.draw(renderer, dark);
-                }
-                Screen::Maintenance => {
-                    let dark = self.dark();
-                    if let Some(maintenance) = self.maintenance.as_mut() {
-                        maintenance.draw(renderer, dark);
-                    }
-                }
-                Screen::Curation => self.curation.draw(renderer, self.dark()),
-                Screen::Quiz => {
-                    if let Some(quiz) = self.quiz.as_ref() {
-                        quiz.draw(renderer, &self.library, &self.audio_snapshot, self.dark());
-                    }
-                }
-                Screen::Game => {
-                    let dark = self.dark();
-                    if let Some(game) = self.game.as_ref() {
-                        game.draw(renderer, dark);
-                    }
-                }
-                Screen::Video => self.draw_video(renderer),
-                Screen::Puzzle => {
-                    let dark = self.dark();
-                    if let Some(puzzle) = self.puzzle.as_ref() {
-                        puzzle.draw(renderer, dark);
-                    }
-                }
-                Screen::About => self.draw_about(renderer, fg, muted),
-                Screen::Extra => {
-                    let dark = self.dark();
-                    self.extras.draw(
-                        renderer,
-                        dark,
-                        if self.settings.effects == "light" {
-                            0.0
-                        } else {
-                            elapsed
-                        },
-                        &mut self.art,
-                    );
-                }
-                _ => self.draw_menu(renderer, elapsed, fg, muted),
+            let custom = !shared_menu;
+            if custom && screen != Screen::CoverFlow {
+                self.visual_menu_draw_outgoing(renderer);
+                self.visual_draw_outgoing_custom(renderer, elapsed, fg, muted);
+                let offset = self.visual_menu_active_offset();
+                let whole = self
+                    .visual_menu_outgoing_page()
+                    .is_none_or(|(_, _, whole)| whole);
+                renderer.push_clip(
+                    0.0,
+                    if whole { 0.0 } else { 40.0 },
+                    640.0,
+                    if whole { 480.0 } else { 440.0 },
+                );
+                renderer.push_transform(offset, 0.0, 1.0, 1.0, 1.0);
+                renderer.rect(0.0, 0.0, 640.0, 480.0, bg);
             }
+            self.visual_draw_screen(screen, renderer, elapsed, fg, muted);
+        }
+        if !self.auto_saver
+            && !shared_menu
+            && screen != Screen::CoverFlow
+            && self
+                .visual_menu_outgoing_page()
+                .is_some_and(|(_, _, whole)| !whole)
+        {
+            renderer.pop_transform();
+            renderer.pop_clip();
+            renderer.push_clip(0.0, 0.0, 640.0, 480.0);
+            renderer.push_transform(0.0, 0.0, 1.0, 1.0, 1.0);
         }
         let title = self
             .pages
             .last()
             .map(|p| p.title.as_str())
-            .unwrap_or("betterPod Rust");
+            .unwrap_or("betterPod")
+            .to_owned();
         if !self.auto_saver
-            && !matches!(
-                self.screen(),
-                Screen::Visualizer | Screen::Curation | Screen::Files
-            )
-            && (self.screen() != Screen::Video || self.video_overlay_visible())
+            && !shared_menu
+            && !matches!(self.screen(), Screen::Visualizer)
+            && self.screen() != Screen::Video
         {
-            draw_header(
-                renderer,
-                title,
-                self.audio_snapshot.playing,
-                self.settings.volume,
-                self.dark(),
-            );
+            let title = if self.screen() == Screen::CoverFlow && self.cover_from_np {
+                "Now Playing".to_owned()
+            } else {
+                title.clone()
+            };
+            let width = if self.pages.last().is_some_and(Page::split) {
+                320.0
+            } else {
+                640.0
+            };
+            self.visual_menu_draw_header(renderer, &title, 0.0, width, true);
         }
-        if matches!(self.screen(), Screen::Game | Screen::Puzzle | Screen::Quiz)
-            && self.settings.game_clock.iter().any(|name| name == title)
-        {
-            renderer.centered(&self.clock, 270.0, 10.0, 120.0, 18, fg);
+        if !self.auto_saver {
+            if !shared_menu && screen != Screen::CoverFlow {
+                renderer.pop_transform();
+                renderer.pop_clip();
+            }
+            if screen == Screen::CoverFlow {
+                self.visual_menu_draw_outgoing(renderer);
+            }
         }
-        if self.held {
-            renderer.centered(&self.clock, 422.0, 10.0, 73.0, 18, fg);
-            renderer.rect(500.0, 8.0, 60.0, 25.0, [0.85, 0.62, 0.08, 1.0]);
-            renderer.centered("HOLD", 501.0, 11.0, 58.0, 16, [0.1, 0.08, 0.0, 1.0]);
+        let dark = self.dark();
+        if let Some(keyboard) = self.keyboard.as_mut() {
+            keyboard.draw(renderer, &self.visual_assets, dark, elapsed);
         }
-        if let Some(options) = self.options.as_ref() {
-            draw_options(renderer, options, self.dark());
+        if self.keyboard.as_ref().is_some_and(|k| k.finished(elapsed)) {
+            self.keyboard = None;
         }
-        if let Some(keyboard) = self.keyboard.as_ref() {
-            draw_keyboard(renderer, keyboard, self.dark());
-        }
-        if let Some(toast) = self.toast.as_ref() {
-            renderer.rect(50.0, 414.0, 540.0, 42.0, [0.06, 0.08, 0.11, 0.92]);
-            renderer.centered(&toast.text, 60.0, 423.0, 520.0, 18, WHITE);
-        }
+        self.visual_feedback_draw(renderer);
         if let Some(start) = self.menu_down {
             if start.elapsed() >= Duration::from_secs(2) {
                 renderer.rect(100.0, 190.0, 440.0, 86.0, [0.04, 0.05, 0.07, 0.95]);
@@ -3389,477 +3886,6 @@ impl App {
             }
         }
     }
-    fn draw_menu(&mut self, r: &mut Renderer, elapsed: f64, fg: Color, muted: Color) {
-        let Some(page) = self.pages.last() else {
-            return;
-        };
-        let width = if page.split() { 320.0 } else { 640.0 };
-        let row_h = page.row_height();
-        let bottom = if self.now_track.is_some() {
-            400.0
-        } else {
-            442.0
-        };
-        if page.split() {
-            if page.screen == Screen::Settings {
-                self.draw_setting_preview(r, fg, muted);
-            } else {
-                let album = page
-                    .rows
-                    .get(page.selected)
-                    .and_then(|row| row.cover.as_deref())
-                    .or_else(|| self.now_track.as_ref().and_then(|t| t.cover.as_deref()))
-                    .or_else(|| {
-                        self.library
-                            .albums
-                            .get((elapsed / 7.0) as usize % self.library.albums.len().max(1))
-                            .and_then(|a| a.cover.as_deref())
-                    });
-                let texture = self.art.get(album);
-                r.cover(
-                    texture,
-                    480.0,
-                    216.0,
-                    220.0,
-                    if self.settings.effects == "full" {
-                        0.14 * (elapsed as f32 * 0.5).sin()
-                    } else {
-                        0.0
-                    },
-                    1.0,
-                    self.settings.effects == "full",
-                );
-                let label = page
-                    .rows
-                    .get(page.selected)
-                    .map_or("Music", |row| row.label.as_str());
-                r.centered(label, 330.0, 369.0, 300.0, 24, fg);
-            }
-            r.rect(319.0, 40.0, 1.0, bottom - 40.0, [0.45, 0.46, 0.48, 0.35]);
-        }
-        r.set_clip(0.0, 40.0, width, bottom - 40.0);
-        let first = (page.scroll / row_h).floor().max(0.0) as usize;
-        let visible = ((bottom - 40.0) / row_h).ceil() as usize + 1;
-        for (i, row) in page.rows.iter().enumerate().skip(first).take(visible) {
-            let y = 42.0 + i as f32 * row_h - page.scroll;
-            let selected = i == page.selected;
-            if selected {
-                r.gradient(
-                    0.0,
-                    y,
-                    width,
-                    row_h,
-                    [0.30, 0.62, 0.97, 1.0],
-                    [0.06, 0.36, 0.77, 1.0],
-                );
-            }
-            let mut x = 15.0;
-            if !page.split() && row.cover.is_some() {
-                let tex = self.art.get(row.cover.as_deref());
-                r.image(tex, 9.0, y + 5.0, row_h - 10.0, row_h - 10.0, 1.0);
-                x = row_h + 6.0;
-            }
-            let color = if selected { WHITE } else { fg };
-            r.text(
-                &row.label,
-                x,
-                y + if row.detail.is_empty() { 10.0 } else { 5.0 },
-                22,
-                color,
-                width - x - 30.0,
-            );
-            if !row.detail.is_empty() {
-                r.text(
-                    &row.detail,
-                    x,
-                    y + 30.0,
-                    16,
-                    if selected { WHITE } else { muted },
-                    width - x - 25.0,
-                );
-            }
-            if row.arrow {
-                r.text(">", width - 23.0, y + 10.0, 22, color, 18.0);
-            }
-            if page.screen == Screen::Queue && i == self.queue_index {
-                r.rect(width - 42.0, y + 19.0, 8.0, 8.0, color);
-            }
-        }
-        if page.rows.is_empty() {
-            r.centered(
-                if self.scanning {
-                    "Reading your music..."
-                } else {
-                    "No music here yet"
-                },
-                10.0,
-                175.0,
-                width - 20.0,
-                20,
-                muted,
-            );
-        }
-        r.reset_clip();
-        if page.rows.len() as f32 * row_h > bottom - 40.0 {
-            let full = page.rows.len() as f32 * row_h;
-            let viewport = bottom - 40.0;
-            let thumb = (viewport / full * viewport).max(15.0);
-            let y = 40.0 + page.scroll / full * viewport;
-            r.rect(width - 4.0, y, 3.0, thumb, muted);
-        }
-        if let Some(track) = self.now_track.as_ref() {
-            r.gradient(
-                0.0,
-                401.0,
-                640.0,
-                78.0,
-                if self.dark() {
-                    [0.16, 0.17, 0.20, 1.0]
-                } else {
-                    [0.91, 0.92, 0.94, 1.0]
-                },
-                if self.dark() {
-                    [0.08, 0.09, 0.11, 1.0]
-                } else {
-                    [0.80, 0.82, 0.85, 1.0]
-                },
-            );
-            let texture = self.art.get(track.cover.as_deref());
-            r.image(texture, 12.0, 412.0, 56.0, 56.0, 1.0);
-            r.text(&track.title, 82.0, 410.0, 21, fg, 480.0);
-            r.text(&track.artist, 82.0, 440.0, 17, muted, 480.0);
-            r.text(
-                if self.audio_snapshot.playing {
-                    "II"
-                } else {
-                    ">"
-                },
-                594.0,
-                424.0,
-                26,
-                fg,
-                30.0,
-            );
-        } else {
-            r.text(
-                if self.scanning {
-                    "Scanning library in background"
-                } else {
-                    "A: Select    B: Back    START: Play"
-                },
-                14.0,
-                452.0,
-                16,
-                muted,
-                610.0,
-            );
-        }
-    }
-    fn draw_coverflow(&mut self, r: &mut Renderer, fg: Color, muted: Color) {
-        let center = self.cover_position.floor() as isize;
-        for distance in (0..=5).rev() {
-            for sign in [-1isize, 1] {
-                if distance == 0 && sign == 1 {
-                    continue;
-                }
-                let index = center + distance * sign;
-                if index < 0 || index as usize >= self.library.albums.len() {
-                    continue;
-                }
-                let album = &self.library.albums[index as usize];
-                let texture = self.art.get(album.cover.as_deref());
-                let d = index as f32 - self.cover_position;
-                let outside = (d.abs() - 1.0).max(0.0) * 65.0;
-                let x = 320.0 + d.signum() * (d.abs().min(1.0) * 175.0 + outside);
-                let size = 280.0 - 50.0 * d.abs().min(1.0);
-                if index as usize == self.cover_selected && self.cover_flip > 0.5 {
-                    continue;
-                }
-                r.cover(
-                    texture,
-                    x,
-                    217.0,
-                    size,
-                    if self.settings.effects == "full" {
-                        if index as usize == self.cover_selected && self.cover_flip > 0.01 {
-                            self.cover_flip * std::f32::consts::PI
-                        } else {
-                            -d.clamp(-1.0, 1.0) * 0.98
-                        }
-                    } else {
-                        0.0
-                    },
-                    1.0,
-                    true,
-                );
-            }
-        }
-        if let Some(album) = self.library.albums.get(self.cover_selected) {
-            if self.cover_flip > 0.5 {
-                let width = 304.0 * (-(self.cover_flip * std::f32::consts::PI).cos()).max(0.01);
-                let x = 320.0 - width / 2.0;
-                r.rect(
-                    x,
-                    71.0,
-                    width,
-                    292.0,
-                    if self.dark() {
-                        [0.13, 0.14, 0.17, 1.0]
-                    } else {
-                        [0.98, 0.98, 0.99, 1.0]
-                    },
-                );
-                if self.cover_flip > 0.85 {
-                    let selected = self.cover_card.unwrap_or(0);
-                    let first = selected
-                        .saturating_sub(4)
-                        .min(album.track_indices.len().saturating_sub(8));
-                    r.set_clip(x + 5.0, 77.0, width - 10.0, 280.0);
-                    for (n, &i) in album.track_indices.iter().enumerate().skip(first).take(8) {
-                        let y = 80.0 + (n - first) as f32 * 34.0;
-                        if n == selected {
-                            r.rect(x + 5.0, y, width - 10.0, 32.0, BLUE);
-                        }
-                        r.text(
-                            &self.library.tracks[i].title,
-                            x + 13.0,
-                            y + 6.0,
-                            18,
-                            if n == selected { WHITE } else { fg },
-                            width - 85.0,
-                        );
-                        if let Some(row) = self
-                            .views_album_tracks
-                            .get(self.cover_selected)
-                            .and_then(|rows| rows.get(n))
-                        {
-                            r.text(
-                                &row.detail,
-                                x + width - 61.0,
-                                y + 7.0,
-                                16,
-                                if n == selected { WHITE } else { muted },
-                                53.0,
-                            );
-                        }
-                    }
-                    r.reset_clip();
-                    if album.track_indices.len() > 8 {
-                        let full = album.track_indices.len() as f32 * 34.0;
-                        let thumb = (278.0 / full * 278.0).max(15.0);
-                        r.rect(
-                            x + width - 5.0,
-                            78.0 + first as f32 * 34.0 / full * 278.0,
-                            3.0,
-                            thumb,
-                            muted,
-                        );
-                    }
-                }
-            }
-            r.centered(&album.name, 15.0, 395.0, 610.0, 24, fg);
-            r.centered(&album.artist, 15.0, 428.0, 610.0, 18, muted);
-        }
-        r.text(
-            "LEFT / RIGHT: Browse     A: Flip     Y: Options",
-            16.0,
-            459.0,
-            16,
-            muted,
-            610.0,
-        );
-    }
-    fn draw_now_playing(&mut self, r: &mut Renderer, elapsed: f64, fg: Color, muted: Color) {
-        let Some(track) = self.now_track.as_ref() else {
-            r.centered("Choose a song from Music", 10.0, 220.0, 620.0, 24, fg);
-            return;
-        };
-        let texture = self.art.get(track.cover.as_deref());
-        let angle = if self.audio_snapshot.playing && self.settings.effects == "full" {
-            0.13 * (elapsed as f32 * 0.45).sin()
-        } else {
-            0.0
-        };
-        r.cover(texture, 177.0, 225.0, 285.0, angle, 1.0, true);
-        marquee(r, &track.title, 345.0, 100.0, 26, fg, 280.0, elapsed);
-        marquee(r, &track.artist, 345.0, 143.0, 21, muted, 280.0, elapsed);
-        marquee(r, &track.album, 345.0, 178.0, 19, muted, 280.0, elapsed);
-        if track.lossless {
-            let rate = if track.sample_rate > 0 {
-                track.sample_rate
-            } else {
-                self.audio_snapshot.rate
-            };
-            let badge = format!(
-                "LOSSLESS{}{}",
-                if track.bit_depth > 0 {
-                    format!("  {}-bit", track.bit_depth)
-                } else {
-                    String::new()
-                },
-                if rate > 0 {
-                    format!(" / {:.1} kHz", rate as f32 / 1000.0)
-                } else {
-                    String::new()
-                }
-            );
-            r.text(&badge, 345.0, 221.0, 13, BLUE, 280.0);
-        }
-        for i in 0..20 {
-            r.rect(
-                347.0 + i as f32 * 13.7,
-                316.0,
-                10.0,
-                4.0,
-                if i as f32 / 20.0 < self.meter && self.audio_snapshot.playing {
-                    if i > 16 {
-                        [0.9, 0.3, 0.15, 1.0]
-                    } else {
-                        BLUE
-                    }
-                } else {
-                    [0.45, 0.47, 0.5, 0.22]
-                },
-            );
-        }
-        let position = self.np_seek.map_or_else(
-            || {
-                if self.restored {
-                    self.restored_position
-                } else {
-                    self.audio_snapshot.position
-                }
-            },
-            |s| s.0,
-        );
-        let duration = if self.audio_snapshot.duration > 0.0 {
-            self.audio_snapshot.duration
-        } else {
-            track.duration
-        };
-        r.rect(345.0, 259.0, 275.0, 8.0, [0.47, 0.49, 0.52, 0.5]);
-        if duration > 0.0 {
-            r.rect(
-                345.0,
-                259.0,
-                275.0 * (position / duration).clamp(0.0, 1.0) as f32,
-                8.0,
-                BLUE,
-            );
-        }
-        r.text(&time_label(position), 345.0, 281.0, 18, muted, 125.0);
-        r.text(
-            &format!("-{}", time_label((duration - position).max(0.0))),
-            541.0,
-            281.0,
-            18,
-            muted,
-            90.0,
-        );
-        r.centered(
-            if self.audio_snapshot.loading {
-                "Loading..."
-            } else if self.audio_snapshot.playing {
-                "Playing"
-            } else {
-                "Paused"
-            },
-            345.0,
-            330.0,
-            275.0,
-            22,
-            fg,
-        );
-        if self.np_mode == 2 {
-            for (i, label) in [
-                format!(
-                    "Shuffle: {}",
-                    if self.settings.shuffle { "On" } else { "Off" }
-                ),
-                format!("Repeat: {}", self.settings.repeat),
-                "Done".into(),
-            ]
-            .iter()
-            .enumerate()
-            {
-                let y = 354.0 + i as f32 * 26.0;
-                if i == self.np_option {
-                    r.rect(342.0, y - 2.0, 283.0, 25.0, BLUE);
-                }
-                r.text(
-                    label,
-                    351.0,
-                    y,
-                    17,
-                    if i == self.np_option { WHITE } else { fg },
-                    268.0,
-                );
-            }
-        } else {
-            r.centered(
-                if self.np_mode == 1 {
-                    "<  Seek  >"
-                } else {
-                    "−  Volume  +"
-                },
-                345.0,
-                371.0,
-                275.0,
-                22,
-                fg,
-            );
-            r.centered("A: Next control   X: Pause", 345.0, 403.0, 275.0, 15, muted);
-        }
-
-        let status = format!(
-            "{} of {}   {}{}",
-            self.queue_index + 1,
-            self.queue.len(),
-            if self.settings.shuffle {
-                "Shuffle  "
-            } else {
-                ""
-            },
-            match self.settings.repeat.as_str() {
-                "one" => "Repeat One",
-                "all" => "Repeat All",
-                _ => "",
-            }
-        );
-        r.centered(&status, 20.0, 438.0, 600.0, 17, muted);
-        if let Some(error) = &self.audio_snapshot.error {
-            r.rect(10.0, 399.0, 620.0, 34.0, [0.5, 0.06, 0.06, 0.95]);
-            r.text(error, 18.0, 406.0, 16, WHITE, 602.0);
-        }
-    }
-    fn draw_about(&self, r: &mut Renderer, fg: Color, muted: Color) {
-        r.centered("betterPod Rust", 20.0, 108.0, 600.0, 36, fg);
-        r.centered("Experimental local build", 20.0, 165.0, 600.0, 22, muted);
-        let summary = format!(
-            "{} songs  -  {} albums",
-            self.library.tracks.len(),
-            self.library.albums.len()
-        );
-        r.centered(&summary, 20.0, 220.0, 600.0, 22, fg);
-        r.centered(
-            "Independent app and private settings",
-            20.0,
-            267.0,
-            600.0,
-            20,
-            muted,
-        );
-        r.centered(
-            "MENU: screen off   Hold MENU: exit",
-            20.0,
-            311.0,
-            600.0,
-            20,
-            muted,
-        );
-        r.text(&r.backend.clone(), 20.0, 398.0, 16, muted, 600.0);
-    }
-
     pub fn benchmark(&mut self, elapsed: f64) {
         if self.scanning || self.library.tracks.is_empty() {
             return;
@@ -3915,9 +3941,14 @@ impl App {
                         } else {
                             0
                         };
+                        let height = self
+                            .pages
+                            .last()
+                            .map(|page| self.visual_menu_content_height(page))
+                            .unwrap_or(440.0);
                         if let Some(page) = self.pages.last_mut() {
                             page.selected = if at <= span { at } else { span * 2 - at };
-                            page.reveal_selection();
+                            page.reveal_selection_in(height);
                         }
                     }
                 }
@@ -3936,8 +3967,37 @@ impl App {
         }
         self.auto_saver = true;
         self.configure_saver(false);
+        self.saver.restart();
+        if self.screen() == Screen::NowPlaying && self.visual_player_can_fly() {
+            let tilt = self.visual_player_begin_saver();
+            self.saver.begin_from_np(tilt);
+        }
+    }
+    fn saver_action(&mut self, action: SaverAction) {
+        match action {
+            SaverAction::Exit => {
+                if self.auto_saver {
+                    self.leave_saver();
+                } else if self.pages.len() > 1 {
+                    let previous = self.pages.pop();
+                    self.visual_menu_navigation(previous, false);
+                }
+            }
+            SaverAction::OpenAlbum(index) => {
+                self.leave_saver();
+                self.open(Screen::Album(index));
+            }
+            SaverAction::AlbumOptions(index) => self.show_album_options(index),
+            SaverAction::SongOptions(index) => self.visual_player_song_options(index),
+            SaverAction::PlayTrack(index) => {
+                let pages = self.pages.clone();
+                self.song(index);
+                self.pages = pages;
+            }
+        }
     }
     fn leave_saver(&mut self) {
+        self.visual_player_end_saver(self.audio_snapshot.playing);
         self.auto_saver = false;
         if let Some(level) = self.saver_brightness.take() {
             let _ = self.platform.set_brightness(level);
@@ -3955,11 +4015,12 @@ impl App {
         } else {
             &self.settings.screensaver_style
         });
+        self.saver.set_dark(self.dark());
         self.saver.set_effect(self.settings.screensaver_effect);
         self.saver.set_palette(self.settings.screensaver_colors);
     }
     fn restore_stream_music(&mut self) {
-        self.extras.cancel_media();
+        let preserve_video_resolution = self.visual_video_has_opening();
         if let Some(saved) = self.stream_restore.take() {
             self.queue = saved.queue;
             self.queue_index = saved.index;
@@ -3967,11 +4028,17 @@ impl App {
             self.restored = true;
             self.now_track = self.current_index().map(|i| self.library.tracks[i].clone());
             if !saved.paused && !self.queue.is_empty() {
-                self.play_current(saved.position);
+                self.play_current_inner(saved.position, preserve_video_resolution);
             }
         }
     }
     fn video_next(&mut self, delta: isize) {
+        if self.inline_preview {
+            if delta > 0 {
+                self.extras.advance_preview();
+            }
+            return;
+        }
         let index = self.video_index as isize + delta;
         if index < 0 || index as usize >= self.video_queue.len() {
             return;
@@ -3998,81 +4065,13 @@ impl App {
                     self.video_origin.clone(),
                     self.video_title.clone(),
                     state.position,
+                    state.duration,
                 );
             }
         }
     }
     fn draw_video(&mut self, r: &mut Renderer) {
-        r.rect(0.0, 0.0, 640.0, 480.0, [0.0, 0.0, 0.0, 1.0]);
-        let Some(video) = self.video.as_ref() else {
-            return;
-        };
-        let state = video.snapshot();
-        if self.video_audio_only {
-            let cover = self.art.get(self.video_cover.as_deref());
-            r.cover(
-                cover,
-                180.0,
-                225.0,
-                275.0,
-                0.0,
-                1.0,
-                self.settings.effects == "full",
-            );
-            r.text(&self.video_title, 340.0, 150.0, 26, WHITE, 280.0);
-            r.text("Listening", 340.0, 214.0, 20, [0.65, 0.7, 0.77, 1.0], 280.0);
-        } else if let Some(texture) = self.video_texture {
-            let ratio = (640.0 / texture.width as f32).min(480.0 / texture.height as f32);
-            let w = texture.width as f32 * ratio;
-            let h = texture.height as f32 * ratio;
-            r.image(texture, (640.0 - w) * 0.5, (480.0 - h) * 0.5, w, h, 1.0);
-        }
-        if self.video_overlay_visible() {
-            r.rect(0.0, 400.0, 640.0, 80.0, [0.0, 0.0, 0.0, 0.7]);
-            r.rect(20.0, 423.0, 600.0, 5.0, [0.4, 0.4, 0.4, 1.0]);
-            if state.duration > 0.0 {
-                r.rect(
-                    20.0,
-                    423.0,
-                    600.0 * (state.position / state.duration).clamp(0.0, 1.0) as f32,
-                    5.0,
-                    BLUE,
-                );
-            }
-            r.text(&time_label(state.position), 20.0, 440.0, 18, WHITE, 100.0);
-            r.text(
-                if state.loading || self.pending_stream.is_some() {
-                    "Opening..."
-                } else if state.paused {
-                    "Paused"
-                } else if state.ended {
-                    "Finished"
-                } else {
-                    "Playing"
-                },
-                245.0,
-                440.0,
-                18,
-                WHITE,
-                180.0,
-            );
-            r.text(
-                &if state.duration > 0.0 {
-                    time_label(state.duration)
-                } else {
-                    "--:--".into()
-                },
-                540.0,
-                440.0,
-                18,
-                WHITE,
-                90.0,
-            );
-        }
-        if let Some(error) = state.error {
-            r.rect(20.0, 190.0, 600.0, 88.0, [0.35, 0.03, 0.03, 0.95]);
-            r.text(&error, 35.0, 212.0, 18, WHITE, 570.0);
-        }
+        self.visual_video_draw(r, self.visual_time);
     }
     fn save_games(&mut self) {
         if let Some(game) = self.game.as_ref() {
@@ -4092,6 +4091,15 @@ impl App {
         }
     }
     pub fn shutdown(&mut self, renderer: &Renderer) -> Result<(), String> {
+        if let Some(request) = self
+            .maintenance
+            .as_mut()
+            .and_then(|m| m.quiesce_for_shutdown())
+        {
+            if self.maintenance_request.is_none() {
+                self.maintenance_request = Some(request);
+            }
+        }
         if self.closed {
             return Ok(());
         }
@@ -4117,11 +4125,15 @@ impl App {
         }
         self.audio.shutdown();
         self.extras.shutdown();
+        betterpod_rust::weather::close_icons(renderer);
         self.files.shutdown();
         self.curation.shutdown();
         self.volume.shutdown();
         self.idle.close();
+        self.saver.close(renderer);
         self.art.close(renderer);
+        self.visual_assets.close(renderer);
+        self.status_watcher.close();
         if self.screen_off {
             let _ = self.platform.set_screen_off(false);
             self.screen_off = false;
@@ -4139,113 +4151,6 @@ fn time_label(seconds: f64) -> String {
     };
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
-fn draw_header(r: &mut Renderer, title: &str, playing: bool, volume: f32, dark: bool) {
-    let (top, bottom, fg) = if dark {
-        ([0.21, 0.22, 0.25, 1.0], [0.10, 0.11, 0.13, 1.0], WHITE)
-    } else {
-        ([0.99, 0.99, 1.0, 1.0], [0.75, 0.77, 0.80, 1.0], FG)
-    };
-    r.gradient(0.0, 0.0, 640.0, 40.0, top, bottom);
-    r.rect(0.0, 39.0, 640.0, 1.0, [0.3, 0.31, 0.33, 0.65]);
-    r.text(title, 14.0, 7.0, 24, fg, 510.0);
-    if playing {
-        r.text(">", 552.0, 9.0, 22, fg, 30.0);
-    }
-    r.text(
-        &format!("{}%", (volume * 100.0).round() as u32),
-        586.0,
-        10.0,
-        18,
-        fg,
-        51.0,
-    );
-}
-fn draw_options(r: &mut Renderer, page: &Page, dark: bool) {
-    r.rect(0.0, 40.0, 640.0, 440.0, [0.0, 0.0, 0.0, 0.55]);
-    let height = 50.0 + page.rows.len() as f32 * 42.0;
-    let y = (480.0 - height) * 0.5;
-    let bg = if dark { [0.13, 0.14, 0.17, 1.0] } else { BG };
-    let fg = if dark { WHITE } else { FG };
-    r.rect(110.0, y, 420.0, height, bg);
-    r.centered(&page.title, 120.0, y + 10.0, 400.0, 23, fg);
-    for (i, row) in page.rows.iter().enumerate() {
-        let yy = y + 47.0 + i as f32 * 42.0;
-        if i == page.selected {
-            r.rect(110.0, yy, 420.0, 42.0, BLUE);
-        }
-        r.text(
-            &row.label,
-            130.0,
-            yy + 9.0,
-            21,
-            if i == page.selected { WHITE } else { fg },
-            380.0,
-        );
-    }
-}
-fn draw_keyboard(r: &mut Renderer, k: &Keyboard, dark: bool) {
-    draw_keyboard_title(r, k, dark, "Search your music");
-}
-fn draw_keyboard_title(r: &mut Renderer, k: &Keyboard, dark: bool, title: &str) {
-    let bg = if dark { [0.08, 0.09, 0.11, 1.0] } else { BG };
-    let fg = if dark { WHITE } else { FG };
-    r.rect(0.0, 40.0, 640.0, 440.0, bg);
-    r.text(title, 18.0, 55.0, 24, fg, 600.0);
-    r.rect(
-        16.0,
-        103.0,
-        608.0,
-        48.0,
-        if dark {
-            [0.2, 0.21, 0.24, 1.0]
-        } else {
-            [0.86, 0.88, 0.91, 1.0]
-        },
-    );
-    r.text(&k.query, 25.0, 116.0, 23, fg, 590.0);
-    for index in 0..40 {
-        let x = 16.0 + (index % 10) as f32 * 61.0;
-        let y = 178.0 + (index / 10) as f32 * 61.0;
-        let selected = index == k.selected;
-        r.rect(
-            x,
-            y,
-            55.0,
-            52.0,
-            if selected {
-                BLUE
-            } else if dark {
-                [0.18, 0.19, 0.22, 1.0]
-            } else {
-                [0.84, 0.86, 0.89, 1.0]
-            },
-        );
-        let key = match index {
-            0..=35 => keyboard_char(k.layout, index).to_string(),
-            36 => "Space".into(),
-            37 => "Del".into(),
-            38 => "Clear".into(),
-            _ => "Done".into(),
-        };
-        r.centered(
-            &key,
-            x + 2.0,
-            y + 16.0,
-            51.0,
-            if index < 36 { 22 } else { 14 },
-            if selected { WHITE } else { fg },
-        );
-    }
-    r.centered(
-        "A: Type   X: Space   B: Delete   Y: Aa/123   START: Done",
-        15.0,
-        448.0,
-        610.0,
-        17,
-        fg,
-    );
-}
-
 fn local_clock() -> String {
     let mut now: libc::time_t = unsafe { libc::time(std::ptr::null_mut()) };
     let mut parts: libc::tm = unsafe { std::mem::zeroed() };
@@ -4254,46 +4159,6 @@ fn local_clock() -> String {
     }
     format!("{:02}:{:02}", parts.tm_hour, parts.tm_min)
 }
-fn marquee(
-    r: &mut Renderer,
-    text: &str,
-    x: f32,
-    y: f32,
-    size: u16,
-    color: Color,
-    width: f32,
-    elapsed: f64,
-) {
-    let full = r.text_width(text, size);
-    if full <= width {
-        r.text(text, x, y, size, color, width);
-        return;
-    }
-    let travel = (full - width + 18.0) / 32.0;
-    let phase = elapsed as f32 % (travel * 2.0 + 4.0);
-    let offset = if phase < 2.0 {
-        0.0
-    } else if phase < 2.0 + travel {
-        (phase - 2.0) * 32.0
-    } else if phase < 4.0 + travel {
-        full - width + 18.0
-    } else {
-        (travel * 2.0 + 4.0 - phase) * 32.0
-    };
-    r.set_clip(x, y - 2.0, width, size as f32 + 9.0);
-    r.text(text, x - offset, y, size, color, full + 2.0);
-    r.reset_clip();
-}
-
-fn keyboard_char(layout: u8, index: usize) -> char {
-    let keys: &[u8] = match layout {
-        1 => b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-        2 => br#"0123456789-._/:@?&=+#%()[]{}'",!;\|*"#,
-        _ => b"abcdefghijklmnopqrstuvwxyz0123456789",
-    };
-    keys.get(index).copied().unwrap_or(b' ') as char
-}
-
 fn idle_pause_intent(
     audio_paused: bool,
     video_paused: Option<bool>,
@@ -4326,3 +4191,7 @@ mod idle_intent_tests {
         assert!(idle_pause_intent(false, None, false, true));
     }
 }
+
+#[cfg(test)]
+#[path = "app_visual_qa.rs"]
+mod visual_qa;

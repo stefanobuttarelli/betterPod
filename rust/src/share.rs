@@ -44,6 +44,10 @@ pub enum Command {
 }
 #[derive(Clone, Debug)]
 pub enum Event {
+    Preview {
+        info: Option<ShareInfo>,
+        cover: Option<PathBuf>,
+    },
     Code(String),
     Progress {
         done: u64,
@@ -492,6 +496,9 @@ fn receive(data: &Path, state: &State, digits: &str, name: &str) -> Result<Event
                 .map_err(|e| e.to_string())?;
             let mut hash = Sha256::new();
             let mut done = 0u64;
+            let mut preview = Vec::new();
+            let mut preview_info = false;
+            let mut preview_cover = false;
             while done < size {
                 state.check()?;
                 let record = transit.receive_record().await.map_err(|e| e.to_string())?;
@@ -499,6 +506,31 @@ fn receive(data: &Path, state: &State, digits: &str, name: &str) -> Result<Event
                     return Err("Invalid share record length".into());
                 }
                 output.write_all(&record).map_err(|e| e.to_string())?;
+                if !preview_cover && preview.len() < 16 * 1024 * 1024 {
+                    let keep = record.len().min(16 * 1024 * 1024 - preview.len());
+                    preview.extend_from_slice(&record[..keep]);
+                    let (info, cover) = peek_zip_prefix(&preview);
+                    let info = if !preview_info { info } else { None };
+                    if info.is_some() {
+                        preview_info = true;
+                    }
+                    let cover = if let Some(bytes) = cover {
+                        let dir = private_dir(data, &["artwork", "share"])?;
+                        let path = dir.join(format!("{:x}.jpg", Sha256::digest(&bytes)));
+                        crate::storage::atomic_write(&path, &bytes).map_err(|e| e.to_string())?;
+                        preview_cover = true;
+                        Some(path)
+                    } else {
+                        None
+                    };
+                    if info.is_some() || cover.is_some() {
+                        let _ = state.events.try_send(Event::Preview { info, cover });
+                    }
+                    if preview_cover {
+                        preview.clear();
+                        preview.shrink_to_fit();
+                    }
+                }
                 hash.update(&record);
                 done += record.len() as u64;
                 state.progress(done, size, "Receiving", None);
@@ -524,6 +556,111 @@ fn receive(data: &Path, state: &State, digits: &str, name: &str) -> Result<Event
     ));
     let _ = fs::remove_file(archive);
     result
+}
+/// Inspect only the first bounded ZIP entries while bytes arrive. No path is
+/// extracted here; only manifest JSON and cover.jpg become UI preview events.
+fn peek_zip_prefix(bytes: &[u8]) -> (Option<ShareInfo>, Option<Vec<u8>>) {
+    use flate2::{Decompress, FlushDecompress, Status};
+    let mut offset = 0usize;
+    let mut info = None;
+    let mut cover = None;
+    for _ in 0..3 {
+        let Some(header) = bytes.get(offset..offset.saturating_add(30)) else {
+            break;
+        };
+        if &header[..4] != b"PK\x03\x04" {
+            break;
+        }
+        let flags = u16::from_le_bytes([header[6], header[7]]);
+        if flags & 1 != 0 {
+            break;
+        }
+        let method = u16::from_le_bytes([header[8], header[9]]);
+        let compressed = u32::from_le_bytes(header[18..22].try_into().unwrap()) as usize;
+        let name_len = u16::from_le_bytes([header[26], header[27]]) as usize;
+        let extra_len = u16::from_le_bytes([header[28], header[29]]) as usize;
+        let Some(name) = bytes.get(offset + 30..offset + 30 + name_len) else {
+            break;
+        };
+        let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
+        if base != MANIFEST.as_bytes() && base != b"cover.jpg" {
+            break;
+        }
+        let start = offset + 30 + name_len + extra_len;
+        let Some(payload) = bytes.get(start..) else {
+            break;
+        };
+        let limit = if base == MANIFEST.as_bytes() {
+            65536
+        } else {
+            8 * 1024 * 1024
+        };
+        let (decoded, consumed) = if method == 0 {
+            if flags & 8 != 0 || compressed > limit {
+                break;
+            }
+            let Some(data) = payload.get(..compressed) else {
+                break;
+            };
+            (data.to_vec(), compressed)
+        } else if method == 8 {
+            let mut decoder = Decompress::new(false);
+            let mut decoded = Vec::new();
+            let mut complete = false;
+            loop {
+                let mut output = [0u8; 8192];
+                let before = decoder.total_out();
+                let input = decoder.total_in() as usize;
+                let Ok(status) =
+                    decoder.decompress(&payload[input..], &mut output, FlushDecompress::None)
+                else {
+                    break;
+                };
+                let count = (decoder.total_out() - before) as usize;
+                if decoded.len() + count > limit {
+                    break;
+                }
+                decoded.extend_from_slice(&output[..count]);
+                if status == Status::StreamEnd {
+                    complete = true;
+                    break;
+                }
+                if count == 0 && decoder.total_in() as usize == input {
+                    break;
+                }
+            }
+            if !complete {
+                break;
+            }
+            (decoded, decoder.total_in() as usize)
+        } else {
+            break;
+        };
+        if base == MANIFEST.as_bytes() {
+            if let Ok(mut value) = serde_json::from_slice::<ShareInfo>(&decoded) {
+                value.album = value.album.chars().take(4096).collect();
+                value.title = value.title.chars().take(4096).collect();
+                value.artist = value.artist.chars().take(4096).collect();
+                value.from = value.from.chars().take(32).collect();
+                info = Some(value);
+            }
+        } else {
+            cover = Some(decoded);
+        }
+        offset = start + consumed;
+        if flags & 8 != 0 {
+            let descriptor = if bytes.get(offset..offset + 4) == Some(&b"PK\x07\x08"[..]) {
+                16
+            } else {
+                12
+            };
+            if bytes.get(offset..offset + descriptor).is_none() {
+                break;
+            }
+            offset += descriptor;
+        }
+    }
+    (info, cover)
 }
 fn build_zip(
     archive: &Path,
@@ -800,6 +937,31 @@ fn ensure_space(data: &Path, needed: u64) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn incremental_zip_preview_is_bounded_and_waits_for_complete_deflate() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        archive
+            .start_file("Album/betterpod-share.json", options)
+            .unwrap();
+        archive
+            .write_all(br#"{"title":"Test song","songs":2}"#)
+            .unwrap();
+        archive.start_file("Album/cover.jpg", options).unwrap();
+        archive.write_all(b"synthetic image bytes").unwrap();
+        let bytes = archive.finish().unwrap().into_inner();
+        assert!(peek_zip_prefix(&bytes[..20]).0.is_none());
+        let (info, cover) = peek_zip_prefix(&bytes);
+        assert_eq!(info.unwrap().title, "Test song");
+        assert_eq!(cover.unwrap(), b"synthetic image bytes");
+        let mut malicious = bytes.clone();
+        malicious[26] = 255;
+        malicious[27] = 255;
+        assert!(peek_zip_prefix(&malicious).0.is_none());
+    }
     #[test]
     fn eight_digit_wire_code() {
         assert_eq!(code("12345678").unwrap().to_string(), "123-45678");

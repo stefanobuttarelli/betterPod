@@ -1,9 +1,14 @@
 //! Self-contained Rust games. Logic does no disk I/O and uses fixed-size
 //! boards and bounded physics steps, so music keeps its own execution budget.
 use crate::input::Action;
-use crate::render::{Color, Renderer};
+use crate::render::{Color, Renderer, Texture};
+use crate::visual_assets::VisualAssets;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+mod draw;
+mod solitaire;
+use solitaire::Solitaire;
 mod words;
 use words::WordGame;
 
@@ -17,6 +22,39 @@ pub enum GameKind {
 
 pub struct Games {
     game: Game,
+    effect: Option<GameEffect>,
+    clock_shown: bool,
+    assets: HashMap<&'static str, Texture>,
+    now: f64,
+    anchored: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameCommand {
+    NewGame,
+    NewWord,
+    History,
+    Resume,
+    Undo,
+    Redeal,
+    ToggleClock,
+    Quit,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameEffect {
+    Quit,
+    ToggleClock,
+}
+#[derive(Clone, Debug)]
+pub struct GameMenuItem {
+    pub label: String,
+    pub command: GameCommand,
+}
+#[derive(Clone, Debug)]
+pub struct GameHistoryRow {
+    pub label: String,
+    pub detail: String,
+    pub header: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -28,16 +66,278 @@ enum Game {
 }
 
 impl Games {
+    /// Diagnostic fixture adapter for comparing the actual Go 1.1 position.
+    /// It reads immutable bytes supplied by the caller, never a filesystem path.
+    pub fn restore_reference_fixture(&mut self, bytes: &[u8]) -> Result<(), String> {
+        if bytes.len() > 512 * 1024 {
+            return Err("Reference fixture is too large".into());
+        }
+        let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+        match &mut self.game {
+            Game::Solitaire(game) => game.restore_go_fixture(&value),
+            Game::Words(game) => game.restore_go_fixture(&value),
+            Game::Tiles(game) => {
+                let board: [[u32; 4]; 4] = serde_json::from_value(
+                    value.get("board").ok_or("Missing reference board")?.clone(),
+                )
+                .map_err(|e| e.to_string())?;
+                let board: [u32; 16] = board
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+                if board
+                    .iter()
+                    .any(|&v| v != 0 && (!v.is_power_of_two() || v > (1 << 30)))
+                {
+                    return Err("Invalid reference tile".into());
+                }
+                game.board = board;
+                game.motion.clear();
+                game.score = value.get("score").and_then(|v| v.as_u64()).unwrap_or(0);
+                game.best = value
+                    .get("best")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(game.score);
+                game.won = value.get("won").and_then(|v| v.as_bool()).unwrap_or(false);
+                game.keep_playing = value
+                    .get("keepOn")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                game.over = !can_move(&board);
+                game.animation =
+                    value.get("elapsed").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+                if let Some(tiles) = value.get("tiles").and_then(|v| v.as_array()) {
+                    for tile in tiles {
+                        let coordinate = |name: &str| {
+                            tile.get(name).and_then(|v| v.as_u64()).unwrap_or(0).min(3) as usize
+                        };
+                        let index = coordinate("r") * 4 + coordinate("c");
+                        let gone = tile.get("gone").and_then(|v| v.as_bool()).unwrap_or(false);
+                        game.motion.push(MovingTile {
+                            value: tile.get("v").and_then(|v| v.as_u64()).unwrap_or(2) as u32,
+                            index,
+                            from: coordinate("fr") * 4 + coordinate("fc"),
+                            gone_to: if gone {
+                                Some(coordinate("gr") * 4 + coordinate("gc"))
+                            } else {
+                                None
+                            },
+                            born: tile.get("born").and_then(|v| v.as_bool()).unwrap_or(false),
+                            merged: tile
+                                .get("merged")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
+                        });
+                    }
+                }
+                Ok(())
+            }
+            Game::Brick(game) => {
+                let number = |name: &str, default: f64| {
+                    value
+                        .get(name)
+                        .and_then(|v| v.as_f64())
+                        .filter(|v| v.is_finite())
+                        .unwrap_or(default)
+                };
+                game.level = number("level", 1.0).clamp(1.0, 1_000_000.0) as u32;
+                game.level_blocks();
+                game.paddle = number("px", game.paddle);
+                game.paddle_velocity = number("pvel", 0.0);
+                game.ball = [number("bx", game.ball[0]), number("by", game.ball[1])];
+                game.velocity = [
+                    number("dx", game.velocity[0]),
+                    number("dy", game.velocity[1]),
+                ];
+                game.score = number("score", 0.0).max(0.0) as u64;
+                game.lives = number("lives", 3.0).clamp(0.0, 3.0) as u32;
+                game.phase = match value.get("phase").and_then(|v| v.as_str()) {
+                    Some("playing") => Phase::Playing,
+                    Some("gameOver") => Phase::Over,
+                    _ => Phase::Waiting,
+                };
+                game.menu_index = number("menuIndex", 0.0).clamp(0.0, 1.0) as usize;
+                if let Some(bricks) = value.get("bricks").and_then(|v| v.as_array()) {
+                    for block in &mut game.blocks {
+                        block.active = bricks.iter().any(|b| {
+                            b.get("x")
+                                .and_then(|v| v.as_f64())
+                                .is_some_and(|x| (x - block.x).abs() < 0.001)
+                                && b.get("y")
+                                    .and_then(|v| v.as_f64())
+                                    .is_some_and(|y| (y - block.y).abs() < 0.001)
+                        });
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
     pub fn new(kind: GameKind) -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(1, |d| d.as_nanos() as u64);
         Self {
+            effect: None,
+            clock_shown: false,
+            assets: HashMap::new(),
+            now: 0.0,
+            anchored: false,
             game: match kind {
                 GameKind::TwentyFortyEight => Game::Tiles(Tiles::new(seed)),
                 GameKind::Brick => Game::Brick(Brick::new()),
                 GameKind::Solitaire => Game::Solitaire(Solitaire::new(seed)),
                 GameKind::FiveLetters => Game::Words(WordGame::new(seed)),
+            },
+        }
+    }
+
+    pub fn set_assets(&mut self, assets: &VisualAssets) {
+        self.assets.clear();
+        for name in [
+            "sol_apple",
+            "sol_club",
+            "sol_diamond",
+            "sol_heart",
+            "sol_spade",
+            "sol_recycle",
+            "sol_hand",
+        ] {
+            if let Some(texture) = assets.get(name) {
+                self.assets.insert(name, texture);
+            }
+        }
+    }
+    pub fn set_time(&mut self, now: f64) {
+        if !now.is_finite() {
+            return;
+        }
+        if let Game::Solitaire(game) = &mut self.game {
+            if !self.anchored {
+                game.shift_time(now - self.now);
+            } else {
+                game.set_time(now);
+            }
+        }
+        self.now = now;
+        self.anchored = true;
+    }
+    pub fn snap_visual_state(&mut self) {
+        match &mut self.game {
+            Game::Tiles(game) => game.animation = 1.0,
+            Game::Solitaire(game) => game.snap_visual_state(),
+            _ => {}
+        }
+    }
+
+    pub fn set_menu_open(&mut self, open: bool) {
+        if let Game::Brick(g) = &mut self.game {
+            g.paused = open;
+            if open {
+                g.accumulator = 0.0;
+            }
+        }
+    }
+    pub fn set_clock_shown(&mut self, shown: bool) {
+        self.clock_shown = shown;
+        if let Game::Solitaire(game) = &mut self.game {
+            game.set_clock(shown);
+        }
+    }
+    pub fn take_effect(&mut self) -> Option<GameEffect> {
+        self.effect.take()
+    }
+    pub fn history_rows(&self) -> Vec<GameHistoryRow> {
+        match &self.game {
+            Game::Words(game) => game.history_rows(),
+            _ => Vec::new(),
+        }
+    }
+    pub fn menu_items(&mut self) -> Vec<GameMenuItem> {
+        let mut rows = match &mut self.game {
+            Game::Tiles(_) => vec![GameMenuItem {
+                label: "New Game".into(),
+                command: GameCommand::NewGame,
+            }],
+            Game::Brick(g) => {
+                g.paused = true;
+                vec![GameMenuItem {
+                    label: "New Game".into(),
+                    command: GameCommand::NewGame,
+                }]
+            }
+            Game::Solitaire(_) => vec![
+                GameMenuItem {
+                    label: "Resume".into(),
+                    command: GameCommand::Resume,
+                },
+                GameMenuItem {
+                    label: "Undo".into(),
+                    command: GameCommand::Undo,
+                },
+                GameMenuItem {
+                    label: "Redeal".into(),
+                    command: GameCommand::Redeal,
+                },
+            ],
+            Game::Words(g) => vec![
+                GameMenuItem {
+                    label: g.new_word_label().into(),
+                    command: GameCommand::NewWord,
+                },
+                GameMenuItem {
+                    label: "History".into(),
+                    command: GameCommand::History,
+                },
+            ],
+        };
+        rows.push(GameMenuItem {
+            label: if self.clock_shown {
+                "Hide the Time"
+            } else {
+                "Show the Time"
+            }
+            .into(),
+            command: GameCommand::ToggleClock,
+        });
+        rows.push(GameMenuItem {
+            label: format!("Quit {}", self.title()),
+            command: GameCommand::Quit,
+        });
+        rows
+    }
+    pub fn command(&mut self, command: GameCommand) {
+        match command {
+            GameCommand::ToggleClock => {
+                self.clock_shown = !self.clock_shown;
+                self.effect = Some(GameEffect::ToggleClock);
+            }
+            GameCommand::Quit => self.effect = Some(GameEffect::Quit),
+            _ => match &mut self.game {
+                Game::Tiles(g) => {
+                    if command == GameCommand::NewGame {
+                        g.restart();
+                    }
+                }
+                Game::Brick(g) => {
+                    if command == GameCommand::NewGame {
+                        *g = Brick::new();
+                    }
+                    g.paused = false;
+                }
+                Game::Solitaire(g) => match command {
+                    GameCommand::Undo => g.undo(),
+                    GameCommand::Redeal => g.redeal(),
+                    GameCommand::Resume => g.resume(),
+                    _ => {}
+                },
+                Game::Words(g) => match command {
+                    GameCommand::NewWord => g.new_word(),
+                    GameCommand::History => g.show_history(),
+                    _ => {}
+                },
             },
         }
     }
@@ -52,7 +352,7 @@ impl Games {
         if bytes.len() > 512 * 1024 {
             return Err("Game save is too large".into());
         }
-        let game: Game = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+        let mut game: Game = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         let valid = match &game {
             Game::Tiles(g) => {
                 g.board
@@ -95,6 +395,12 @@ impl Games {
         if !valid || !same_kind {
             return Err("Invalid game save".into());
         }
+        if let Game::Solitaire(g) = &mut game {
+            g.after_restore();
+        }
+        if let Game::Words(g) = &mut game {
+            g.after_restore();
+        }
         self.game = game;
         Ok(())
     }
@@ -115,17 +421,21 @@ impl Games {
                 return;
             }
         }
-        let action = if action == Action::SelectHeld {
-            Action::Options
-        } else if action == Action::Start {
-            Action::PlayPause
-        } else {
-            action
-        };
         match &mut self.game {
             Game::Tiles(g) => g.handle(action),
-            Game::Brick(g) => g.handle(action),
-            Game::Solitaire(g) => g.handle(action),
+            Game::Brick(g) => {
+                g.handle(action);
+                if g.quit_requested {
+                    self.effect = Some(GameEffect::Quit);
+                    g.quit_requested = false;
+                }
+            }
+            Game::Solitaire(g) => {
+                g.handle(action);
+                if let Some(effect) = g.take_effect() {
+                    self.effect = Some(effect);
+                }
+            }
             Game::Words(g) => g.handle(action),
         }
     }
@@ -140,14 +450,7 @@ impl Games {
                 g.paused = false;
                 true
             }
-            Game::Solitaire(g) if g.menu => {
-                g.menu = false;
-                true
-            }
-            Game::Solitaire(g) if g.held.is_some() => {
-                g.held = None;
-                true
-            }
+            Game::Solitaire(g) => g.back_consumed(),
             Game::Words(g) => g.back_consumed(),
             _ => false,
         }
@@ -155,10 +458,11 @@ impl Games {
 
     pub fn tick(&mut self, dt: f32) {
         let dt = if dt.is_finite() {
-            dt.clamp(0.0, 0.1)
+            dt.clamp(0.0, 10.0 / 60.0)
         } else {
             0.0
         };
+        self.now += dt as f64;
         match &mut self.game {
             Game::Tiles(g) => {
                 if !g.paused {
@@ -175,7 +479,7 @@ impl Games {
         match &self.game {
             Game::Tiles(g) => g.draw(renderer, dark),
             Game::Brick(g) => g.draw(renderer, dark),
-            Game::Solitaire(g) => g.draw(renderer, dark),
+            Game::Solitaire(g) => g.draw(renderer, dark, &self.assets),
             Game::Words(g) => g.draw(renderer, dark),
         }
     }
@@ -208,6 +512,17 @@ struct Tiles {
     merged: [bool; 16],
     animation: f32,
     rng: Rng,
+    #[serde(skip)]
+    motion: Vec<MovingTile>,
+}
+#[derive(Clone, Copy)]
+struct MovingTile {
+    value: u32,
+    index: usize,
+    from: usize,
+    gone_to: Option<usize>,
+    born: bool,
+    merged: bool,
 }
 
 impl Tiles {
@@ -222,8 +537,9 @@ impl Tiles {
             paused: false,
             spawned: 0,
             merged: [false; 16],
-            animation: 1.0,
+            animation: 0.0,
             rng: Rng(seed),
+            motion: Vec::with_capacity(20),
         };
         g.spawn();
         g.spawn();
@@ -251,6 +567,14 @@ impl Tiles {
         }
         self.spawned = free[self.rng.next() as usize % count];
         self.board[self.spawned] = if self.rng.next() % 10 == 0 { 4 } else { 2 };
+        self.motion.push(MovingTile {
+            value: self.board[self.spawned],
+            index: self.spawned,
+            from: self.spawned,
+            gone_to: None,
+            born: true,
+            merged: false,
+        });
     }
 
     fn move_board(&mut self, action: Action) -> bool {
@@ -261,25 +585,65 @@ impl Tiles {
             return false;
         }
         let before = self.board;
+        self.motion = before
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| **value != 0)
+            .map(|(i, &value)| MovingTile {
+                value,
+                index: i,
+                from: i,
+                gone_to: None,
+                born: false,
+                merged: false,
+            })
+            .collect();
+        let mut by_cell = [None; 16];
+        for (i, tile) in self.motion.iter().enumerate() {
+            by_cell[tile.from] = Some(i);
+        }
         self.merged.fill(false);
+        let mut moved = false;
         for line in 0..4 {
-            let mut input = [0; 4];
-            for pos in 0..4 {
-                input[pos] = self.board[cell(action, line, pos)];
-            }
-            let (output, score, merged) = merge_line(input);
-            self.score = self.score.saturating_add(score);
-            for pos in 0..4 {
-                let index = cell(action, line, pos);
-                self.board[index] = output[pos];
-                self.merged[index] = merged[pos];
+            let mut pos = 0;
+            let mut last: Option<usize> = None;
+            for i in 0..4 {
+                let Some(tile) = by_cell[cell(action, line, i)] else {
+                    continue;
+                };
+                if let Some(previous) = last {
+                    if self.motion[previous].value == self.motion[tile].value
+                        && !self.motion[previous].merged
+                    {
+                        self.motion[tile].gone_to = Some(self.motion[previous].index);
+                        self.motion[previous].value = self.motion[previous].value.saturating_mul(2);
+                        self.motion[previous].merged = true;
+                        self.score = self
+                            .score
+                            .saturating_add(self.motion[previous].value as u64);
+                        self.won |= self.motion[previous].value == 2048;
+                        moved = true;
+                        continue;
+                    }
+                }
+                let target = cell(action, line, pos);
+                moved |= self.motion[tile].index != target;
+                self.motion[tile].index = target;
+                last = Some(tile);
+                pos += 1;
             }
         }
-        if before == self.board {
+        self.board = [0; 16];
+        for tile in &self.motion {
+            if tile.gone_to.is_none() {
+                self.board[tile.index] = tile.value;
+                self.merged[tile.index] = tile.merged;
+            }
+        }
+        if !moved {
             return false;
         }
         self.best = self.best.max(self.score);
-        self.won |= self.board.iter().any(|v| *v >= 2048);
         self.spawn();
         self.over = !can_move(&self.board);
         self.animation = 0.0;
@@ -288,13 +652,10 @@ impl Tiles {
 
     fn handle(&mut self, action: Action) {
         match action {
-            Action::Options => self.restart(),
-            Action::PlayPause => self.paused = !self.paused,
             Action::Select if self.over => self.restart(),
             Action::Select if self.won && !self.keep_playing => self.keep_playing = true,
-            Action::Select if self.paused => self.paused = false,
             Action::Up | Action::Down | Action::Left | Action::Right
-                if !self.over && !self.paused && (!self.won || self.keep_playing) =>
+                if !self.over && (!self.won || self.keep_playing) =>
             {
                 self.move_board(action);
             }
@@ -302,121 +663,217 @@ impl Tiles {
         }
     }
 
-    fn draw(&self, r: &mut Renderer, dark: bool) {
-        let bg = if dark {
-            color(28, 28, 30)
-        } else {
-            color(250, 248, 239)
-        };
-        let ink = if dark {
-            color(235, 232, 224)
-        } else {
-            color(95, 87, 78)
-        };
-        r.rect(0.0, 40.0, 640.0, 440.0, bg);
-        text(r, "2048", 20.0, 92.0, 36, ink, 130.0);
-        text(r, "SCORE", 510.0, 88.0, 16, ink, 115.0);
-        text(r, &self.score.to_string(), 510.0, 116.0, 26, ink, 115.0);
-        text(r, "BEST", 510.0, 158.0, 16, ink, 115.0);
-        text(r, &self.best.to_string(), 510.0, 186.0, 26, ink, 115.0);
-        text(r, "Join equal", 20.0, 157.0, 16, ink, 125.0);
-        text(r, "tiles to", 20.0, 179.0, 16, ink, 125.0);
-        text(r, "reach 2048.", 20.0, 201.0, 16, ink, 125.0);
-        let x = 152.0;
-        let y = 79.0;
-        let side = 336.0;
-        let gap = 7.0;
-        let cell = (side - 5.0 * gap) / 4.0;
-        r.rect(
-            x,
-            y,
-            side,
-            side,
-            if dark {
-                color(63, 60, 56)
-            } else {
-                color(187, 173, 160)
-            },
+    fn draw(&self, r: &mut Renderer, _dark: bool) {
+        use crate::motion::Ease;
+        use crate::render::line_box;
+        use draw::{centered, rgb, rounded, tile_colors};
+        r.push_clip(0.0, 40.0, 640.0, 440.0);
+        r.push_transform(0.0, 40.0, 1.0, 1.0, 1.0);
+        r.gradient(
+            0.0,
+            0.0,
+            640.0,
+            440.0,
+            rgb(238, 241, 245),
+            rgb(206, 212, 221),
         );
-        for i in 0..16 {
-            let xx = x + gap + (i % 4) as f32 * (cell + gap);
-            let yy = y + gap + (i / 4) as f32 * (cell + gap);
-            r.rect(
-                xx,
-                yy,
-                cell,
-                cell,
-                if dark {
-                    color(81, 77, 70)
-                } else {
-                    color(205, 193, 180)
-                },
-            );
-            let value = self.board[i];
-            if value == 0 {
-                continue;
+        rounded(
+            r,
+            24.0,
+            20.0,
+            400.0,
+            400.0,
+            14.0,
+            &[(0.0, rgb(122, 132, 148)), (1.0, rgb(92, 101, 117))],
+        );
+        let tile_size = 85.0;
+        for row in 0..4 {
+            for col in 0..4 {
+                let x = 36.0 + col as f32 * 97.0;
+                let y = 32.0 + row as f32 * 97.0;
+                rounded(
+                    r,
+                    x,
+                    y,
+                    tile_size,
+                    tile_size,
+                    9.0,
+                    &[(0.0, rgb(108, 117, 133)), (1.0, rgb(120, 130, 146))],
+                );
             }
-            let t = (self.animation / 0.15).min(1.0);
-            let scale = if i == self.spawned {
-                0.75 + 0.25 * (1.0 - (1.0 - t).powi(3))
-            } else if self.merged[i] {
-                1.0 + 0.08 * (std::f32::consts::PI * t).sin()
-            } else {
-                1.0
-            };
-            let offset = cell * (1.0 - scale) * 0.5;
-            r.rect(
-                xx + offset,
-                yy + offset,
-                cell * scale,
-                cell * scale,
-                tile_color(value),
+        }
+        let elapsed = self.animation as f64;
+        let slide = Ease::OutCubic.sample(elapsed / 0.110) as f32;
+        let pop = ((elapsed - 0.110) / 0.140).clamp(0.0, 1.0) as f32;
+        let mut draw_tile = |tile: MovingTile| {
+            if tile.gone_to.is_some() && slide >= 1.0 {
+                return;
+            }
+            let target = tile.gone_to.unwrap_or(tile.index);
+            let row =
+                (tile.from / 4) as f32 + ((target / 4) as f32 - (tile.from / 4) as f32) * slide;
+            let col =
+                (tile.from % 4) as f32 + ((target % 4) as f32 - (tile.from % 4) as f32) * slide;
+            let mut scale = 1.0;
+            let mut value = tile.value;
+            if tile.born {
+                if elapsed < 0.110 {
+                    return;
+                }
+                scale = Ease::OutCubic.sample(pop as f64) as f32;
+            } else if tile.merged {
+                if elapsed < 0.110 {
+                    value /= 2;
+                } else {
+                    scale = 1.0 + 0.12 * (std::f32::consts::PI * pop).sin();
+                }
+            }
+            if scale <= 0.02 {
+                return;
+            }
+            let cx = 36.0 + col * 97.0 + tile_size * 0.5;
+            let cy = 32.0 + row * 97.0 + tile_size * 0.5;
+            let half = tile_size * 0.5 * scale;
+            let (top, bottom, ink) = tile_colors(value);
+            rounded(
+                r,
+                cx - half,
+                cy - half,
+                half * 2.0,
+                half * 2.0,
+                9.0 * scale,
+                &[(0.0, top), (1.0, bottom)],
             );
-            let size = if value < 100 {
-                32
-            } else if value < 1000 {
-                28
-            } else {
-                22
+            rounded(
+                r,
+                cx - half + 2.0,
+                cy - half + 2.0,
+                half * 2.0 - 4.0,
+                half - 2.0,
+                8.0 * scale,
+                &[(0.0, [1.0, 1.0, 1.0, 0.45]), (1.0, [1.0, 1.0, 1.0, 0.05])],
+            );
+            let label = value.to_string();
+            let css = match label.len() {
+                1 => 24.0,
+                2 => 22.0,
+                3 => 18.0,
+                4 => 14.0,
+                _ => 11.0,
             };
+            let size = css * 2.0 * scale;
+            centered(
+                r,
+                &label,
+                cx,
+                cy + line_box(size).1 * 0.5 - 2.0 * scale,
+                size,
+                700,
+                ink,
+            );
+        };
+        if self.motion.is_empty() {
+            for (index, &value) in self.board.iter().enumerate() {
+                if value != 0 {
+                    draw_tile(MovingTile {
+                        value,
+                        index,
+                        from: index,
+                        gone_to: None,
+                        born: false,
+                        merged: false,
+                    });
+                }
+            }
+        } else {
+            for tile in self
+                .motion
+                .iter()
+                .filter(|t| t.gone_to.is_some())
+                .chain(self.motion.iter().filter(|t| t.gone_to.is_none()))
+            {
+                draw_tile(*tile);
+            }
+        }
+        for (y, label, value) in [(20.0, "SCORE", self.score), (112.0, "BEST", self.best)] {
+            rounded(
+                r,
+                448.0,
+                y,
+                170.0,
+                78.0,
+                12.0,
+                &[(0.0, rgb(122, 132, 148)), (1.0, rgb(92, 101, 117))],
+            );
+            centered(
+                r,
+                label,
+                533.0,
+                y + 14.0 + line_box(22.0).1 * 0.5,
+                22.0,
+                700,
+                rgb(230, 234, 240),
+            );
             centered(
                 r,
                 &value.to_string(),
-                xx,
-                yy + cell * 0.65,
-                cell,
-                size,
-                if value <= 4 {
-                    color(95, 87, 78)
-                } else {
-                    color(255, 255, 255)
-                },
+                533.0,
+                y + 48.0 + line_box(44.0).1 * 0.5,
+                44.0,
+                700,
+                [1.0; 4],
             );
         }
-        centered(
-            r,
-            "Arrows: slide    A: continue    Y: new    START: pause",
-            0.0,
-            452.0,
-            640.0,
-            16,
-            ink,
-        );
-        if self.paused {
-            overlay(r, "Paused", "A / START: resume", 165.0, 184.0, 310.0, 116.0);
-        } else if self.over {
-            overlay(r, "Game over", "A: play again", 165.0, 184.0, 310.0, 116.0);
-        } else if self.won && !self.keep_playing {
-            overlay(
+        for (i, label) in ["[DPAD] slide", "[START] menu", "[B] back"]
+            .iter()
+            .enumerate()
+        {
+            r.text_baseline(
+                label,
+                452.0,
+                344.0 + i as f32 * 30.0 + line_box(22.0).1 * 0.5,
+                22.0,
+                600,
+                rgb(90, 98, 112),
+                180.0,
+            );
+        }
+        if (self.over || self.won && !self.keep_playing) && elapsed > 0.250 {
+            rounded(
                 r,
-                "You reached 2048!",
-                "A: keep going",
-                165.0,
-                184.0,
-                310.0,
-                116.0,
+                24.0,
+                20.0,
+                400.0,
+                400.0,
+                14.0,
+                &[(0.0, [1.0, 1.0, 1.0, 0.72]), (1.0, [1.0, 1.0, 1.0, 0.72])],
+            );
+            let (title, subtitle) = if self.over {
+                ("No more moves", "[A] play again")
+            } else {
+                ("You made 2048!", "[A] keep going · [START] menu")
+            };
+            centered(
+                r,
+                title,
+                224.0,
+                210.0 + line_box(44.0).1 * 0.5,
+                44.0,
+                700,
+                rgb(40, 44, 52),
+            );
+            centered(
+                r,
+                subtitle,
+                224.0,
+                256.0 + line_box(26.0).1 * 0.5,
+                26.0,
+                500,
+                rgb(70, 76, 88),
             );
         }
+        r.pop_transform();
+        r.pop_clip();
     }
 }
 
@@ -493,8 +950,8 @@ fn tile_color(value: u32) -> Color {
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct Block {
-    x: f32,
-    y: f32,
+    x: f64,
+    y: f64,
     active: bool,
     row: usize,
 }
@@ -507,275 +964,437 @@ enum Phase {
 #[derive(Serialize, Deserialize)]
 struct Brick {
     blocks: Vec<Block>,
-    paddle: f32,
-    paddle_velocity: f32,
-    ball: [f32; 2],
-    velocity: [f32; 2],
+    paddle: f64,
+    paddle_velocity: f64,
+    ball: [f64; 2],
+    velocity: [f64; 2],
     phase: Phase,
-    paused: bool,
-    lives: u8,
+    lives: u32,
+    score: u64,
     level: u32,
-    score: u32,
-    accumulator: f32,
+    paused: bool,
+    accumulator: f64,
+    #[serde(default)]
+    menu_index: usize,
+    #[serde(skip)]
+    quit_requested: bool,
 }
-const PADDLE_WIDTH: f32 = 108.0;
-const PADDLE_Y: f32 = 420.0;
-const BALL_RADIUS: f32 = 6.0;
-const BLOCK_WIDTH: f32 = 58.0;
-const BLOCK_HEIGHT: f32 = 23.0;
+const BRICK_SCALE: f64 = 320.0 / 340.0;
+const PADDLE_WIDTH: f64 = 70.0 * BRICK_SCALE;
+const PADDLE_Y: f64 = 220.0 - 11.0 * BRICK_SCALE;
+const BALL_RADIUS: f64 = 6.0 * BRICK_SCALE;
+const BLOCK_WIDTH: f64 = 30.0;
+const BLOCK_HEIGHT: f64 = 12.0 * BRICK_SCALE;
 impl Brick {
     fn new() -> Self {
-        let mut g = Self {
-            blocks: vec![
-                Block {
-                    x: 0.0,
-                    y: 0.0,
-                    active: true,
-                    row: 0,
-                };
-                40
-            ],
-            paddle: 266.0,
+        let mut game = Self {
+            blocks: Vec::with_capacity(40),
+            paddle: 0.0,
             paddle_velocity: 0.0,
-            ball: [320.0, 410.0],
+            ball: [0.0; 2],
             velocity: [0.0; 2],
             phase: Phase::Waiting,
-            paused: false,
             lives: 3,
-            level: 1,
             score: 0,
+            level: 1,
+            paused: false,
             accumulator: 0.0,
+            menu_index: 0,
+            quit_requested: false,
         };
-        g.setup();
-        g.reset_ball();
-        g
+        game.reset_player();
+        game.reset_ball();
+        game.level_blocks();
+        game
     }
-    fn setup(&mut self) {
-        for row in 0..5 {
-            for col in 0..8 {
-                self.blocks[row * 8 + col] = Block {
-                    x: 76.0 + col as f32 * (BLOCK_WIDTH + 3.0),
-                    y: 100.0 + row as f32 * (BLOCK_HEIGHT + 4.0),
-                    active: true,
-                    row,
-                };
-            }
-        }
-    }
-    fn speed(&self) -> f32 {
-        (210.0 + 22.0 * self.level.saturating_sub(1) as f32).min(500.0)
+    fn reset_player(&mut self) {
+        self.paddle = (320.0 - PADDLE_WIDTH) * 0.5;
     }
     fn reset_ball(&mut self) {
         self.ball = [
             self.paddle + PADDLE_WIDTH * 0.5,
-            PADDLE_Y - BALL_RADIUS - 2.0,
+            PADDLE_Y - BALL_RADIUS - 1.0,
         ];
-        self.velocity = [self.speed() * 0.6, -self.speed() * 0.8];
+        self.velocity = [
+            std::f64::consts::FRAC_PI_4.cos(),
+            -std::f64::consts::FRAC_PI_4.sin(),
+        ];
+    }
+    fn level_blocks(&mut self) {
+        self.blocks.clear();
+        for row in 0..5 {
+            for col in 0..8 {
+                self.blocks.push(Block {
+                    x: 60.0 * BRICK_SCALE + col as f64 * (BLOCK_WIDTH + 3.0 * BRICK_SCALE),
+                    y: 6.0 * BRICK_SCALE + row as f64 * (BLOCK_HEIGHT + 3.0 * BRICK_SCALE),
+                    active: true,
+                    row,
+                });
+            }
+        }
     }
     fn handle(&mut self, action: Action) {
         match action {
-            Action::Options => *self = Self::new(),
-            Action::PlayPause if self.phase != Phase::Over => self.paused = !self.paused,
-            Action::Select if self.phase == Phase::Over => *self = Self::new(),
-            Action::Select if self.paused => self.paused = false,
+            Action::Left | Action::Right | Action::Up | Action::Down => {
+                let direction = if matches!(action, Action::Left | Action::Up) {
+                    -1.0
+                } else {
+                    1.0
+                };
+                if self.phase == Phase::Over {
+                    self.menu_index =
+                        (self.menu_index as i32 + direction as i32).clamp(0, 1) as usize;
+                } else {
+                    let speed = 3.0 * BRICK_SCALE;
+                    self.paddle_velocity =
+                        (self.paddle_velocity + direction * speed).clamp(-3.0 * speed, 3.0 * speed);
+                }
+            }
+            Action::Select if self.phase == Phase::Over => {
+                if self.menu_index == 0 {
+                    *self = Self::new();
+                } else {
+                    self.quit_requested = true;
+                }
+            }
             Action::Select if self.phase == Phase::Waiting => self.phase = Phase::Playing,
-            Action::Left if !self.paused => self.paddle_velocity = -460.0,
-            Action::Right if !self.paused => self.paddle_velocity = 460.0,
             _ => {}
         }
     }
     fn tick(&mut self, dt: f32) {
-        if self.paused || self.phase == Phase::Over {
+        if self.paused {
+            self.accumulator = 0.0;
             return;
         }
-        self.accumulator += dt;
-        // Fixed 240 Hz collision steps prevent tunnelling at a 60 Hz render
-        // cadence. Clamp elapsed work; a late UI frame cannot cause a burst.
-        let step = 1.0 / 240.0;
-        let mut n = 0;
-        while self.accumulator >= step && n < 24 {
-            self.accumulator -= step;
-            self.step(step);
-            n += 1;
+        self.accumulator = (self.accumulator + dt as f64).min(10.0 / 60.0);
+        while self.accumulator >= 1.0 / 60.0 {
+            self.step();
+            self.accumulator -= 1.0 / 60.0;
         }
-        if n == 24 {
-            self.accumulator = self.accumulator.min(step);
+        if self.phase != Phase::Playing && self.paddle_velocity == 0.0 {
+            self.accumulator = 0.0;
         }
     }
-    fn step(&mut self, dt: f32) {
+    fn step(&mut self) {
         if self.phase == Phase::Over {
             return;
         }
-        self.paddle = (self.paddle + self.paddle_velocity * dt).clamp(12.0, 628.0 - PADDLE_WIDTH);
-        self.paddle_velocity *= (-8.0 * dt).exp();
-        if self.paddle_velocity.abs() < 0.3 {
+        self.paddle += self.paddle_velocity;
+        self.paddle_velocity *= 0.85;
+        if self.paddle_velocity.abs() < 0.1 {
             self.paddle_velocity = 0.0;
         }
-        if self.phase == Phase::Waiting {
-            self.reset_ball();
-            return;
+        self.paddle = self.paddle.clamp(0.0, 320.0 - PADDLE_WIDTH);
+        if self.ball[0] < 0.0 || self.ball[0] > 320.0 {
+            self.velocity[0] = -self.velocity[0];
         }
-        let before = self.ball;
-        self.ball[0] += self.velocity[0] * dt;
-        self.ball[1] += self.velocity[1] * dt;
-        if self.ball[0] < 12.0 + BALL_RADIUS {
-            self.ball[0] = 12.0 + BALL_RADIUS;
-            self.velocity[0] = self.velocity[0].abs();
-        } else if self.ball[0] > 628.0 - BALL_RADIUS {
-            self.ball[0] = 628.0 - BALL_RADIUS;
-            self.velocity[0] = -self.velocity[0].abs();
+        if self.ball[1] < 0.0 {
+            self.velocity[1] = -self.velocity[1];
         }
-        if self.ball[1] < 82.0 + BALL_RADIUS {
-            self.ball[1] = 82.0 + BALL_RADIUS;
-            self.velocity[1] = self.velocity[1].abs();
-        }
-        if self.ball[1] > 480.0 + BALL_RADIUS {
+        if self.ball[1] > 220.0 {
             self.lives = self.lives.saturating_sub(1);
-            self.phase = if self.lives == 0 {
-                Phase::Over
+            if self.lives == 0 {
+                self.phase = Phase::Over;
+                self.menu_index = 0;
             } else {
-                Phase::Waiting
-            };
-            self.reset_ball();
+                self.reset_player();
+                self.reset_ball();
+                self.phase = Phase::Waiting;
+            }
+        }
+        if self.phase != Phase::Playing {
             return;
         }
-        if self.velocity[1] > 0.0
-            && circle_rect(self.ball, self.paddle, PADDLE_Y, PADDLE_WIDTH, 10.0)
-            && before[1] <= PADDLE_Y + BALL_RADIUS
-        {
-            let hit = ((self.ball[0] - self.paddle) / PADDLE_WIDTH).clamp(0.0, 1.0);
-            let angle = std::f32::consts::PI * (0.15 + 0.7 * hit);
-            self.velocity = [-self.speed() * angle.cos(), -self.speed() * angle.sin()];
-            self.ball[1] = PADDLE_Y - BALL_RADIUS;
-        }
-        for block in &mut self.blocks {
-            if !block.active || !circle_rect(self.ball, block.x, block.y, BLOCK_WIDTH, BLOCK_HEIGHT)
-            {
-                continue;
-            }
-            block.active = false;
-            self.score += [7, 5, 3, 1, 1][block.row];
-            if before[1] + BALL_RADIUS <= block.y
-                || before[1] - BALL_RADIUS >= block.y + BLOCK_HEIGHT
-            {
-                self.velocity[1] = -self.velocity[1];
-            } else {
-                self.velocity[0] = -self.velocity[0];
-            }
-            break;
-        }
-        if self.blocks.iter().all(|b| !b.active) {
-            self.level = self.level.saturating_add(1);
-            self.setup();
-            self.phase = Phase::Waiting;
-            self.reset_ball();
-        }
-    }
-    fn draw(&self, r: &mut Renderer, dark: bool) {
-        let bg = if dark {
-            color(15, 20, 29)
-        } else {
-            color(232, 238, 246)
-        };
-        let ink = if dark {
-            color(226, 234, 247)
-        } else {
-            color(41, 54, 73)
-        };
-        r.rect(0.0, 40.0, 640.0, 440.0, bg);
-        text(
-            r,
-            &format!("Score {}", self.score),
-            18.0,
-            70.0,
-            18,
-            ink,
-            240.0,
-        );
-        centered(
-            r,
-            &format!("Level {}", self.level),
-            230.0,
-            70.0,
-            180.0,
-            18,
-            ink,
-        );
-        text(
-            r,
-            &format!("Lives {}", self.lives),
-            530.0,
-            70.0,
-            18,
-            ink,
-            105.0,
-        );
-        r.rect(10.0, 80.0, 2.0, 359.0, color(95, 114, 139));
-        r.rect(628.0, 80.0, 2.0, 359.0, color(95, 114, 139));
-        r.rect(10.0, 80.0, 620.0, 2.0, color(95, 114, 139));
-        let colors = [
-            color(239, 61, 74),
-            color(246, 141, 58),
-            color(226, 190, 46),
-            color(47, 183, 114),
-            color(54, 125, 221),
-        ];
-        for b in &self.blocks {
-            if b.active {
-                let c = colors[b.row];
-                let light = [
-                    (c[0] + 0.24).min(1.0),
-                    (c[1] + 0.24).min(1.0),
-                    (c[2] + 0.24).min(1.0),
-                    1.0,
-                ];
-                r.gradient(b.x, b.y, BLOCK_WIDTH, BLOCK_HEIGHT, light, c);
-            }
-        }
-        r.gradient(
+        if aabb(
+            self.ball[0],
+            self.ball[1],
+            BALL_RADIUS * 2.0,
+            BALL_RADIUS * 2.0,
             self.paddle,
             PADDLE_Y,
             PADDLE_WIDTH,
-            10.0,
-            color(225, 231, 238),
-            color(91, 113, 139),
-        );
-        // An eight-sided raster-free ball; all geometry is batched by the GPU.
-        for n in 0..7 {
-            let y = n as f32 * 2.0 - 6.0;
-            let width = (BALL_RADIUS * BALL_RADIUS - y * y).max(0.0).sqrt();
-            r.rect(
-                self.ball[0] - width,
-                self.ball[1] + y,
-                width * 2.0,
-                2.0,
-                ink,
-            );
+            8.0 * BRICK_SCALE,
+        ) {
+            let hit = self.ball[0] - self.paddle;
+            let angle = hit * (5.0 * std::f64::consts::PI / 6.0 - std::f64::consts::PI / 6.0)
+                / PADDLE_WIDTH
+                + std::f64::consts::PI / 6.0;
+            self.velocity = [-angle.cos(), -angle.sin()];
         }
+        for i in (0..self.blocks.len()).rev() {
+            let b = self.blocks[i];
+            if !b.active
+                || !aabb(
+                    self.ball[0],
+                    self.ball[1],
+                    BALL_RADIUS * 2.0,
+                    BALL_RADIUS * 2.0,
+                    b.x,
+                    b.y,
+                    BLOCK_WIDTH,
+                    BLOCK_HEIGHT,
+                )
+            {
+                continue;
+            }
+            self.score += [7, 5, 3, 1, 1][b.row];
+            self.blocks[i].active = false;
+            if self.blocks.iter().all(|b| !b.active) {
+                self.level = self.level.saturating_add(1);
+                self.level_blocks();
+                self.reset_player();
+                self.reset_ball();
+                self.phase = Phase::Waiting;
+                return;
+            }
+            let (dx, dy) = (self.velocity[0], self.velocity[1]);
+            if dy > 0.0 {
+                if self.ball[1] > b.y {
+                    self.velocity[0] = -dx;
+                } else {
+                    self.velocity[1] = -dy;
+                }
+            } else if dx > 0.0 && dy < 0.0 {
+                if self.ball[0] > b.x {
+                    self.velocity[1] = -dy;
+                } else {
+                    self.velocity[0] = -dx;
+                }
+            } else if dx < 0.0 && dy < 0.0 {
+                if self.ball[0] > b.x + BLOCK_WIDTH {
+                    self.velocity[0] = -dx;
+                } else {
+                    self.velocity[1] = -dy;
+                }
+            }
+            break;
+        }
+        if self.phase == Phase::Playing {
+            let speed = (2.0 + (self.level - 1) as f64 * 0.3) * BRICK_SCALE;
+            self.ball[0] += speed * self.velocity[0];
+            self.ball[1] += speed * self.velocity[1];
+        }
+    }
+    fn draw(&self, r: &mut Renderer, _dark: bool) {
+        use draw::{centered, rgb, rounded, soft_shadow, stroke_rect};
+        r.push_clip(0.0, 40.0, 640.0, 440.0);
+        r.push_transform(0.0, 40.0, 1.0, 1.0, 1.0);
+        r.gradient_stops(
+            0.0,
+            0.0,
+            640.0,
+            440.0,
+            &[
+                (0.0, rgb(64, 162, 247)),
+                (0.5, rgb(64, 162, 247)),
+                (1.0, rgb(141, 204, 254)),
+            ],
+        );
+        let scale = BRICK_SCALE as f32 * 2.0;
+        let colors = [
+            (rgb(255, 196, 196), rgb(239, 26, 26)),
+            (rgb(255, 202, 161), rgb(255, 120, 30)),
+            (rgb(254, 242, 189), rgb(240, 195, 31)),
+            (rgb(167, 255, 209), rgb(23, 200, 112)),
+            (rgb(140, 200, 255), rgb(0, 100, 222)),
+        ];
+        for block in self.blocks.iter().filter(|b| b.active) {
+            let x = block.x as f32 * 2.0;
+            let y = block.y as f32 * 2.0;
+            let w = BLOCK_WIDTH as f32 * 2.0 - 3.0 * scale;
+            let h = BLOCK_HEIGHT as f32 * 2.0 - 3.0 * scale;
+            let (top, bottom) = colors[block.row];
+            soft_shadow(r, x, y + 2.0 * scale, w, h, 3.0 * scale, 0.3);
+            r.gradient_stops(x, y, w, h, &[(0.0, top), (0.5, bottom), (1.0, bottom)]);
+            stroke_rect(r, x, y, w, h, 2.0, bottom);
+        }
+        let paddle = self.paddle as f32 * 2.0;
+        let py = PADDLE_Y as f32 * 2.0;
+        let pw = PADDLE_WIDTH as f32 * 2.0;
+        let ph = 8.0 * scale;
+        soft_shadow(r, paddle, py + 2.0 * scale, pw, ph, 4.0 * scale, 0.4);
+        r.gradient_stops(
+            paddle,
+            py,
+            pw,
+            ph,
+            &[
+                (0.0, rgb(199, 199, 199)),
+                (0.5, rgb(85, 85, 85)),
+                (1.0, rgb(111, 111, 111)),
+            ],
+        );
+        stroke_rect(r, paddle, py, pw, ph, scale, [0.0, 0.0, 0.0, 0.5]);
+        self.draw_ball(r);
+        let mx = 30.0 * scale;
+        let font_css = (10.0 * BRICK_SCALE).round() as f32;
         centered(
             r,
-            "Left / Right: paddle    A: serve    Y: new    START: pause",
-            0.0,
-            468.0,
-            640.0,
-            16,
-            ink,
+            &self.score.to_string(),
+            mx,
+            (8.0 * BRICK_SCALE as f32 + font_css * 0.8) * 2.0,
+            font_css * 2.0,
+            700,
+            [1.0, 1.0, 1.0, 0.85],
         );
-        if self.paused {
-            overlay(r, "Paused", "A / START: resume", 155.0, 248.0, 330.0, 110.0);
-        } else if self.phase == Phase::Waiting {
-            overlay(r, "Ready?", "A: serve", 215.0, 275.0, 210.0, 100.0);
-        } else if self.phase == Phase::Over {
-            overlay(r, "Game over", "A: play again", 155.0, 248.0, 330.0, 110.0);
+        let total = self.lives.saturating_sub(1) as f32 * 8.0 * scale;
+        let first = mx - total * 0.5;
+        for i in 0..self.lives {
+            r.circle(
+                first + i as f32 * 8.0 * scale,
+                24.0 * scale,
+                2.5 * scale,
+                [1.0, 1.0, 1.0, 0.85],
+            );
+        }
+        if self.phase == Phase::Over {
+            r.rect(0.0, 0.0, 640.0, 440.0, [0.0, 0.0, 0.0, 0.7]);
+            let (title_h, score_h, item_h, pad) =
+                (28.0 * scale, 20.0 * scale, 22.0 * scale, 8.0 * scale);
+            let panel_h = title_h + score_h + item_h * 2.0 + pad;
+            let panel_w = 160.0 * scale;
+            let x = (640.0 - panel_w) * 0.5;
+            let y = (440.0 - panel_h) * 0.5;
+            rounded(
+                r,
+                x,
+                y,
+                panel_w,
+                panel_h,
+                pad,
+                &[(0.0, [0.0, 0.0, 0.0, 0.85]), (1.0, [0.0, 0.0, 0.0, 0.85])],
+            );
+            let fs = (14.0 * BRICK_SCALE).round() as f32 * 2.0;
+            centered(
+                r,
+                "Game Over",
+                320.0,
+                y + title_h * 0.5 + fs * 0.35,
+                fs,
+                700,
+                [1.0; 4],
+            );
+            let fs = (11.0 * BRICK_SCALE).round() as f32 * 2.0;
+            centered(
+                r,
+                &format!("Score: {}", self.score),
+                320.0,
+                y + title_h + score_h * 0.5 + fs * 0.35,
+                fs,
+                400,
+                [1.0, 1.0, 1.0, 0.7],
+            );
+            for (i, label) in ["New Game", "Quit"].iter().enumerate() {
+                let yy = y + title_h + score_h + i as f32 * item_h;
+                if i == self.menu_index {
+                    rounded(
+                        r,
+                        x + 10.0 * scale,
+                        yy,
+                        panel_w - 20.0 * scale,
+                        item_h - 2.0 * scale,
+                        4.0 * scale,
+                        &[
+                            (0.0, [64.0 / 255.0, 162.0 / 255.0, 247.0 / 255.0, 0.9]),
+                            (1.0, [64.0 / 255.0, 162.0 / 255.0, 247.0 / 255.0, 0.9]),
+                        ],
+                    );
+                }
+                let fs = (12.0 * BRICK_SCALE).round() as f32 * 2.0;
+                centered(
+                    r,
+                    label,
+                    320.0,
+                    yy + item_h * 0.5 + fs * 0.35,
+                    fs,
+                    700,
+                    [1.0; 4],
+                );
+            }
+        }
+        r.pop_transform();
+        r.pop_clip();
+    }
+    fn draw_ball(&self, r: &mut Renderer) {
+        let (bx, by, rad) = (
+            self.ball[0] as f32 * 2.0,
+            self.ball[1] as f32 * 2.0,
+            BALL_RADIUS as f32 * 2.0,
+        );
+        let scale = BRICK_SCALE as f32 * 2.0;
+        for i in (1..=3).rev() {
+            r.circle(
+                bx,
+                by + 2.0 * scale,
+                rad + i as f32 * scale * 0.5,
+                [0.0, 0.0, 0.0, 0.1],
+            );
+        }
+        let fx = bx - rad * 0.25;
+        let fy = by - rad * 0.25;
+        let fr = rad * 0.05;
+        for yy in ((by - rad - 2.0).floor() as i32)..=((by + rad + 2.0).ceil() as i32) {
+            for xx in ((bx - rad - 2.0).floor() as i32)..=((bx + rad + 2.0).ceil() as i32) {
+                let cx = xx as f32 + 0.5;
+                let cy = yy as f32 + 0.5;
+                let distance = (cx - bx).hypot(cy - by);
+                let coverage = (rad - distance + 0.5).clamp(0.0, 1.0);
+                if coverage <= 0.0 {
+                    continue;
+                }
+                let t = radial_t(cx, cy, fx, fy, fr, bx, by, rad);
+                let shade = if t < 0.3 {
+                    171.0 + (98.0 - 171.0) * t / 0.3
+                } else {
+                    98.0 + (67.0 - 98.0) * (t - 0.3) / 0.7
+                };
+                r.rect(
+                    xx as f32,
+                    yy as f32,
+                    1.0,
+                    1.0,
+                    [shade / 255.0, shade / 255.0, shade / 255.0, coverage],
+                );
+            }
         }
     }
 }
-
-fn circle_rect(ball: [f32; 2], x: f32, y: f32, w: f32, h: f32) -> bool {
+#[allow(clippy::too_many_arguments)]
+fn aabb(ax: f64, ay: f64, aw: f64, ah: f64, bx: f64, by: f64, bw: f64, bh: f64) -> bool {
+    !(ay + ah < by || by + bh < ay || bx + bw < ax || ax + aw < bx)
+}
+#[allow(clippy::too_many_arguments)]
+fn radial_t(x: f32, y: f32, x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32) -> f32 {
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let dr = r1 - r0;
+    let px = x - x0;
+    let py = y - y0;
+    let a = dx * dx + dy * dy - dr * dr;
+    let b = px * dx + py * dy + r0 * dr;
+    let c = px * px + py * py - r0 * r0;
+    if a.abs() < 1e-9 {
+        return (c / (2.0 * b)).clamp(0.0, 1.0);
+    }
+    let disc = b * b - a * c;
+    if disc < 0.0 {
+        return 1.0;
+    }
+    let root = disc.sqrt();
+    let first = (b + root) / a;
+    let second = (b - root) / a;
+    let mut t = first.max(second);
+    if r0 + t * dr < 0.0 {
+        t = first.min(second);
+    }
+    t.clamp(0.0, 1.0)
+}
+fn circle_rect(ball: [f64; 2], x: f64, y: f64, w: f64, h: f64) -> bool {
     let dx = ball[0] - ball[0].clamp(x, x + w);
     let dy = ball[1] - ball[1].clamp(y, y + h);
     dx * dx + dy * dy <= BALL_RADIUS * BALL_RADIUS
 }
+
 fn color(r: u8, g: u8, b: u8) -> Color {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }
@@ -838,11 +1457,11 @@ mod tests {
         assert!(g.phase == Phase::Waiting);
         g.handle(Action::Select);
         assert!(g.phase == Phase::Playing);
-        g.handle(Action::PlayPause);
+        g.paused = true; // The original START sheet owns pause.
         let before = g.ball;
         g.tick(0.1);
         assert_eq!(g.ball, before);
-        g.handle(Action::Options);
+        g = Brick::new();
         assert!(g.phase == Phase::Waiting);
         assert_eq!(g.lives, 3);
         assert_eq!(g.score, 0);
@@ -852,30 +1471,22 @@ mod tests {
         let mut g = Brick::new();
         g.phase = Phase::Playing;
         g.ball = [g.paddle + PADDLE_WIDTH * 0.5, PADDLE_Y - BALL_RADIUS - 0.1];
-        g.velocity = [0.0, 200.0];
-        g.step(1.0 / 240.0);
+        g.velocity = [0.0, 1.0];
+        g.step();
         assert!(g.velocity[1] < 0.0);
         assert!(g.ball[1] <= PADDLE_Y - BALL_RADIUS);
     }
     #[test]
-    fn brick_does_not_tunnel_through_a_block_at_top_speed() {
+    fn brick_original_tick_hits_reverse_order_and_uses_row_points() {
         let mut g = Brick::new();
         g.phase = Phase::Playing;
-        g.level = 20;
-        for b in &mut g.blocks {
-            b.active = false;
-        }
-        g.blocks[0].active = true;
-        g.blocks[1].active = true;
-        let b = g.blocks[0];
-        g.ball = [
-            b.x + BLOCK_WIDTH * 0.5,
-            b.y + BLOCK_HEIGHT + BALL_RADIUS + 1.0,
-        ];
-        g.velocity = [0.0, -500.0];
+        let block = g.blocks[0];
+        g.ball = [block.x, block.y];
+        g.velocity = [-0.7071067811865476, -0.7071067811865476];
         g.tick(1.0 / 60.0);
         assert!(!g.blocks[0].active);
-        assert!(g.velocity[1] > 0.0);
+        assert_eq!(g.score, 7);
+        assert_eq!(g.blocks.iter().filter(|b| b.active).count(), 39);
     }
     #[test]
     fn brick_losing_last_ball_ends_game_without_underflow() {
@@ -892,770 +1503,25 @@ mod tests {
     }
 }
 
-// Klondike. The UI uses explicit source/destination selection so every
-// legal move is possible with only the console's d-pad and face buttons.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct Card {
-    rank: u8,
-    suit: u8,
-    face: bool,
-}
-impl Card {
-    fn red(self) -> bool {
-        self.suit < 2
-    }
-    fn label(self) -> &'static str {
-        match self.rank {
-            1 => "A",
-            2 => "2",
-            3 => "3",
-            4 => "4",
-            5 => "5",
-            6 => "6",
-            7 => "7",
-            8 => "8",
-            9 => "9",
-            10 => "10",
-            11 => "J",
-            12 => "Q",
-            _ => "K",
-        }
-    }
-    fn suit_label(self) -> &'static str {
-        ["H", "D", "C", "S"][self.suit as usize]
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum Pile {
-    Stock,
-    Waste,
-    Foundation(usize),
-    Tableau(usize),
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct Selection {
-    pile: Pile,
-    index: usize,
-}
-#[derive(Clone, Serialize, Deserialize)]
-struct SolitaireState {
-    stock: Vec<Card>,
-    waste: Vec<Card>,
-    foundations: [Vec<Card>; 4],
-    tableau: [Vec<Card>; 7],
-    moves: u32,
-}
-#[derive(Serialize, Deserialize)]
-struct Solitaire {
-    state: SolitaireState,
-    history: Vec<SolitaireState>,
-    cursor: Selection,
-    held: Option<Selection>,
-    draw_count: usize,
-    rng: Rng,
-    menu: bool,
-    menu_index: usize,
-    elapsed: f32,
-    status: String,
-    status_time: f32,
-}
-impl Solitaire {
-    fn new(seed: u64) -> Self {
-        let mut g = Self {
-            state: SolitaireState {
-                stock: Vec::with_capacity(24),
-                waste: Vec::with_capacity(24),
-                foundations: std::array::from_fn(|_| Vec::with_capacity(13)),
-                tableau: std::array::from_fn(|_| Vec::with_capacity(20)),
-                moves: 0,
-            },
-            history: Vec::with_capacity(100),
-            cursor: Selection {
-                pile: Pile::Stock,
-                index: 0,
-            },
-            held: None,
-            draw_count: 1,
-            rng: Rng(seed),
-            menu: false,
-            menu_index: 0,
-            elapsed: 0.0,
-            status: String::new(),
-            status_time: 0.0,
-        };
-        let mut deck: Vec<Card> = (0..4)
-            .flat_map(|suit| {
-                (1..=13).map(move |rank| Card {
-                    rank,
-                    suit,
-                    face: false,
-                })
-            })
-            .collect();
-        for i in (1..deck.len()).rev() {
-            let j = g.rng.next() as usize % (i + 1);
-            deck.swap(i, j);
-        }
-        for column in 0..7 {
-            for row in 0..=column {
-                let mut card = deck.pop().unwrap();
-                card.face = row == column;
-                g.state.tableau[column].push(card);
-            }
-        }
-        g.state.stock = deck;
-        g
-    }
-    fn valid(&self) -> bool {
-        if !matches!(self.draw_count, 1 | 3)
-            || self.menu_index > 4
-            || !self.elapsed.is_finite()
-            || !self.status_time.is_finite()
-            || self.history.len() > 100
-        {
-            return false;
-        }
-        if !self.state.valid() || !self.history.iter().all(SolitaireState::valid) {
-            return false;
-        }
-        self.selection_valid(self.cursor) && self.held.map_or(true, |s| self.selection_valid(s))
-    }
-    fn selection_valid(&self, s: Selection) -> bool {
-        match s.pile {
-            Pile::Stock => s.index == 0,
-            Pile::Waste => s.index == 0,
-            Pile::Foundation(i) => i < 4 && s.index == 0,
-            Pile::Tableau(i) => i < 7 && s.index < self.state.tableau[i].len().max(1),
-        }
-    }
-    fn won(&self) -> bool {
-        self.state.foundations.iter().all(|p| p.len() == 13)
-    }
-    fn remember(&mut self) {
-        if self.history.len() == 100 {
-            self.history.remove(0);
-        }
-        self.history.push(self.state.clone());
-    }
-    fn tell(&mut self, status: &str) {
-        self.status.clear();
-        self.status.push_str(status);
-        self.status_time = 2.0;
-    }
-    fn top_cursor(&mut self, pile: Pile) {
-        let index = match pile {
-            Pile::Tableau(i) => self.state.tableau[i].len().saturating_sub(1),
-            _ => 0,
-        };
-        self.cursor = Selection { pile, index };
-    }
-    fn draw_stock(&mut self) {
-        self.held = None;
-        if self.state.stock.is_empty() && self.state.waste.is_empty() {
-            self.tell("No cards left in the stock");
-            return;
-        }
-        self.remember();
-        if self.state.stock.is_empty() {
-            while let Some(mut card) = self.state.waste.pop() {
-                card.face = false;
-                self.state.stock.push(card);
-            }
-        } else {
-            for _ in 0..self.draw_count {
-                if let Some(mut card) = self.state.stock.pop() {
-                    card.face = true;
-                    self.state.waste.push(card);
-                }
-            }
-        }
-        self.state.moves = self.state.moves.saturating_add(1);
-    }
-    fn selected_cards(&self, selection: Selection) -> Option<&[Card]> {
-        let (pile, index) = match selection.pile {
-            Pile::Stock => return None,
-            Pile::Waste => (&self.state.waste, self.state.waste.len().checked_sub(1)?),
-            Pile::Foundation(i) => {
-                let pile = self.state.foundations.get(i)?;
-                (pile, pile.len().checked_sub(1)?)
-            }
-            Pile::Tableau(i) => (self.state.tableau.get(i)?, selection.index),
-        };
-        let cards = pile.get(index..)?;
-        if cards.is_empty() || !cards.iter().all(|c| c.face) {
-            return None;
-        }
-        if !cards
-            .windows(2)
-            .all(|p| p[0].rank == p[1].rank + 1 && p[0].red() != p[1].red())
-        {
-            return None;
-        }
-        Some(cards)
-    }
-    fn accepts(&self, source: Selection, target: Pile) -> bool {
-        if source.pile == target {
-            return false;
-        }
-        let Some(cards) = self.selected_cards(source) else {
-            return false;
-        };
-        let card = cards[0];
-        match target {
-            Pile::Foundation(i) if i < 4 && cards.len() == 1 => {
-                let pile = &self.state.foundations[i];
-                pile.last().map_or(card.rank == 1, |top| {
-                    top.suit == card.suit && top.rank + 1 == card.rank
-                })
-            }
-            Pile::Tableau(i) if i < 7 => {
-                self.state.tableau[i].last().map_or(card.rank == 13, |top| {
-                    top.face && top.red() != card.red() && top.rank == card.rank + 1
-                })
-            }
-            _ => false,
-        }
-    }
-    fn transfer(&mut self, source: Selection, target: Pile) -> bool {
-        if !self.accepts(source, target) {
-            return false;
-        }
-        self.remember();
-        let moved = match source.pile {
-            Pile::Waste => vec![self.state.waste.pop().unwrap()],
-            Pile::Foundation(i) => vec![self.state.foundations[i].pop().unwrap()],
-            Pile::Tableau(i) => self.state.tableau[i].split_off(source.index),
-            Pile::Stock => unreachable!(),
-        };
-        match target {
-            Pile::Tableau(i) => self.state.tableau[i].extend(moved),
-            Pile::Foundation(i) => self.state.foundations[i].extend(moved),
-            _ => unreachable!(),
-        }
-        if let Pile::Tableau(i) = source.pile {
-            if let Some(card) = self.state.tableau[i].last_mut() {
-                card.face = true;
-            }
-        }
-        self.state.moves = self.state.moves.saturating_add(1);
-        self.held = None;
-        self.top_cursor(target);
-        true
-    }
-    fn undo(&mut self) {
-        if let Some(state) = self.history.pop() {
-            self.state = state;
-            self.held = None;
-            self.top_cursor(Pile::Stock);
-            self.tell("Move undone");
-        } else {
-            self.tell("No move to undo");
-        }
-    }
-    fn auto_foundation(&mut self) {
-        let source = self.held.unwrap_or(self.cursor);
-        for i in 0..4 {
-            if self.transfer(source, Pile::Foundation(i)) {
-                return;
-            }
-        }
-        self.tell("That card cannot go to a foundation");
-    }
-    fn handle(&mut self, action: Action) {
-        if self.menu {
-            match action {
-                Action::Up => self.menu_index = (self.menu_index + 4) % 5,
-                Action::Down => self.menu_index = (self.menu_index + 1) % 5,
-                Action::Back | Action::Options | Action::PlayPause => self.menu = false,
-                Action::Select => match self.menu_index {
-                    0 => self.menu = false,
-                    1 => {
-                        let seed = self.rng.next();
-                        let draw_count = self.draw_count;
-                        *self = Self::new(seed);
-                        self.draw_count = draw_count;
-                    }
-                    2 => {
-                        self.draw_count = if self.draw_count == 1 { 3 } else { 1 };
-                        self.menu = false;
-                    }
-                    3 => {
-                        self.undo();
-                        self.menu = false;
-                    }
-                    _ => {
-                        self.auto_foundation();
-                        self.menu = false;
-                    }
-                },
-                _ => {}
-            }
-            return;
-        }
-        match action {
-            Action::Options if self.held.is_some() => {
-                self.held = None;
-                self.tell("Selection cancelled");
-            }
-            Action::Options | Action::PlayPause => {
-                self.menu = true;
-                self.menu_index = 0;
-            }
-            Action::Previous => self.undo(),
-            Action::Next => self.auto_foundation(),
-            Action::Select if self.won() => {
-                let seed = self.rng.next();
-                *self = Self::new(seed);
-            }
-            Action::Select if self.cursor.pile == Pile::Stock => self.draw_stock(),
-            Action::Select => {
-                if let Some(source) = self.held {
-                    if source.pile == self.cursor.pile {
-                        self.held = None;
-                    } else if !self.transfer(source, self.cursor.pile) {
-                        self.tell("Choose an alternating lower card, or a matching foundation");
-                    }
-                } else if self.selected_cards(self.cursor).is_some() {
-                    self.held = Some(self.cursor);
-                }
-            }
-            Action::Left | Action::Right => {
-                let delta = if action == Action::Right { 1 } else { -1 };
-                let pile = match self.cursor.pile {
-                    Pile::Tableau(i) => Pile::Tableau((i as i32 + delta).rem_euclid(7) as usize),
-                    p => {
-                        let i = match p {
-                            Pile::Stock => 0,
-                            Pile::Waste => 1,
-                            Pile::Foundation(i) => i + 2,
-                            _ => unreachable!(),
-                        };
-                        match (i as i32 + delta).rem_euclid(6) as usize {
-                            0 => Pile::Stock,
-                            1 => Pile::Waste,
-                            n => Pile::Foundation(n - 2),
-                        }
-                    }
-                };
-                self.top_cursor(pile);
-            }
-            Action::Up => {
-                if let Pile::Tableau(i) = self.cursor.pile {
-                    let first = self.state.tableau[i]
-                        .iter()
-                        .position(|c| c.face)
-                        .unwrap_or(0);
-                    if self.cursor.index > first {
-                        self.cursor.index -= 1;
-                    } else {
-                        self.top_cursor(match i {
-                            0 => Pile::Stock,
-                            1 | 2 => Pile::Waste,
-                            _ => Pile::Foundation((i - 3).min(3)),
-                        });
-                    }
-                }
-            }
-            Action::Down => match self.cursor.pile {
-                Pile::Tableau(i) => {
-                    self.cursor.index =
-                        (self.cursor.index + 1).min(self.state.tableau[i].len().saturating_sub(1));
-                }
-                p => {
-                    let i = match p {
-                        Pile::Stock => 0,
-                        Pile::Waste => 1,
-                        Pile::Foundation(i) => i + 3,
-                        _ => unreachable!(),
-                    };
-                    self.top_cursor(Pile::Tableau(i));
-                }
-            },
-            Action::Back => self.held = None,
-            _ => {}
-        }
-    }
-    fn tick(&mut self, dt: f32) {
-        if !self.menu && !self.won() {
-            self.elapsed += dt;
-        }
-        self.status_time = (self.status_time - dt).max(0.0);
-    }
-    fn draw(&self, r: &mut Renderer, dark: bool) {
-        let green = if dark {
-            color(12, 61, 48)
-        } else {
-            color(22, 112, 78)
-        };
-        r.rect(0.0, 40.0, 640.0, 440.0, green);
-        text(
-            r,
-            &format!("Moves {}", self.state.moves),
-            14.0,
-            64.0,
-            16,
-            [1.0; 4],
-            200.0,
-        );
-        let seconds = self.elapsed as u32;
-        text(
-            r,
-            &format!("{}:{:02}", seconds / 60, seconds % 60),
-            557.0,
-            64.0,
-            16,
-            [1.0; 4],
-            80.0,
-        );
-        let top_y = 76.0;
-        for (pile, x, label) in [
-            (Pile::Stock, 14.0, "Stock"),
-            (Pile::Waste, 102.0, "Waste"),
-            (Pile::Foundation(0), 278.0, "A"),
-            (Pile::Foundation(1), 366.0, "A"),
-            (Pile::Foundation(2), 454.0, "A"),
-            (Pile::Foundation(3), 542.0, "A"),
-        ] {
-            let card = match pile {
-                Pile::Stock => self.state.stock.last(),
-                Pile::Waste => self.state.waste.last(),
-                Pile::Foundation(i) => self.state.foundations[i].last(),
-                _ => None,
-            };
-            draw_card(
-                r,
-                card.copied(),
-                x,
-                top_y,
-                label,
-                self.cursor.pile == pile,
-                self.held.map_or(false, |s| s.pile == pile),
-            );
-        }
-        for (column, cards) in self.state.tableau.iter().enumerate() {
-            let x = 14.0 + column as f32 * 88.0;
-            if cards.is_empty() {
-                draw_card(
-                    r,
-                    None,
-                    x,
-                    196.0,
-                    "K",
-                    self.cursor.pile == Pile::Tableau(column),
-                    false,
-                );
-                continue;
-            }
-            let first_face = cards.iter().position(|c| c.face).unwrap_or(cards.len());
-            let natural_height = first_face as f32 * 13.0
-                + cards.len().saturating_sub(first_face + 1) as f32 * 22.0
-                + 94.0;
-            let squeeze = if natural_height > 226.0 {
-                (226.0 - 94.0) / (natural_height - 94.0)
-            } else {
-                1.0
-            };
-            let mut y = 196.0;
-            for (index, card) in cards.iter().enumerate() {
-                let selected = self.cursor
-                    == Selection {
-                        pile: Pile::Tableau(column),
-                        index,
-                    };
-                let held = self.held.map_or(false, |s| {
-                    s.pile == Pile::Tableau(column) && index >= s.index
-                });
-                draw_card(r, Some(*card), x, y, "", selected, held);
-                y += if card.face { 22.0 } else { 13.0 } * squeeze;
-            }
-        }
-        if self.status_time > 0.0 {
-            centered(r, &self.status, 4.0, 445.0, 632.0, 16, [1.0; 4]);
-        } else {
-            centered(
-                r,
-                "A: pick / place / draw    Y: menu / cancel    L: undo    R: to foundation",
-                4.0,
-                445.0,
-                632.0,
-                16,
-                [1.0; 4],
-            );
-        }
-        if self.won() {
-            overlay(r, "You won!", "A: deal again", 150.0, 218.0, 340.0, 110.0);
-        }
-        if self.menu {
-            r.rect(143.0, 130.0, 354.0, 260.0, [0.08, 0.12, 0.15, 0.98]);
-            let draw = if self.draw_count == 1 {
-                "Draw three cards"
-            } else {
-                "Draw one card"
-            };
-            for (i, label) in ["Continue", "New game", draw, "Undo", "Move to foundation"]
-                .iter()
-                .enumerate()
-            {
-                let y = 144.0 + i as f32 * 47.0;
-                if i == self.menu_index {
-                    r.rect(151.0, y, 338.0, 43.0, color(38, 120, 220));
-                }
-                text(r, label, 163.0, y + 29.0, 20, [1.0; 4], 312.0);
-            }
-        }
-    }
-}
-impl SolitaireState {
-    fn valid(&self) -> bool {
-        let mut seen = [false; 52];
-        let mut count = 0;
-        for card in self
-            .stock
-            .iter()
-            .chain(self.waste.iter())
-            .chain(self.foundations.iter().flatten())
-            .chain(self.tableau.iter().flatten())
-        {
-            if card.rank == 0 || card.rank > 13 || card.suit >= 4 {
-                return false;
-            }
-            let i = card.suit as usize * 13 + card.rank as usize - 1;
-            if seen[i] {
-                return false;
-            }
-            seen[i] = true;
-            count += 1;
-        }
-        count == 52
-            && self.stock.iter().all(|c| !c.face)
-            && self.waste.iter().all(|c| c.face)
-            && self.foundations.iter().all(|p| {
-                p.iter()
-                    .enumerate()
-                    .all(|(i, c)| c.face && c.rank as usize == i + 1 && c.suit == p[0].suit)
-            })
-            && self.tableau.iter().all(|p| {
-                let first = p.iter().position(|c| c.face).unwrap_or(p.len());
-                (p.is_empty() || first < p.len())
-                    && p[first..].iter().all(|c| c.face)
-                    && p[first..].windows(2).all(|pair| {
-                        pair[0].rank == pair[1].rank + 1 && pair[0].red() != pair[1].red()
-                    })
-            })
-    }
-}
-fn draw_card(
-    r: &mut Renderer,
-    card: Option<Card>,
-    x: f32,
-    y: f32,
-    empty: &str,
-    selected: bool,
-    held: bool,
-) {
-    let border = if held {
-        color(255, 205, 55)
-    } else if selected {
-        color(92, 192, 255)
-    } else {
-        color(5, 60, 45)
-    };
-    r.rect(x - 3.0, y - 3.0, 76.0, 100.0, border);
-    let Some(card) = card else {
-        r.rect(x, y, 70.0, 94.0, [0.02, 0.20, 0.13, 0.65]);
-        centered(r, empty, x, y + 55.0, 70.0, 22, [0.55, 0.8, 0.65, 1.0]);
-        return;
-    };
-    if !card.face {
-        r.gradient(x, y, 70.0, 94.0, color(57, 129, 205), color(18, 66, 126));
-        for n in 0..6 {
-            r.rect(
-                x + 8.0,
-                y + 9.0 + n as f32 * 14.0,
-                54.0,
-                2.0,
-                [0.7, 0.85, 1.0, 0.25],
-            );
-        }
-        return;
-    }
-    r.rect(x, y, 70.0, 94.0, color(249, 248, 242));
-    let ink = if card.red() {
-        color(192, 35, 47)
-    } else {
-        color(29, 34, 43)
-    };
-    text(r, card.label(), x + 5.0, y + 19.0, 18, ink, 60.0);
-    centered(r, card.suit_label(), x, y + 62.0, 70.0, 28, ink);
-    let width = r.text_width(card.label(), 18);
-    text(r, card.label(), x + 65.0 - width, y + 88.0, 18, ink, 60.0);
-}
-
 #[cfg(test)]
-mod solitaire_tests {
+mod snapshot_tests {
     use super::*;
-    fn card(rank: u8, suit: u8, face: bool) -> Card {
-        Card { rank, suit, face }
-    }
-
     #[test]
-    fn klondike_deals_each_card_once_with_seven_legal_columns() {
-        let g = Solitaire::new(42);
-        assert!(g.valid());
-        assert_eq!(g.state.stock.len(), 24);
-        for i in 0..7 {
-            assert_eq!(g.state.tableau[i].len(), i + 1);
-            assert!(g.state.tableau[i][i].face);
-            assert!(g.state.tableau[i][..i].iter().all(|c| !c.face));
-        }
-    }
-
-    #[test]
-    fn draw_three_and_undo_preserve_the_stock_order() {
-        let mut g = Solitaire::new(42);
-        g.draw_count = 3;
-        let before = g.state.stock.clone();
-        g.draw_stock();
-        assert_eq!(g.state.stock.len(), 21);
-        assert_eq!(g.state.waste.len(), 3);
-        assert_eq!(g.state.waste[2].rank, before[21].rank);
-        assert!(g.state.waste.iter().all(|c| c.face));
-        assert!(g.state.valid());
-        g.undo();
-        assert_eq!(g.state.stock, before);
-        assert!(g.state.waste.is_empty());
-    }
-
-    #[test]
-    fn empty_stock_recycles_the_waste_without_reversing_the_draw_order() {
-        let mut g = Solitaire::new(9);
-        let before = g.state.stock.clone();
-        for _ in 0..24 {
-            g.draw_stock();
-        }
-        assert!(g.state.stock.is_empty());
-        assert_eq!(g.state.waste.len(), 24);
-        g.draw_stock();
-        assert_eq!(g.state.stock, before);
-        assert!(g.state.waste.is_empty());
-        assert!(g.state.valid());
-    }
-
-    #[test]
-    fn tableau_requires_alternating_colours_and_only_kings_fill_empty_columns() {
-        let mut g = Solitaire::new(5);
-        g.state.tableau[0] = vec![card(8, 2, true)];
-        g.state.tableau[1] = vec![card(7, 0, true), card(6, 2, true)];
-        g.state.tableau[2].clear();
-        let from = Selection {
-            pile: Pile::Tableau(1),
-            index: 0,
-        };
-        assert!(g.accepts(from, Pile::Tableau(0)));
-        assert!(!g.accepts(from, Pile::Tableau(2)));
-        g.state.tableau[0][0].suit = 0;
-        assert!(!g.accepts(from, Pile::Tableau(0)));
-        g.state.tableau[1] = vec![card(13, 3, true), card(12, 1, true)];
-        assert!(g.accepts(from, Pile::Tableau(2)));
-    }
-
-    #[test]
-    fn foundation_accepts_only_single_matching_cards_in_order() {
-        let mut g = Solitaire::new(3);
-        g.state.foundations[0].clear();
-        g.state.waste = vec![card(1, 2, true)];
-        let from = Selection {
-            pile: Pile::Waste,
-            index: 0,
-        };
-        assert!(g.transfer(from, Pile::Foundation(0)));
-        g.state.waste.push(card(2, 1, true));
-        assert!(!g.accepts(from, Pile::Foundation(0)));
-        g.state.waste[0].suit = 2;
-        assert!(g.transfer(from, Pile::Foundation(0)));
-        assert_eq!(g.state.foundations[0].len(), 2);
-        g.state.tableau[0] = vec![card(3, 2, true), card(2, 0, true)];
-        assert!(!g.accepts(
-            Selection {
-                pile: Pile::Tableau(0),
-                index: 0
-            },
-            Pile::Foundation(0)
-        ));
-    }
-
-    #[test]
-    fn moving_a_stack_reveals_a_hidden_card_and_undo_restores_it() {
-        let mut g = Solitaire::new(7);
-        g.state.tableau[0] = vec![card(5, 0, false), card(13, 2, true), card(12, 1, true)];
-        g.state.tableau[1].clear();
-        let from = Selection {
-            pile: Pile::Tableau(0),
-            index: 1,
-        };
-        assert!(g.transfer(from, Pile::Tableau(1)));
-        assert!(g.state.tableau[0][0].face);
-        assert_eq!(g.state.tableau[1].len(), 2);
-        g.undo();
-        assert!(!g.state.tableau[0][0].face);
-        assert_eq!(g.state.tableau[0].len(), 3);
-        assert!(g.state.tableau[1].is_empty());
-    }
-
-    #[test]
-    fn legal_draws_moves_and_undo_always_conserve_a_complete_deck() {
-        let mut g = Solitaire::new(99);
-        let mut rng = Rng(31337);
-        for _ in 0..1000 {
-            match rng.next() % 5 {
-                0 => g.draw_stock(),
-                1 => g.undo(),
-                _ => {
-                    let column = rng.next() as usize % 7;
-                    let len = g.state.tableau[column].len();
-                    let source = if rng.next() % 3 == 0 {
-                        Selection {
-                            pile: Pile::Waste,
-                            index: 0,
-                        }
-                    } else {
-                        Selection {
-                            pile: Pile::Tableau(column),
-                            index: if len == 0 {
-                                0
-                            } else {
-                                rng.next() as usize % len
-                            },
-                        }
-                    };
-                    let target = if rng.next() % 3 == 0 {
-                        Pile::Foundation(rng.next() as usize % 4)
-                    } else {
-                        Pile::Tableau(rng.next() as usize % 7)
-                    };
-                    g.transfer(source, target);
-                }
-            }
-            assert!(g.state.valid());
-        }
-    }
-
-    #[test]
-    fn every_implemented_game_has_a_valid_round_trip_snapshot() {
+    fn every_game_snapshot_restores_without_changing_persistent_data() {
         for kind in [
             GameKind::TwentyFortyEight,
             GameKind::Brick,
             GameKind::Solitaire,
+            GameKind::FiveLetters,
         ] {
             let mut game = Games::new(kind);
-            let data = game.serialize_snapshot().unwrap();
-            game.restore_snapshot(&data).unwrap();
-            assert_eq!(data, game.serialize_snapshot().unwrap());
+            let bytes = game.serialize_snapshot().unwrap();
+            game.restore_snapshot(&bytes).unwrap();
+            assert_eq!(bytes, game.serialize_snapshot().unwrap());
         }
     }
-
     #[test]
-    fn invalid_or_wrong_kind_game_saves_do_not_replace_a_running_game() {
+    fn invalid_or_wrong_kind_save_does_not_replace_running_game() {
         let mut game = Games::new(GameKind::TwentyFortyEight);
         let before = game.serialize_snapshot().unwrap();
         let other = Games::new(GameKind::Solitaire)
@@ -1664,13 +1530,6 @@ mod solitaire_tests {
         assert!(game.restore_snapshot(&other).is_err());
         assert!(game.restore_snapshot(b"{}").is_err());
         assert_eq!(before, game.serialize_snapshot().unwrap());
-        let mut solitaire = Games::new(GameKind::Solitaire);
-        if let Game::Solitaire(g) = &mut solitaire.game {
-            g.state.stock[0].suit = 4;
-        }
-        assert!(Games::new(GameKind::Solitaire)
-            .restore_snapshot(&solitaire.serialize_snapshot().unwrap())
-            .is_err());
     }
 }
 

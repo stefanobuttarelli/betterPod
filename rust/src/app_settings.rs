@@ -1,8 +1,9 @@
-//! Cached two-column choices. Built only when navigation or a preference changes.
+//! Original Settings columns. Choices are rebuilt only on a state change.
 use super::*;
 #[derive(Clone)]
 pub(super) enum SettingValue {
     Shuffle(bool),
+    ShuffleMode(&'static str),
     Repeat(&'static str),
     Theme(&'static str),
     Effects(&'static str),
@@ -18,20 +19,21 @@ pub(super) enum SettingValue {
 fn choice(label: impl Into<String>, value: SettingValue, selected: bool) -> Row {
     let mut row = Row::new(label, Intent::Setting(value));
     row.arrow = false;
-    if selected {
-        row.detail = "Selected".into();
-    }
+    row.visual.checked = selected;
+    row
+}
+fn summary(label: &str, value: impl Into<String>, detail: impl Into<String>) -> Row {
+    let mut row = Row::new(label, Intent::Noop);
+    row.arrow = false;
+    row.visual.value = value.into();
+    row.detail = detail.into();
     row
 }
 impl App {
     pub(super) fn apply_setting(&mut self, value: SettingValue) {
         match value {
-            SettingValue::Shuffle(v) => {
-                self.settings.shuffle = v;
-                if v {
-                    self.shuffle_remaining();
-                }
-            }
+            SettingValue::Shuffle(v) => self.set_shuffle_mode(if v { "songs" } else { "off" }),
+            SettingValue::ShuffleMode(v) => self.set_shuffle_mode(v),
             SettingValue::Repeat(v) => self.settings.repeat = v.into(),
             SettingValue::Theme(v) => self.settings.theme = v.into(),
             SettingValue::Effects(v) => self.settings.effects = v.into(),
@@ -50,6 +52,21 @@ impl App {
         self.configure_saver(false);
         self.save_settings();
         self.refresh_page();
+        // Home labels and visibility change when its menu isn't on top too.
+        for i in 0..self.pages.len() {
+            if self.pages[i].screen == Screen::Home {
+                let selected = self.pages[i]
+                    .rows
+                    .get(self.pages[i].selected)
+                    .map(|r| r.label.clone());
+                let mut page = self.page(Screen::Home);
+                page.selected = selected
+                    .and_then(|l| page.rows.iter().position(|r| r.label == l))
+                    .unwrap_or(0);
+                page.enter = 0.0;
+                self.pages[i] = page;
+            }
+        }
     }
     pub(super) fn refresh_setting_preview(&mut self) {
         if self.screen() != Screen::Settings {
@@ -61,16 +78,11 @@ impl App {
             .last()
             .and_then(|p| p.rows.get(p.selected))
             .map(|r| r.intent.clone());
+        let previous = self.preview_selected;
         self.preview_rows = match intent {
-            Some(Intent::Shuffle) => [false, true]
+            Some(Intent::Shuffle) => [("Off", "off"), ("Songs", "songs"), ("Albums", "albums")]
                 .into_iter()
-                .map(|v| {
-                    choice(
-                        if v { "On" } else { "Off" },
-                        SettingValue::Shuffle(v),
-                        self.settings.shuffle == v,
-                    )
-                })
+                .map(|(l, v)| choice(l, SettingValue::ShuffleMode(v), self.shuffle_label() == l))
                 .collect(),
             Some(Intent::Repeat) => [("Off", "off"), ("One", "one"), ("All", "all")]
                 .into_iter()
@@ -78,7 +90,13 @@ impl App {
                 .collect(),
             Some(Intent::Theme) => [("Light", "light"), ("Dark", "dark"), ("Automatic", "auto")]
                 .into_iter()
-                .map(|(l, v)| choice(l, SettingValue::Theme(v), self.settings.theme == v))
+                .map(|(l, v)| {
+                    let mut r = choice(l, SettingValue::Theme(v), self.settings.theme == v);
+                    if v == "auto" {
+                        r.detail = "Dark from 20:00 to 7:00".into();
+                    }
+                    r
+                })
                 .collect(),
             Some(Intent::Effects) => [("Full", "full"), ("Light", "light")]
                 .into_iter()
@@ -87,148 +105,173 @@ impl App {
             Some(Intent::Apple) => [false, true]
                 .into_iter()
                 .map(|v| {
-                    choice(
-                        if v { "iPod" } else { "betterPod" },
+                    let mut r = choice(
+                        if v { "On" } else { "Off" },
                         SettingValue::Apple(v),
                         self.settings.apple == v,
-                    )
-                })
-                .collect(),
-            Some(Intent::YouTube) => [false, true]
-                .into_iter()
-                .map(|v| {
-                    choice(
-                        if v { "On" } else { "Off" },
-                        SettingValue::YouTube(v),
-                        self.settings.youtube == v,
-                    )
-                })
-                .collect(),
-            Some(Intent::Podcasts) => [false, true]
-                .into_iter()
-                .map(|v| {
-                    choice(
-                        if v { "Show" } else { "Hide" },
-                        SettingValue::Podcasts(v),
-                        self.settings.hide_podcasts != v,
-                    )
-                })
-                .collect(),
-            Some(Intent::SaverTime) => [
-                ("Never", 0),
-                ("1 minute", 60),
-                ("2 minutes", 120),
-                ("5 minutes", 300),
-                ("10 minutes", 600),
-            ]
-            .into_iter()
-            .map(|(l, v)| {
-                choice(
-                    l,
-                    SettingValue::Delay(v),
-                    self.settings.screensaver_seconds == v,
-                )
-            })
-            .collect(),
-            Some(Intent::SaverDim) => [
-                ("Do Not Dim", 0),
-                ("5%", 5),
-                ("15%", 15),
-                ("30%", 30),
-                ("50%", 50),
-            ]
-            .into_iter()
-            .map(|(l, v)| choice(l, SettingValue::Dim(v), self.settings.screensaver_dim == v))
-            .collect(),
-            Some(Intent::SaverStyle) => [("Cover Mosaic", "cover"), ("Visualizer", "viz")]
-                .into_iter()
-                .map(|(l, v)| {
-                    choice(
-                        l,
-                        SettingValue::Style(v),
-                        self.settings.screensaver_style == v,
-                    )
-                })
-                .collect(),
-            Some(Intent::SaverEffect) => (0..saver::effect_count(&self.settings.screensaver_style))
-                .map(|v| {
-                    choice(
-                        saver::effect_name(&self.settings.screensaver_style, v),
-                        SettingValue::Effect(v),
-                        self.settings.screensaver_effect == v,
-                    )
-                })
-                .collect(),
-            Some(Intent::SaverColors) => (0..saver::palette_count())
-                .map(|v| {
-                    choice(
-                        saver::palette_name(v),
-                        SettingValue::Palette(v),
-                        self.settings.screensaver_colors == v,
-                    )
-                })
-                .collect(),
-            other => {
-                let lines = match other {
-                    Some(Intent::Volume) => vec![
-                        format!("{}%", (self.settings.volume * 100.0).round() as u32),
-                        "LEFT / RIGHT to adjust".into(),
-                        "Audio keeps priority".into(),
-                    ],
-                    Some(Intent::Rescan) => vec![
-                        format!("{} songs", self.library.tracks.len()),
-                        format!("{} albums", self.library.albums.len()),
-                        format!("{} artists", self.library.artists.len()),
-                        "Scan music in background".into(),
-                    ],
-                    Some(Intent::Maintenance(MaintenanceMode::Music)) => vec![
-                        self.music_dir.display().to_string(),
-                        "Choose, copy or move".into(),
-                        "Files verified before removal".into(),
-                    ],
-                    Some(Intent::Maintenance(MaintenanceMode::Database)) => vec![
-                        self.data_dir.display().to_string(),
-                        "Private Rust app data".into(),
-                    ],
-                    Some(Intent::Maintenance(MaintenanceMode::Update)) => vec![
-                        "Independent Rust channel".into(),
-                        format!("Version {}", env!("CARGO_PKG_VERSION")),
-                        "Local experiment".into(),
-                    ],
-                    Some(Intent::Extra(ExtraPage::Bluetooth)) => {
-                        vec!["Paired and new devices".into(), "Connect headphones".into()]
+                    );
+                    r.detail = if v {
+                        "The menu says iPod"
+                    } else {
+                        "The menu says betterPod"
                     }
-                    Some(Intent::Open(Screen::About)) => vec![
-                        "betterPod Rust".into(),
-                        format!("Version {}", env!("CARGO_PKG_VERSION")),
-                        "Independent app".into(),
-                    ],
-                    _ => vec!["A or RIGHT to open".into(), "B or LEFT to return".into()],
-                };
-                lines
-                    .into_iter()
-                    .map(|l| {
-                        let mut row = Row::new(l, Intent::CloseOptions);
-                        row.arrow = false;
-                        row
-                    })
-                    .collect()
+                    .into();
+                    r
+                })
+                .collect(),
+            Some(Intent::Podcasts) => [true, false]
+                .into_iter()
+                .map(|v| {
+                    let mut r = choice(
+                        if v { "On" } else { "Off" },
+                        SettingValue::Podcasts(v),
+                        !self.settings.hide_podcasts == v,
+                    );
+                    r.detail = if v {
+                        "In the main menu"
+                    } else {
+                        "Episodes stay in Music"
+                    }
+                    .into();
+                    r
+                })
+                .collect(),
+            Some(Intent::SoftwareUpdate) => vec![
+                Row::new(
+                    "Check for Updates",
+                    Intent::Maintenance(MaintenanceMode::Update),
+                ),
+                {
+                    let mut r = Row::new("Beta Versions", Intent::ToggleBeta);
+                    r.visual.value = if self.settings.beta_updates {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                    .into();
+                    r.arrow = false;
+                    r
+                },
+                summary("Version", "1.1", ""),
+            ],
+            Some(Intent::QuitColumn) => {
+                let mut r = Row::new("Quit Now", Intent::Quit);
+                r.arrow = false;
+                vec![r]
             }
+            Some(Intent::SharingSettings) => vec![
+                {
+                    let mut r = Row::new("Device Name", Intent::SharingName);
+                    r.visual.value = if matches!(self.keyboard_context, KeyboardContext::Sharing) {
+                        self.keyboard
+                            .as_ref()
+                            .filter(|k| !k.is_exiting())
+                            .map(|k| k.with_caret())
+                    } else {
+                        None
+                    }
+                    .unwrap_or_else(|| {
+                        if self.settings.sharing_name.is_empty() {
+                            "Not set".into()
+                        } else {
+                            self.settings.sharing_name.clone()
+                        }
+                    });
+                    r.detail = "Your friends see it when you share with them".into();
+                    r.arrow = false;
+                    r
+                },
+                summary(
+                    "How it works",
+                    "",
+                    "[Y] on an album or a song → Share; Music → Receive",
+                ),
+            ],
+            Some(Intent::Open(Screen::Library)) => vec![
+                summary("Songs", self.library.tracks.len().to_string(), ""),
+                summary("Albums", self.library.albums.len().to_string(), ""),
+                summary("Artists", self.library.artists.len().to_string(), ""),
+            ],
+            Some(Intent::Open(Screen::Screensaver)) => vec![
+                summary(
+                    "Starts",
+                    if self.settings.screensaver_seconds == 0 {
+                        "Never".into()
+                    } else {
+                        format!("{} min", self.settings.screensaver_seconds / 60)
+                    },
+                    "",
+                ),
+                summary(
+                    "Style",
+                    if self.settings.screensaver_style == "viz" {
+                        "Visualizer"
+                    } else {
+                        "Cover Flip"
+                    },
+                    "",
+                ),
+                summary(
+                    "Dim the Screen",
+                    if self.settings.screensaver_dim > 0 {
+                        "On"
+                    } else {
+                        "Off"
+                    },
+                    "",
+                ),
+            ],
+            Some(Intent::Maintenance(MaintenanceMode::Database)) => vec![summary(
+                &self.database_label(),
+                "",
+                self.data_dir.display().to_string(),
+            )],
+            Some(Intent::Extra(ExtraPage::Bluetooth)) => {
+                vec![summary("No headphones connected", "", "")]
+            }
+            Some(Intent::YouTubeSettings) => vec![
+                choice(
+                    "YouTube",
+                    SettingValue::YouTube(!self.settings.youtube),
+                    false,
+                ),
+                Row::new("Install / Update Tools", Intent::Extra(ExtraPage::Tools)),
+            ],
+            Some(Intent::Open(Screen::About)) => self.reference_about_rows(),
+            _ => Vec::new(),
         };
-        self.preview_selected = self
-            .preview_rows
-            .iter()
-            .position(|r| r.detail == "Selected")
-            .unwrap_or(0);
+        self.preview_selected = if self.preview_focus {
+            previous.min(self.preview_rows.len().saturating_sub(1))
+        } else {
+            self.preview_rows
+                .iter()
+                .position(|r| r.visual.checked)
+                .unwrap_or(0)
+        };
     }
     pub(super) fn handle_setting_preview(&mut self, action: Action) -> bool {
         if self.screen() != Screen::Settings {
             return false;
         }
-        let choices = self
-            .preview_rows
-            .first()
-            .is_some_and(|r| matches!(r.intent, Intent::Setting(_)));
+        let intent = self
+            .pages
+            .last()
+            .and_then(|p| p.rows.get(p.selected))
+            .map(|r| r.intent.clone());
+        let is_column = matches!(
+            intent,
+            Some(
+                Intent::Shuffle
+                    | Intent::Repeat
+                    | Intent::Theme
+                    | Intent::Effects
+                    | Intent::Apple
+                    | Intent::Podcasts
+                    | Intent::SoftwareUpdate
+                    | Intent::SharingSettings
+                    | Intent::QuitColumn
+            )
+        );
         if self.preview_focus {
             match action {
                 Action::Left | Action::Back => self.preview_focus = false,
@@ -237,7 +280,7 @@ impl App {
                     self.preview_selected =
                         (self.preview_selected + 1).min(self.preview_rows.len().saturating_sub(1))
                 }
-                Action::Select | Action::Right => {
+                Action::Select => {
                     if let Some(intent) = self
                         .preview_rows
                         .get(self.preview_selected)
@@ -250,73 +293,18 @@ impl App {
             }
             return true;
         }
-        if choices && matches!(action, Action::Select | Action::Right) {
+        if is_column && matches!(action, Action::Select | Action::Right) {
             self.preview_focus = true;
             return true;
         }
         if action == Action::Left {
             if self.pages.len() > 1 {
-                self.pages.pop();
+                let previous = self.pages.pop();
+                self.visual_menu_navigation(previous, false);
             }
             return true;
         }
         false
     }
-    pub(super) fn draw_setting_preview(&self, r: &mut Renderer, fg: Color, muted: Color) {
-        let title = self
-            .pages
-            .last()
-            .and_then(|p| p.rows.get(p.selected))
-            .map_or("Settings", |row| {
-                row.label.split(':').next().unwrap_or("Settings")
-            });
-        r.text(title, 337.0, 55.0, 24, fg, 285.0);
-        r.rect(333.0, 89.0, 295.0, 1.0, [0.45, 0.47, 0.51, 0.25]);
-        let first = if self.preview_focus {
-            self.preview_selected.saturating_sub(5)
-        } else {
-            0
-        };
-        for (i, row) in self.preview_rows.iter().enumerate().skip(first).take(7) {
-            let y = 105.0 + (i - first) as f32 * 40.0;
-            let focused = self.preview_focus && i == self.preview_selected;
-            if focused {
-                r.rect(331.0, y - 3.0, 298.0, 37.0, BLUE);
-            }
-            r.text(
-                &row.label,
-                342.0,
-                y + 4.0,
-                20,
-                if focused { WHITE } else { fg },
-                if row.detail == "Selected" {
-                    244.0
-                } else {
-                    276.0
-                },
-            );
-            if row.detail == "Selected" {
-                r.text(
-                    "✓",
-                    600.0,
-                    y + 4.0,
-                    20,
-                    if focused { WHITE } else { BLUE },
-                    25.0,
-                );
-            }
-        }
-        r.text(
-            if self.preview_focus {
-                "A: Choose   B: Return"
-            } else {
-                "A / RIGHT: Open"
-            },
-            337.0,
-            378.0,
-            15,
-            muted,
-            286.0,
-        );
-    }
+    pub(super) fn draw_setting_preview(&self, _r: &mut Renderer, _fg: Color, _muted: Color) {}
 }

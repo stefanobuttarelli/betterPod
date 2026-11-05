@@ -20,19 +20,19 @@ pub const PUZZLES: [PuzzleInfo; 12] = [
     PuzzleInfo {
         id: "mines",
         name: "Mines",
-        description: "Find the mines; numbers count their neighbours",
+        description: "Find the mines: numbers count those around",
         numeric: false,
     },
     PuzzleInfo {
         id: "solo",
         name: "Sudoku",
-        description: "Each row, column and box contains every digit",
+        description: "Every row, column and box holds each digit once",
         numeric: true,
     },
     PuzzleInfo {
         id: "net",
         name: "Net",
-        description: "Rotate tiles to connect the whole network",
+        description: "Turn the tiles to connect the whole network",
         numeric: false,
     },
     PuzzleInfo {
@@ -44,7 +44,7 @@ pub const PUZZLES: [PuzzleInfo; 12] = [
     PuzzleInfo {
         id: "samegame",
         name: "Same Game",
-        description: "Select and clear groups of matching colours",
+        description: "Clear groups of the same colour",
         numeric: false,
     },
     PuzzleInfo {
@@ -56,37 +56,37 @@ pub const PUZZLES: [PuzzleInfo; 12] = [
     PuzzleInfo {
         id: "lightup",
         name: "Light Up",
-        description: "Light each square with bulbs that cannot see each other",
+        description: "Light every square with bulbs that don't see each other",
         numeric: false,
     },
     PuzzleInfo {
         id: "unruly",
         name: "Unruly",
-        description: "Equal black and white, with no three in a row",
+        description: "Black and white: no three in a row, as many of each",
         numeric: false,
     },
     PuzzleInfo {
         id: "towers",
         name: "Towers",
-        description: "Place towers matching the visible-count clues",
+        description: "Place the towers: the clues count those you can see",
         numeric: true,
     },
     PuzzleInfo {
         id: "keen",
         name: "Keen",
-        description: "A Latin square with arithmetic cages",
+        description: "A Latin square whose cages add, multiply…",
         numeric: true,
     },
     PuzzleInfo {
         id: "pattern",
         name: "Pattern",
-        description: "Fill the squares described by the clues",
+        description: "Fill the squares the clues describe (nonogram)",
         numeric: false,
     },
     PuzzleInfo {
         id: "tents",
         name: "Tents",
-        description: "Put one non-touching tent beside each tree",
+        description: "A tent next to each tree, never touching",
         numeric: false,
     },
 ];
@@ -160,11 +160,14 @@ extern "C" {
     fn midend_restart_game(midend: *mut Midend);
     fn midend_size(midend: *mut Midend, w: *mut c_int, h: *mut c_int, user_size: c_int);
     fn midend_process_key(midend: *mut Midend, x: c_int, y: c_int, button: c_int) -> c_int;
+    #[cfg(test)]
+    fn midend_game_id(midend: *mut Midend, id: *mut c_char) -> *mut c_char;
+    #[cfg(test)]
+    fn midend_get_random_seed(midend: *mut Midend) -> *mut c_char;
     fn midend_force_redraw(midend: *mut Midend);
     fn midend_redraw(midend: *mut Midend);
     fn midend_colours(midend: *mut Midend, count: *mut c_int) -> *mut c_float;
     fn midend_timer(midend: *mut Midend, dt: c_float);
-    #[cfg(test)]
     fn midend_status(midend: *mut Midend) -> c_int;
     fn midend_solve(midend: *mut Midend) -> *mut c_char;
     fn midend_num_presets(midend: *mut Midend) -> c_int;
@@ -257,6 +260,7 @@ enum Shape {
         r: f32,
         fill: i32,
         outline: i32,
+        points: Arc<[[f32; 2]]>,
     },
 }
 #[derive(Clone)]
@@ -381,12 +385,14 @@ unsafe extern "C" fn d_circle(
     fill: c_int,
     outline: c_int,
 ) {
+    let points = circle_points(x as f32 + 0.5, y as f32 + 0.5, r as f32);
     frontend(h).push(Shape::Circle {
         x: x as f32 + 0.5,
         y: y as f32 + 0.5,
         r: r as f32,
         fill,
         outline,
+        points: points.into(),
     });
 }
 unsafe extern "C" fn d_update(_h: *mut c_void, _x: c_int, _y: c_int, _w: c_int, _hh: c_int) {}
@@ -489,11 +495,13 @@ unsafe extern "C" fn d_thick(
     colour: c_int,
 ) {
     frontend(h).push(Shape::Line {
-        x0,
-        y0,
-        x1,
-        y1,
-        width: width.max(1.0),
+        // pzfe.c stores sixteenth-pixel integers; the Go replayer then
+        // restores them and moves every line to pixel centres.
+        x0: (x0 * 16.0).trunc() / 16.0 + 0.5,
+        y0: (y0 * 16.0).trunc() / 16.0 + 0.5,
+        x1: (x1 * 16.0).trunc() / 16.0 + 0.5,
+        y1: (y1 * 16.0).trunc() / 16.0 + 0.5,
+        width: width.max(1.2),
         colour,
     });
 }
@@ -615,7 +623,7 @@ impl Core {
             x: 0.0,
             y: 0.0,
             w: 624.0,
-            h: 376.0,
+            h: 384.0,
         };
         let mut frontend = Box::new(Frontend {
             commands: Vec::with_capacity(2048),
@@ -635,7 +643,7 @@ impl Core {
             frontend,
             palette: Vec::new(),
             width: 624,
-            height: 376,
+            height: 384,
             presets: Vec::new(),
         };
         let loaded = save.as_deref().map_or(false, |s| out.load(s).is_ok());
@@ -679,7 +687,7 @@ impl Core {
     }
     fn layout(&mut self) {
         self.width = 624;
-        self.height = 376;
+        self.height = 384;
         unsafe {
             midend_size(self.midend, &mut self.width, &mut self.height, 1);
         }
@@ -794,6 +802,7 @@ struct GenerationJob {
     index: usize,
     preset: Option<usize>,
     save: Option<Vec<u8>>,
+    new_game: bool,
     cancelled: Arc<AtomicBool>,
     result: mpsc::SyncSender<Result<Core, String>>,
 }
@@ -809,7 +818,19 @@ fn generator() -> Result<mpsc::SyncSender<GenerationJob>, String> {
                         if job.cancelled.load(Ordering::Relaxed) {
                             continue;
                         }
-                        let result = Core::configured(job.index, job.save, job.preset);
+                        let result =
+                            Core::configured(job.index, job.save, job.preset).map(|mut core| {
+                                if job.new_game {
+                                    // Keep the current parameters (including a loaded custom
+                                    // game) while generating its replacement off the UI.
+                                    unsafe {
+                                        midend_process_key(core.midend, 0, 0, 'n' as i32);
+                                    }
+                                    core.layout();
+                                    core.refresh();
+                                }
+                                core
+                            });
                         if !job.cancelled.load(Ordering::Relaxed) {
                             let _ = job.result.send(result);
                         }
@@ -853,6 +874,7 @@ impl PuzzleGame {
                 index,
                 preset: None,
                 save,
+                new_game: false,
                 cancelled: cancelled.clone(),
                 result: tx,
             })
@@ -912,11 +934,14 @@ impl PuzzleGame {
     fn new_puzzle(&mut self, preset: Option<usize>) {
         let (tx, rx) = mpsc::sync_channel(1);
         let cancelled = Arc::new(AtomicBool::new(false));
+        let save = self.core.as_ref().map(Core::save);
+        let new_game = save.is_some();
         let result = generator().and_then(|g| {
             g.try_send(GenerationJob {
                 index: self.index,
                 preset,
-                save: None,
+                save,
+                new_game,
                 cancelled: cancelled.clone(),
                 result: tx,
             })
@@ -934,119 +959,41 @@ impl PuzzleGame {
             Err(error) => self.error = Some(error),
         }
     }
-    pub fn back_consumed(&mut self) -> bool {
-        if self.menu {
-            self.menu = false;
-            true
-        } else {
-            false
+    pub fn new_game(&mut self) {
+        let preset = self.core.as_ref().and_then(|core| {
+            let index = unsafe { midend_which_preset(core.midend) };
+            if index >= 0 {
+                Some(index as usize)
+            } else {
+                None
+            }
+        });
+        self.new_puzzle(preset);
+    }
+    pub fn undo(&mut self) {
+        if let Some(core) = self.core.as_mut() {
+            core.key('u' as i32);
         }
     }
-
+    pub fn back_consumed(&mut self) -> bool {
+        false
+    }
     pub fn handle(&mut self, action: Action) {
-        let action = if action == Action::Start || action == Action::SelectHeld {
-            Action::PlayPause
-        } else {
-            action
-        };
-        if self.menu && action == Action::Select && matches!(self.menu_index, 1 | 5) {
-            let preset = if self.menu_index == 5 {
-                Some(self.preset)
-            } else {
-                self.core.as_ref().and_then(|c| {
-                    let n = unsafe { midend_which_preset(c.midend) };
-                    if n >= 0 {
-                        Some(n as usize)
-                    } else {
-                        None
-                    }
-                })
-            };
-            self.new_puzzle(preset);
-            return;
-        }
-        let Some(core) = &mut self.core else {
+        let Some(core) = self.core.as_mut() else {
             return;
         };
-        if self.menu {
-            match action {
-                Action::Up => self.menu_index = (self.menu_index + 6) % 7,
-                Action::Down => self.menu_index = (self.menu_index + 1) % 7,
-                Action::Options | Action::Back | Action::PlayPause => self.menu = false,
-                Action::Left if self.menu_index == 5 => {
-                    if !core.presets.is_empty() {
-                        self.preset = (self.preset + core.presets.len() - 1) % core.presets.len();
-                    }
-                }
-                Action::Right if self.menu_index == 5 => {
-                    if !core.presets.is_empty() {
-                        self.preset = (self.preset + 1) % core.presets.len();
-                    }
-                }
-                Action::Select => match self.menu_index {
-                    0 => self.menu = false,
-                    1 => unreachable!(),
-                    2 => {
-                        unsafe {
-                            midend_restart_game(core.midend);
-                        }
-                        core.refresh();
-                        self.menu = false;
-                    }
-                    3 => {
-                        core.key('u' as i32);
-                        self.menu = false;
-                    }
-                    4 => {
-                        core.key('r' as i32);
-                        self.menu = false;
-                    }
-                    5 => unreachable!(),
-                    _ => {
-                        let error = unsafe { midend_solve(core.midend) };
-                        if !error.is_null() {
-                            self.error = Some(
-                                unsafe { CStr::from_ptr(error) }
-                                    .to_string_lossy()
-                                    .into_owned(),
-                            );
-                        }
-                        core.refresh();
-                        self.menu = false;
-                    }
-                },
-                _ => {}
-            }
-            return;
-        }
-        let numeric = PUZZLES[self.index].numeric;
-        match action {
-            Action::Up => core.key(UP),
-            Action::Down => core.key(DOWN),
-            Action::Left => core.key(LEFT),
-            Action::Right => core.key(RIGHT),
-            Action::Select => core.key(if numeric {
-                if self.digit == 0 {
-                    SELECT2
-                } else {
-                    '0' as i32 + self.digit
-                }
-            } else {
-                SELECT
-            }),
-            Action::Options => core.key(if numeric { SELECT } else { SELECT2 }),
-            Action::Previous => core.key('u' as i32),
-            Action::Next if numeric => self.digit = (self.digit + 1) % 10,
-            Action::Next => core.key('r' as i32),
-            Action::PlayPause => {
-                self.menu = true;
-                self.menu_index = 0;
-            }
-            _ => {}
+        if let Some(key) = input_key(PUZZLES[self.index].numeric, &mut self.digit, action) {
+            core.key(key);
         }
     }
     pub fn draw(&self, r: &mut Renderer, _dark: bool) {
-        r.rect(0.0, 40.0, 640.0, 440.0, [0.88, 0.89, 0.91, 1.0]);
+        let background = self
+            .core
+            .as_ref()
+            .and_then(|core| core.palette.first())
+            .copied()
+            .unwrap_or([224.0 / 255.0, 227.0 / 255.0, 232.0 / 255.0, 1.0]);
+        r.rect(0.0, 40.0, 640.0, 440.0, background);
         let Some(core) = &self.core else {
             r.centered(
                 self.error.as_deref().unwrap_or("Preparing puzzle..."),
@@ -1059,10 +1006,10 @@ impl PuzzleGame {
             return;
         };
         let ox = (640 - core.width) as f32 * 0.5;
-        let oy = 48.0 + (376 - core.height) as f32 * 0.5;
+        let oy = 40.0 + ((396 - core.height) / 2) as f32;
         for primitive in &core.frontend.commands {
             let clip = primitive.clip;
-            r.set_clip(ox + clip.x, oy + clip.y, clip.w, clip.h);
+            r.push_clip(ox + clip.x, oy + clip.y, clip.w, clip.h);
             let dx = ox + primitive.dx;
             let dy = oy + primitive.dy;
             match &primitive.shape {
@@ -1074,20 +1021,29 @@ impl PuzzleGame {
                     colour,
                     text,
                 } => {
-                    let width = r.text_width(text, *size);
+                    let width = r.text_width_weighted(text, *size as f32, 700);
                     let x = x + dx
                         - match align & 3 {
                             1 => width * 0.5,
                             2 => width,
                             _ => 0.0,
                         };
-                    let y = y + dy - *size as f32
+                    let y = y
+                        + dy
                         + if align & 0x100 != 0 {
                             *size as f32 * 0.36
                         } else {
                             0.0
                         };
-                    r.text(text, x, y, *size, core.colour(*colour), width + 2.0);
+                    r.text_baseline(
+                        text,
+                        x,
+                        y,
+                        *size as f32,
+                        700,
+                        core.colour(*colour),
+                        width + 2.0,
+                    );
                 }
                 Shape::Rect { x, y, w, h, colour } => {
                     r.rect(x + dx, y + dy, *w, *h, core.colour(*colour))
@@ -1099,7 +1055,8 @@ impl PuzzleGame {
                     y1,
                     width,
                     colour,
-                } => r.line(
+                } => puzzle_line(
+                    r,
                     x0 + dx,
                     y0 + dy,
                     x1 + dx,
@@ -1125,7 +1082,8 @@ impl PuzzleGame {
                         for i in 0..points.len() {
                             let a = points[i];
                             let b = points[(i + 1) % points.len()];
-                            r.line(
+                            puzzle_line(
+                                r,
                                 a[0] + dx,
                                 a[1] + dy,
                                 b[0] + dx,
@@ -1142,20 +1100,31 @@ impl PuzzleGame {
                     r: radius,
                     fill,
                     outline,
+                    points,
+                    ..
                 } => {
                     if *fill >= 0 {
-                        r.circle(x + dx, y + dy, *radius, core.colour(*fill));
+                        puzzle_circle(
+                            r,
+                            *x + dx,
+                            *y + dy,
+                            *radius,
+                            points,
+                            dx,
+                            dy,
+                            core.colour(*fill),
+                        );
                     }
                     if *outline >= 0 {
-                        let count = ((*radius * 1.5) as usize).clamp(16, 96);
-                        for i in 0..count {
-                            let a = i as f32 / count as f32 * std::f32::consts::TAU;
-                            let b = (i + 1) as f32 / count as f32 * std::f32::consts::TAU;
-                            r.line(
-                                x + dx + radius * a.cos(),
-                                y + dy + radius * a.sin(),
-                                x + dx + radius * b.cos(),
-                                y + dy + radius * b.sin(),
+                        for i in 0..points.len() {
+                            let a = points[i];
+                            let b = points[(i + 1) % points.len()];
+                            puzzle_line(
+                                r,
+                                a[0] + dx,
+                                a[1] + dy,
+                                b[0] + dx,
+                                b[1] + dy,
                                 1.2,
                                 core.colour(*outline),
                             );
@@ -1163,114 +1132,259 @@ impl PuzzleGame {
                     }
                 }
             }
+            r.pop_clip();
         }
-        r.reset_clip();
-        let status = if self.error.is_some() {
-            self.error.as_deref().unwrap()
+        let mut status = if unsafe { midend_status(core.midend) } > 0 {
+            "Solved!".to_owned()
         } else {
-            &core.frontend.status
+            core.frontend.status.clone()
         };
-        r.centered(status, 8.0, 428.0, 624.0, 16, [0.12, 0.14, 0.18, 1.0]);
+        if PUZZLES[self.index].numeric {
+            status = format!(
+                "Digit: {}   {}",
+                if self.digit == 0 {
+                    "clear".into()
+                } else {
+                    self.digit.to_string()
+                },
+                status
+            );
+        }
         let hint = if PUZZLES[self.index].numeric {
-            format!(
-                "R: digit {}    A: place    Y: pencil    L: undo    START: menu",
-                self.digit
-            )
+            "[R] digit · [A] place · [Y] pencil · [L] undo · [START] menu"
         } else {
-            "A: action    Y: second action    L: undo    R: redo    START: menu".into()
+            match self.index {
+                0 => "[A] open · [Y] flag · [L] undo · [START] menu",
+                2 => "[A] turn · [Y] turn back · [L] undo · [START] menu",
+                3 => "[A] flood with this colour · [L] undo · [START] menu",
+                4 => "[A] select, [A] again remove · [L] undo · [START] menu",
+                5 => "[DPAD] slide · [L] undo · [START] menu",
+                6 => "[A] bulb · [Y] mark · [L] undo · [START] menu",
+                7 => "[A] cycle · [Y] cycle back · [L] undo · [START] menu",
+                10 => "[A] fill · [Y] empty · [L] undo · [START] menu",
+                _ => "[A] tent · [Y] grass · [L] undo · [START] menu",
+            }
         };
-        r.centered(&hint, 8.0, 453.0, 624.0, 16, [0.12, 0.14, 0.18, 1.0]);
-        if self.menu {
-            r.rect(140.0, 72.0, 360.0, 350.0, [0.08, 0.11, 0.15, 0.98]);
-            let preset = core
-                .presets
-                .get(self.preset)
-                .map(String::as_str)
-                .unwrap_or("Default");
-            let labels = [
-                "Continue".to_string(),
-                "New puzzle".into(),
-                "Restart".into(),
-                "Undo".into(),
-                "Redo".into(),
-                format!("Preset: {preset}"),
-                "Solve".into(),
-            ];
-            for (i, label) in labels.iter().enumerate() {
-                let y = 82.0 + i as f32 * 47.0;
-                if i == self.menu_index {
-                    r.rect(148.0, y, 344.0, 43.0, [0.1, 0.4, 0.85, 1.0]);
-                }
-                r.text(label, 160.0, y + 8.0, 20, [1.0; 4], 320.0);
-            }
+        r.gradient(
+            0.0,
+            436.0,
+            640.0,
+            44.0,
+            [0.0, 0.0, 0.0, 0.06],
+            [0.0, 0.0, 0.0, 0.12],
+        );
+        let baseline = 458.0 + crate::render::line_box(20.0).1 * 0.5;
+        let ink = [70.0 / 255.0, 76.0 / 255.0, 88.0 / 255.0, 1.0];
+        if status.is_empty() {
+            let w = r.text_width_weighted(hint, 20.0, 600);
+            r.text_baseline(hint, 320.0 - w * 0.5, baseline, 20.0, 600, ink, w + 1.0);
+        } else {
+            let status = short_text(r, &status, 200.0);
+            let width = r.text_width_weighted(&status, 20.0, 600).min(200.0);
+            r.text_baseline(
+                &status,
+                14.0,
+                baseline,
+                20.0,
+                600,
+                [30.0 / 255.0, 34.0 / 255.0, 42.0 / 255.0, 1.0],
+                200.0,
+            );
+            let available = 640.0 - 14.0 - (14.0 + width + 20.0);
+            let hint = short_text(r, hint, available);
+            let w = r.text_width_weighted(&hint, 20.0, 600).min(available);
+            r.text_baseline(&hint, 626.0 - w, baseline, 20.0, 600, ink, available);
         }
     }
-}
-
-// Ear clipping supports both convex and concave engine polygons.
-fn triangulate(points: &[[f32; 2]]) -> Vec<[[f32; 2]; 3]> {
-    if points.len() < 3 {
-        return Vec::new();
-    }
-    let area: f32 = (0..points.len())
-        .map(|i| {
-            let a = points[i];
-            let b = points[(i + 1) % points.len()];
-            a[0] * b[1] - a[1] * b[0]
-        })
-        .sum();
-    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
-    let mut indices: Vec<usize> = (0..points.len()).collect();
-    let mut out = Vec::with_capacity(points.len() - 2);
-    let mut attempts = 0;
-    while indices.len() > 3 && attempts < points.len() * points.len() {
-        let mut found = false;
-        for i in 0..indices.len() {
-            let a = points[indices[(i + indices.len() - 1) % indices.len()]];
-            let b = points[indices[i]];
-            let c = points[indices[(i + 1) % indices.len()]];
-            if cross(a, b, c) * sign <= 0.0001 {
-                continue;
-            }
-            if indices.iter().any(|j| {
-                let p = points[*j];
-                p != a
-                    && p != b
-                    && p != c
-                    && cross(a, b, p) * sign >= 0.0
-                    && cross(b, c, p) * sign >= 0.0
-                    && cross(c, a, p) * sign >= 0.0
-            }) {
-                continue;
-            }
-            out.push([a, b, c]);
-            indices.remove(i);
-            found = true;
-            break;
-        }
-        if !found {
-            break;
-        }
-        attempts += 1;
-    }
-    if indices.len() == 3 {
-        out.push([points[indices[0]], points[indices[1]], points[indices[2]]]);
-    }
-    out
-}
-fn cross(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f32 {
-    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn reference_fixture(index: usize) -> Core {
+        let mut core = Core::new(index, None).unwrap();
+        let parameters = unsafe {
+            let raw = midend_get_random_seed(core.midend);
+            assert!(!raw.is_null());
+            let seed = CStr::from_ptr(raw).to_string_lossy().into_owned();
+            libc::free(raw.cast());
+            seed.split('#').next().unwrap().to_owned()
+        };
+        let mut seed = format!("{parameters}#betterPod-1.1-{}", PUZZLES[index].id).into_bytes();
+        seed.push(0);
+        let error = unsafe { midend_game_id(core.midend, seed.as_mut_ptr().cast()) };
+        assert!(
+            error.is_null(),
+            "{}: {}",
+            PUZZLES[index].name,
+            if error.is_null() {
+                String::new()
+            } else {
+                unsafe { CStr::from_ptr(error) }
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        );
+        unsafe {
+            midend_new_game(core.midend);
+        }
+        core.layout();
+        if PUZZLES[index].numeric {
+            core.key(DOWN);
+            core.key(UP);
+        }
+        core.refresh();
+        core
+    }
+    #[test]
+    fn all_twelve_seeded_engines_have_repeatable_positions_and_source_controls() {
+        for index in 0..PUZZLES.len() {
+            let mut a = reference_fixture(index);
+            let b = reference_fixture(index);
+            let initial = a.save();
+            assert_eq!(initial, b.save(), "{} seed", PUZZLES[index].name);
+            assert!((1..=624).contains(&a.width));
+            assert!((1..=384).contains(&a.height));
+            let mut digit = 1;
+            for action in [
+                Action::Right,
+                Action::Down,
+                Action::Select,
+                Action::Options,
+                Action::Previous,
+                Action::Next,
+                Action::Left,
+                Action::Up,
+            ] {
+                if let Some(key) = input_key(PUZZLES[index].numeric, &mut digit, action) {
+                    a.key(key);
+                }
+            }
+            assert!(!a.frontend.commands.is_empty());
+            assert!(a.load(&initial).is_ok());
+            a.layout();
+            a.refresh();
+            assert_eq!(a.save(), initial, "{} save restore", PUZZLES[index].name);
+        }
+    }
+    #[test]
+    fn numeric_digit_clear_pencil_and_global_keys_follow_go_frontend() {
+        let mut digit = 9;
+        assert_eq!(input_key(true, &mut digit, Action::Next), None);
+        assert_eq!(digit, 0);
+        assert_eq!(input_key(true, &mut digit, Action::Select), Some(SELECT2));
+        assert_eq!(input_key(true, &mut digit, Action::Options), Some(SELECT));
+        assert_eq!(input_key(true, &mut digit, Action::Next), None);
+        assert_eq!(digit, 1);
+        assert_eq!(
+            input_key(true, &mut digit, Action::Select),
+            Some('1' as i32)
+        );
+        assert_eq!(input_key(false, &mut digit, Action::Next), Some('r' as i32));
+        assert_eq!(
+            input_key(false, &mut digit, Action::Previous),
+            Some('u' as i32)
+        );
+        assert_eq!(input_key(false, &mut digit, Action::Options), Some(SELECT2));
+        assert_eq!(input_key(false, &mut digit, Action::PlayPause), None);
+        assert_eq!(input_key(false, &mut digit, Action::Back), None);
+        assert_eq!(input_key(false, &mut digit, Action::Start), None);
+    }
+    #[test]
+    fn drawing_callbacks_keep_source_quantization_circle_limit_and_square_caps() {
+        let bounds = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 624.0,
+            h: 384.0,
+        };
+        let mut frontend = Frontend {
+            commands: Vec::new(),
+            clip: bounds,
+            bounds,
+            bg: [0.88, 0.89, 0.91],
+            status: String::new(),
+            timer: false,
+        };
+        unsafe {
+            d_thick(
+                (&mut frontend as *mut Frontend).cast(),
+                0.5,
+                3.19,
+                -2.19,
+                10.99,
+                14.02,
+                0,
+            );
+        }
+        let Shape::Line {
+            x0,
+            y0,
+            x1,
+            y1,
+            width,
+            ..
+        } = frontend.commands[0].shape
+        else {
+            panic!("line")
+        };
+        assert_eq!(
+            (x0, y0, x1, y1, width),
+            (3.6875, -1.6875, 11.4375, 14.5, 1.2)
+        );
+        assert_eq!(circle_points(0.0, 0.0, 2.0).len(), 16);
+        assert_eq!(circle_points(0.0, 0.0, 100.0).len(), 64);
+        let (inner, outer) = line_rings(10.0, 20.0, 30.0, 20.0, 2.0);
+        assert_eq!(inner[0], [9.5, 20.5]);
+        assert_eq!(outer[0], [8.5, 21.5]);
+        let (inner, _) = line_rings(4.0, 6.0, 4.0, 6.0, 2.0);
+        assert_eq!(inner[0], [3.5, 6.5]);
+    }
+    #[test]
+    #[ignore = "writes local deterministic twelve-engine source-control fixtures"]
+    fn export_twelve_engine_fixtures() -> Result<(), String> {
+        use sha2::Digest;
+        let out = std::path::PathBuf::from(
+            std::env::var("BETTERPOD_PUZZLE_FIXTURES_OUT").map_err(|e| e.to_string())?,
+        );
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        let mut manifest = Vec::new();
+        for index in 0..PUZZLES.len() {
+            let mut core = reference_fixture(index);
+            let initial = core.save();
+            std::fs::write(out.join(format!("{}.sav", PUZZLES[index].id)), &initial)
+                .map_err(|e| e.to_string())?;
+            let mut digit = 1;
+            for action in [
+                Action::Right,
+                Action::Down,
+                Action::Select,
+                Action::Options,
+                Action::Previous,
+                Action::Next,
+            ] {
+                if let Some(key) = input_key(PUZZLES[index].numeric, &mut digit, action) {
+                    core.key(key);
+                }
+            }
+            let after = core.save();
+            std::fs::write(out.join(format!("{}-after.sav", PUZZLES[index].id)), &after)
+                .map_err(|e| e.to_string())?;
+            manifest.push(serde_json::json!({"id":PUZZLES[index].id,"width":core.width,"height":core.height,"numeric":PUZZLES[index].numeric,"initial_sha256":format!("{:x}",sha2::Sha256::digest(initial)),"after_sha256":format!("{:x}",sha2::Sha256::digest(after)),"draw_commands":core.frontend.commands.len(),"digit":digit,"actions":["Right","Down","A","Y","L","R"]}));
+        }
+        std::fs::write(
+            out.join("manifest.json"),
+            serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())
+    }
     #[test]
     fn every_upstream_puzzle_generates_draws_and_round_trips() {
         for index in 0..PUZZLES.len() {
             let mut core = Core::new(index, None).unwrap();
             assert!(core.width > 0 && core.width <= 624);
-            assert!(core.height > 0 && core.height <= 376);
+            // Go pzAreaH = 440 - 44; midend gets pzAreaH - 12 = 384.
+            assert!(core.height > 0 && core.height <= 384);
             assert!(
                 !core.frontend.commands.is_empty(),
                 "{}",
@@ -1344,4 +1458,185 @@ mod tests {
             d_blitter_free(h, b);
         }
     }
+}
+
+fn short_text(r: &mut Renderer, text: &str, width: f32) -> String {
+    if r.text_width_weighted(text, 20.0, 600) <= width {
+        return text.into();
+    }
+    let mut result = String::new();
+    for c in text.chars() {
+        let next = format!("{result}{c}…");
+        if r.text_width_weighted(&next, 20.0, 600) > width {
+            break;
+        }
+        result.push(c);
+    }
+    result.push('…');
+    result
+}
+
+fn input_key(numeric: bool, digit: &mut i32, action: Action) -> Option<i32> {
+    Some(match action {
+        Action::Up => UP,
+        Action::Down => DOWN,
+        Action::Left => LEFT,
+        Action::Right => RIGHT,
+        Action::Select => {
+            if numeric {
+                if *digit == 0 {
+                    SELECT2
+                } else {
+                    '0' as i32 + *digit
+                }
+            } else {
+                SELECT
+            }
+        }
+        Action::Options => {
+            if numeric {
+                SELECT
+            } else {
+                SELECT2
+            }
+        }
+        Action::Previous => 'u' as i32,
+        Action::Next if numeric => {
+            *digit = (*digit + 1) % 10;
+            return None;
+        }
+        Action::Next => 'r' as i32,
+        _ => return None,
+    })
+}
+
+fn circle_points(cx: f32, cy: f32, r: f32) -> Vec<[f32; 2]> {
+    let count = ((r * 1.5) as usize).clamp(16, 64);
+    (0..count)
+        .map(|i| {
+            let a = i as f32 / count as f32 * std::f32::consts::TAU;
+            [cx + r * a.cos(), cy + r * a.sin()]
+        })
+        .collect()
+}
+fn line_rings(x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> ([[f32; 2]; 4], [[f32; 2]; 4]) {
+    let length = (x1 - x0).hypot(y1 - y0);
+    let (ux, uy) = if length < 0.01 {
+        (1.0, 0.0)
+    } else {
+        ((x1 - x0) / length, (y1 - y0) / length)
+    };
+    let nx = -uy;
+    let ny = ux;
+    let half = width * 0.5;
+    let ring = |inset: f32| {
+        let side = (half - inset).max(0.0);
+        let cap = half - inset;
+        [
+            [x0 - ux * cap + nx * side, y0 - uy * cap + ny * side],
+            [x1 + ux * cap + nx * side, y1 + uy * cap + ny * side],
+            [x1 + ux * cap - nx * side, y1 + uy * cap - ny * side],
+            [x0 - ux * cap - nx * side, y0 - uy * cap - ny * side],
+        ]
+    };
+    (ring(0.5), ring(-0.5))
+}
+#[allow(clippy::too_many_arguments)]
+fn puzzle_circle(
+    r: &mut Renderer,
+    cx: f32,
+    cy: f32,
+    radius: f32,
+    points: &[[f32; 2]],
+    dx: f32,
+    dy: f32,
+    color: Color,
+) {
+    if radius <= 0.0 {
+        return;
+    }
+    let inset = (radius - 0.5).max(0.0) / radius;
+    let outset = (radius + 0.5) / radius;
+    let mut clear = color;
+    clear[3] = 0.0;
+    let ring =
+        |p: [f32; 2], scale: f32| [cx + (p[0] + dx - cx) * scale, cy + (p[1] + dy - cy) * scale];
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        let ia = ring(a, inset);
+        let ib = ring(b, inset);
+        let oa = ring(a, outset);
+        let ob = ring(b, outset);
+        r.triangle([[cx, cy], ia, ib], color);
+        r.colored_triangle([ia, ib, ob], [color, color, clear]);
+        r.colored_triangle([ia, ob, oa], [color, clear, clear]);
+    }
+}
+
+fn puzzle_line(r: &mut Renderer, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Color) {
+    let (inner, outer) = line_rings(x0, y0, x1, y1, width);
+    r.triangle([inner[0], inner[1], inner[2]], color);
+    r.triangle([inner[0], inner[2], inner[3]], color);
+    let mut clear = color;
+    clear[3] = 0.0;
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        r.colored_triangle([inner[i], inner[j], outer[j]], [color, color, clear]);
+        r.colored_triangle([inner[i], outer[j], outer[i]], [color, clear, clear]);
+    }
+}
+
+fn triangulate(points: &[[f32; 2]]) -> Vec<[[f32; 2]; 3]> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+    let area: f32 = (0..points.len())
+        .map(|i| {
+            let a = points[i];
+            let b = points[(i + 1) % points.len()];
+            a[0] * b[1] - a[1] * b[0]
+        })
+        .sum();
+    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
+    let mut indices: Vec<usize> = (0..points.len()).collect();
+    let mut out = Vec::with_capacity(points.len() - 2);
+    let mut attempts = 0;
+    while indices.len() > 3 && attempts < points.len() * points.len() {
+        let mut found = false;
+        for i in 0..indices.len() {
+            let a = points[indices[(i + indices.len() - 1) % indices.len()]];
+            let b = points[indices[i]];
+            let c = points[indices[(i + 1) % indices.len()]];
+            if cross(a, b, c) * sign <= 0.0001 {
+                continue;
+            }
+            if indices.iter().any(|j| {
+                let p = points[*j];
+                p != a
+                    && p != b
+                    && p != c
+                    && cross(a, b, p) * sign >= 0.0
+                    && cross(b, c, p) * sign >= 0.0
+                    && cross(c, a, p) * sign >= 0.0
+            }) {
+                continue;
+            }
+            out.push([a, b, c]);
+            indices.remove(i);
+            found = true;
+            break;
+        }
+        if !found {
+            break;
+        }
+        attempts += 1;
+    }
+    if indices.len() == 3 {
+        out.push([points[indices[0]], points[indices[1]], points[indices[2]]]);
+    }
+    out
+}
+fn cross(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f32 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }

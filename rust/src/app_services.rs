@@ -1,7 +1,19 @@
 //! UI for background library services. No task or menu callback performs I/O.
 #[path = "app_cover.rs"]
 mod app_cover;
-use super::{draw_keyboard_title, keyboard_char, Keyboard, FG, MUTED, WHITE};
+#[path = "app_listen.rs"]
+mod listen_ui;
+#[path = "app_metadata.rs"]
+mod metadata_edit;
+#[path = "app_share_visual.rs"]
+mod share_visual;
+#[path = "app_services_videos.rs"]
+mod videos_ui;
+#[path = "app_services_visual.rs"]
+mod visual;
+#[path = "app_weather_visual.rs"]
+mod weather_visual;
+use super::{Keyboard, KeyboardEffect, VisualAssets, FG, MUTED, WHITE};
 use crate::input::Action;
 use crate::render::Renderer;
 use app_cover::{Editor as CoverEditor, Effect as CoverEffect};
@@ -15,9 +27,11 @@ use betterpod_rust::playlists::{self, Playlist, PlaylistClient};
 use betterpod_rust::podcasts::{Episode, Podcast};
 use betterpod_rust::share::{self, ShareClient, ShareInfo};
 use betterpod_rust::weather::{Place, Weather, WeatherCommand, WeatherEvent, WeatherSnapshot};
-use std::collections::HashMap;
+use share_visual::{ShareAction, ShareVisual};
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
+use videos_ui::{VideoAction, VideoJob};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ExtraPage {
@@ -31,6 +45,7 @@ pub(super) enum ExtraPage {
     Bluetooth,
     AlbumInfo,
     Videos,
+    SavedVideos,
     VideoHistory,
     Weather,
     Receive,
@@ -38,6 +53,16 @@ pub(super) enum ExtraPage {
 }
 #[derive(Clone)]
 pub(super) enum Effect {
+    VideoOpening {
+        item: OnlineItem,
+        queue: Vec<OnlineItem>,
+        index: usize,
+        start: f64,
+    },
+    VideoResolveError {
+        origin: String,
+        error: String,
+    },
     Exit,
     Notice(String),
     Play {
@@ -53,7 +78,35 @@ pub(super) enum Effect {
         index: usize,
     },
     Rescan,
+    DeleteAlbum(Vec<PathBuf>),
+    MergeAlbum(Vec<PathBuf>),
+    ChooseAlbumCover {
+        paths: Vec<PathBuf>,
+        album: String,
+        artist: String,
+    },
+    MergeApplied,
+    MergeFailed(String),
+    Queue {
+        paths: Vec<PathBuf>,
+        next: bool,
+    },
+    SharePaths(Vec<PathBuf>),
     SharingName(String),
+    YouTubeEnabled(bool),
+    PreviewOpening {
+        item: OnlineItem,
+        queue: Vec<OnlineItem>,
+        index: usize,
+    },
+    Preview {
+        source: StreamSource,
+        origin: String,
+        queue: Vec<OnlineItem>,
+        index: usize,
+    },
+    TogglePreview,
+    StopPreview,
     MediaArtwork {
         origin: String,
         path: PathBuf,
@@ -61,14 +114,35 @@ pub(super) enum Effect {
 }
 #[derive(Clone)]
 enum Choice {
+    Video(VideoAction),
     Page(ExtraPage),
     NewPlaylist,
+    MediaQueue(Vec<PathBuf>, bool),
+    MediaAddPlaylist(Vec<PathBuf>),
+    MediaShare(Vec<PathBuf>),
+    CombinedSearch,
+    CombinedClear,
+    CombinedAutomatic,
     Playlist(Playlist),
     PlaylistSong(Arc<Playlist>, usize),
     AppendPlaylist(Playlist),
     DeletePlaylist(Playlist),
     RemovePlaylist(Arc<Playlist>, usize),
     Search(Provider),
+    ClearSearch(Provider),
+    ArchiveTrack(
+        OnlineItem,
+        String,
+        serde_json::Value,
+        Vec<OnlineItem>,
+        usize,
+    ),
+    Preview(OnlineItem, Vec<OnlineItem>, usize),
+    ConfirmDeletePlaylist(Playlist),
+    ConfirmBtForget(String),
+    ConfirmAction(Box<Choice>, String),
+    YouTubeOff,
+    ToggleYouTube,
     NextSearch(Provider, String, u32, bool),
     Online(OnlineItem, bool),
     ResumeVideo(OnlineItem, f64),
@@ -82,6 +156,17 @@ enum Choice {
     DownloadEpisodes(Podcast, Vec<Episode>),
     TagField(Field),
     SaveTags,
+    SaveTagBatch,
+    UndoTags,
+    FindInfo,
+    EditSongs,
+    EditSong(usize),
+    ChooseEditedCover,
+    MergeEdited,
+    SeparateEdited,
+    DeleteEditedAlbum,
+    ResetEditedCover,
+    SeparateBatch(Vec<PathBuf>),
     MetadataSearch(Provider),
     ApplyMetadata(OnlineItem),
     BtPower(bool),
@@ -92,7 +177,11 @@ enum Choice {
     BtForget(String),
     Cancel,
     Tools,
+    RemoveTools,
     WeatherSearch,
+    WeatherSettings,
+    WeatherClear,
+    WeatherRetry,
     WeatherPlace(usize),
     WeatherAdd(Place),
     WeatherRefresh(usize),
@@ -107,8 +196,9 @@ enum Choice {
     RunTask(Task),
     Dismiss,
     EditSharingName,
+    FinishShareName,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Field {
     Title,
     Artist,
@@ -119,7 +209,11 @@ enum Field {
     Track,
     Disc,
 }
+#[derive(Clone)]
 struct Item {
+    options: Vec<Item>,
+    cover: Option<PathBuf>,
+    visual: super::RowVisual,
     title: String,
     detail: String,
     choice: Choice,
@@ -127,18 +221,43 @@ struct Item {
 impl Item {
     fn new(title: impl Into<String>, choice: Choice) -> Self {
         Self {
+            options: Vec::new(),
+            cover: None,
+            visual: super::RowVisual::default(),
             title: title.into(),
             detail: String::new(),
             choice,
         }
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PageRole {
+    AlbumInfo,
+    SongInfo(usize),
+    SongsInfo,
+    Combined,
+    Normal,
+    Search(Provider, bool),
+    ArchiveItem,
+    PodcastFeed,
+    PodcastHome,
+    WeatherHome,
+    WeatherSettings,
+    VideoHome,
+    SavedVideos,
+    RecentVideos,
+    Sheet,
+}
 struct Page {
+    mini: bool,
+    role: PageRole,
     title: String,
     rows: Vec<Item>,
     selected: usize,
     scroll: f32,
     target: f32,
+    visual_rows: Option<Arc<Vec<super::Row>>>,
+    visual_status: String,
 }
 impl Page {
     fn new(title: impl Into<String>, rows: Vec<Item>) -> Self {
@@ -148,11 +267,22 @@ impl Page {
             selected: 0,
             scroll: 0.0,
             target: 0.0,
+            mini: false,
+            role: PageRole::Normal,
+            visual_rows: None,
+            visual_status: String::new(),
         }
     }
 }
 #[derive(Clone)]
 enum Purpose {
+    Video(VideoJob),
+    CoverContext {
+        generation: u64,
+    },
+    Combined {
+        generation: u64,
+    },
     Search {
         provider: Provider,
         query: String,
@@ -162,18 +292,39 @@ enum Purpose {
     },
     Details {
         metadata: bool,
+        generation: u64,
     },
-    Feed,
+    Feed {
+        generation: u64,
+    },
     Download,
+    ArchiveStatus {
+        generation: u64,
+        item: String,
+    },
     Downloads,
     Tags,
+    Merge,
+    Separate,
+    CoverReset,
     Tools,
     Subscriptions,
     Remember,
     History,
     Cover,
+    ReadTags {
+        generation: u64,
+    },
+    WriteTags {
+        generation: u64,
+    },
+    InfoPreview {
+        source: String,
+        generation: u64,
+    },
     Preview(String),
     Stream {
+        inline: bool,
         video: bool,
         origin: String,
         start: f64,
@@ -185,6 +336,7 @@ enum Purpose {
 #[derive(Clone, Copy)]
 enum Typing {
     NewPlaylist,
+    Combined,
     Search(Provider, bool),
     Tag(Field),
     Weather,
@@ -192,13 +344,87 @@ enum Typing {
     SharingName,
 }
 
+enum PendingShare {
+    Receive,
+    Send {
+        paths: Vec<PathBuf>,
+        info: ShareInfo,
+        cover: Option<PathBuf>,
+    },
+}
+enum RetiredCustom {
+    Share {
+        title: String,
+        view: ShareVisual,
+    },
+    Weather {
+        title: String,
+        place: Place,
+        day: usize,
+        fahrenheit: bool,
+        loading: bool,
+        error: String,
+        view: weather_visual::ForecastVisual,
+    },
+}
+struct CombinedState {
+    cover_album: String,
+    cover_artist: String,
+    cover_paths: Arc<Vec<PathBuf>>,
+    cover_context: Option<Arc<betterpod_rust::curation::CoverQuery>>,
+    query: String,
+    automatic_query: String,
+    cover: bool,
+    manual: bool,
+    generation: u64,
+    hits: Vec<OnlineItem>,
+    pending: usize,
+    errors: Vec<String>,
+}
+struct SearchState {
+    provider: Provider,
+    metadata: bool,
+    query: String,
+    items: Vec<OnlineItem>,
+    total: usize,
+    page: u32,
+    error: String,
+    busy: bool,
+}
+
 pub(super) struct Extras {
+    videos: videos_ui::Videos,
+    cover_jobs: HashMap<u64, JobHandle>,
+    cover_events: VecDeque<Event>,
+    pending_share: Option<PendingShare>,
+    share_name_draft: String,
+    retired_custom: Option<RetiredCustom>,
+    library_snapshot: Arc<betterpod_rust::library::Library>,
+    album_edit: Option<metadata_edit::AlbumEdit>,
+    combined: Option<CombinedState>,
+    share_view: Option<ShareVisual>,
+    tools_state: betterpod_rust::downloads::ToolStatus,
+    preview_origin: Option<String>,
+    preview_depth: usize,
+    preview_state: Option<betterpod_rust::video::VideoSnapshot>,
+    listen: betterpod_rust::listen::ListenClient,
+    listen_snapshot: betterpod_rust::listen::Snapshot,
+    preview_queue: Vec<OnlineItem>,
+    preview_decoder_floor: u64,
+    preview_ready: bool,
+    searches: Vec<SearchState>,
+    subscriptions: Vec<Podcast>,
+    active_feed: Option<(Podcast, Vec<Episode>)>,
     playlists: PlaylistClient,
     lists: Arc<Vec<Playlist>>,
     services: Services,
     jobs: HashMap<u64, (JobHandle, Purpose)>,
     pages: Vec<Page>,
+    pending_navigation: Option<(super::Page, bool, f64)>,
     keyboard: Option<(Keyboard, Typing)>,
+    closing_keyboard: Option<Keyboard>,
+    visual_time: f64,
+    viewport_height: f32,
     bluetooth: Bluetooth,
     bt_state: BtState,
     bt_selected: Option<String>,
@@ -213,9 +439,22 @@ pub(super) struct Extras {
     generation: u64,
     weather: Weather,
     weather_state: WeatherSnapshot,
+    weather_query: String,
+    weather_results: Option<Vec<Place>>,
+    weather_error: String,
+    weather_loading: bool,
+    pending_weather: Option<Place>,
+    forecast_loading: bool,
+    forecast_error: String,
+    bt_error: String,
+    bt_last_header: std::time::Instant,
+    bt_last_devices: std::time::Instant,
+    bt_scanning_until: Option<f64>,
+    bt_scan_second: i64,
     forecast: Option<usize>,
     forecast_depth: usize,
     forecast_day: usize,
+    weather_visual: weather_visual::ForecastVisual,
     share: ShareClient,
     cover_search: bool,
     cover_override: bool,
@@ -225,34 +464,76 @@ pub(super) struct Extras {
     active_media_art: Option<(String, String)>,
     cover_editor: Option<CoverEditor>,
     detail_item: Option<OnlineItem>,
+    archive_status: HashMap<String, std::collections::BTreeMap<String, (usize, u64)>>,
     media_queue: Vec<OnlineItem>,
     media_generation: u64,
 }
 impl Extras {
     pub(super) fn new(music: PathBuf, data: PathBuf) -> Result<Self, String> {
+        betterpod_rust::weather::warm_icons(&[168, 76, 256]);
         let mut extras = Self {
+            videos: Default::default(),
+            cover_jobs: HashMap::new(),
+            cover_events: VecDeque::new(),
+            pending_share: None,
+            share_name_draft: String::new(),
+            retired_custom: None,
+            library_snapshot: Arc::new(betterpod_rust::library::Library::default()),
+            album_edit: None,
+            combined: None,
+            share_view: None,
+            tools_state: Default::default(),
+            preview_origin: None,
+            preview_depth: 0,
+            preview_state: None,
+            listen: betterpod_rust::listen::ListenClient::new(data.clone())?,
+            listen_snapshot: Default::default(),
+            preview_queue: Vec::new(),
+            preview_decoder_floor: 0,
+            preview_ready: false,
+            searches: Vec::new(),
+            subscriptions: Vec::new(),
+            active_feed: None,
             playlists: PlaylistClient::new(music.clone(), data.clone()),
             lists: Arc::new(Vec::new()),
             services: Services::new_with_music(data.clone(), music)?,
             weather: Weather::new(data.clone())?,
             weather_state: WeatherSnapshot::default(),
+            weather_query: String::new(),
+            weather_results: None,
+            weather_error: String::new(),
+            weather_loading: false,
+            pending_weather: None,
+            forecast_loading: false,
+            forecast_error: String::new(),
+            bt_error: String::new(),
+            bt_last_header: std::time::Instant::now(),
+            bt_last_devices: std::time::Instant::now(),
+            bt_scanning_until: None,
+            bt_scan_second: -1,
             forecast: None,
             forecast_depth: 0,
             forecast_day: 0,
+            weather_visual: weather_visual::ForecastVisual::new(),
             share: ShareClient::new(data),
             cover_search: false,
             cover_override: false,
             youtube: false,
-            sharing_name: "betterPod Rust".into(),
+            sharing_name: String::new(),
             previews: HashMap::new(),
             active_media_art: None,
             cover_editor: None,
             detail_item: None,
+            archive_status: HashMap::new(),
             media_queue: Vec::new(),
             media_generation: 0,
             jobs: HashMap::new(),
             pages: Vec::new(),
+            pending_navigation: None,
             keyboard: None,
+            closing_keyboard: None,
+            visual_time: 0.0,
+            viewport_height: 440.0,
             bluetooth: Bluetooth::new(),
             bt_state: BtState::default(),
             bt_selected: None,
@@ -267,7 +548,24 @@ impl Extras {
             generation: 0,
         };
         extras.playlist_command(playlists::Command::List);
+        extras.task(Task::ToolsStatus, Purpose::Tools);
+        extras.bluetooth.request(BtRequest::Header);
+        extras.refresh_video_catalog();
         Ok(extras)
+    }
+    pub(in crate::app) fn start_missing_covers(
+        &mut self,
+        albums: Vec<betterpod_rust::curation::CoverQuery>,
+    ) -> Result<JobHandle, String> {
+        if self.cover_jobs.values().any(|job| !job.is_cancelled()) {
+            return Err("A cover search is already running".into());
+        }
+        let handle = self.services.submit(Task::FindMissingCovers { albums })?;
+        self.cover_jobs.insert(handle.id, handle.clone());
+        Ok(handle)
+    }
+    pub(in crate::app) fn poll_cover_search(&mut self) -> Option<Event> {
+        self.cover_events.pop_front()
     }
     pub(super) fn title(&self) -> &str {
         self.pages.last().map_or("Music", |p| p.title.as_str())
@@ -280,6 +578,28 @@ impl Extras {
         video: bool,
         start: f64,
     ) {
+        self.resolve_media_mode(item, queue, index, video, start, false);
+    }
+    fn resolve_media_mode(
+        &mut self,
+        item: OnlineItem,
+        queue: Vec<OnlineItem>,
+        index: usize,
+        video: bool,
+        start: f64,
+        inline: bool,
+    ) {
+        if inline {
+            self.start_inline_listen(item, queue, index);
+            return;
+        }
+        if video {
+            self.videos.current = Some(item.clone());
+            if self.known_local_video(&item).is_some() {
+                self.play_video_item(item, queue, index, start);
+                return;
+            }
+        }
         self.media_generation = self.media_generation.wrapping_add(1);
         let generation = self.media_generation;
         for (handle, purpose) in self.jobs.values() {
@@ -288,12 +608,21 @@ impl Extras {
             }
         }
         let origin = item.url.clone();
+        if !inline && video {
+            self.effects.push(Effect::VideoOpening {
+                item: item.clone(),
+                queue: queue.clone(),
+                index,
+                start,
+            });
+        }
         self.active_media_art = Some((origin.clone(), item.cover.clone()));
         self.request_preview(item.cover.clone());
         if origin.contains("youtube.com/") || origin.contains("youtu.be/") {
             self.task(
                 Task::ResolveStream { item, video },
                 Purpose::Stream {
+                    inline,
                     video,
                     origin,
                     start,
@@ -303,20 +632,31 @@ impl Extras {
                 },
             );
         } else {
-            self.effects.push(Effect::Stream {
-                source: StreamSource {
-                    video_url: item.url.clone(),
-                    audio_url: None,
-                    headers: Vec::new(),
-                    duration: item.seconds,
-                    title: item.title,
-                    available_at: None,
-                },
-                video,
-                origin,
-                start,
-                queue,
-                index,
+            let source = StreamSource {
+                video_url: item.url.clone(),
+                audio_url: None,
+                headers: Vec::new(),
+                duration: item.seconds,
+                title: item.title,
+                available_at: None,
+                chapters: 0,
+            };
+            self.effects.push(if inline {
+                Effect::Preview {
+                    source,
+                    origin,
+                    queue,
+                    index,
+                }
+            } else {
+                Effect::Stream {
+                    source,
+                    video,
+                    origin,
+                    start,
+                    queue,
+                    index,
+                }
             });
             self.emit_media_art();
         }
@@ -355,9 +695,14 @@ impl Extras {
         self.youtube = enabled;
     }
     pub(super) fn curation_task(&mut self, task: Task) {
-        self.pages.clear();
-        self.push("Album Changes", vec![Item::new("Cancel", Choice::Cancel)]);
-        self.task(task, Purpose::Tags);
+        if matches!(&task, Task::MergeAlbums { .. }) {
+            self.push("Album Changes", vec![Item::new("Cancel", Choice::Cancel)]);
+            self.task(task, Purpose::Merge);
+        } else {
+            self.pages.clear();
+            self.push("Album Changes", vec![Item::new("Cancel", Choice::Cancel)]);
+            self.task(task, Purpose::Tags);
+        }
     }
     pub(super) fn open_cover_search(
         &mut self,
@@ -383,9 +728,63 @@ impl Extras {
     pub(super) fn open_playlist(&mut self, playlist: Playlist) {
         self.pages.clear();
         self.push(&playlist.name, self.playlist_rows(&playlist));
+        let page = self.pages.last_mut().unwrap();
+        page.mini = true;
+        page.selected = 1;
     }
     pub(super) fn cancel_typing(&mut self) {
-        self.keyboard = None;
+        if let Some((mut keyboard, typing)) = self.keyboard.take() {
+            let query = keyboard.query.clone();
+            if matches!(typing, Typing::SharingName) && self.pending_share.is_some() {
+                self.share_name_draft = query.clone();
+            }
+            keyboard.hide(self.visual_time);
+            self.closing_keyboard = Some(keyboard);
+            match typing {
+                Typing::Search(provider, metadata) => {
+                    if let Some(state) = self
+                        .searches
+                        .iter_mut()
+                        .find(|state| state.provider == provider && state.metadata == metadata)
+                    {
+                        state.query = query;
+                    }
+                    let rows = self.search_rows(provider, metadata);
+                    if let Some(page) = self.pages.last_mut() {
+                        page.rows = rows;
+                    }
+                }
+                Typing::Combined => {
+                    if let Some(state) = self.combined.as_mut() {
+                        state.query = query;
+                    }
+                    self.refresh_combined();
+                }
+                Typing::Weather => {
+                    self.weather_query = query;
+                    let rows = self.weather_rows();
+                    if let Some(page) = self.pages.last_mut() {
+                        page.rows = rows;
+                    }
+                }
+                Typing::Tag(_) => self.refresh_editor_page(),
+                _ => {}
+            }
+        }
+        self.refresh_share_name_gate();
+        self.invalidate_visual_rows();
+    }
+    pub(in crate::app) fn set_viewport_height(&mut self, height: f32) {
+        let height = height.clamp(1.0, 440.0);
+        if (height - self.viewport_height).abs() < 0.01 {
+            return;
+        }
+        self.viewport_height = height;
+        if let Some(page) = self.pages.last_mut() {
+            if page.role != PageRole::Sheet {
+                Self::reveal(page, height);
+            }
+        }
     }
     pub(super) fn is_typing(&self) -> bool {
         self.keyboard.is_some()
@@ -403,6 +802,7 @@ impl Extras {
         self.start_download(request);
     }
     fn start_download(&mut self, request: DownloadRequest) {
+        self.stop_preview();
         if let DownloadRequest::YouTube {
             url, video: false, ..
         } = &request
@@ -428,17 +828,14 @@ impl Extras {
         }
         self.task(Task::Download(request), Purpose::Download);
     }
-    pub(super) fn remember_video(&mut self, url: String, title: String, position: f64) {
-        match self.services.submit(Task::RememberVideo {
-            url,
-            title,
-            position,
-        }) {
-            Ok(handle) => {
-                self.jobs.insert(handle.id, (handle, Purpose::Remember));
-            }
-            Err(error) => eprintln!("Remember video: {error}"),
-        }
+    pub(super) fn remember_video(
+        &mut self,
+        url: String,
+        title: String,
+        position: f64,
+        duration: f64,
+    ) {
+        self.remember_video_info(url, title, position, duration);
     }
     pub(super) fn send_share(
         &mut self,
@@ -446,11 +843,17 @@ impl Extras {
         info: ShareInfo,
         cover: Option<PathBuf>,
     ) {
+        if self.sharing_name.trim().is_empty() {
+            self.open_share_name_gate(PendingShare::Send { paths, info, cover });
+            return;
+        }
         self.open(ExtraPage::Receive);
-        self.replace(
-            "Send Music",
-            vec![Item::new("Cancel Transfer", Choice::ShareCancel)],
-        );
+        self.share_view = Some(ShareVisual::send(
+            info.clone(),
+            cover.clone(),
+            self.visual_time,
+        ));
+        self.replace("Share", Vec::new());
         if let Err(error) = self
             .share
             .submit(share::Command::Send { paths, info, cover })
@@ -459,19 +862,38 @@ impl Extras {
         }
     }
     fn push(&mut self, title: impl Into<String>, rows: Vec<Item>) {
+        if let Some(index) = self.pages.len().checked_sub(1) {
+            if self.pages[index].role != PageRole::Sheet {
+                if let Some(previous) = self.project_page(index, true) {
+                    self.pending_navigation = Some((previous, true, self.visual_time));
+                }
+            }
+        }
         self.pages.push(Page::new(title, rows));
     }
     fn replace(&mut self, title: impl Into<String>, rows: Vec<Item>) {
-        if !self.pages.is_empty() {
-            self.pages.pop();
+        let title = title.into();
+        let mut page = Page::new(title, rows);
+        if let Some(old) = self.pages.pop() {
+            if old.title == page.title {
+                page.selected = old.selected.min(page.rows.len().saturating_sub(1));
+                page.scroll = old.scroll;
+                page.target = old.target;
+                page.mini = old.mini;
+            }
         }
-        self.push(title, rows);
+        self.pages.push(page);
     }
     fn task(&mut self, task: Task, purpose: Purpose) {
+        let cover_job = matches!(purpose, Purpose::CoverContext { .. })
+            || matches!(purpose, Purpose::Combined { .. })
+                && self.combined.as_ref().is_some_and(|state| state.cover);
         match self.services.submit(task) {
             Ok(handle) => {
                 self.jobs.insert(handle.id, (handle, purpose));
-                self.status = "Working...".into();
+                if !cover_job {
+                    self.status = "Working...".into();
+                }
             }
             Err(error) => self.effects.push(Effect::Notice(error)),
         }
@@ -482,6 +904,14 @@ impl Extras {
         }
     }
     pub(super) fn open(&mut self, page: ExtraPage) {
+        self.pending_share = None;
+        self.videos.watch_depth = None;
+        self.retain_current_visual();
+        self.generation = self.generation.wrapping_add(1);
+        self.pending_navigation = None;
+        if self.share_view.take().is_some() {
+            self.share.cancel();
+        }
         self.pages.clear();
         self.cover_editor = None;
         self.forecast = None;
@@ -500,7 +930,17 @@ impl Extras {
         self.original = edit;
         self.pending_metadata = None;
         self.edit = TagEdit::default();
+        self.album_edit = Some(metadata_edit::AlbumEdit::loading());
         self.open(ExtraPage::AlbumInfo);
+        self.pages.last_mut().unwrap().role = PageRole::AlbumInfo;
+        self.task(
+            Task::ReadAlbumTags {
+                paths: self.edit_paths.clone(),
+            },
+            Purpose::ReadTags {
+                generation: self.generation,
+            },
+        );
     }
     fn push_page(&mut self, page: ExtraPage) {
         match page {
@@ -511,9 +951,10 @@ impl Extras {
                     } else {
                         "Add to Playlist"
                     },
-                    vec![Item::new("Create Playlist", Choice::NewPlaylist)],
+                    vec![Item::new("New Playlist…", Choice::NewPlaylist)],
                 );
                 self.playlist_command(playlists::Command::List);
+                self.pages.last_mut().unwrap().mini = page == ExtraPage::Playlists;
             }
             ExtraPage::SearchSources => {
                 self.push(
@@ -533,89 +974,70 @@ impl Extras {
                 );
             }
             ExtraPage::Online(provider) => {
-                self.push(
-                    provider.name(),
-                    vec![Item::new("Search", Choice::Search(provider))],
-                );
+                self.push(provider.name(), vec![visual::search_row(provider, "", "")]);
+                self.pages.last_mut().unwrap().role = PageRole::Search(provider, false);
                 self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: String::new(),
-                    },
+                    Keyboard::new(String::new()),
                     Typing::Search(provider, false),
                 ));
             }
             ExtraPage::Podcasts => {
-                self.push(
-                    "Podcasts",
-                    vec![Item::new(
-                        "Find Podcasts",
-                        Choice::Page(ExtraPage::Online(Provider::Podcast)),
-                    )],
-                );
+                let rows = self.podcast_home_rows();
+                self.push("Podcasts", rows);
+                self.pages.last_mut().unwrap().role = PageRole::PodcastHome;
                 self.task(Task::Subscriptions, Purpose::Subscriptions);
             }
             ExtraPage::Downloads => {
                 self.push("Downloaded", Vec::new());
                 self.task(Task::Downloaded, Purpose::Downloads);
             }
-            ExtraPage::Tools => self.push(
-                "YouTube Tools",
-                vec![
-                    Item::new("Install / Update Tools", Choice::Tools),
-                    Item::new(
-                        "YouTube Search",
-                        Choice::Page(ExtraPage::Online(Provider::YouTube)),
-                    ),
-                ],
-            ),
+            ExtraPage::Tools => {
+                let rows = self.tools_rows();
+                self.push("YouTube", rows);
+                self.task(Task::ToolsStatus, Purpose::Tools);
+            }
             ExtraPage::Bluetooth => {
                 self.push("Bluetooth", Vec::new());
                 self.bluetooth.request(BtRequest::Refresh);
                 self.status = "Reading Bluetooth devices...".into();
             }
             ExtraPage::AlbumInfo => self.push("Album Info", self.tag_rows()),
-            ExtraPage::Videos => self.push(
-                "Videos",
-                vec![
-                    Item::new(
-                        "Search YouTube",
-                        Choice::Page(ExtraPage::Online(Provider::YouTube)),
-                    ),
-                    Item::new(
-                        "YouTube Playlists",
-                        Choice::Page(ExtraPage::Online(Provider::YouTubePlaylists)),
-                    ),
-                    Item::new("Recently Watched", Choice::Page(ExtraPage::VideoHistory)),
-                    Item::new("Downloaded", Choice::Page(ExtraPage::Downloads)),
-                ],
-            ),
-            ExtraPage::Weather => self.push("Weather", self.weather_rows()),
-            ExtraPage::Sharing => self.push(
-                "Sharing",
-                vec![
-                    Item::new(
-                        format!("Name: {}", self.sharing_name),
-                        Choice::EditSharingName,
-                    ),
-                    Item::new("Receive Music", Choice::Page(ExtraPage::Receive)),
-                ],
-            ),
-            ExtraPage::Receive => self.push(
-                "Receive Music",
-                vec![
-                    Item::new("Enter 8-Digit Code", Choice::ShareReceive),
-                    Item::new("Cancel Transfer", Choice::ShareCancel),
-                ],
-            ),
-            ExtraPage::VideoHistory => {
-                self.push("Recently Watched", Vec::new());
-                self.task(Task::VideoHistory, Purpose::History);
+            ExtraPage::Videos | ExtraPage::SavedVideos | ExtraPage::VideoHistory => {
+                self.open_videos(page)
+            }
+            ExtraPage::Weather => {
+                self.push("Weather", self.weather_rows());
+                self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
+                if self.weather_state.places.is_empty() {
+                    self.keyboard =
+                        Some((Keyboard::new(self.weather_query.clone()), Typing::Weather));
+                } else {
+                    self.pages.last_mut().unwrap().selected = 1;
+                }
+            }
+            ExtraPage::Sharing => {
+                let mut name = Item::new("Device Name", Choice::EditSharingName);
+                name.visual.value = self.sharing_name.clone();
+                name.detail = "Your friends see it when you share with them".into();
+                name.visual.no_arrow = true;
+                let mut how = visual::fact("How it works", "");
+                how.detail = "[Y] on an album or a song → Share; Music → Receive".into();
+                self.push("Sharing", vec![name, how]);
+            }
+            ExtraPage::Receive => {
+                if self.sharing_name.trim().is_empty() {
+                    self.open_share_name_gate(PendingShare::Receive);
+                } else {
+                    self.push("Receive", Vec::new());
+                    self.share_view = Some(ShareVisual::receive(self.visual_time));
+                }
             }
         }
     }
     fn tag_rows(&self) -> Vec<Item> {
+        if self.album_edit.is_some() {
+            return self.album_info_rows();
+        }
         let value = |pending: &Option<String>, original: &Option<String>| {
             pending
                 .as_ref()
@@ -710,7 +1132,7 @@ impl Extras {
             .pages
             .first()
             .is_some_and(|p| p.title == "Add to Playlist");
-        let mut rows = vec![Item::new("Create Playlist", Choice::NewPlaylist)];
+        let mut rows = vec![Item::new("New Playlist…", Choice::NewPlaylist)];
         for playlist in self.lists.iter() {
             if adding && playlist.read_only {
                 continue;
@@ -745,19 +1167,63 @@ impl Extras {
     }
     fn playlist_rows(&self, playlist: &Playlist) -> Vec<Item> {
         let playlist = Arc::new(playlist.clone());
-        playlist
-            .tracks
-            .iter()
-            .enumerate()
-            .map(|(index, path)| {
-                Item::new(
-                    path.file_stem().unwrap_or_default().to_string_lossy(),
-                    Choice::PlaylistSong(Arc::clone(&playlist), index),
-                )
-            })
-            .collect()
+        let mut rows = vec![visual::header(&playlist.name)];
+        for (index, path) in playlist.tracks.iter().enumerate() {
+            let track = self
+                .library_snapshot
+                .tracks
+                .iter()
+                .find(|track| track.path == *path);
+            let mut row = Item::new(
+                track.map(|track| track.title.clone()).unwrap_or_else(|| {
+                    path.file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+                Choice::PlaylistSong(Arc::clone(&playlist), index),
+            );
+            if let Some(track) = track {
+                row.detail = track.artist.clone();
+                row.cover = track.cover.clone();
+                row.visual.value = super::time_label(track.duration);
+            }
+            rows.push(row);
+        }
+        if rows.len() == 1 {
+            rows.push(visual::fact("No songs", ""));
+        }
+        rows
     }
     pub(super) fn handle(&mut self, action: Action) {
+        if action == Action::Back {
+            self.retain_current_visual();
+        }
+        if let Some(view) = self.share_view.as_mut() {
+            match view.handle(action, self.visual_time) {
+                Some(ShareAction::Receive(code)) => {
+                    if let Err(error) = self.share.submit(share::Command::Receive {
+                        code,
+                        name: self.sharing_name.clone(),
+                    }) {
+                        if let Some(view) = self.share_view.as_mut() {
+                            view.event(&share::Event::Error(error), self.visual_time);
+                        }
+                    }
+                }
+                Some(ShareAction::Exit) => {
+                    self.share.cancel();
+                    self.share_view = None;
+                    self.effects.push(Effect::Exit);
+                }
+                Some(ShareAction::Play(paths)) => {
+                    self.effects.push(Effect::Play { paths, index: 0 })
+                }
+                None => {}
+            }
+            return;
+        }
+
         if let Some(editor) = self.cover_editor.as_mut() {
             if let Some(effect) = editor.handle(action) {
                 self.cover_editor = None;
@@ -791,11 +1257,11 @@ impl Extras {
             .filter(|_| self.pages.len() == self.forecast_depth)
         {
             match action {
-                Action::Left => {
+                Action::Left | Action::Up => {
                     self.forecast_day = self.forecast_day.saturating_sub(1);
                     return;
                 }
-                Action::Right => {
+                Action::Right | Action::Down => {
                     let days = self
                         .weather_state
                         .places
@@ -810,24 +1276,34 @@ impl Extras {
                     self.status = "Refreshing forecast...".into();
                     return;
                 }
-                Action::Options => {
-                    self.push(
-                        "Weather Options",
-                        vec![
-                            Item::new("Refresh", Choice::WeatherRefresh(index)),
-                            Item::new("Change Units", Choice::WeatherUnits),
-                            Item::new("Remove City", Choice::WeatherRemove(index)),
-                        ],
-                    );
-                    return;
-                }
+                Action::Options => return,
                 Action::Back => self.forecast = None,
                 _ => {}
             }
         }
         if action == Action::Back {
+            if self.preview_origin.is_some() && self.pages.len() <= self.preview_depth {
+                self.stop_preview();
+            }
             if self.pages.len() > 1 {
+                let index = self.pages.len() - 1;
+                if self.pages[index].role != PageRole::Sheet {
+                    if let Some(previous) = self.project_page(index, true) {
+                        self.pending_navigation = Some((previous, false, self.visual_time));
+                    }
+                }
                 self.pages.pop();
+                self.generation = self.generation.wrapping_add(1);
+                if let Some(edit) = self.album_edit.as_mut() {
+                    edit.scope = self.pages.last().and_then(|page| {
+                        if let PageRole::SongInfo(index) = page.role {
+                            Some(index)
+                        } else {
+                            None
+                        }
+                    });
+                }
+                self.refresh_editor_page();
             } else {
                 self.effects.push(Effect::Exit);
             }
@@ -836,27 +1312,144 @@ impl Extras {
         if action == Action::Options {
             if let Some(page) = self.pages.last() {
                 if let Some(row) = page.rows.get(page.selected) {
+                    if !row.options.is_empty() {
+                        let title = row.title.clone();
+                        let options = row.options.clone();
+                        self.push_sheet(title, options);
+                        return;
+                    }
                     match &row.choice {
+                        Choice::CombinedSearch => {
+                            self.push_sheet(
+                                "",
+                                vec![
+                                    Item::new("Clear search", Choice::CombinedClear),
+                                    Item::new(
+                                        "Search automatically again",
+                                        Choice::CombinedAutomatic,
+                                    ),
+                                ],
+                            );
+                            return;
+                        }
+                        Choice::WeatherSearch => {
+                            self.push_sheet(
+                                "",
+                                vec![
+                                    Item::new("Clear search", Choice::WeatherClear),
+                                    Item::new("Weather Settings", Choice::WeatherSettings),
+                                ],
+                            );
+                            return;
+                        }
+                        Choice::WeatherPlace(index) => {
+                            if let Some(place) = self.weather_state.places.get(*index) {
+                                self.push_sheet(
+                                    "",
+                                    vec![Item::new(
+                                        format!("Remove {}", place.name),
+                                        Choice::WeatherRemove(*index),
+                                    )],
+                                );
+                                return;
+                            }
+                        }
+                        Choice::BtDevice(address) => {
+                            if let Some(device) =
+                                self.bt_state.devices.iter().find(|d| d.address == *address)
+                            {
+                                let rows = vec![
+                                    Item::new(
+                                        if device.connected {
+                                            "Disconnect"
+                                        } else {
+                                            "Connect"
+                                        },
+                                        if device.connected {
+                                            Choice::BtDisconnect(address.clone())
+                                        } else {
+                                            Choice::BtConnect(address.clone())
+                                        },
+                                    ),
+                                    Item::new(
+                                        "Forget This Device",
+                                        Choice::BtForget(address.clone()),
+                                    ),
+                                ];
+                                self.push_sheet("", rows);
+                                return;
+                            }
+                        }
+                        Choice::Search(provider) => {
+                            self.push_sheet(
+                                "",
+                                vec![Item::new("Clear search", Choice::ClearSearch(*provider))],
+                            );
+                            return;
+                        }
+                        Choice::Preview(entry, _, _) => {
+                            if let Some(item) = self
+                                .detail_item
+                                .as_ref()
+                                .filter(|item| item.provider == Provider::Archive)
+                            {
+                                if let Some(groups) = item.raw["groups"].as_object() {
+                                    let mut selected = None;
+                                    for (format, files) in groups {
+                                        for file in
+                                            files.as_array().map(Vec::as_slice).unwrap_or(&[])
+                                        {
+                                            if file["download_url"].as_str() == Some(&entry.url) {
+                                                selected = Some((format.clone(), file.clone()));
+                                            }
+                                        }
+                                    }
+                                    if let Some((format, file)) = selected {
+                                        self.push_sheet(
+                                            "",
+                                            vec![Item::new(
+                                                "Download This Track",
+                                                Choice::ArchiveTrack(
+                                                    item.clone(),
+                                                    format,
+                                                    file,
+                                                    Vec::new(),
+                                                    0,
+                                                ),
+                                            )],
+                                        );
+                                        return;
+                                    }
+                                }
+                            }
+                        }
                         Choice::Feed(podcast) => {
-                            self.push(
-                                "Podcast Options",
-                                vec![Item::new(
+                            let mut rows = Vec::new();
+                            if !podcast.files.is_empty() {
+                                rows.push(Item::new(
                                     "Delete Downloaded Episodes",
                                     Choice::ConfirmTask(
                                         Task::DeletePodcast {
                                             podcast: podcast.clone(),
                                         },
-                                        "Delete only this app’s downloaded episodes?".into(),
+                                        "Delete Downloaded Episodes?".into(),
                                     ),
-                                )],
-                            );
+                                ));
+                            }
+                            rows.push(Item::new(
+                                "Remove from Your Podcasts",
+                                Choice::Unsubscribe(podcast.clone()),
+                            ));
+                            self.push_sheet("", rows);
                             return;
                         }
-                        Choice::Episode(episode, podcast) => {
-                            self.push(
+                        Choice::Episode(episode, podcast)
+                            if podcast.files.contains_key(episode.key()) =>
+                        {
+                            self.push_sheet(
                                 "Episode Options",
                                 vec![Item::new(
-                                    "Delete Downloaded Episode",
+                                    "Delete Download",
                                     Choice::ConfirmTask(
                                         Task::DeleteEpisodes {
                                             podcast: podcast.clone(),
@@ -868,24 +1461,27 @@ impl Extras {
                             );
                             return;
                         }
-                        Choice::Playlist(playlist) if !playlist.read_only => {
-                            self.push(
-                                "Playlist Options",
-                                vec![Item::new(
+                        Choice::Playlist(playlist) => {
+                            let mut rows = visual::media_options(playlist.tracks.clone());
+                            if !playlist.read_only {
+                                rows.push(Item::new(
                                     "Delete Playlist",
                                     Choice::DeletePlaylist(playlist.clone()),
-                                )],
-                            );
+                                ));
+                            }
+                            self.push_sheet("", rows);
                             return;
                         }
-                        Choice::PlaylistSong(playlist, index) if !playlist.read_only => {
-                            self.push(
-                                "Song Options",
-                                vec![Item::new(
+                        Choice::PlaylistSong(playlist, index) => {
+                            let paths = playlist.tracks.get(*index).cloned().into_iter().collect();
+                            let mut rows = visual::media_options(paths);
+                            if !playlist.read_only {
+                                rows.push(Item::new(
                                     "Remove from Playlist",
                                     Choice::RemovePlaylist(Arc::clone(playlist), *index),
-                                )],
-                            );
+                                ));
+                            }
+                            self.push_sheet("", rows);
                             return;
                         }
                         _ => {}
@@ -904,13 +1500,28 @@ impl Extras {
             Action::Up => {
                 if let Some(page) = self.pages.last_mut() {
                     page.selected = page.selected.saturating_sub(1);
-                    Self::reveal(page);
+                    while page.selected > 0 && page.rows[page.selected].visual.header {
+                        page.selected -= 1;
+                    }
+                    if page
+                        .rows
+                        .get(page.selected)
+                        .is_some_and(|r| r.visual.header)
+                    {
+                        page.selected = (page.selected + 1).min(page.rows.len().saturating_sub(1));
+                    }
+                    Self::reveal(page, self.viewport_height);
                 }
             }
             Action::Down => {
                 if let Some(page) = self.pages.last_mut() {
                     page.selected = (page.selected + 1).min(page.rows.len().saturating_sub(1));
-                    Self::reveal(page);
+                    while page.selected + 1 < page.rows.len()
+                        && page.rows[page.selected].visual.header
+                    {
+                        page.selected += 1;
+                    }
+                    Self::reveal(page, self.viewport_height);
                 }
             }
             Action::Select => {
@@ -920,26 +1531,90 @@ impl Extras {
                     .and_then(|p| p.rows.get(p.selected))
                     .map(|r| r.choice.clone());
                 if let Some(choice) = choice {
+                    let sheet = self
+                        .pages
+                        .last()
+                        .is_some_and(|page| page.role == PageRole::Sheet);
+                    if sheet {
+                        self.pages.pop();
+                        if matches!(choice, Choice::Dismiss) {
+                            return;
+                        }
+                    }
                     self.choose(choice);
                 }
             }
             _ => {}
         }
     }
-    fn reveal(page: &mut Page) {
-        let top = page.selected as f32 * 52.0;
+    fn reveal(page: &mut Page, viewport: f32) {
+        let top = page
+            .rows
+            .iter()
+            .take(page.selected)
+            .map(visual::item_height)
+            .sum::<f32>();
+        let height = page
+            .rows
+            .get(page.selected)
+            .map_or(50.0, visual::item_height);
         if top < page.target {
             page.target = top;
         }
-        if top + 52.0 > page.target + 352.0 {
-            page.target = top + 52.0 - 352.0;
+        if top + height > page.target + viewport {
+            page.target = top + height - viewport;
         }
-        page.target = page.target.max(0.0);
+        let total = page.rows.iter().map(visual::item_height).sum::<f32>();
+        page.target = page.target.clamp(0.0, (total - viewport).max(0.0));
+        page.scroll = page.target;
     }
     fn search(&mut self, provider: Provider, query: String, page: u32, metadata: bool) {
+        let query = query.trim().to_string();
+        if query.is_empty() {
+            return;
+        }
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
-        self.push(provider.name(), Vec::new());
+        for (handle, purpose) in self.jobs.values() {
+            if matches!(purpose, Purpose::Search { .. }) {
+                handle.cancel();
+            }
+        }
+        if let Some(state) = self
+            .searches
+            .iter_mut()
+            .find(|s| s.provider == provider && s.metadata == metadata)
+        {
+            if page == 1 || state.query != query {
+                state.items.clear();
+                state.total = 0;
+            }
+            state.query = query.clone();
+            state.page = page;
+            state.error.clear();
+            state.busy = true;
+        } else {
+            self.searches.push(SearchState {
+                provider,
+                metadata,
+                query: query.clone(),
+                items: Vec::new(),
+                total: 0,
+                page,
+                error: String::new(),
+                busy: true,
+            });
+        }
+        let rows = self.search_rows(provider, metadata);
+        if self.pages.last().is_some_and(|p| {
+            p.role == PageRole::Search(provider, metadata)
+                || provider == Provider::Podcast && p.role == PageRole::PodcastHome
+        }) {
+            self.replace(provider.name(), rows);
+        } else {
+            self.push(provider.name(), rows);
+        }
+        self.pages.last_mut().unwrap().role = PageRole::Search(provider, metadata);
         self.task(
             Task::Search {
                 provider,
@@ -957,40 +1632,84 @@ impl Extras {
     }
     fn choose(&mut self, choice: Choice) {
         match choice {
+            Choice::Video(action) => self.video_action(action),
             Choice::Dismiss => {
                 self.pages.pop();
             }
-            Choice::ConfirmTask(task, title) => self.push(
+            Choice::ConfirmTask(task, title) => self.push_confirmation(
                 title,
-                vec![
-                    Item::new("Cancel", Choice::Dismiss),
-                    Item::new("Delete Downloaded Files", Choice::RunTask(task)),
-                ],
+                "The other songs stay in your library",
+                "Delete Downloaded Files",
+                Choice::RunTask(task),
             ),
-            Choice::RunTask(task) => self.task(task, Purpose::Tags),
+            Choice::RunTask(task) => {
+                while self
+                    .pages
+                    .last()
+                    .is_some_and(|page| page.role == PageRole::Sheet)
+                {
+                    self.pages.pop();
+                }
+                self.task(task, Purpose::Tags);
+            }
+            Choice::FinishShareName => {
+                let query = self.share_name_draft.clone();
+                self.submit_typing(Typing::SharingName, query);
+            }
             Choice::EditSharingName => {
                 self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: self.sharing_name.clone(),
-                    },
+                    Keyboard::new(if self.pending_share.is_some() {
+                        self.share_name_draft.clone()
+                    } else {
+                        self.sharing_name.clone()
+                    }),
                     Typing::SharingName,
                 ));
             }
             Choice::Page(page) => self.push_page(page),
+            Choice::CombinedSearch => {
+                if let Some(state) = &self.combined {
+                    self.keyboard = Some((Keyboard::new(state.query.clone()), Typing::Combined));
+                }
+            }
+            Choice::CombinedClear => {
+                if let Some(state) = self.combined.as_mut() {
+                    state.query.clear();
+                }
+                self.keyboard = Some((Keyboard::new(String::new()), Typing::Combined));
+                self.refresh_combined();
+            }
+            Choice::CombinedAutomatic => self.run_combined(None),
+            Choice::MediaQueue(paths, next) => {
+                while self
+                    .pages
+                    .last()
+                    .is_some_and(|page| page.role == PageRole::Sheet)
+                {
+                    self.pages.pop();
+                }
+                self.effects.push(Effect::Queue { paths, next });
+            }
+            Choice::MediaAddPlaylist(paths) => {
+                while self
+                    .pages
+                    .last()
+                    .is_some_and(|page| page.role == PageRole::Sheet)
+                {
+                    self.pages.pop();
+                }
+                self.append_paths = paths;
+                self.push_page(ExtraPage::AddToPlaylist);
+            }
+            Choice::MediaShare(paths) => self.effects.push(Effect::SharePaths(paths)),
             Choice::NewPlaylist => {
-                self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: String::new(),
-                    },
-                    Typing::NewPlaylist,
-                ))
+                self.keyboard = Some((Keyboard::new(String::new()), Typing::NewPlaylist))
             }
             Choice::Playlist(playlist) => {
                 self.push(&playlist.name, self.playlist_rows(&playlist));
+                let page = self.pages.last_mut().unwrap();
+                page.mini = true;
+                page.selected = 1;
             }
             Choice::PlaylistSong(playlist, index) => self.effects.push(Effect::Play {
                 paths: playlist.tracks.clone(),
@@ -1002,9 +1721,12 @@ impl Extras {
                     tracks: self.append_paths.clone(),
                 });
             }
-            Choice::DeletePlaylist(playlist) => self.playlist_command(playlists::Command::Delete {
-                path: playlist.path,
-            }),
+            Choice::DeletePlaylist(playlist) => self.push_confirmation(
+                format!("Delete “{}”?", playlist.name),
+                "The songs stay in your library",
+                "Delete Playlist",
+                Choice::ConfirmDeletePlaylist(playlist),
+            ),
             Choice::RemovePlaylist(playlist, index) => {
                 self.playlist_command(playlists::Command::Remove {
                     path: playlist.path.clone(),
@@ -1012,14 +1734,78 @@ impl Extras {
                 })
             }
             Choice::Search(provider) => {
+                let metadata = self
+                    .pages
+                    .last()
+                    .is_some_and(|p| p.role == PageRole::Search(provider, true));
+                let query = self
+                    .searches
+                    .iter()
+                    .find(|s| s.provider == provider && s.metadata == metadata)
+                    .map_or(String::new(), |s| s.query.clone());
+                self.keyboard = Some((Keyboard::new(query), Typing::Search(provider, metadata)));
+            }
+            Choice::ClearSearch(provider) => {
+                self.searches.retain(|s| s.provider != provider);
+                let rows = if provider == Provider::Podcast {
+                    self.podcast_home_rows()
+                } else {
+                    vec![visual::search_row(provider, "", "")]
+                };
+                self.replace(provider.name(), rows);
+                self.pages.last_mut().unwrap().role = PageRole::Search(provider, false);
                 self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: String::new(),
-                    },
+                    Keyboard::new(String::new()),
                     Typing::Search(provider, false),
-                ))
+                ));
+            }
+            Choice::Preview(item, queue, index) => {
+                if self.preview_origin.as_ref() == Some(&item.url) {
+                    match listen_ui::row_tap(self.preview_ready, self.preview_state.as_ref()) {
+                        listen_ui::RowTap::Retry => self.start_inline_listen(item, queue, index),
+                        listen_ui::RowTap::Toggle => self.effects.push(Effect::TogglePreview),
+                        listen_ui::RowTap::Ignore => {}
+                    }
+                } else {
+                    self.start_inline_listen(item, queue, index);
+                }
+            }
+            Choice::ArchiveTrack(item, format, file, _, _) => {
+                self.stop_preview();
+                let mut one = item;
+                one.raw["groups"][&format] = serde_json::json!([file]);
+                self.start_download(DownloadRequest::Archive { item: one, format });
+            }
+            Choice::ConfirmDeletePlaylist(playlist) => {
+                while self
+                    .pages
+                    .last()
+                    .is_some_and(|page| page.role == PageRole::Sheet)
+                {
+                    self.pages.pop();
+                }
+                self.playlist_command(playlists::Command::Delete {
+                    path: playlist.path,
+                });
+            }
+            Choice::ConfirmBtForget(address) => {
+                self.bluetooth.request(BtRequest::Forget(address));
+                self.status = "Removing pairing…".into();
+                self.pages.pop();
+            }
+            Choice::ConfirmAction(choice, _) => self.choose(*choice),
+            Choice::ToggleYouTube => {
+                self.youtube = !self.youtube;
+                self.effects.push(Effect::YouTubeEnabled(self.youtube));
+                if self.youtube && !self.tools_state.ready {
+                    self.task(Task::Tools, Purpose::Tools);
+                }
+                let rows = self.tools_rows();
+                self.replace("YouTube", rows);
+            }
+            Choice::YouTubeOff => {
+                self.youtube = false;
+                self.effects.push(Effect::YouTubeEnabled(false));
             }
             Choice::NextSearch(provider, query, page, metadata) => {
                 self.search(provider, query, page, metadata)
@@ -1027,41 +1813,42 @@ impl Extras {
             Choice::Online(item, metadata) => {
                 if item.provider == Provider::Podcast {
                     match serde_json::from_value::<Podcast>(item.raw.clone()) {
-                        Ok(podcast) => self.task(Task::Feed(podcast), Purpose::Feed),
+                        Ok(podcast) => self.choose(Choice::Feed(podcast)),
                         Err(error) => self.effects.push(Effect::Notice(error.to_string())),
                     }
                 } else {
-                    self.task(Task::Details(item), Purpose::Details { metadata });
+                    if item.provider == Provider::Archive && !metadata {
+                        self.push(
+                            "Internet Archive",
+                            vec![
+                                visual::header(&item.title),
+                                visual::fact("License", visual::license_label(&item.license)),
+                                visual::fact("Loading…", ""),
+                            ],
+                        );
+                        self.pages.last_mut().unwrap().role = PageRole::ArchiveItem;
+                        self.pages.last_mut().unwrap().selected = 1;
+                    }
+                    self.task(
+                        Task::Details(item),
+                        Purpose::Details {
+                            metadata,
+                            generation: self.generation,
+                        },
+                    );
                 }
             }
             Choice::ResumeVideo(item, start) => {
-                self.resolve_media(item.clone(), vec![item], 0, true, start);
+                self.play_video_item(item.clone(), vec![item], 0, start)
             }
             Choice::Recent(item) => {
-                let start = item.raw["position"].as_f64().unwrap_or(0.0);
-                self.push(
-                    &item.title,
-                    vec![
-                        Item::new(
-                            format!("Continue from {}", super::time_label(start)),
-                            Choice::ResumeVideo(item.clone(), start),
-                        ),
-                        Item::new(
-                            "Watch from the Start",
-                            Choice::ResumeVideo(item.clone(), 0.0),
-                        ),
-                        Item::new(
-                            "Download Video",
-                            Choice::Download(DownloadRequest::YouTube {
-                                url: item.url.clone(),
-                                video: true,
-                                split_chapters: false,
-                            }),
-                        ),
-                    ],
-                );
+                let start = item.raw["position"].as_f64().unwrap_or(0.);
+                self.play_video_item(item.clone(), vec![item], 0, start);
             }
-            Choice::Download(request) => self.start_download(request),
+            Choice::Download(request) => {
+                self.stop_preview();
+                self.start_download(request);
+            }
             Choice::Media(url, title, video) => {
                 let mut item = OnlineItem::new(
                     if url.contains("youtube.com/") || url.contains("youtu.be/") {
@@ -1074,7 +1861,7 @@ impl Extras {
                 item.title = title;
                 item.kind = if video { "video" } else { "audio" }.into();
                 let index = self.media_queue.iter().position(|i| i.url == url);
-                let (item, queue, index) = if let Some(index) = index {
+                let (mut item, mut queue, index) = if let Some(index) = index {
                     (
                         self.media_queue[index].clone(),
                         self.media_queue.clone(),
@@ -1087,11 +1874,47 @@ impl Extras {
                 } else {
                     (item.clone(), vec![item], 0)
                 };
+                let auto_next = video
+                    && self.detail_item.as_ref().is_some_and(|detail| {
+                        detail.url == url
+                            && (detail.kind == "playlist"
+                                || detail.raw["entries"]
+                                    .as_array()
+                                    .is_some_and(|entries| !entries.is_empty()))
+                    });
+                item.raw["_video_auto_next"] = serde_json::json!(auto_next);
+                for entry in &mut queue {
+                    entry.raw["_video_auto_next"] = serde_json::json!(auto_next);
+                }
                 self.resolve_media(item, queue, index, video, 0.0);
             }
-            Choice::Feed(podcast) => self.task(Task::Feed(podcast), Purpose::Feed),
+            Choice::Feed(podcast) => {
+                self.push(
+                    "Podcasts",
+                    vec![
+                        visual::header(&podcast.name),
+                        visual::fact("Loading episodes…", ""),
+                    ],
+                );
+                self.pages.last_mut().unwrap().role = PageRole::PodcastFeed;
+                self.pages.last_mut().unwrap().selected = 1;
+                self.task(
+                    Task::Feed(podcast),
+                    Purpose::Feed {
+                        generation: self.generation,
+                    },
+                );
+            }
             Choice::Subscribe(podcast) => self.task(Task::RememberPodcast(podcast), Purpose::Tags),
             Choice::Unsubscribe(podcast) => {
+                while self.pages.last().is_some_and(|p| p.role == PageRole::Sheet) {
+                    self.pages.pop();
+                }
+                if !podcast.files.is_empty() {
+                    self.effects.push(Effect::Notice(
+                        "Its episodes stay in Music › Podcasts".into(),
+                    ));
+                }
                 self.task(Task::ForgetPodcast(podcast.feed), Purpose::Tags)
             }
             Choice::Episode(episode, podcast) => {
@@ -1102,20 +1925,12 @@ impl Extras {
                     });
                     return;
                 }
-                let request = DownloadRequest::Episodes {
-                    podcast,
-                    episodes: vec![episode.clone()],
-                };
-                self.push(
-                    episode.title.clone(),
-                    vec![
-                        Item::new(
-                            "Listen",
-                            Choice::Media(episode.url.clone(), episode.title.clone(), false),
-                        ),
-                        Item::new("Download Episode", Choice::Download(request)),
-                    ],
-                );
+                if visual::episode_playable(&episode) {
+                    self.start_download(DownloadRequest::Episodes {
+                        podcast,
+                        episodes: vec![episode],
+                    });
+                }
             }
             Choice::DownloadEpisodes(podcast, episodes) => self.task(
                 Task::Download(DownloadRequest::Episodes { podcast, episodes }),
@@ -1123,16 +1938,110 @@ impl Extras {
             ),
             Choice::TagField(field) => {
                 let query = self.field_value(field);
-                self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query,
-                    },
-                    Typing::Tag(field),
-                ));
+                self.keyboard = Some((Keyboard::new(query), Typing::Tag(field)));
             }
+            Choice::SaveTagBatch => {
+                if let Some(edit) = self.album_edit.as_mut() {
+                    let changes = edit
+                        .changes()
+                        .into_iter()
+                        .filter(|(path, _)| visual::can_write_tags_ui(path))
+                        .collect();
+                    edit.saving = true;
+                    self.task(
+                        Task::WriteAlbumTags { edits: changes },
+                        Purpose::WriteTags {
+                            generation: self.generation,
+                        },
+                    );
+                    self.refresh_editor_page();
+                }
+            }
+            Choice::UndoTags => {
+                if let Some(edit) = self.album_edit.as_mut() {
+                    edit.undo();
+                }
+                self.pending_metadata = None;
+                self.refresh_editor_page();
+            }
+            Choice::FindInfo => self.open_info_search(),
+            Choice::EditSongs => {
+                if let Some(edit) = self.album_edit.as_mut() {
+                    edit.scope = None;
+                }
+                self.push("Songs", self.editor_songs_rows());
+                self.pages.last_mut().unwrap().role = PageRole::SongsInfo;
+            }
+            Choice::EditSong(index) => {
+                if let Some(edit) = self.album_edit.as_mut() {
+                    edit.scope = Some(index);
+                }
+                self.push("Song Info", self.editor_song_rows(index));
+                self.pages.last_mut().unwrap().role = PageRole::SongInfo(index);
+            }
+            Choice::ChooseEditedCover => self.effects.push(Effect::ChooseAlbumCover {
+                paths: self.edit_paths.clone(),
+                album: self.edit_title.clone(),
+                artist: self.field_value(Field::AlbumArtist),
+            }),
+            Choice::MergeEdited => {
+                let paths = self.editor_scope_paths();
+                self.effects.push(Effect::MergeAlbum(paths));
+            }
+            Choice::SeparateEdited => {
+                let paths = self
+                    .editor_scope_paths()
+                    .into_iter()
+                    .filter(|path| {
+                        self.library_snapshot
+                            .tracks
+                            .iter()
+                            .any(|track| track.path == *path && track.added_album)
+                    })
+                    .collect::<Vec<_>>();
+                if !paths.is_empty() {
+                    self.push_confirmation(
+                        format!("Send {} songs back to their own albums?", paths.len()),
+                        "",
+                        "Separate",
+                        Choice::SeparateBatch(paths),
+                    );
+                }
+            }
+            Choice::SeparateBatch(paths) => self.task(Task::Unmerge { paths }, Purpose::Separate),
+            Choice::ResetEditedCover => self.task(
+                Task::ResetChosenCover {
+                    paths: self.edit_paths.clone(),
+                },
+                Purpose::CoverReset,
+            ),
+            Choice::DeleteEditedAlbum => self
+                .effects
+                .push(Effect::DeleteAlbum(self.edit_paths.clone())),
             Choice::SaveTags => {
+                if let Some(edit) = &self.album_edit {
+                    let changes = edit.changes();
+                    if changes.is_empty() {
+                        return;
+                    }
+                    let writable = changes
+                        .iter()
+                        .filter(|(path, _)| visual::can_write_tags_ui(path))
+                        .count();
+                    if writable == 0 {
+                        if let Some(edit) = self.album_edit.as_mut() {
+                            edit.status = "Only MP3, FLAC, Ogg and M4A tags can be saved".into();
+                        }
+                        self.refresh_editor_page();
+                        return;
+                    }
+                    let title = format!(
+                        "Write into {writable} files? {}. It can't be undone.",
+                        edit.summary()
+                    );
+                    self.push_confirmation(title, "", "Save Changes", Choice::SaveTagBatch);
+                    return;
+                }
                 if let Some(mut item) = self.pending_metadata.clone() {
                     if let Some(value) = &self.edit.album {
                         item.title = value.clone();
@@ -1171,27 +2080,34 @@ impl Extras {
             Choice::MetadataSearch(provider) => {
                 self.cover_search = false;
                 self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: self.edit_title.clone(),
-                    },
+                    Keyboard::new(self.edit_title.clone()),
                     Typing::Search(provider, true),
                 ))
             }
             Choice::ApplyMetadata(item) => {
-                self.pending_metadata = Some(item.clone());
-                if !item.title.is_empty() {
-                    self.edit.album = Some(item.title);
+                if self.album_edit.is_some() {
+                    let source = item.provider.name().to_string();
+                    self.task(
+                        Task::PreviewAlbumInfo {
+                            paths: self.edit_paths.clone(),
+                            item,
+                        },
+                        Purpose::InfoPreview {
+                            source,
+                            generation: self.generation,
+                        },
+                    );
+                } else {
+                    self.pending_metadata = Some(item.clone());
+                    if !item.title.is_empty() {
+                        self.edit.album = Some(item.title);
+                    }
+                    if !item.artist.is_empty() {
+                        self.edit.artist = Some(item.artist.clone());
+                        self.edit.album_artist = Some(item.artist);
+                    }
+                    self.replace("Album Info", self.tag_rows());
                 }
-                if !item.artist.is_empty() {
-                    self.edit.artist = Some(item.artist.clone());
-                    self.edit.album_artist = Some(item.artist);
-                }
-                if let Ok(year) = item.year.chars().take(4).collect::<String>().parse() {
-                    self.edit.year = Some(year);
-                }
-                self.push("Album Info", self.tag_rows());
             }
             Choice::BtPower(on) => {
                 self.bluetooth.request(BtRequest::Power(on));
@@ -1199,27 +2115,27 @@ impl Extras {
             }
             Choice::BtScan => {
                 self.bluetooth.request(BtRequest::Scan);
-                self.status = "Looking for Bluetooth devices...".into();
+                self.bt_scanning_until = Some(self.visual_time + 12.0);
+                self.bt_scan_second = -1;
+                self.replace("Bluetooth", self.bluetooth_rows());
             }
             Choice::BtDevice(address) => {
-                self.bt_selected = Some(address.clone());
-                let device = self.bt_state.devices.iter().find(|d| d.address == address);
-                let name = device.map_or(address.clone(), |d| d.name.clone());
-                let connected = device.is_some_and(|d| d.connected);
-                self.push(
-                    name,
-                    vec![
-                        Item::new(
-                            if connected { "Disconnect" } else { "Connect" },
-                            if connected {
-                                Choice::BtDisconnect(address.clone())
-                            } else {
-                                Choice::BtConnect(address.clone())
-                            },
-                        ),
-                        Item::new("Forget Device", Choice::BtForget(address)),
-                    ],
-                );
+                let connected = self
+                    .bt_state
+                    .devices
+                    .iter()
+                    .any(|d| d.address == address && d.connected);
+                self.bluetooth.request(if connected {
+                    BtRequest::Disconnect(address)
+                } else {
+                    BtRequest::Connect(address)
+                });
+                self.status = if connected {
+                    "Disconnecting…"
+                } else {
+                    "Connecting…"
+                }
+                .into();
             }
             Choice::BtConnect(address) => {
                 self.bluetooth.request(BtRequest::Connect(address));
@@ -1229,18 +2145,16 @@ impl Extras {
                 self.bluetooth.request(BtRequest::Disconnect(address));
                 self.status = "Disconnecting...".into();
             }
-            Choice::BtForget(address) => {
-                self.bluetooth.request(BtRequest::Forget(address));
-                self.status = "Removing pairing...".into();
-            }
+            Choice::BtForget(address) => self.push_confirmation(
+                "Forget This Device",
+                "You will need to pair it again",
+                "Forget This Device",
+                Choice::ConfirmBtForget(address),
+            ),
             Choice::CoverSearch(provider) => {
                 self.cover_search = true;
                 self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: self.edit_title.clone(),
-                    },
+                    Keyboard::new(self.edit_title.clone()),
                     Typing::Search(provider, true),
                 ));
             }
@@ -1270,52 +2184,70 @@ impl Extras {
                     );
                 }
             }
+            Choice::WeatherRetry => {
+                self.weather_loading = true;
+                self.weather_error.clear();
+                self.weather
+                    .command(WeatherCommand::Search(self.weather_query.clone()));
+                self.replace("Weather", self.weather_rows());
+                self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
+            }
+            Choice::WeatherSettings => {
+                self.push("Weather Settings", self.weather_settings_rows());
+                self.pages.last_mut().unwrap().role = PageRole::WeatherSettings;
+            }
+            Choice::WeatherClear => {
+                self.weather_query.clear();
+                self.weather_results = None;
+                self.replace("Weather", self.weather_rows());
+                self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
+                self.keyboard = Some((Keyboard::new(String::new()), Typing::Weather));
+            }
             Choice::WeatherSearch => {
-                self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 0,
-                        query: String::new(),
-                    },
-                    Typing::Weather,
-                ))
+                self.keyboard = Some((Keyboard::new(self.weather_query.clone()), Typing::Weather))
             }
             Choice::WeatherPlace(index) => {
                 if let Some(place) = self.weather_state.places.get(index) {
-                    let title = place.name.clone();
+                    let stale = place
+                        .forecast
+                        .as_ref()
+                        .is_none_or(|forecast| forecast.is_stale());
+                    self.forecast_loading = stale;
+                    self.forecast_error.clear();
+                    if stale {
+                        self.weather.command(WeatherCommand::Refresh(index));
+                    }
                     self.forecast = Some(index);
                     self.forecast_day = 0;
-                    self.push(title, Vec::new());
+                    self.push("Weather", Vec::new());
                     self.forecast_depth = self.pages.len();
                 }
             }
             Choice::WeatherAdd(place) => {
+                self.pending_weather = Some(place.clone());
+                self.weather_query.clear();
+                self.weather_results = None;
                 self.weather.command(WeatherCommand::Add(place));
                 self.status = "Adding city...".into();
             }
             Choice::WeatherRefresh(index) => {
+                self.forecast_loading = true;
+                self.forecast_error.clear();
                 self.weather.command(WeatherCommand::Refresh(index));
-                self.status = "Refreshing forecast...".into();
             }
             Choice::WeatherRemove(index) => {
                 self.weather.command(WeatherCommand::Remove(index));
                 self.forecast = None;
                 self.pages.clear();
                 self.push("Weather", self.weather_rows());
+                self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
             }
             Choice::WeatherUnits => {
                 self.weather
                     .command(WeatherCommand::Units(!self.weather_state.fahrenheit));
             }
             Choice::ShareReceive => {
-                self.keyboard = Some((
-                    Keyboard {
-                        layout: 0,
-                        selected: 26,
-                        query: String::new(),
-                    },
-                    Typing::Receive,
-                ))
+                self.keyboard = Some((Keyboard::new(String::new()), Typing::Receive))
             }
             Choice::ShareCancel => {
                 self.share.cancel();
@@ -1327,10 +2259,20 @@ impl Extras {
                 }
             }
             Choice::Tools => self.task(Task::Tools, Purpose::Tools),
+            Choice::RemoveTools => self.push_confirmation(
+                "Remove the YouTube Tools?",
+                "Music and videos already downloaded stay",
+                "Remove Tools",
+                Choice::RunTask(Task::RemoveTools),
+            ),
             Choice::Nothing => {}
         }
     }
     fn field_value(&self, field: Field) -> String {
+        if let Some(edit) = &self.album_edit {
+            let (value, same) = edit.common(field);
+            return if same { value } else { String::new() };
+        }
         match field {
             Field::Title => self
                 .edit
@@ -1388,6 +2330,12 @@ impl Extras {
         }
     }
     fn set_field(&mut self, field: Field, value: String) {
+        if let Some(edit) = self.album_edit.as_mut() {
+            if let Err(error) = edit.set(field, value) {
+                edit.status = error;
+            }
+            return;
+        }
         match field {
             Field::Title => self.edit.title = Some(value),
             Field::Artist => self.edit.artist = Some(value),
@@ -1403,106 +2351,103 @@ impl Extras {
         let Some((keyboard, _)) = self.keyboard.as_mut() else {
             return;
         };
-        let action = match action {
-            Action::Start => {
-                keyboard.selected = 39;
-                Action::Select
+        match keyboard.handle(action) {
+            KeyboardEffect::Submit => {
+                if self.pending_share.is_some()
+                    && matches!(self.keyboard.as_ref(),Some((keyboard,Typing::SharingName))if keyboard.query.trim().is_empty())
+                {
+                    return;
+                }
+                let (mut keyboard, typing) = self.keyboard.take().unwrap();
+                let query = keyboard.query.clone();
+                keyboard.hide(self.visual_time);
+                self.closing_keyboard = Some(keyboard);
+                self.submit_typing(typing, query);
             }
-            Action::PlayPause => {
-                keyboard.query.push(' ');
-                return;
-            }
-            Action::Options => {
-                keyboard.layout = (keyboard.layout + 1) % 3;
-                return;
-            }
-            Action::Back if !keyboard.query.is_empty() => {
-                keyboard.query.pop();
-                return;
-            }
-            a => a,
-        };
-        match action {
-            Action::Up => keyboard.selected = keyboard.selected.saturating_sub(10),
-            Action::Down => keyboard.selected = (keyboard.selected + 10).min(39),
-            Action::Left => keyboard.selected = keyboard.selected.saturating_sub(1),
-            Action::Right => keyboard.selected = (keyboard.selected + 1).min(39),
-            Action::Back => {
-                self.keyboard = None;
-            }
-            Action::Select => {
-                let selected = keyboard.selected;
-                if selected < 36 {
-                    if keyboard.query.chars().count() < 120 {
-                        keyboard
-                            .query
-                            .push(keyboard_char(keyboard.layout, selected));
+            KeyboardEffect::Close => self.cancel_typing(),
+            KeyboardEffect::Changed => {
+                if let Some((keyboard, Typing::SharingName)) = &self.keyboard {
+                    if self.pending_share.is_some() {
+                        self.share_name_draft = keyboard.query.clone();
+                        self.refresh_share_name_gate();
                     }
+                }
+                self.invalidate_visual_rows();
+            }
+            KeyboardEffect::None => {}
+        }
+    }
+    fn submit_typing(&mut self, typing: Typing, query: String) {
+        match typing {
+            Typing::Combined => self.run_combined(Some(query)),
+            Typing::NewPlaylist => {
+                self.playlist_command(playlists::Command::Create { name: query })
+            }
+            Typing::Search(provider, metadata) => self.search(provider, query, 1, metadata),
+            Typing::Weather => {
+                self.weather_query = query.clone();
+                self.weather_loading = true;
+                self.weather_error.clear();
+                self.weather_results = None;
+                self.weather.command(WeatherCommand::Search(query));
+                self.replace("Weather", self.weather_rows());
+                self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
+            }
+            Typing::Receive => {
+                if query.len() != 8 || !query.bytes().all(|c| c.is_ascii_digit()) {
+                    self.effects
+                        .push(Effect::Notice("Enter exactly 8 digits".into()));
+                } else if let Err(error) = self.share.submit(share::Command::Receive {
+                    code: query,
+                    name: self.sharing_name.clone(),
+                }) {
+                    self.effects.push(Effect::Notice(error));
                 } else {
-                    match selected {
-                        36 => keyboard.query.push(' '),
-                        37 => {
-                            keyboard.query.pop();
-                        }
-                        38 => keyboard.query.clear(),
-                        _ => {
-                            let (keyboard, typing) = self.keyboard.take().unwrap();
-                            match typing {
-                                Typing::NewPlaylist => {
-                                    self.playlist_command(playlists::Command::Create {
-                                        name: keyboard.query,
-                                    })
-                                }
-                                Typing::Search(provider, metadata) => {
-                                    self.search(provider, keyboard.query, 1, metadata)
-                                }
-                                Typing::Weather => {
-                                    self.weather.command(WeatherCommand::Search(keyboard.query));
-                                    self.status = "Finding cities...".into();
-                                }
-                                Typing::Receive => {
-                                    if keyboard.query.len() != 8
-                                        || !keyboard.query.bytes().all(|c| c.is_ascii_digit())
-                                    {
-                                        self.effects
-                                            .push(Effect::Notice("Enter exactly 8 digits".into()));
-                                    } else if let Err(error) =
-                                        self.share.submit(share::Command::Receive {
-                                            code: keyboard.query,
-                                            name: self.sharing_name.clone(),
-                                        })
-                                    {
-                                        self.effects.push(Effect::Notice(error));
-                                    } else {
-                                        self.status = "Waiting for the sender...".into();
-                                    }
-                                }
-                                Typing::SharingName => {
-                                    let name = keyboard.query.trim().to_string();
-                                    if !name.is_empty() {
-                                        self.sharing_name = name.clone();
-                                        self.effects.push(Effect::SharingName(name));
-                                        self.replace(
-                                            "Sharing",
-                                            vec![Item::new(
-                                                format!("Name: {}", self.sharing_name),
-                                                Choice::EditSharingName,
-                                            )],
-                                        );
-                                    }
-                                }
-                                Typing::Tag(field) => {
-                                    self.set_field(field, keyboard.query);
-                                    self.replace("Album Info", self.tag_rows());
-                                }
+                    self.status = "Waiting for the sender...".into();
+                }
+            }
+            Typing::SharingName => {
+                let name = query
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(32)
+                    .collect::<String>()
+                    .trim()
+                    .to_string();
+                if !name.is_empty() {
+                    self.sharing_name = name.clone();
+                    self.effects.push(Effect::SharingName(name));
+                    if let Some(pending) = self.pending_share.take() {
+                        match pending {
+                            PendingShare::Receive => {
+                                self.pages.clear();
+                                self.push("Receive", Vec::new());
+                                self.share_view = Some(ShareVisual::receive(self.visual_time));
+                            }
+                            PendingShare::Send {
+                                paths,
+                                mut info,
+                                cover,
+                            } => {
+                                info.from = self.sharing_name.clone();
+                                self.send_share(paths, info, cover);
                             }
                         }
+                    } else {
+                        self.replace(
+                            "Sharing",
+                            vec![Item::new("Device Name", Choice::EditSharingName)],
+                        );
                     }
                 }
             }
-            _ => {}
+            Typing::Tag(field) => {
+                self.set_field(field, query);
+                self.refresh_editor_page();
+            }
         }
     }
+
     fn details_rows(&self, item: &OnlineItem, metadata: bool) -> Vec<Item> {
         let mut rows = Vec::new();
         if metadata {
@@ -1519,27 +2464,7 @@ impl Extras {
             return rows;
         }
         match item.provider {
-            Provider::Archive => {
-                if let Some(groups) = item.raw["groups"].as_object() {
-                    for (format, files) in groups {
-                        rows.push(Item::new(
-                            format!("Download {format}"),
-                            Choice::Download(DownloadRequest::Archive {
-                                item: item.clone(),
-                                format: format.clone(),
-                            }),
-                        ));
-                        if let Some(file) = files.as_array().and_then(|a| a.first()) {
-                            if let Some(url) = file["download_url"].as_str() {
-                                rows.push(Item::new(
-                                    format!("Listen ({format})"),
-                                    Choice::Media(url.into(), item.title.clone(), false),
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
+            Provider::Archive => return self.archive_rows(item),
             Provider::YouTube | Provider::YouTubePlaylists => {
                 rows.push(Item::new(
                     "Listen",
@@ -1591,33 +2516,88 @@ impl Extras {
         rows
     }
     fn bluetooth_rows(&self) -> Vec<Item> {
-        let mut rows = vec![
-            Item::new(
-                format!(
-                    "Bluetooth: {}",
-                    if self.bt_state.powered { "On" } else { "Off" }
-                ),
-                Choice::BtPower(!self.bt_state.powered),
-            ),
-            Item::new("Find Devices", Choice::BtScan),
-        ];
-        for d in &self.bt_state.devices {
-            let mut row = Item::new(&d.name, Choice::BtDevice(d.address.clone()));
-            row.detail = if d.connected {
-                "Connected".into()
-            } else if d.paired {
-                "Paired".into()
+        if self.bt_error.contains("No such file") || self.bt_error.contains("not found") {
+            let mut row = visual::fact("Bluetooth isn't available", "");
+            row.detail = "bluetoothctl wasn't found on this system".into();
+            return vec![row];
+        }
+
+        let mut power = Item::new("Bluetooth", Choice::BtPower(!self.bt_state.powered));
+        power.visual.value = if self.bt_state.powered { "On" } else { "Off" }.into();
+        power.visual.no_arrow = true;
+        let mut rows = vec![power];
+        if !self.bt_state.powered {
+            return rows;
+        }
+        let paired = self
+            .bt_state
+            .devices
+            .iter()
+            .filter(|device| device.paired)
+            .collect::<Vec<_>>();
+        if paired.is_empty() {
+            let mut row = visual::fact("No devices paired yet", "");
+            row.detail = "Find New Devices below".into();
+            rows.push(row);
+        }
+        for device in paired {
+            let mut row = Item::new(&device.name, Choice::BtDevice(device.address.clone()));
+            row.detail = if device.connected {
+                "Connected"
             } else {
-                d.address.clone()
-            };
-            if let Some(battery) = d.battery {
-                row.detail.push_str(&format!(" - {battery}%"));
+                "Not Connected"
             }
+            .into();
+            if let Some(battery) = device.battery {
+                row.detail.push_str(&format!(" · Battery {battery}%"));
+            }
+            row.visual.icon = "bt_headphones".into();
+            rows.push(row);
+        }
+        let mut find = Item::new("Find New Devices", Choice::BtScan);
+        find.detail = "Put the headphones in pairing mode first".into();
+        if let Some(until) = self.bt_scanning_until {
+            let left = (until - self.visual_time).ceil().max(0.0);
+            find.title = "Searching…".into();
+            find.detail = format!("{left:.0} s · new devices show below");
+            find.visual.no_arrow = true;
+            find.visual.progress = (1.0 - left / 12.0).max(0.001) as f32;
+        }
+        rows.push(find);
+        for device in self.bt_state.devices.iter().filter(|device| !device.paired) {
+            let mut row = Item::new(&device.name, Choice::BtDevice(device.address.clone()));
+            row.detail = "New · press [A] to pair and connect".into();
+            row.visual.icon = "bt_headphones".into();
             rows.push(row);
         }
         rows
     }
-    pub(super) fn tick(&mut self, dt: f32) -> Vec<Effect> {
+    pub(super) fn tick(&mut self, _dt: f32) -> Vec<Effect> {
+        self.poll_inline_listen();
+        if self.bt_last_header.elapsed() >= std::time::Duration::from_secs(2) {
+            self.bt_last_header = std::time::Instant::now();
+            self.bluetooth.request(BtRequest::Header);
+        }
+        if self.bt_last_devices.elapsed() >= std::time::Duration::from_secs(10)
+            && self.pages.last().is_some_and(|p| p.title == "Bluetooth")
+            && self.bt_scanning_until.is_none()
+        {
+            self.bt_last_devices = std::time::Instant::now();
+            self.bluetooth.request(BtRequest::Refresh);
+        }
+
+        if self.bt_scanning_until.is_some()
+            && self
+                .pages
+                .last()
+                .is_some_and(|page| page.title == "Bluetooth")
+        {
+            let second = self.visual_time as i64;
+            if second != self.bt_scan_second {
+                self.bt_scan_second = second;
+                self.replace("Bluetooth", self.bluetooth_rows());
+            }
+        }
         for _ in 0..16 {
             let Some(event) = self.weather.poll() else {
                 break;
@@ -1626,33 +2606,60 @@ impl Extras {
                 WeatherEvent::State(state) => {
                     self.weather_state = state;
                     self.status.clear();
-                    if self.pages.first().is_some_and(|p| p.title == "Weather")
-                        && self.forecast.is_none()
+                    self.forecast_loading = false;
+                    if let Some(place) = self.pending_weather.take() {
+                        if let Some(index) = self.weather_state.places.iter().position(|p| {
+                            (p.lat - place.lat).abs() < 0.01 && (p.lon - place.lon).abs() < 0.01
+                        }) {
+                            self.replace("Weather", self.weather_rows());
+                            self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
+                            self.forecast = Some(index);
+                            self.forecast_day = 0;
+                            self.forecast_loading = true;
+                            self.push("Weather", Vec::new());
+                            self.forecast_depth = self.pages.len();
+                        }
+                    } else if self
+                        .pages
+                        .last()
+                        .is_some_and(|p| p.role == PageRole::WeatherSettings)
                     {
-                        self.pages.clear();
-                        self.push("Weather", self.weather_rows());
+                        self.replace("Weather Settings", self.weather_settings_rows());
+                        self.pages.last_mut().unwrap().role = PageRole::WeatherSettings;
+                    } else if self
+                        .pages
+                        .last()
+                        .is_some_and(|p| p.role == PageRole::WeatherHome)
+                    {
+                        self.replace("Weather", self.weather_rows());
+                        self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
                     }
                 }
                 WeatherEvent::SearchResults { query, places } => {
-                    self.status.clear();
-                    self.push(
-                        format!("Cities: {query}"),
-                        places
-                            .into_iter()
-                            .map(|place| {
-                                let detail = place.location();
-                                let mut row =
-                                    Item::new(&place.name, Choice::WeatherAdd(place.clone()));
-                                row.detail = detail;
-                                row
-                            })
-                            .collect(),
-                    );
+                    if query != self.weather_query {
+                        continue;
+                    }
+                    self.weather_loading = false;
+                    self.weather_error.clear();
+                    self.weather_results = Some(places);
+                    self.replace("Weather", self.weather_rows());
+                    let page = self.pages.last_mut().unwrap();
+                    page.role = PageRole::WeatherHome;
+                    page.selected = if page.rows.len() > 1 { 1 } else { 0 };
                 }
                 WeatherEvent::Error { context, message } => {
-                    self.status.clear();
-                    self.effects
-                        .push(Effect::Notice(format!("{context}: {message}")));
+                    if context.starts_with("forecast:") {
+                        self.forecast_loading = false;
+                        self.forecast_error = message;
+                    } else if context == "search" {
+                        self.weather_loading = false;
+                        self.weather_error = message;
+                        self.replace("Weather", self.weather_rows());
+                        self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
+                    } else {
+                        self.effects
+                            .push(Effect::Notice(format!("{context}: {message}")));
+                    }
                 }
             }
         }
@@ -1660,7 +2667,15 @@ impl Extras {
             let Some(event) = self.share.poll() else {
                 break;
             };
+            if let Some(view) = self.share_view.as_mut() {
+                view.event(&event, self.visual_time);
+                if matches!(&event, share::Event::Received { .. }) {
+                    self.effects.push(Effect::Rescan);
+                }
+                continue;
+            }
             match event {
+                share::Event::Preview { .. } => {}
                 share::Event::Code(code) => {
                     self.status = format!("Share code: {code}");
                     self.replace(
@@ -1741,7 +2756,18 @@ impl Extras {
         while let Some(result) = self.bluetooth.poll() {
             match result {
                 Ok(state) => {
+                    if state.header_only {
+                        self.bt_state.audio_connected = state.audio_connected;
+                        continue;
+                    }
+                    self.bt_error.clear();
                     self.bt_state = state;
+                    if self
+                        .bt_scanning_until
+                        .is_some_and(|until| self.visual_time >= until)
+                    {
+                        self.bt_scanning_until = None;
+                    }
                     self.status.clear();
                     if self.pages.first().is_some_and(|p| p.title == "Bluetooth") {
                         self.pages.clear();
@@ -1749,8 +2775,15 @@ impl Extras {
                     }
                 }
                 Err(error) => {
+                    self.bt_error = error.clone();
+                    self.bt_scanning_until = None;
                     self.status.clear();
-                    self.effects.push(Effect::Notice(error));
+                    if self.pages.last().is_some_and(|p| p.title == "Bluetooth") {
+                        self.replace("Bluetooth", self.bluetooth_rows());
+                    }
+                    if self.pages.last().is_some_and(|p| p.title == "Bluetooth") {
+                        self.effects.push(Effect::Notice(error));
+                    }
                 }
             }
         }
@@ -1758,6 +2791,24 @@ impl Extras {
             let Some(event) = self.services.poll() else {
                 break;
             };
+            let id = match &event {
+                Event::Progress { id, .. } | Event::Finished { id, .. } => *id,
+            };
+            if self.cover_jobs.contains_key(&id) {
+                if matches!(event, Event::Finished { .. }) {
+                    self.cover_jobs.remove(&id);
+                    self.cover_events.push_back(event);
+                } else if let Some(index) = self
+                    .cover_events
+                    .iter()
+                    .position(|old| matches!(old,Event::Progress{id:old,..}if *old==id))
+                {
+                    self.cover_events[index] = event;
+                } else {
+                    self.cover_events.push_back(event);
+                }
+                continue;
+            }
             match event {
                 Event::Progress {
                     status,
@@ -1765,11 +2816,9 @@ impl Extras {
                     total,
                     id,
                 } => {
-                    if self
-                        .jobs
-                        .get(&id)
-                        .is_some_and(|(_, p)| matches!(p, Purpose::Preview(_)))
-                    {
+                    if self.jobs.get(&id).is_some_and(|(_, p)| {
+                        matches!(p, Purpose::Preview(_) | Purpose::ArchiveStatus { .. })
+                    }) {
                         continue;
                     }
                     self.status = if let Some(total) = total.filter(|n| *n > 0) {
@@ -1783,20 +2832,244 @@ impl Extras {
                 }
                 Event::Finished { id, result } => {
                     let purpose = self.jobs.remove(&id).map(|(_, p)| p);
+                    if let Some(Purpose::Video(job)) = purpose.as_ref() {
+                        self.video_finished(job.clone(), result);
+                        continue;
+                    }
                     if let Some(Purpose::Preview(url)) = purpose.as_ref() {
                         if let Ok(Output::Files(files)) = &result {
                             if let Some(path) = files.first() {
                                 self.previews.insert(url.clone(), Some(path.clone()));
+                                self.invalidate_visual_rows();
                                 self.emit_media_art();
                             }
                         }
+                        if self.combined.as_ref().is_some_and(|state| state.cover) {
+                            self.refresh_combined();
+                        }
                         continue;
                     }
-                    self.status.clear();
+                    if !matches!(purpose, Some(Purpose::ArchiveStatus { .. })) {
+                        self.status.clear();
+                    }
                     match result {
-                        Err(error) => self.effects.push(Effect::Notice(error)),
+                        Err(error) => {
+                            if let Some(Purpose::Stream {
+                                inline: false,
+                                video: true,
+                                origin,
+                                generation,
+                                ..
+                            }) = &purpose
+                            {
+                                if *generation == self.media_generation {
+                                    self.effects.push(Effect::VideoResolveError {
+                                        origin: origin.clone(),
+                                        error,
+                                    });
+                                }
+                                continue;
+                            }
+                            if matches!(purpose, Some(Purpose::ArchiveStatus { .. })) {
+                                continue;
+                            }
+                            if matches!(purpose, Some(Purpose::Download)) {
+                                self.refresh_archive_status();
+                            }
+                            if matches!(purpose, Some(Purpose::Merge)) {
+                                if self
+                                    .pages
+                                    .last()
+                                    .is_some_and(|page| page.title == "Album Changes")
+                                {
+                                    self.pages.pop();
+                                }
+                                self.effects.push(Effect::MergeFailed(error));
+                                continue;
+                            }
+                            if matches!(&purpose,Some(Purpose::ReadTags{generation}|Purpose::WriteTags{generation}|Purpose::InfoPreview{generation,..})if *generation!=self.generation)
+                            {
+                                continue;
+                            }
+                            if matches!(
+                                &purpose,
+                                Some(
+                                    Purpose::ReadTags { .. }
+                                        | Purpose::WriteTags { .. }
+                                        | Purpose::InfoPreview { .. }
+                                )
+                            ) {
+                                if let Some(edit) = self.album_edit.as_mut() {
+                                    edit.loading = false;
+                                    edit.saving = false;
+                                    edit.status = error;
+                                }
+                                self.refresh_editor_page();
+                                continue;
+                            }
+                            if let Some(
+                                Purpose::Combined { generation }
+                                | Purpose::CoverContext { generation },
+                            ) = purpose.as_ref()
+                            {
+                                if let Some(state) = self
+                                    .combined
+                                    .as_mut()
+                                    .filter(|state| state.generation == *generation)
+                                {
+                                    state.pending =
+                                        if matches!(purpose, Some(Purpose::CoverContext { .. })) {
+                                            0
+                                        } else {
+                                            state.pending.saturating_sub(1)
+                                        };
+                                    state.errors.push(error);
+                                    self.refresh_combined();
+                                }
+                                continue;
+                            }
+                            if let Some(Purpose::Search {
+                                provider,
+                                metadata,
+                                generation,
+                                ..
+                            }) = purpose
+                            {
+                                if generation == self.generation {
+                                    if let Some(state) = self
+                                        .searches
+                                        .iter_mut()
+                                        .find(|s| s.provider == provider && s.metadata == metadata)
+                                    {
+                                        state.busy = false;
+                                        state.error = error;
+                                    }
+                                    let rows = self.search_rows(provider, metadata);
+                                    self.replace(provider.name(), rows);
+                                    self.pages.last_mut().unwrap().role =
+                                        PageRole::Search(provider, metadata);
+                                }
+                            } else {
+                                self.effects.push(Effect::Notice(error));
+                            }
+                        }
                         Ok(output) => match output {
+                            Output::CoverQuery(query) => {
+                                if let Some(Purpose::CoverContext { generation }) = purpose {
+                                    if let Some(state) = self
+                                        .combined
+                                        .as_mut()
+                                        .filter(|state| state.generation == generation)
+                                    {
+                                        state.automatic_query = query
+                                            .album_query()
+                                            .source_terms()
+                                            .first()
+                                            .cloned()
+                                            .unwrap_or_else(|| query.album.clone());
+                                        if !state.manual {
+                                            state.query = state.automatic_query.clone();
+                                        }
+                                        state.cover_context = Some(query);
+                                        self.start_combined_requests();
+                                    }
+                                }
+                            }
+                            Output::ArchiveStatus { have } => {
+                                if let Some(Purpose::ArchiveStatus { generation, item }) = purpose {
+                                    if generation == self.generation {
+                                        self.archive_status.insert(item.clone(), have);
+                                        if let Some(detail) = self
+                                            .detail_item
+                                            .as_ref()
+                                            .filter(|detail| {
+                                                detail.provider == Provider::Archive
+                                                    && detail.id == item
+                                            })
+                                            .cloned()
+                                        {
+                                            if self.pages.last().is_some_and(|page| {
+                                                page.role == PageRole::ArchiveItem
+                                            }) {
+                                                let rows = self.archive_rows(&detail);
+                                                self.replace("Internet Archive", rows);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Output::VideoCatalog(_) => {}
+                            Output::AlbumTags(tags) => {
+                                if matches!(purpose,Some(Purpose::ReadTags{generation})if generation==self.generation)
+                                {
+                                    if let Some(edit) = self.album_edit.as_mut() {
+                                        edit.install(tags);
+                                    }
+                                    self.refresh_editor_page();
+                                }
+                            }
+                            Output::AlbumInfoPreview {
+                                edits,
+                                matched,
+                                total,
+                            } => {
+                                if let Some(Purpose::InfoPreview { source, generation }) = purpose {
+                                    if generation == self.generation {
+                                        if let Some(edit) = self.album_edit.as_mut() {
+                                            edit.apply_preview(edits);
+                                            edit.scope = None;
+                                            edit.status = if matched == total {
+                                                format!("From {source}: {matched} of {total} songs updated · check, then Save Changes")
+                                            } else {
+                                                format!("From {source}: only {matched} of {total} songs updated · check unmatched songs before saving")
+                                            };
+                                        }
+                                        while self
+                                            .pages
+                                            .last()
+                                            .is_some_and(|page| page.role != PageRole::AlbumInfo)
+                                        {
+                                            self.pages.pop();
+                                        }
+                                        self.refresh_editor_page();
+                                    }
+                                }
+                            }
+
                             Output::CurationApplied { matched, total } => {
+                                if matches!(purpose, Some(Purpose::CoverReset)) {
+                                    self.effects.push(Effect::Rescan);
+                                    self.effects
+                                        .push(Effect::Notice("Using the album's own cover".into()));
+                                    continue;
+                                }
+                                if matches!(purpose, Some(Purpose::Separate)) {
+                                    self.effects.push(Effect::Rescan);
+                                    self.effects.push(Effect::Exit);
+                                    self.effects
+                                        .push(Effect::Notice("Back in their own albums".into()));
+                                    continue;
+                                }
+                                if matches!(purpose, Some(Purpose::Merge)) {
+                                    if self
+                                        .pages
+                                        .last()
+                                        .is_some_and(|page| page.title == "Album Changes")
+                                    {
+                                        self.pages.pop();
+                                    }
+                                    if self.album_edit.is_some() {
+                                        self.task(
+                                            Task::ReadAlbumTags {
+                                                paths: self.edit_paths.clone(),
+                                            },
+                                            Purpose::ReadTags {
+                                                generation: self.generation,
+                                            },
+                                        );
+                                    }
+                                    self.effects.push(Effect::MergeApplied);
+                                }
                                 self.effects.push(Effect::Notice(format!(
                                     "Saved {matched} of {total} album changes"
                                 )));
@@ -1807,6 +3080,56 @@ impl Extras {
                                 self.effects.push(Effect::Rescan);
                             }
                             Output::Search { items, total } => {
+                                if let Some(Purpose::Combined { generation }) = purpose.as_ref() {
+                                    if let Some(state) = self
+                                        .combined
+                                        .as_mut()
+                                        .filter(|state| state.generation == *generation)
+                                    {
+                                        state.pending = state.pending.saturating_sub(1);
+                                        for item in items {
+                                            if !state.cover || !item.cover.is_empty() {
+                                                if !state.hits.iter().any(|old| {
+                                                    old.provider == item.provider
+                                                        && old.id == item.id
+                                                }) {
+                                                    state.hits.push(item);
+                                                }
+                                            }
+                                        }
+                                        let cover = state.cover;
+                                        state.hits.sort_by_key(|item| {
+                                            let best =
+                                                item.raw["_cover_best"].as_bool().unwrap_or(false);
+                                            let exact =
+                                                item.raw["_cover_exact"].as_bool().unwrap_or(false);
+                                            (
+                                                !best && cover,
+                                                cover && best && !exact,
+                                                match item.provider {
+                                                    Provider::MusicBrainz => 0,
+                                                    Provider::Itunes => 1,
+                                                    Provider::Deezer => 2,
+                                                    Provider::Wikipedia => 3,
+                                                    _ => 4,
+                                                },
+                                            )
+                                        });
+                                        if state.pending == 0
+                                            && state.cover
+                                            && !state.hits.is_empty()
+                                        {
+                                            if let Some(page) = self.pages.last_mut() {
+                                                if page.role == PageRole::Combined {
+                                                    page.selected = 1;
+                                                }
+                                            }
+                                        }
+                                        self.refresh_combined();
+                                    }
+                                    continue;
+                                }
+
                                 if matches!(purpose, Some(Purpose::History)) {
                                     self.replace(
                                         "Recently Watched",
@@ -1837,42 +3160,41 @@ impl Extras {
                                     {
                                         self.media_queue = items.clone();
                                     }
-                                    let mut rows = vec![Item::new(
-                                        format!("Search: {query}"),
-                                        Choice::Search(provider),
-                                    )];
-                                    for item in items {
-                                        let mut row = Item::new(
-                                            &item.title,
-                                            if metadata && self.cover_search {
-                                                Choice::UseCover(item.clone())
-                                            } else {
-                                                Choice::Online(item.clone(), metadata)
-                                            },
-                                        );
-                                        row.detail = if item.year.is_empty() {
-                                            item.artist.clone()
-                                        } else {
-                                            format!("{} - {}", item.artist, item.year)
-                                        };
-                                        rows.push(row);
+                                    if let Some(state) = self
+                                        .searches
+                                        .iter_mut()
+                                        .find(|s| s.provider == provider && s.metadata == metadata)
+                                    {
+                                        state.busy = false;
+                                        state.error.clear();
+                                        state.total = total;
+                                        for item in items {
+                                            if !state
+                                                .items
+                                                .iter()
+                                                .any(|old| old.id == item.id && old.url == item.url)
+                                            {
+                                                state.items.push(item);
+                                            }
+                                        }
                                     }
-                                    if total > page as usize * 25 {
-                                        rows.push(Item::new(
-                                            "More Results",
-                                            Choice::NextSearch(provider, query, page + 1, metadata),
-                                        ));
-                                    }
+                                    let rows = self.search_rows(provider, metadata);
                                     self.replace(provider.name(), rows);
+                                    self.pages.last_mut().unwrap().role =
+                                        PageRole::Search(provider, metadata);
+                                    if self.pages.last().unwrap().rows.len() > 1 {
+                                        self.pages.last_mut().unwrap().selected = 1;
+                                    }
                                 }
                             }
                             Output::Item(item) => {
-                                if matches!(
-                                    item.provider,
-                                    Provider::YouTube | Provider::YouTubePlaylists
-                                ) {
-                                    self.detail_item = Some(item.clone());
+                                if let Some(Purpose::Details { generation, .. }) = &purpose {
+                                    if *generation != self.generation {
+                                        continue;
+                                    }
                                 }
+
+                                self.detail_item = Some(item.clone());
                                 if let Some(entries) = item.raw["entries"].as_array() {
                                     self.media_queue = entries
                                         .iter()
@@ -1885,11 +3207,49 @@ impl Extras {
                                         .collect();
                                 }
 
-                                let metadata =
-                                    matches!(purpose, Some(Purpose::Details { metadata: true }));
-                                self.push(&item.title, self.details_rows(&item, metadata));
+                                let metadata = matches!(
+                                    purpose,
+                                    Some(Purpose::Details { metadata: true, .. })
+                                );
+                                let title = if item.provider == Provider::Archive && !metadata {
+                                    item.provider.name()
+                                } else {
+                                    &item.title
+                                };
+                                if metadata && self.album_edit.is_some() && !self.cover_search {
+                                    self.choose(Choice::ApplyMetadata(item));
+                                    continue;
+                                }
+                                let rows = self.details_rows(&item, metadata);
+                                if item.provider == Provider::Archive
+                                    && !metadata
+                                    && self
+                                        .pages
+                                        .last()
+                                        .is_some_and(|p| p.role == PageRole::ArchiveItem)
+                                {
+                                    self.replace(title, rows);
+                                } else {
+                                    self.push(title, rows);
+                                }
+                                if item.provider == Provider::Archive && !metadata {
+                                    self.pages.last_mut().unwrap().role = PageRole::ArchiveItem;
+                                    self.pages.last_mut().unwrap().selected =
+                                        if self.pages.last().unwrap().rows.len() > 2 {
+                                            2
+                                        } else {
+                                            1
+                                        };
+                                    self.refresh_archive_status();
+                                }
                             }
                             Output::Feed { podcast, episodes } => {
+                                if let Some(Purpose::Feed { generation }) = &purpose {
+                                    if *generation != self.generation {
+                                        continue;
+                                    }
+                                }
+
                                 self.media_queue = episodes
                                     .iter()
                                     .map(|episode| {
@@ -1902,46 +3262,63 @@ impl Extras {
                                     })
                                     .collect();
 
-                                let mut rows = vec![
-                                    Item::new("Subscribe", Choice::Subscribe(podcast.clone())),
-                                    Item::new("Unsubscribe", Choice::Unsubscribe(podcast.clone())),
-                                    Item::new(
-                                        "Download All Episodes",
-                                        Choice::DownloadEpisodes(podcast.clone(), episodes.clone()),
-                                    ),
-                                ];
-                                for episode in episodes {
-                                    let mut row = Item::new(
-                                        &episode.title,
-                                        Choice::Episode(episode.clone(), podcast.clone()),
-                                    );
-                                    row.detail = format!(
-                                        "{}{}",
-                                        if podcast.files.contains_key(episode.key()) {
-                                            "Downloaded — "
-                                        } else {
-                                            ""
-                                        },
-                                        episode.date.chars().take(10).collect::<String>()
-                                    );
-                                    rows.push(row);
+                                self.active_feed = Some((podcast.clone(), episodes.clone()));
+                                let rows = self.podcast_feed_rows(&podcast, &episodes);
+                                if self
+                                    .pages
+                                    .last()
+                                    .is_some_and(|page| page.role == PageRole::PodcastFeed)
+                                {
+                                    self.replace("Podcasts", rows);
+                                } else {
+                                    self.push("Podcasts", rows);
                                 }
-                                self.push(&podcast.name, rows);
+                                let page = self.pages.last_mut().unwrap();
+                                page.role = PageRole::PodcastFeed;
+                                page.selected = 1;
                             }
                             Output::Subscriptions(podcasts) => {
-                                let mut rows = vec![Item::new(
-                                    "Find Podcasts",
-                                    Choice::Page(ExtraPage::Online(Provider::Podcast)),
-                                )];
-                                for podcast in podcasts {
-                                    rows.push(Item::new(
-                                        &podcast.name,
-                                        Choice::Feed(podcast.clone()),
-                                    ));
+                                self.subscriptions = podcasts;
+                                if let Some((podcast, episodes)) = self.active_feed.as_mut() {
+                                    if let Some(record) =
+                                        self.subscriptions.iter().find(|p| p.feed == podcast.feed)
+                                    {
+                                        podcast.files = record.files.clone();
+                                    } else {
+                                        podcast.files.clear();
+                                    }
+                                    let _ = episodes;
                                 }
-                                self.replace("Podcasts", rows);
+                                if self
+                                    .pages
+                                    .last()
+                                    .is_some_and(|p| p.role == PageRole::PodcastFeed)
+                                {
+                                    if let Some((podcast, episodes)) = &self.active_feed {
+                                        let rows = self.podcast_feed_rows(podcast, episodes);
+                                        self.replace("Podcasts", rows);
+                                        let page = self.pages.last_mut().unwrap();
+                                        page.role = PageRole::PodcastFeed;
+                                        page.selected = 1;
+                                    }
+                                }
+                                if self
+                                    .pages
+                                    .last()
+                                    .is_some_and(|page| page.role == PageRole::PodcastHome)
+                                {
+                                    let rows = self.podcast_home_rows();
+                                    self.replace("Podcasts", rows);
+                                    self.pages.last_mut().unwrap().role = PageRole::PodcastHome;
+                                }
                             }
                             Output::Files(files) => {
+                                if matches!(purpose, Some(Purpose::Download)) {
+                                    self.refresh_video_catalog();
+                                }
+                                if matches!(purpose, Some(Purpose::Download)) {
+                                    self.refresh_archive_status();
+                                }
                                 if matches!(purpose, Some(Purpose::Cover)) {
                                     if let Some(path) = files.first() {
                                         self.edit.cover = Some(path.clone());
@@ -1996,17 +3373,40 @@ impl Extras {
                                         files.len()
                                     )));
                                     self.effects.push(Effect::Rescan);
+                                    self.task(Task::Subscriptions, Purpose::Subscriptions);
                                 }
                             }
                             Output::Saved => {
                                 if matches!(purpose, Some(Purpose::Remember)) {
+                                    self.refresh_video_catalog();
+                                }
+                                if matches!(&purpose,Some(Purpose::WriteTags{generation})if *generation!=self.generation)
+                                {
+                                    self.effects.push(Effect::Rescan);
                                     continue;
                                 }
+                                if matches!(purpose, Some(Purpose::WriteTags{generation})if generation==self.generation)
+                                {
+                                    if let Some(edit) = self.album_edit.as_mut() {
+                                        for song in &mut edit.songs {
+                                            song.original = song.current.clone();
+                                        }
+                                        edit.saving = false;
+                                    }
+                                    self.effects.push(Effect::Rescan);
+                                    self.effects.push(Effect::Exit);
+                                    continue;
+                                }
+                                if matches!(purpose, Some(Purpose::Remember)) {
+                                    continue;
+                                }
+                                self.task(Task::Subscriptions, Purpose::Subscriptions);
                                 self.effects.push(Effect::Notice("Changes saved".into()));
                                 self.effects.push(Effect::Rescan);
                             }
                             Output::Stream(source) => {
                                 if let Some(Purpose::Stream {
+                                    inline,
                                     video,
                                     origin,
                                     start,
@@ -2018,20 +3418,49 @@ impl Extras {
                                     if generation != self.media_generation {
                                         continue;
                                     }
-                                    self.effects.push(Effect::Stream {
-                                        source,
-                                        video,
-                                        origin,
-                                        start,
-                                        queue,
-                                        index,
+                                    self.effects.push(if inline {
+                                        Effect::Preview {
+                                            source,
+                                            origin,
+                                            queue,
+                                            index,
+                                        }
+                                    } else {
+                                        Effect::Stream {
+                                            source,
+                                            video,
+                                            origin,
+                                            start,
+                                            queue,
+                                            index,
+                                        }
                                     });
                                     self.emit_media_art();
                                 }
                             }
-                            Output::ToolsReady => self
-                                .effects
-                                .push(Effect::Notice("YouTube tools are ready".into())),
+                            Output::ToolsStatus(state) => {
+                                self.tools_state = state;
+                                if self
+                                    .pages
+                                    .last()
+                                    .is_some_and(|page| page.title == "YouTube")
+                                {
+                                    let rows = self.tools_rows();
+                                    self.replace("YouTube", rows);
+                                }
+                            }
+                            Output::ToolsRemoved => {
+                                self.tools_state = Default::default();
+                                self.youtube = false;
+                                self.effects.push(Effect::YouTubeEnabled(false));
+                                self.effects
+                                    .push(Effect::Notice("YouTube tools removed".into()));
+                            }
+                            Output::ToolsReady => {
+                                self.task(Task::ToolsStatus, Purpose::Tools);
+                                self.effects
+                                    .push(Effect::Notice("YouTube tools are ready".into()));
+                            }
                         },
                     }
                 }
@@ -2046,8 +3475,24 @@ impl Extras {
             .map(|page| {
                 page.rows
                     .iter()
-                    .skip((page.scroll / 52.0).max(0.0) as usize)
-                    .take(8)
+                    .skip(
+                        if page.role == PageRole::Combined
+                            && self.combined.as_ref().is_some_and(|s| s.cover)
+                        {
+                            0
+                        } else {
+                            (page.scroll / 52.0).max(0.0) as usize
+                        },
+                    )
+                    .take(
+                        if page.role == PageRole::Combined
+                            && self.combined.as_ref().is_some_and(|s| s.cover)
+                        {
+                            128
+                        } else {
+                            8
+                        },
+                    )
                     .filter_map(|r| choice_art(&r.choice))
                     .map(str::to_owned)
                     .collect::<Vec<_>>()
@@ -2057,31 +3502,9 @@ impl Extras {
             self.request_preview(url);
         }
         if let Some(page) = self.pages.last_mut() {
-            page.scroll += (page.target - page.scroll) * (1.0 - (-dt * 22.0).exp());
+            page.scroll = page.target;
         }
         std::mem::take(&mut self.effects)
-    }
-    fn weather_rows(&self) -> Vec<Item> {
-        let mut rows = vec![
-            Item::new("Add City", Choice::WeatherSearch),
-            Item::new(
-                format!(
-                    "Units: {}",
-                    if self.weather_state.fahrenheit {
-                        "Fahrenheit"
-                    } else {
-                        "Celsius"
-                    }
-                ),
-                Choice::WeatherUnits,
-            ),
-        ];
-        for (index, place) in self.weather_state.places.iter().enumerate() {
-            let mut row = Item::new(&place.name, Choice::WeatherPlace(index));
-            row.detail = place.location();
-            rows.push(row);
-        }
-        rows
     }
     pub(super) fn draw(
         &mut self,
@@ -2089,7 +3512,13 @@ impl Extras {
         dark: bool,
         elapsed: f64,
         art: &mut crate::art::Artwork,
+        assets: &VisualAssets,
     ) {
+        self.visual_time = elapsed;
+        if let Some(view) = self.share_view.as_mut() {
+            view.draw(r, assets, art, elapsed);
+            return;
+        }
         if let Some(editor) = self.cover_editor.as_ref() {
             editor.draw(r, art, dark);
             return;
@@ -2099,12 +3528,14 @@ impl Extras {
             .filter(|_| self.pages.len() == self.forecast_depth)
         {
             if let Some(place) = self.weather_state.places.get(index) {
-                betterpod_rust::weather::draw_forecast(
+                self.weather_visual.draw(
                     r,
                     place,
                     self.forecast_day,
                     self.weather_state.fahrenheit,
-                    elapsed as f32,
+                    self.forecast_loading,
+                    &self.forecast_error,
+                    elapsed,
                 );
                 return;
             }
@@ -2185,20 +3616,25 @@ impl Extras {
             muted,
             610.0,
         );
-        if let Some((keyboard, typing)) = &self.keyboard {
-            let title = match typing {
-                Typing::NewPlaylist => "New Playlist",
-                Typing::Search(_, true) => "Find Album Information",
-                Typing::Search(_, false) => "Search Online",
-                Typing::Tag(_) => "Edit Information",
-                Typing::Weather => "Find a City",
-                Typing::Receive => "Enter the 8-Digit Share Code",
-                Typing::SharingName => "Your Player’s Sharing Name",
-            };
-            draw_keyboard_title(r, keyboard, dark, title);
+        if let Some((keyboard, _)) = self.keyboard.as_mut() {
+            keyboard.draw(r, assets, dark, elapsed);
+        }
+        if let Some(keyboard) = self.closing_keyboard.as_mut() {
+            keyboard.draw(r, assets, dark, elapsed);
+        }
+        if self
+            .closing_keyboard
+            .as_ref()
+            .is_some_and(|k| k.finished(elapsed))
+        {
+            self.closing_keyboard = None;
         }
     }
     pub(super) fn shutdown(&mut self) {
+        self.listen.shutdown();
+        for job in self.cover_jobs.values() {
+            job.cancel();
+        }
         // Final video history is a tiny local write. Cancel network jobs first,
         // but allow this queued bookmark to finish before closing its worker.
         for (handle, purpose) in self.jobs.values() {
@@ -2229,7 +3665,9 @@ impl Extras {
 
 fn choice_art(choice: &Choice) -> Option<&str> {
     let url = match choice {
-        Choice::Online(i, _)
+        Choice::Video(VideoAction::Play(_, _, _, cover)) => cover,
+        Choice::Video(VideoAction::Watch(i))
+        | Choice::Online(i, _)
         | Choice::UseCover(i)
         | Choice::Recent(i)
         | Choice::ApplyMetadata(i) => &i.cover,

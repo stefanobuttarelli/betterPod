@@ -12,6 +12,7 @@ fn source(path: &str, audio: Option<String>, seconds: f64) -> StreamSource {
         duration: seconds,
         title: format!("Local fixture: {path}"),
         available_at: None,
+        chapters: 0,
     }
 }
 fn main() -> Result<(), String> {

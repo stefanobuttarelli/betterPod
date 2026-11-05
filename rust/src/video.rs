@@ -4,6 +4,7 @@ use crate::online::StreamSource;
 use crate::pcm::{PcmOutput, Ring};
 use std::cell::RefCell;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -65,6 +66,14 @@ pub struct VideoPlayer {
 }
 impl VideoPlayer {
     pub fn new() -> Result<Self, String> {
+        Self::start(None)
+    }
+    /// Resolve the optional private decoder on the worker for every opening,
+    /// including after installing the tool while this transport is alive.
+    pub fn with_data(data: PathBuf) -> Result<Self, String> {
+        Self::start(Some(data))
+    }
+    fn start(data: Option<PathBuf>) -> Result<Self, String> {
         let (tx, commands) = mpsc::sync_channel(16);
         let (frames, rx) = mpsc::sync_channel(2);
         let shared = Arc::new(RwLock::new(VideoSnapshot::default()));
@@ -91,6 +100,7 @@ impl VideoPlayer {
                     gate,
                     worker_control,
                     worker_pause,
+                    data,
                 )
             })
             .map_err(|e| e.to_string())?;
@@ -213,6 +223,7 @@ impl Session {
         stop: &AtomicBool,
         requested: &AtomicU64,
         mute: Arc<AtomicBool>,
+        executable: &Path,
     ) -> Result<Self, String> {
         if !start.is_finite() || start < 0.0 {
             return Err("Invalid media start time".into());
@@ -261,9 +272,7 @@ impl Session {
         } else {
             proxy_url(audio_source, &session.source.headers, &mut session.proxies)?
         };
-        let executable =
-            std::env::var_os("BETTERPOD_RUST_FFMPEG").unwrap_or_else(|| "ffmpeg".into());
-        let mut command = Command::new(&executable);
+        let mut command = Command::new(executable);
         input_args(&mut command, &audio, start);
         command
             .args([
@@ -566,6 +575,7 @@ fn worker(
     mute: Arc<AtomicBool>,
     control: Arc<Mutex<()>>,
     desired_pause: Arc<AtomicBool>,
+    data: Option<PathBuf>,
 ) {
     let mut state = VideoSnapshot::default();
     let mut session: Option<Session> = None;
@@ -650,6 +660,14 @@ fn worker(
                 ..VideoSnapshot::default()
             };
             publish(&shared, &state);
+            let executable = data
+                .as_deref()
+                .map(crate::downloads::ffmpeg_path)
+                .unwrap_or_else(|| {
+                    std::env::var_os("BETTERPOD_RUST_FFMPEG")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("ffmpeg"))
+                });
             match Session::open(
                 source,
                 start,
@@ -659,6 +677,7 @@ fn worker(
                 &stop,
                 &requested,
                 mute.clone(),
+                &executable,
             ) {
                 Ok(mut open) => {
                     let accepted = {

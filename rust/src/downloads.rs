@@ -20,6 +20,9 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[path = "downloads_archive.rs"]
+mod archive;
+pub use archive::status as archive_status;
 #[derive(Clone, Debug)]
 pub enum DownloadRequest {
     Archive {
@@ -123,7 +126,7 @@ struct PartInfo {
     modified: String,
     total: u64,
 }
-static TOOLS: Mutex<()> = Mutex::new(());
+pub(crate) static TOOLS: Mutex<()> = Mutex::new(());
 static COMMIT_LOCK: Mutex<()> = Mutex::new(());
 static ACTIVE_DOWNLOADS: LazyLock<Mutex<std::collections::HashSet<PathBuf>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
@@ -230,6 +233,16 @@ fn download_tagged(
     target: &Path,
     expected_sha: Option<&str>,
     tags: Option<&TagEdit>,
+) -> Result<(), String> {
+    download_tagged_before_commit(context, url, target, expected_sha, tags, None)
+}
+fn download_tagged_before_commit(
+    context: &Context,
+    url: &str,
+    target: &Path,
+    expected_sha: Option<&str>,
+    tags: Option<&TagEdit>,
+    mut before_commit: Option<&mut dyn FnMut(&Path) -> Result<(), String>>,
 ) -> Result<(), String> {
     validate_http(url)?;
     context.check()?;
@@ -440,7 +453,13 @@ fn download_tagged(
     if target.exists() {
         return Err("Download destination already exists".into());
     }
+    if let Some(callback) = before_commit.as_mut() {
+        callback(&stage)?;
+    }
+    context.check()?;
     fs::rename(&stage, target).map_err(|e| e.to_string())?;
+    crate::storage::sync_directory(target.parent().ok_or("Missing download parent")?)
+        .map_err(|e| e.to_string())?;
     let _ = fs::remove_file(sidecar);
     Ok(())
 }
@@ -573,53 +592,7 @@ pub fn run(
             download_tagged(context, &url, &target, None, tags.as_ref())?;
             Ok(vec![target])
         }
-        DownloadRequest::Archive { item, format } => {
-            let groups = item.raw["groups"]
-                .as_object()
-                .ok_or("Open the Archive album before downloading")?;
-            let files = groups
-                .get(&format)
-                .and_then(Value::as_array)
-                .ok_or("Requested audio format is unavailable")?;
-            let dir = private_dir(
-                data,
-                &["downloads", "Internet Archive", &item.artist, &item.title],
-            )?;
-            let cover = if !item.cover.is_empty() {
-                let target = dir.join("cover.jpg");
-                if !target.exists() {
-                    let _ = download(context, &item.cover, &target, None);
-                }
-                target.is_file().then_some(target)
-            } else {
-                None
-            };
-            let mut out = Vec::new();
-            for (index, file) in files.iter().enumerate() {
-                context.check()?;
-                let name = text(file, "name");
-                let filename = Path::new(&name)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                let target = free_file(&dir, &filename);
-                let url = text(file, "download_url");
-                let title = text(file, "title");
-                let tags = TagEdit {
-                    title: (!title.is_empty()).then_some(title),
-                    artist: (!item.artist.is_empty()).then_some(item.artist.clone()),
-                    album: Some(item.title.clone()),
-                    track: Some((index + 1) as u32),
-                    track_total: Some(files.len() as u32),
-                    year: item.year.parse().ok(),
-                    cover: cover.clone(),
-                    ..Default::default()
-                };
-                download_tagged(context, &url, &target, None, Some(&tags))?;
-                out.push(target);
-            }
-            Ok(out)
-        }
+        DownloadRequest::Archive { item, format } => archive::run(context, data, &item, &format),
         DownloadRequest::Episodes {
             mut podcast,
             episodes,
@@ -787,6 +760,7 @@ fn yt_command(data: &Path) -> Command {
     command
 }
 pub fn yt_json(context: &Context, data: &Path, args: &[&str]) -> Result<Value, String> {
+    let _tools = TOOLS.lock().map_err(|e| e.to_string())?;
     let mut command = yt_command(data);
     command.arg("-J").args(args);
     let output = run_command(context, &mut command, Duration::from_secs(120))?;
@@ -929,16 +903,18 @@ fn youtube_download(
     } else {
         artist
     };
-    let dir = private_dir(
-        data,
-        &[
-            "downloads",
-            if video { "Videos" } else { "YouTube" },
-            &artist,
-            &title,
-        ],
-    )?;
+    if video {
+        if let Some(saved) = crate::video_catalog::existing_saved(data, &text(&info, "id"), url) {
+            return Ok(vec![saved]);
+        }
+    }
+    let dir = if video {
+        private_dir(data, &["videos"])?
+    } else {
+        private_dir(data, &["downloads", "YouTube", &artist, &title])?
+    };
     let stage = private_dir(data, &["tmp", "youtube", &context.id.to_string()])?;
+    let _tools = TOOLS.lock().map_err(|e| e.to_string())?;
     let mut command = yt_command(data);
     command
         .args([
@@ -1052,6 +1028,11 @@ fn youtube_download(
         commit_media(context, &source, &target)?;
         out.push(target);
     }
+    if video {
+        for path in &out {
+            crate::video_catalog::publish_saved(context, data, &info, url, path)?;
+        }
+    }
     let _ = fs::remove_dir_all(stage);
     Ok(out)
 }
@@ -1077,6 +1058,54 @@ pub fn ffmpeg_path(data: &Path) -> PathBuf {
                 PathBuf::from("ffmpeg")
             }
         })
+}
+/// Listen follows the original AAC/M4A preference so SIDX fragments retain
+/// whole compressed frames. Full-screen video keeps its independent formats.
+pub fn resolve_listen_stream(
+    context: &Context,
+    data: &Path,
+    item: &OnlineItem,
+) -> Result<StreamSource, String> {
+    let info = yt_json(
+        context,
+        data,
+        &["--no-playlist", "-f", "140/bestaudio[ext=m4a]", &item.url],
+    )?;
+    let url = text(&info, "url");
+    validate_http(&url)?;
+    let at = number(&info, "available_at");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs_f64();
+    let wait = (at - now + 0.2).max(0.0);
+    if wait > 20.0 {
+        return Err("YouTube stream is not available yet; try again shortly".into());
+    }
+    if wait > 0.0 {
+        context.sleep(Duration::from_secs_f64(wait))?;
+    }
+    let headers = info["http_headers"]
+        .as_object()
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, v)| {
+                    v.as_str()
+                        .filter(|v| !v.contains(['\r', '\n']))
+                        .map(|v| (k.clone(), v.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(StreamSource {
+        video_url: url,
+        audio_url: None,
+        headers,
+        duration: number(&info, "duration"),
+        title: text(&info, "title"),
+        available_at: (at > 0.0).then_some(at),
+        chapters: 0,
+    })
 }
 pub fn resolve_stream(
     context: &Context,
@@ -1160,6 +1189,7 @@ pub fn resolve_stream(
                 duration: number(&info, "duration"),
                 title: text(&info, "title"),
                 available_at: (at > 0.0).then_some(at),
+                chapters: info["chapters"].as_array().map_or(0, Vec::len),
             });
         }
         context.sleep(Duration::from_millis(300))?;
@@ -1206,6 +1236,60 @@ fn select_formats(info: &Value, video: bool) -> Result<(Value, Option<Value>), S
         .then_some(audio)
         .flatten();
     Ok((selected, separate))
+}
+#[derive(Clone, Debug, Default)]
+pub struct ToolStatus {
+    pub ready: bool,
+    pub version: String,
+    pub runtime: String,
+}
+pub fn tool_status(context: &Context, data: &Path) -> Result<ToolStatus, String> {
+    let _lock = TOOLS.lock().map_err(|e| e.to_string())?;
+    context.check()?;
+    let path = ytdlp_path(data);
+    if !path.is_file() {
+        return Ok(ToolStatus::default());
+    }
+    let version = run_command(
+        context,
+        Command::new(&path).arg("--version"),
+        Duration::from_secs(15),
+    )?
+    .lines()
+    .next()
+    .unwrap_or("")
+    .trim()
+    .to_owned();
+    let mut runtime = String::new();
+    if let Ok(config) = std::env::var("BETTERPOD_RUST_YTJS") {
+        if !config.trim().is_empty() {
+            runtime = config.split(':').next().unwrap_or("JavaScript").into();
+        }
+    }
+    if runtime.is_empty() {
+        for dir in [
+            Some(data.join("tools")),
+            std::env::var_os("BETTERPOD_RUST_IMPORT_TOOLS").map(PathBuf::from),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            for (name, label) in [("deno", "Deno"), ("qjs", "QuickJS")] {
+                if dir.join(name).is_file() {
+                    runtime = label.into();
+                    break;
+                }
+            }
+            if !runtime.is_empty() {
+                break;
+            }
+        }
+    }
+    Ok(ToolStatus {
+        ready: !version.is_empty() && !runtime.is_empty(),
+        version,
+        runtime,
+    })
 }
 pub fn install_tools(context: &Context, data: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
@@ -1316,6 +1400,84 @@ pub fn install_tools(context: &Context, data: &Path) -> Result<(), String> {
     let _ = fs::remove_dir_all(staging);
     result
 }
+/// Remove only recognized tools from this Rust application's owned data.
+/// Imported stable tools and environment overrides are never removal targets.
+pub fn remove_tools(context: &Context, data: &Path) -> Result<(), String> {
+    let _lock = TOOLS.lock().map_err(|e| e.to_string())?;
+    context.check()?;
+    let marker = data.join(".betterpod-rust.json");
+    let metadata = fs::symlink_metadata(&marker).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 4096 {
+        return Err("Tools removal needs a private Rust database".into());
+    }
+    let owner: Value = serde_json::from_slice(&fs::read(marker).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if owner["application"] != "betterpod-rust" {
+        return Err("Tools belong to another application".into());
+    }
+    let root = fs::canonicalize(data).map_err(|e| e.to_string())?;
+    let tools = root.join("tools");
+    match fs::symlink_metadata(&tools) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.to_string()),
+        Ok(m) if m.file_type().is_symlink() || !m.is_dir() => {
+            return Err("Tools folder is not private".into())
+        }
+        _ => {}
+    }
+    // Validate the entire allowlisted tree before any deletion; no symlink is followed.
+    let names = [
+        "ytdlp",
+        "yt-dlp",
+        "yt-dlp_macos",
+        "deno",
+        "deno.disabled",
+        "qjs",
+        "ffmpeg",
+        "cache",
+        "tmp",
+    ];
+    let mut targets = Vec::new();
+    for name in names {
+        let path = tools.join(name);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(m) => Some(m),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.to_string()),
+        };
+        if let Some(m) = metadata {
+            if m.file_type().is_symlink() {
+                return Err("Tools contain a symlink".into());
+            }
+            let mut pending = vec![path.clone()];
+            while let Some(p) = pending.pop() {
+                let m = fs::symlink_metadata(&p).map_err(|e| e.to_string())?;
+                if m.file_type().is_symlink() {
+                    return Err("Tools contain a symlink".into());
+                }
+                if m.is_dir() {
+                    for entry in fs::read_dir(p).map_err(|e| e.to_string())? {
+                        pending.push(entry.map_err(|e| e.to_string())?.path());
+                    }
+                } else if !m.is_file() {
+                    return Err("Tools contain a special file".into());
+                }
+            }
+            targets.push(path);
+        }
+    }
+    context.check()?;
+    for path in targets {
+        if path.is_dir() {
+            fs::remove_dir_all(&path)
+        } else {
+            fs::remove_file(&path)
+        }
+        .map_err(|e| e.to_string())?;
+        crate::storage::sync_directory(&tools).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 fn verified_asset(
     context: &Context,
     repository: &str,
@@ -1378,6 +1540,44 @@ fn extract_zip(archive: &Path, destination: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn removing_tools_preserves_music_unknown_files_and_symlink_targets() {
+        let root =
+            std::env::temp_dir().join(format!("betterpod-tools-remove-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("tools/ytdlp")).unwrap();
+        fs::write(
+            root.join(".betterpod-rust.json"),
+            br#"{"application":"betterpod-rust"}"#,
+        )
+        .unwrap();
+        fs::write(root.join("tools/ytdlp/bin"), b"fixture").unwrap();
+        fs::write(root.join("tools/keep-user-file"), b"keep").unwrap();
+        fs::write(root.join("song.flac"), b"music").unwrap();
+        remove_tools(&Context::standalone(), &root).unwrap();
+        assert!(!root.join("tools/ytdlp").exists());
+        assert_eq!(
+            fs::read(root.join("tools/keep-user-file")).unwrap(),
+            b"keep"
+        );
+        assert_eq!(fs::read(root.join("song.flac")).unwrap(), b"music");
+        #[cfg(unix)]
+        {
+            fs::create_dir_all(root.join("tools/ytdlp")).unwrap();
+            std::os::unix::fs::symlink(root.join("song.flac"), root.join("tools/ytdlp/link"))
+                .unwrap();
+            assert!(remove_tools(&Context::standalone(), &root).is_err());
+            assert!(root.join("tools/ytdlp").exists());
+            assert!(root.join("song.flac").exists());
+        }
+        fs::write(
+            root.join(".betterpod-rust.json"),
+            br#"{"application":"betterpod-stable"}"#,
+        )
+        .unwrap();
+        assert!(remove_tools(&Context::standalone(), &root).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
     #[test]
     fn range_validation() {
         assert_eq!(content_range("bytes 42-99/100"), Some((42, 100)));
