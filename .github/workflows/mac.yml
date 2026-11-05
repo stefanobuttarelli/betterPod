@@ -40,8 +40,7 @@ jobs:
         run: |
           V=$(cat mac/VERSION)
           if gh release view "mac-v$V" >/dev/null 2>&1; then
-            gh release upload "mac-v$V" "mac/build/betterPod-Share-mac-v$V.zip" --clobber
-            gh release edit "mac-v$V" --notes-file mac/NOTES.md
+            echo "mac-v$V is already published; the build is available as a workflow artifact."
           else
             gh release create "mac-v$V" "mac/build/betterPod-Share-mac-v$V.zip" \
               --target "$GITHUB_SHA" --title "betterPod Share for Mac $V" \

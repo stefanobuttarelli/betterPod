@@ -1,8 +1,8 @@
 {
-  "version": "1.0.1",
-  "path": "release/betterpod-v1.0.1-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0.1-knulli.zip",
-  "sha256": "32cd5159f80643eecfc9ab2583038957eb7c31562907872c091f028554202030",
-  "size": 16268785,
-  "notes": "- Genius goes straight to Now Playing: the menu no longer changes first, while the song loads."
+  "version": "1.1",
+  "path": "release/betterpod-v1.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-knulli.zip",
+  "sha256": "0805456959380448b606542e81e49222081b6c03aeade75c6f6d0baf5156b038",
+  "size": 16513633,
+  "notes": "- Videos: stream YouTube, resume Recently Watched and download videos for offline playback.\n- Album Info edits M4A (AAC/ALAC) tags and matches corrected metadata by track order.\n- Playback stays audible through Knulli idle time, including Listen and videos.\n- UI targets a regular 30 fps with faster drawing, background artwork and coalesced preference saves, preserving audio quality and buffers.\n- Stable release of the eight 1.1 betas, dedicated to Knulli on Anbernic H700. Existing libraries and settings are kept."
 }

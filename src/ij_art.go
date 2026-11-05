@@ -1,9 +1,8 @@
 package main
 
-// ij_art.go — album artwork for the UI: decoded and scaled in the background
-// (two at a time), kept in an LRU of scaled images (by bytes) and cached on
-// disk as raw RGBA (conf/.ipod_art); covers already on disk are read at
-// once within a per-frame budget, and the list thumbnails are prefetched.
+// Album artwork is looked up in RAM on the UI thread. Two foreground
+// workers read, decode and scale misses; background prefetch uses at most
+// one decoding slot and yields to covers requested by the screen.
 
 import (
 	"bufio"
@@ -25,57 +24,66 @@ import (
 
 type artKey struct {
 	a   *Album
-	dev int // size in device pixels
+	dev int
 }
 
-// artCache keeps scaled artwork in memory, least recently used out first,
-// within a byte budget (a 96 px list thumbnail is 36 KB, a Cover Flow
-// cover 256 KB, a full-height preview 900 KB).
+const artQueueLimit = 256
+
 type artCache struct {
-	mu      sync.Mutex
-	imgs    map[artKey]*list.Element
-	lru     *list.List // front: most recently used
-	bytes   int
-	budget  int
-	pending map[artKey]bool
-	sem     chan struct{}
+	mu            sync.Mutex
+	imgs          map[artKey]*list.Element
+	lru           *list.List
+	bytes, budget int
+	pending       map[artKey]*artRequest
+	epoch         uint64
+	albumEpoch    map[*Album]uint64
+	jobs          chan *artRequest
+	start         sync.Once
+	done          chan struct{}
+	closed        bool
+	foreground    atomic.Int32
+	background    chan struct{}
+	sem           chan struct{}
 }
 
 type artEntry struct {
-	k   artKey
-	img *image.RGBA
+	k     artKey
+	img   *image.RGBA
+	final bool
 }
 
-// 128 MB of scaled images (16 MB on the Miyoo), at most 2 decoded at the
-// same time (1 on the Miyoo: Go has one core there, so a second decode
-// only adds its picture to the memory)
+type artRequest struct {
+	ui                  *IpodUI
+	k                   artKey
+	source              *Album // artwork fields captured before a later cover replacement
+	fallback            *image.RGBA
+	epoch, albumEpoch   uint64
+	foreground, running bool // protected by the cache mutex
+}
+
 func newArtCache() *artCache {
-	budget, decoders := 128<<20, 2
-	if isOnion {
-		budget, decoders = int(onionArtBudget()), 1
-	}
-	return &artCache{
-		imgs:    map[artKey]*list.Element{},
-		lru:     list.New(),
-		budget:  budget,
-		pending: map[artKey]bool{},
-		sem:     make(chan struct{}, decoders),
-	}
+	return &artCache{imgs: map[artKey]*list.Element{}, lru: list.New(), budget: 128 << 20,
+		pending: map[artKey]*artRequest{}, albumEpoch: map[*Album]uint64{},
+		jobs: make(chan *artRequest, artQueueLimit), done: make(chan struct{}),
+		background: make(chan struct{}, 1), sem: make(chan struct{}, 2)}
 }
 
-// clear drops every image in memory (the scaled files on disk stay, so
-// they come back at once).
+// clear invalidates in-flight work as well as RAM entries. Disk entries
+// remain available to the workers, without making the next frame read them.
 func (c *artCache) clear() {
 	c.mu.Lock()
+	c.epoch++
 	c.imgs = map[artKey]*list.Element{}
+	c.pending = map[artKey]*artRequest{}
+	c.albumEpoch = map[*Album]uint64{}
 	c.lru.Init()
 	c.bytes = 0
 	c.mu.Unlock()
 }
 
-// dropAlbum forgets every size of one album's artwork (it has a new cover).
 func (c *artCache) dropAlbum(a *Album) {
 	c.mu.Lock()
+	c.albumEpoch[a]++
 	for k, e := range c.imgs {
 		if k.a == a {
 			c.bytes -= len(e.Value.(*artEntry).img.Pix)
@@ -83,45 +91,244 @@ func (c *artCache) dropAlbum(a *Album) {
 			delete(c.imgs, k)
 		}
 	}
+	for k := range c.pending {
+		if k.a == a {
+			delete(c.pending, k)
+		}
+	}
 	c.mu.Unlock()
 }
 
-// get returns a cached image and marks it as just used.
+// close stops idle workers and discards queued work. A decode already
+// running may finish, but cannot publish after the cache is closed.
+func (c *artCache) close() {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.closed = true
+	c.epoch++
+	c.pending = map[artKey]*artRequest{}
+	close(c.done)
+	for {
+		select {
+		case <-c.jobs:
+			c.foreground.Add(-1)
+		default:
+			c.mu.Unlock()
+			return
+		}
+	}
+}
+
+// get and put are called with the cache mutex held.
 func (c *artCache) get(k artKey) *image.RGBA {
-	if e, ok := c.imgs[k]; ok {
+	if e := c.imgs[k]; e != nil {
 		c.lru.MoveToFront(e)
 		return e.Value.(*artEntry).img
 	}
 	return nil
 }
-
-// put adds an image, dropping the least recently used ones over budget.
-func (c *artCache) put(k artKey, img *image.RGBA) {
-	if e, ok := c.imgs[k]; ok {
-		c.bytes -= len(e.Value.(*artEntry).img.Pix)
-		e.Value.(*artEntry).img = img
+func (c *artCache) final(k artKey) bool {
+	e := c.imgs[k]
+	return e != nil && e.Value.(*artEntry).final
+}
+func (c *artCache) put(k artKey, img *image.RGBA) { c.putImage(k, img, true) }
+func (c *artCache) putImage(k artKey, img *image.RGBA, final bool) {
+	if img == nil {
+		return
+	}
+	if e := c.imgs[k]; e != nil {
+		entry := e.Value.(*artEntry)
+		if entry.final && !final {
+			return
+		}
+		c.bytes -= len(entry.img.Pix)
+		entry.img = img
+		entry.final = final
 		c.bytes += len(img.Pix)
 		c.lru.MoveToFront(e)
 	} else {
-		c.imgs[k] = c.lru.PushFront(&artEntry{k, img})
+		c.imgs[k] = c.lru.PushFront(&artEntry{k, img, final})
 		c.bytes += len(img.Pix)
 	}
 	for c.bytes > c.budget && c.lru.Len() > 1 {
 		e := c.lru.Back()
-		en := e.Value.(*artEntry)
+		entry := e.Value.(*artEntry)
 		c.lru.Remove(e)
-		delete(c.imgs, en.k)
-		c.bytes -= len(en.img.Pix)
+		delete(c.imgs, entry.k)
+		c.bytes -= len(entry.img.Pix)
 	}
 }
 
-// Artwork already scaled on disk is read at once, without waiting for a
-// background load, up to artSyncBudget bytes per frame (the rest loads in
-// the background): lists and Cover Flow show the covers straight away
-// instead of the default cover first.
-const artSyncBudget = 700 << 10
+func (c *artCache) valid(r *artRequest) bool {
+	return !c.closed && r.epoch == c.epoch && r.albumEpoch == c.albumEpoch[r.k.a] && c.pending[r.k] == r
+}
+func (c *artCache) request(ui *IpodUI, k artKey) *artRequest {
+	var source *Album
+	if k.a != nil {
+		source = &Album{ArtImg: k.a.ArtImg}
+		// A retained decoded image is already the immutable source. Do not
+		// tie it to a file identity that could change before this job runs.
+		if source.ArtImg == nil {
+			source.ArtPath = k.a.ArtPath
+		}
+	}
+	return &artRequest{ui: ui, k: k, source: source, epoch: c.epoch, albumEpoch: c.albumEpoch[k.a], fallback: c.best(k)}
+}
 
-var artSyncLeft = artSyncBudget
+// best only returns existing RAM pixels. Their exact-size temporary copy
+// is prepared by a worker, never by the caller drawing a frame.
+func (c *artCache) best(k artKey) *image.RGBA {
+	var best *image.RGBA
+	for _, d := range []int{256, 2 * ssCell, 192, 96, ssCell, 512, 480} {
+		if d == k.dev {
+			continue
+		}
+		if img := c.get(artKey{k.a, d}); img != nil && (best == nil || img.Bounds().Dx() > best.Bounds().Dx()) {
+			best = img
+		}
+	}
+	if k.a != nil && c.epoch == 0 && c.albumEpoch[k.a] == 0 && (best == nil || best.Bounds().Dx() < 2*ssCell) {
+		ssArt.Lock()
+		for _, d := range []int{2 * ssCell, ssCell} {
+			if img := ssArt.img[artKey{k.a, d}]; img != nil && (best == nil || img.Bounds().Dx() > best.Bounds().Dx()) {
+				best = img
+			}
+		}
+		ssArt.Unlock()
+	}
+	return best
+}
+
+// enqueue is nonblocking and coalesces one request per album/size. A full
+// queue leaves the key retryable on the next frame instead of spawning an
+// unbounded overflow goroutine. Background work can be promoted before it
+// starts, preserving foreground priority without decoding it twice.
+func (c *artCache) enqueue(r *artRequest) bool {
+	if c.closed {
+		return false
+	}
+	r.foreground = true
+	c.foreground.Add(1)
+	select {
+	case c.jobs <- r:
+		return true
+	default:
+		r.foreground = false
+		c.foreground.Add(-1)
+		return false
+	}
+}
+func (c *artCache) startWorkers() {
+	c.start.Do(func() {
+		for i := 0; i < cap(c.sem); i++ {
+			go func() {
+				for {
+					select {
+					case <-c.done:
+						return
+					case r := <-c.jobs:
+						c.run(r)
+					}
+				}
+			}()
+		}
+	})
+}
+
+// art is a RAM lookup and a bounded queue submission only. It can return
+// a worker-prepared temporary image until the full-quality result arrives.
+func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA {
+	if devSize <= 0 {
+		return nil
+	}
+	c := ui.artc
+	k := artKey{a, devSize}
+	c.mu.Lock()
+	img := c.get(k)
+	if c.final(k) || c.closed {
+		c.mu.Unlock()
+		return img
+	}
+	r := c.pending[k]
+	queued := false
+	if r == nil {
+		r = c.request(ui, k)
+		if c.enqueue(r) {
+			c.pending[k] = r
+			queued = true
+		}
+	} else if !r.foreground && !r.running {
+		queued = c.enqueue(r)
+	}
+	c.mu.Unlock()
+	if queued {
+		c.startWorkers()
+	}
+	return img
+}
+
+func (c *artCache) begin(r *artRequest, foreground bool) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.valid(r) || r.running || r.foreground != foreground {
+		return false
+	}
+	r.running = true
+	return true
+}
+func (c *artCache) publish(r *artRequest, img *image.RGBA, final bool) bool {
+	c.mu.Lock()
+	if !c.valid(r) {
+		c.mu.Unlock()
+		return false
+	}
+	c.putImage(r.k, img, final)
+	if final {
+		delete(c.pending, r.k)
+	}
+	c.mu.Unlock()
+	r.ui.post(func() { r.ui.onArtLoaded() })
+	return true
+}
+func (c *artCache) run(r *artRequest) {
+	defer c.foreground.Add(-1)
+	if !c.begin(r, true) {
+		return
+	}
+	out := r.ui.loadArtPrepared(r.source, r.k.dev, func() bool {
+		if r.fallback == nil {
+			return true
+		}
+		fallback := scaleImage(r.fallback, r.k.dev, r.k.dev)
+		return c.publish(r, fallback, false)
+	})
+	c.publish(r, out, true)
+}
+
+func (ui *IpodUI) loadArtBG(a *Album, devSize int) *image.RGBA {
+	c := ui.artc
+	c.background <- struct{}{}
+	defer func() { <-c.background }()
+	for i := 0; c.foreground.Load() > 0 && i < 500; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return ui.loadArt(a, devSize)
+}
+
+// Existing callers that draw at an explicit destination size may show
+// another RAM image immediately. No Catmull-Rom scaling happens here.
+func (ui *IpodUI) artFallback(a *Album, devSize int) *image.RGBA {
+	if img := ui.art(a, devSize); img != nil {
+		return img
+	}
+	c := ui.artc
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.best(artKey{a, devSize})
+}
 
 // decodeAlbumSource returns the album's full-size artwork (nil if none).
 func decodeAlbumSource(a *Album) image.Image {
@@ -134,176 +341,16 @@ func decodeAlbumSource(a *Album) image.Image {
 	if a.ArtPath == "" {
 		return nil
 	}
-	// decoded as the file is read (a big cover is several MB, not read
-	// whole first)
 	f, err := os.Open(a.ArtPath)
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
-	// its size first: on the Miyoo (128 MB) a picture too big to decode is
-	// left out (a 5000 px PNG takes 100 MB once decoded)
-	if isOnion {
-		cfg, _, err := image.DecodeConfig(f)
-		if err != nil {
-			return nil
-		}
-		if cfg.Width > onionMaxArtSide || cfg.Height > onionMaxArtSide {
-			bigArtLog(a.ArtPath, cfg.Width, cfg.Height)
-			return nil
-		}
-		if _, err := f.Seek(0, 0); err != nil {
-			return nil
-		}
-	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		return nil
 	}
 	return img
-}
-
-// onionMaxArtSide: the biggest cover the Miyoo decodes, on a side (3000 ×
-// 3000 is 36 MB as RGBA, 13 MB as a JPEG's YCbCr).
-const onionMaxArtSide = 3000
-
-// bigArtLog logs a cover left out, once per file.
-var bigArtLogged sync.Map
-
-func bigArtLog(p string, w, h int) {
-	if _, seen := bigArtLogged.LoadOrStore(p, true); !seen {
-		logMsg(fmt.Sprintf("Artwork: %s is %d×%d, too big for the Miyoo: left out", p, w, h))
-	}
-}
-
-// art returns the album artwork scaled to devSize, or nil while it is being
-// prepared (onArtLoaded redraws when it's ready).
-func (ui *IpodUI) art(a *Album, devSize int) *image.RGBA {
-	c := ui.artc
-	k := artKey{a, devSize}
-	c.mu.Lock()
-	if img := c.get(k); img != nil {
-		c.mu.Unlock()
-		return img
-	}
-	if c.pending[k] {
-		c.mu.Unlock()
-		return nil
-	}
-	// scaled before: read it now if the frame's budget allows
-	if need := devSize * devSize * 4; artSyncLeft >= need {
-		if img := readArtDisk(a, devSize); img != nil {
-			artSyncLeft -= need
-			c.put(k, img)
-			c.mu.Unlock()
-			return img
-		}
-	}
-	c.pending[k] = true
-	c.mu.Unlock()
-
-	// wanted on the screen now: ahead of the background work
-	atomic.AddInt32(&artFG, 1)
-	artFGStart.Do(func() {
-		for w := 0; w < cap(c.sem); w++ {
-			go func() {
-				for job := range artFGQueue {
-					job()
-				}
-			}()
-		}
-	})
-	job := func() {
-		defer atomic.AddInt32(&artFG, -1)
-		out := ui.loadArt(a, devSize)
-		c.mu.Lock()
-		c.put(k, out)
-		delete(c.pending, k)
-		c.mu.Unlock()
-		ui.post(func() { ui.onArtLoaded() })
-	}
-	select {
-	case artFGQueue <- job:
-	default:
-		go job() // (the queue is full: don't block the frame)
-	}
-	return nil
-}
-
-// artFGQueue: the covers asked for by the screen, loaded in the order they
-// were asked (first in, first out) by as many workers as loadArt allows at
-// once. (One goroutine each would come in no particular order, often the
-// newest first.)
-var (
-	artFGQueue = make(chan func(), 256)
-	artFGStart sync.Once
-)
-
-// artFG: covers wanted on the screen being loaded. The background work
-// (prefetchArt, the screensaver's warm-up) waits while there are any, and
-// takes at most one of the two decoding places (artBG), so a cover asked
-// for by the screen never waits behind it.
-var (
-	artFG int32
-	artBG = make(chan struct{}, 1)
-)
-
-// loadArtBG is loadArt for the background work.
-func (ui *IpodUI) loadArtBG(a *Album, devSize int) *image.RGBA {
-	artBG <- struct{}{}
-	defer func() { <-artBG }()
-	for i := 0; atomic.LoadInt32(&artFG) > 0 && i < 500; i++ {
-		time.Sleep(10 * time.Millisecond)
-	}
-	return ui.loadArt(a, devSize)
-}
-
-// artFallback: a cover to show while the one at devSize is being made:
-// the same album at another size already in memory, scaled (not kept).
-func (ui *IpodUI) artFallback(a *Album, devSize int) *image.RGBA {
-	// (asked each frame until the real one comes: made once)
-	if a == artFbAl && devSize == artFbSize && artFbImg != nil {
-		return artFbImg
-	}
-	img := ui.artFallbackMake(a, devSize)
-	if img != nil {
-		artFbAl, artFbSize, artFbImg = a, devSize, img
-	}
-	return img
-}
-
-var (
-	artFbAl   *Album
-	artFbSize int
-	artFbImg  *image.RGBA
-)
-
-func (ui *IpodUI) artFallbackMake(a *Album, devSize int) *image.RGBA {
-	c := ui.artc
-	var best *image.RGBA
-	c.mu.Lock()
-	for _, d := range []int{256, 2 * ssCell, 192, 96, ssCell, 512} {
-		if d == devSize {
-			continue
-		}
-		if img := c.get(artKey{a, d}); img != nil && (best == nil || img.Bounds().Dx() > best.Bounds().Dx()) {
-			best = img
-		}
-	}
-	c.mu.Unlock()
-	if best == nil || best.Bounds().Dx() < 2*ssCell {
-		ssArt.Lock()
-		for _, d := range []int{2 * ssCell, ssCell} {
-			if img := ssArt.img[artKey{a, d}]; img != nil && (best == nil || img.Bounds().Dx() > best.Bounds().Dx()) {
-				best = img
-			}
-		}
-		ssArt.Unlock()
-	}
-	if best == nil {
-		return nil
-	}
-	return scaleImage(best, devSize, devSize)
 }
 
 // preloadPlaying asks for the covers Now Playing will want: the song's
@@ -326,11 +373,23 @@ func (ui *IpodUI) preloadPlaying() {
 // loadArt reads the scaled artwork from the disk cache, or decodes and
 // scales the original (at most two at a time) and caches it on disk.
 func (ui *IpodUI) loadArt(a *Album, devSize int) *image.RGBA {
+	return ui.loadArtPrepared(a, devSize, nil)
+}
+
+// A warm full-quality disk entry wins immediately. Only a disk miss needs
+// a temporary resized fallback while the original is decoded.
+func (ui *IpodUI) loadArtPrepared(a *Album, devSize int, prepare func() bool) *image.RGBA {
 	c := ui.artc
 	c.sem <- struct{}{}
 	defer func() { <-c.sem }()
-	if out := readArtDisk(a, devSize); out != nil {
+	// Capture the disk identity once. A cover replaced while decoding must
+	// not write old pixels under the replacement's newer cache identity.
+	prefix := artDiskPrefix(a)
+	if out := readArtDiskPath(artDiskPathFrom(prefix, devSize), devSize); out != nil {
 		return out
+	}
+	if prepare != nil && !prepare() {
+		return nil
 	}
 	src := decodeAlbumSource(a)
 	if src == nil {
@@ -341,11 +400,11 @@ func (ui *IpodUI) loadArt(a *Album, devSize int) *image.RGBA {
 	big := max(devSize, slices.Max(prefetchSizes))
 	src = shrinkImage(src, big, big)
 	out := scaleImage(src, devSize, devSize)
-	writeArtDisk(a, devSize, out)
+	writeArtDiskPath(artDiskPathFrom(prefix, devSize), devSize, out)
 	// the other common sizes from the same decode, for next time
 	for _, d := range prefetchSizes {
-		if d != devSize && artDiskPath(a, d) != "" && !fileExists(artDiskPath(a, d)) {
-			writeArtDisk(a, d, scaleImage(src, d, d))
+		if path := artDiskPathFrom(prefix, d); d != devSize && path != "" && !fileExists(path) {
+			writeArtDiskPath(path, d, scaleImage(src, d, d))
 		}
 	}
 	return out
@@ -360,41 +419,49 @@ var prefetchSizes = []int{96, 256, ssCell, 2 * ssCell}
 // ones never shown before, so lists and Cover Flow never wait for them.
 // It runs once per library (a new scan starts it again).
 func (ui *IpodUI) prefetchArt(lib *Library) {
+	c := ui.artc
 	for _, a := range lib.Albums {
 		if ui.app.Library != lib || !ui.app.Running {
 			return
 		}
 		k := artKey{a, 96}
-		c := ui.artc
 		c.mu.Lock()
-		if isOnion && c.bytes > c.budget/2 {
-			// a small cache: keep half of it for what is on screen
-			// (the scaled files on disk are still made as covers show up)
+		if c.closed {
 			c.mu.Unlock()
-			break
+			return
 		}
-		have := c.get(k) != nil || c.pending[k]
-		if !have {
-			c.pending[k] = true
-		}
-		c.mu.Unlock()
-		if have {
+		if c.final(k) || c.pending[k] != nil {
+			c.mu.Unlock()
 			continue
 		}
-		img := ui.loadArtBG(a, 96)
-		c.mu.Lock()
-		c.put(k, img)
-		delete(c.pending, k)
+		r := c.request(ui, k)
+		c.pending[k] = r
 		c.mu.Unlock()
-		time.Sleep(3 * time.Millisecond) // stay out of the way of the UI
+		c.background <- struct{}{}
+		for i := 0; c.foreground.Load() > 0 && i < 500; i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if c.begin(r, false) {
+			c.publish(r, ui.loadArt(r.source, 96), true)
+		}
+		<-c.background
+		time.Sleep(3 * time.Millisecond)
 	}
 	ui.post(func() { ui.onArtLoaded() })
-	// then the screensaver's covers, so it never waits for them
 	ui.post(func() {
-		if saverAfter > 0 { // (only when it may start by itself; by hand it gets them then)
+		if saverAfter > 0 {
 			ui.ssWarm()
 		}
 	})
+}
+
+// prepareDefaultArt keeps the usual placeholders ready before Run starts.
+// An uncommon dynamically sized placeholder retains the exact-size slow
+// path below; regular frame lookups never load or resize the default asset.
+func (ui *IpodUI) prepareDefaultArt() {
+	for _, d := range []int{80, 96, 112, 150, 192, 200, 256, 480, 512, ssCell, 2 * ssCell} {
+		ui.defaultArtSized(d)
+	}
 }
 
 // artOrDefault: the artwork, or the default cover while it loads.
@@ -471,7 +538,7 @@ func (ui *IpodUI) artCached(a *Album, devSize int) *image.RGBA {
 // artJPEGFrom: sizes above this are kept as JPEG.
 const artJPEGFrom = 320
 
-func artDiskPath(a *Album, dev int) string {
+func artDiskPrefix(a *Album) string {
 	if a == nil || a.ArtPath == "" {
 		return ""
 	}
@@ -481,15 +548,24 @@ func artDiskPath(a *Album, dev int) string {
 	}
 	h := fnv.New64a()
 	fmt.Fprintf(h, "%s|%d|%d", a.ArtPath, st.Size(), st.ModTime().UnixNano())
+	return filepath.Join(dataPath(".ipod_art"), fmt.Sprintf("%016x", h.Sum64()))
+}
+func artDiskPathFrom(prefix string, dev int) string {
+	if prefix == "" {
+		return ""
+	}
 	ext := "rgba"
 	if dev > artJPEGFrom {
 		ext = "jpg"
 	}
-	return filepath.Join(dataPath(".ipod_art"), fmt.Sprintf("%016x_%d.%s", h.Sum64(), dev, ext))
+	return fmt.Sprintf("%s_%d.%s", prefix, dev, ext)
 }
+func artDiskPath(a *Album, dev int) string { return artDiskPathFrom(artDiskPrefix(a), dev) }
 
 func readArtDisk(a *Album, dev int) *image.RGBA {
-	p := artDiskPath(a, dev)
+	return readArtDiskPath(artDiskPath(a, dev), dev)
+}
+func readArtDiskPath(p string, dev int) *image.RGBA {
 	if p == "" {
 		return nil
 	}
@@ -504,12 +580,13 @@ func readArtDisk(a *Album, dev int) *image.RGBA {
 }
 
 func writeArtDisk(a *Album, dev int, img *image.RGBA) {
-	p := artDiskPath(a, dev)
+	writeArtDiskPath(artDiskPath(a, dev), dev, img)
+}
+func writeArtDiskPath(p string, dev int, img *image.RGBA) {
 	if p == "" || img.Bounds().Dx() != dev || img.Bounds().Dy() != dev || img.Stride != dev*4 {
 		return
 	}
 	_ = os.MkdirAll(filepath.Dir(p), 0755)
-	tmp := p + ".tmp"
 	data := img.Pix
 	if dev > artJPEGFrom {
 		var b bytes.Buffer
@@ -518,7 +595,21 @@ func writeArtDisk(a *Album, dev int, img *image.RGBA) {
 		}
 		data = b.Bytes()
 	}
-	if os.WriteFile(tmp, data, 0644) == nil {
+	// Different sizes of the same album can prepare shared cache entries
+	// concurrently. Give each writer its own temporary file so a reader
+	// sees either complete image, never another worker's partial write.
+	f, err := os.CreateTemp(filepath.Dir(p), ".art-*.tmp")
+	if err != nil {
+		return
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	_ = f.Chmod(0644)
+	_, err = f.Write(data)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
 		_ = os.Rename(tmp, p)
 	}
 }
@@ -542,7 +633,7 @@ func readArtJPEG(p string, dev int) *image.RGBA {
 
 // pruneArtCaches deletes the cached covers no album uses any more (after a
 // scan, in the background): .ipod_art's scaled copies are named from their
-// cover file's path, size and time, .miyoopod_artwork's from the album's key,
+// cover file's path, size and time, the artwork cache's from the album's key,
 // so a changed cover or a renamed album leaves its old files behind for
 // good. Only files older than 10 minutes go (not one just written for an
 // album the scan is still filling in).

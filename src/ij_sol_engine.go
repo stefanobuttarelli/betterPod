@@ -6,16 +6,15 @@ package main
 import (
 	"math"
 	"math/rand"
-	"os"
 	"strconv"
 	"time"
 )
 
-// solSeed: MIYOOPOD_SOL_SEED makes the deals reproducible (tests);
+// solSeed: BETTERPOD_SOL_SEED makes the deals reproducible (tests);
 // -1 uses math/rand. The generator is the classic LCG so that a seed
 // gives the same deal as the JavaScript version.
 var solSeed = func() int64 {
-	if v, err := strconv.ParseInt(os.Getenv("MIYOOPOD_SOL_SEED"), 10, 64); err == nil {
+	if v, err := strconv.ParseInt(envGet("BETTERPOD_SOL_SEED"), 10, 64); err == nil {
 		return v
 	}
 	return -1

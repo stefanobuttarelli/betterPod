@@ -11,9 +11,9 @@ import (
 
 // App metadata
 const (
-	APP_VERSION = "0.0.8"
+	APP_VERSION = BETTERPOD_VERSION
 	APP_AUTHOR  = "Danilo Fragoso"
-	SUPPORT_URL = "https://github.com/danfragoso/miyoopod"
+	SUPPORT_URL = "https://github.com/stefanobuttarelli/betterPod"
 )
 
 // Display constants - identical to GaugeBoy
@@ -21,12 +21,11 @@ const SCREEN_WIDTH = 640
 const SCREEN_HEIGHT = 480
 
 // Music source and data files: /userdata/music and the port's conf folder on
-// Knulli, /mnt/SDCARD/Media/Music and App/betterPod/conf on Onion
-// (MIYOOPOD_MUSIC_DIR / MIYOOPOD_DATA_DIR, set by the launchers).
+// Knulli (BETTERPOD_MUSIC_DIR / BETTERPOD_DATA_DIR, set by the launcher).
 var MUSIC_ROOT = musicRoot()
 
-func LIBRARY_JSON_PATH() string { return dataPath(".miyoopod_library.json") }
-func ARTWORK_DIR() string       { return dataPath(".miyoopod_artwork/") }
+func LIBRARY_JSON_PATH() string { return dataPath(libraryFile) }
+func ARTWORK_DIR() string       { return dataPath(artworkFolder + "/") }
 
 // UI layout constants (at 640x480 native resolution, classic UI; the iPod UI
 // has its own metrics in ij_*.go)
@@ -583,7 +582,7 @@ type CoverflowState struct {
 
 // --- Main application ---
 
-type MiyooPod struct {
+type BetterPod struct {
 	Running       bool
 	ShouldRefresh bool
 	RefreshChan   chan struct{} // Signal channel for screen refresh
@@ -678,8 +677,8 @@ type MiyooPod struct {
 	TrackEndPending bool // Poller detected track ended, main loop calls handleTrackEnd
 
 	// Volume/Brightness state
-	SystemVolume     int // MI_AO hardware volume (0-100), persisted across launches
-	SystemBrightness int // PWM brightness (0-100), persisted across launches
+	SystemVolume     int // System volume (0-100), persisted across launches
+	SystemBrightness int // Screen brightness (0-100), persisted across launches
 
 	// Volume/Brightness overlay
 	OverlayType    string      // "volume" or "brightness"
@@ -729,11 +728,7 @@ type MiyooPod struct {
 	SentryEnabled    bool   // Whether to send events to Sentry
 
 	// Update state
-	UpdateAvailable     bool          // Whether an update is available
-	UpdateInfo          *VersionInfo  // Remote version info when update is available
-	UpdateNotifications bool          // Whether to show auto update popup on launch
-	VersionCheckDone    chan struct{} // Closed when async version check completes
-	ShowingUpdatePrompt bool          // True when update prompt overlay is visible
+	UpdateNotifications bool // Whether to show auto update popup on launch
 
 	// Seek state (fast forward / rewind on Now Playing)
 	SeekHeld      bool      // Whether L/R is currently held down
@@ -762,7 +757,7 @@ type MiyooPod struct {
 	SearchMenuTitle string      // Original menu title
 
 	// Device info (detected at startup)
-	DeviceModel   string // e.g., "miyoo-mini-plus", "miyoo-mini-v4", "miyoo-mini-flip"
+	DeviceModel   string // e.g., "anbernic-h700"
 	DisplayWidth  int    // Detected display width
 	DisplayHeight int    // Detected display height
 }

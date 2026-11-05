@@ -306,13 +306,11 @@ func (ui *IpodUI) libraryInfoView() *View {
 					OnSelect: func() { ui.showView(ui.scannedFoldersView(), "") }})
 			}
 		}
-		if !isOnion { // (the Miyoo has one card slot)
-			// where the music is, and (a row of its own) moving it
-			items = append(items,
-				Item{Label: "Music Folder", Sublabel: strings.TrimRight(MUSIC_ROOT, "/"), NoArrow: true},
-				Item{Label: "Move Music to Another Card", Sublabel: "Or copy it there, or use the music already there",
-					OnSelect: func() { ui.showView(ui.musicFolderView(), "") }})
-		}
+		// where the music is, and (a row of its own) moving it
+		items = append(items,
+			Item{Label: "Music Folder", Sublabel: strings.TrimRight(MUSIC_ROOT, "/"), NoArrow: true},
+			Item{Label: "Move Music to Another Card", Sublabel: "Or copy it there, or use the music already there",
+				OnSelect: func() { ui.showView(ui.musicFolderView(), "") }})
 		lib := ui.library()
 		items = append(items,
 			info("Songs", fmt.Sprint(len(lib.Tracks))),

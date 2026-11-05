@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-const LOG_PATH = "./miyoopod.log"
+const LOG_PATH = "./betterpod.log"
 
 var logFile *os.File
-var globalApp *MiyooPod // Global reference for checking LocalLogsEnabled
+var globalApp *BetterPod // Global reference for checking LocalLogsEnabled
 
 func init() {
 	var err error
@@ -53,16 +53,7 @@ func DetectDevice(width, height C.int) {
 	globalApp.DisplayWidth = w
 	globalApp.DisplayHeight = h
 
-	// Determine device model based on resolution
-	if w == 640 && h == 480 {
-		globalApp.DeviceModel = "miyoo-mini-plus"
-	} else if w == 750 && h == 560 {
-		// Both v4 and flip have the same resolution
-		// We'll label them as v4 by default, could be either
-		globalApp.DeviceModel = "miyoo-mini-v4"
-	} else {
-		globalApp.DeviceModel = fmt.Sprintf("unknown-%dx%d", w, h)
-	}
+	globalApp.DeviceModel = "anbernic-h700"
 
 	logMsg(fmt.Sprintf("INFO: Device detected: %s (%dx%d)", globalApp.DeviceModel, w, h))
 }

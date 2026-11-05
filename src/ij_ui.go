@@ -23,7 +23,7 @@ import (
 )
 
 type IpodUI struct {
-	app *MiyooPod
+	app *BetterPod
 	fb  *image.RGBA
 
 	saver *screensaver // the screensaver, over everything (ij_screensaver.go)
@@ -80,16 +80,16 @@ type IpodUI struct {
 // are uploaded (refreshFramebufferRows).
 //
 
-// MIYOOPOD_PERF=1 logs frame timings once a second (render, present,
-// late and unchanged frames).
-var perfLog = os.Getenv("MIYOOPOD_PERF") != ""
+// BETTERPOD_PERF=1 logs draw/presentation counts, drawing cost, whole-loop
+// work and continuous-animation presentation gaps over 50 ms each second.
+var perfLog = envGet("BETTERPOD_PERF") != ""
 var (
 	perfFrames         int
 	perfTotal, perfMax time.Duration
 	perfStart          = time.Now()
 )
 
-func newIpodUI(app *MiyooPod) *IpodUI {
+func newIpodUI(app *BetterPod) *IpodUI {
 	ui := &IpodUI{
 		app:         app,
 		fb:          newCanvas(640, 480),
@@ -114,9 +114,8 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	}
 	ui.loadPrefs()
 	ui.updateTheme()
-	if isOnion {
-		ui.onionInitVolume() // MI_AO hardware volume (onion.go)
-	} else if v := initSystemVolume(); v >= 0 {
+	ui.prepareDefaultArt()
+	if v := initSystemVolume(); v >= 0 {
 		// the console volume is the player volume; SDL_mixer stays at 100%
 		// (the wheel and the console keys move the same value)
 		ui.volume = math.Min(math.Max(v, 0), 1)
@@ -141,9 +140,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	startBluetoothWatch()
 	startWifiWatch()
 	startHealthLog()
-	if isKnulli {
-		startVolumeKeyWatch()
-	}
+	startVolumeKeyWatch()
 	home := ui.homeView()
 	home.firstIn = true
 	home.enter = newAnim(0)
@@ -1055,12 +1052,22 @@ func fillRectClipped(dst *image.RGBA, x, y, w, h int, c Col, clip image.Rectangl
 	fillRect(dst, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), c)
 }
 
+// coverFlowCovered reports whether an opaque full-screen view is settled
+// over Cover Flow. Sliding views still expose the flow and need it drawn.
+func (ui *IpodUI) coverFlowCovered(now time.Time) bool {
+	cf := ui.cover
+	if cf == nil || len(ui.full) <= cf.fullBase || ui.fullX.Get(now) != 0 {
+		return false
+	}
+	v := ui.full[len(ui.full)-1]
+	return v.Kind == KindFull && !v.exiting && v.enter.Get(now) == 0 && v.hide.Get(now) == 0
+}
+
 func (ui *IpodUI) renderFrame(now time.Time) {
 	ui.frameNo++
 	marqueeActive = false
 	marqSyncMoving, marqSyncWake = false, time.Time{}
 	mini.marqOn = false
-	artSyncLeft = artSyncBudget
 	fb := ui.fb
 	// the screensaver covering the screen: nothing under it is drawn
 	if s := ui.saver; s != nil && !s.exiting && s.fade.Get(now) >= 1 {
@@ -1086,6 +1093,9 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 		op := cf.fadeIn.Get(now)
 		if cf.exiting && !cf.fadeIn.Running() {
 			ui.cover = nil
+		} else if ui.coverFlowCovered(now) {
+			// Keep the hidden flow's state current without rasterizing it.
+			ui.advanceCoverFlowState(now)
 		} else {
 			// (no background: the header and the flow cover the layer)
 			l := newCanvasCached(&coverLayer, 640, 480)
@@ -1179,7 +1189,6 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// hold badge and volume overlay
 	ui.drawHoldBadge(fb, now)
 	ui.drawVolumeOSD(fb, now)
-	ui.drawPowerExitOSD(fb)
 
 	// views that finished sliding out
 	keep := ui.gone[:0]
@@ -1394,9 +1403,6 @@ func batteryInfo() (int, bool) {
 }
 
 func batteryCharging() bool {
-	if isOnion {
-		return onionChargingNow() // (read in the background: axp_test may take 2 s)
-	}
 	for _, p := range []string{"/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
 		if b, err := os.ReadFile(p); err == nil {
 			s := string(b)
@@ -1428,12 +1434,6 @@ func (ui *IpodUI) onlyKenBurns(now time.Time) bool {
 // the previous one).
 func (ui *IpodUI) present() bool {
 	pix := ui.fb.Pix
-	if isOnion {
-		// Onion uploads the whole frame anyway (main.c): comparing it with
-		// the last one row by row would cost more than it saves
-		refreshFramebuffer(unsafe.Pointer(&pix[0]))
-		return true
-	}
 	stride := ui.fb.Stride
 	h := len(pix) / stride
 	if len(ui.prevFB) != len(pix) {
@@ -1462,28 +1462,32 @@ func (ui *IpodUI) present() bool {
 
 func (ui *IpodUI) Run() {
 	app := ui.app
-	if pf := os.Getenv("MIYOOPOD_PPROF"); pf != "" {
+	defer ui.artc.close()
+	if pf := envGet("BETTERPOD_PPROF"); pf != "" {
 		if f, err := os.Create(pf); err == nil {
 			pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
 		}
 	}
 	vsync := displayVsync()
-	var perfPresent time.Duration
-	var perfLate, perfSkipped int
-	var lastFrame time.Time
+	var perfPresent, perfWork, perfWorkMax time.Duration
+	var perfGaps, perfSkipped, perfLoops int
+	var lastPresented time.Time
+	lastPresentedAnimated := false
 	lastMinute := -1
 	lastState := PlayState(-1)
 	lastMiniHas := false // (the Now Playing block was there)
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
-	lastLocked, lastWarn := app.Locked, app.PowerExitWarning
+	lastLocked := app.Locked
 	lastStatus := -1
 	var lastWall time.Time
 	wasAnim := false    // an animation was running at the last frame
 	blackShown := false // the screen off's black frame is on screen
 	var prefetched *Library
+	var pacer framePacer
 	for app.Running {
+		loopStarted := time.Now()
 		// thumbnails of a newly loaded library are prefetched
 		if lib := app.Library; lib != nil && lib != prefetched && !app.LibScanRunning && len(lib.Albums) > 0 {
 			prefetched = lib
@@ -1505,11 +1509,6 @@ func (ui *IpodUI) Run() {
 			if ev >= 0 && menuKey.down {
 				ui.lockKeyCombo("another key") // MENU + a key: not the lock
 			}
-			// Onion: volume keys, MENU, L2 / R2 (onion.go)
-			ev, used := ui.onionKey(ev)
-			if used {
-				continue
-			}
 			// headphone buttons work in Hold and with the screen off too,
 			// like an iPod remote (and unplugging them pauses)
 			if ui.mediaKey(ev) {
@@ -1521,7 +1520,7 @@ func (ui *IpodUI) Run() {
 			if keyLog {
 				logMsg(fmt.Sprintf("KEY %d", ev))
 			}
-			// SELECT + START quits (kept from MiyooPod); SELECT alone = Hold
+			// SELECT + START quits; SELECT alone = Hold
 			if Key(ev) == START && hold.selDown {
 				app.Running = false
 				break
@@ -1546,17 +1545,10 @@ func (ui *IpodUI) Run() {
 			ui.dirty = true // (the black frame, or the screen back)
 			ui.lockChanged()
 		}
-		if app.PowerExitWarning != lastWarn {
-			lastWarn = app.PowerExitWarning
-			ui.dirty = true
-		}
 		ui.lockKeyPoll(now)
 		// back from sleep: the wall clock jumped, the monotonic one didn't
 		wall := time.Now()
-		// (not on Onion: launch.sh stops keymon, so the Miyoo never sleeps
-		// under betterPod; a jump is the clock being set, and would light the
-		// screen in the pocket)
-		if !isOnion && !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
+		if !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
 			ui.onResume()
 		}
 		lastWall = wall
@@ -1604,7 +1596,6 @@ func (ui *IpodUI) Run() {
 		ui.saverTick(now)
 		ui.videoTick(now) // (Videos: the frame for the sound heard, ij_video.go)
 		knulliIdleTick(ui, now)
-		ui.onionSleepTick(now) // (Onion's sleep timer, onion_sleep.go)
 		if ui.saver != nil && !ui.saver.exiting && !app.Locked {
 			ui.saverFrame(now)
 		}
@@ -1644,16 +1635,17 @@ func (ui *IpodUI) Run() {
 		}
 		// locked (screen off): nothing moves, so nothing is animated
 		anim := !app.Locked && ui.animating(now)
+		if !anim {
+			lastPresentedAnimated = false // idle gaps are not animation gaps
+		}
 		// the frame after an animation ends is drawn too: its last frame
 		// may have been drawn well before the end (a slow frame), and the
 		// screen would stay half-way (a view half slid in) until a key
 		ended := wasAnim && !anim
 		wasAnim = anim
-		presentBlocked := false
-		// screen off: the black frame is drawn and presented once (on Onion
-		// a whole frame through the present thread), not at each redraw the
-		// music asks for every second
-		black := app.Locked && !(isOnion && app.PowerExitWarning) // (Onion: the quit warning over the frame)
+		// Screen off: present the black frame once, rather than on each
+		// redraw requested by playback progress.
+		black := app.Locked
 		if black && blackShown {
 			ui.dirty = false
 		}
@@ -1669,8 +1661,6 @@ func (ui *IpodUI) Run() {
 			t1 := time.Now()
 			presented := ui.present()
 			tp := time.Since(t1)
-			// with vsync, a present that took a while waited for the display
-			presentBlocked = presented && vsync && tp > 3*time.Millisecond
 			if perfLog {
 				perfFrames++
 				perfTotal += t1.Sub(t0)
@@ -1678,54 +1668,53 @@ func (ui *IpodUI) Run() {
 				if d := time.Since(t0); d > perfMax {
 					perfMax = d
 				}
-				if anim && !lastFrame.IsZero() && t0.Sub(lastFrame) > 24*time.Millisecond && t0.Sub(lastFrame) < 200*time.Millisecond {
-					perfLate++
-				}
-				lastFrame = t0
-				if !presented {
+				if presented {
+					stamp := t1.Add(tp)
+					if anim && lastPresentedAnimated && stamp.Sub(lastPresented) > 50*time.Millisecond {
+						perfGaps++
+					}
+					lastPresented, lastPresentedAnimated = stamp, anim
+				} else {
 					perfSkipped++
 				}
-				if time.Since(perfStart) > time.Second {
-					logMsg(fmt.Sprintf("PERF: %d frames (%d unchanged), render %.1fms, present %.1fms avg, max %.1fms, late %d",
-						perfFrames, perfSkipped, float64(perfTotal.Microseconds())/1000/float64(perfFrames),
-						float64(perfPresent.Microseconds())/1000/float64(perfFrames), float64(perfMax.Microseconds())/1000, perfLate))
-					perfFrames, perfTotal, perfMax, perfStart = 0, 0, 0, time.Now()
-					perfPresent, perfSkipped, perfLate = 0, 0, 0
-				}
 			}
 		}
-		// frame pacing: ~60 fps while animating, 40 fps idle polling;
-		// the Ken Burns preview alone runs at 20 fps (30 while fading or
-		// scrolling a title)
-		frame := 16 * time.Millisecond
+		if perfLog {
+			work := time.Since(loopStarted)
+			perfLoops++
+			perfWork += work
+			perfWorkMax = max(perfWorkMax, work)
+			if time.Since(perfStart) > time.Second {
+				renderAvg, presentAvg := 0.0, 0.0
+				if perfFrames > 0 {
+					renderAvg = float64(perfTotal.Microseconds()) / 1000 / float64(perfFrames)
+					presentAvg = float64(perfPresent.Microseconds()) / 1000 / float64(perfFrames)
+				}
+				logMsg(fmt.Sprintf("PERF: %d drawn, %d presented (%d unchanged), render %.1fms avg, present %.1fms avg, draw max %.1fms, loop work %.1fms avg / %.1fms max, animated gaps>50ms %d",
+					perfFrames, perfFrames-perfSkipped, perfSkipped, renderAvg, presentAvg,
+					float64(perfMax.Microseconds())/1000, float64(perfWork.Microseconds())/1000/float64(perfLoops),
+					float64(perfWorkMax.Microseconds())/1000, perfGaps))
+				perfFrames, perfTotal, perfMax, perfStart = 0, 0, 0, time.Now()
+				perfPresent, perfSkipped, perfGaps = 0, 0, 0
+				perfWork, perfWorkMax, perfLoops = 0, 0, 0
+			}
+		}
+		// Poll idle controls promptly, and give continuous motion a regular
+		// 30 fps budget. The deadline includes input, callbacks and rendering.
+		frame := animatedFrameInterval
 		if app.Locked {
-			frame = 200 * time.Millisecond // screen off: poll slowly
-		} else if sv := ui.saver; anim && sv != nil && sv.viz != nil && !sv.exiting {
-			frame = 33 * time.Millisecond // the Visualizer: 30 frames a second
+			frame = 200 * time.Millisecond
 		} else if !anim {
 			frame = 25 * time.Millisecond
-		} else if ui.onlyKenBurns(now) {
-			frame = 50 * time.Millisecond // slow pan: fewer frames save battery
-			if isOnion && !lightEffects() {
-				// 2.4 px a second: 10 frames keep it smooth on the Miyoo
-				frame = 100 * time.Millisecond
-			}
-			if !ui.kb.transStart.IsZero() || ui.listMarquee(now) || marqueeActive {
-				frame = 33 * time.Millisecond
-			}
 		}
-
-		if isOnion && app.Locked {
-			frame = onionLockedFrame() // Onion: POWER and the volume keys answer within 0.1 s (onion_sleep.go)
+		var videoDeadline time.Time
+		if d, ok := ui.videoFrameWait(); ok && !app.Locked {
+			// frameWait uses the audio position sampled during this tick.
+			// Subtract rendering time instead of adding it to the video's wait.
+			videoDeadline = now.Add(d)
 		}
-		if d, ok := ui.videoFrameWait(); ok && !app.Locked && d < frame {
-			frame = d // a video's next frame is due sooner
-		}
-		if presentBlocked && frame == 16*time.Millisecond {
-			continue // vsync already paced this frame
-		}
-		if el := time.Since(now); el < frame {
-			time.Sleep(frame - el)
+		if d := pacer.delay(loopStarted, time.Now(), frame, videoDeadline); d > 0 {
+			time.Sleep(d)
 		}
 	}
 }

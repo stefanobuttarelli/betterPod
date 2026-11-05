@@ -1,9 +1,9 @@
 // cdraw.c — the hot pixel loops of the iPod interface in C (see cdraw.go):
 // blit, blitShiftX, darkenColumns, dimRect and Cover Flow's texture mapping.
 //
-// Same arithmetic as the Go versions, pixel for pixel (tools/onion/unittest
+// Same arithmetic as the Go versions, pixel for pixel (tools/unittest
 // compares them): Go's compiler doesn't vectorise, clang does (NEON on the
-// Miyoo's Cortex-A7), and there are no bounds checks. Pixels are RGBA,
+// ARM CPUs), and there are no bounds checks. Pixels are RGBA,
 // premultiplied, little-endian (byte 0 = R).
 
 #include <stdint.h>

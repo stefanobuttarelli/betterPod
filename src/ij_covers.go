@@ -43,17 +43,17 @@ import (
 
 const coverUA = "betterPod/" + BETTERPOD_VERSION + " ( https://github.com/stefanobuttarelli/betterPod )"
 
-// mbBase / caaBase can point elsewhere for tests (MIYOOPOD_MB_BASE,
-// MIYOOPOD_CAA_BASE).
+// mbBase / caaBase can point elsewhere for tests (BETTERPOD_MB_BASE,
+// BETTERPOD_CAA_BASE).
 func mbBase() string {
-	if b := os.Getenv("MIYOOPOD_MB_BASE"); b != "" {
+	if b := envGet("BETTERPOD_MB_BASE"); b != "" {
 		return strings.TrimRight(b, "/")
 	}
 	return "https://musicbrainz.org"
 }
 
 func caaBase() string {
-	if b := os.Getenv("MIYOOPOD_CAA_BASE"); b != "" {
+	if b := envGet("BETTERPOD_CAA_BASE"); b != "" {
 		return strings.TrimRight(b, "/")
 	}
 	return "https://coverartarchive.org"

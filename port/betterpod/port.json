@@ -14,7 +14,7 @@
     "porter": [
       "betterPod"
     ],
-    "desc": "iPod-style music player: split-screen menus, Cover Flow, 3D Now Playing, search and games. Plays your own music, including lossless and hi-res. Interface based on iPod.js by Tanner Villarete; player engine from MiyooPod.",
+    "desc": "iPod-style music player: split-screen menus, Cover Flow, 3D Now Playing, search and games. Plays your own music, including lossless and hi-res. Interface based on iPod.js by Tanner Villarete; original player engine by Danilo Fragoso.",
     "inst": "Put your music (FLAC, ALAC, AAC, WAV, AIFF, MP3, OGG) in /userdata/music.",
     "genres": [
       "other"

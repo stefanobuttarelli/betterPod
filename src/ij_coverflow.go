@@ -614,7 +614,7 @@ func drawTex(dst *image.RGBA, m mat4, t texMap, opacity float64) {
 	})
 }
 
-func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
+func (ui *IpodUI) advanceCoverFlowState(now time.Time) {
 	// covers lean back (tilt 0) while paused
 	cf := ui.cover
 	if p := ui.app.Playing; p != nil {
@@ -632,6 +632,11 @@ func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
 		}
 	}
 	cf.sync(now)
+}
+
+func (ui *IpodUI) renderCoverFlow(dst *image.RGBA, now time.Time) {
+	ui.advanceCoverFlowState(now)
+	cf := ui.cover
 	W, H := px(320), px(220)
 	layer := newCanvasCached(&cf.layer, W, H)
 	fillRect(layer, 0, 0, W, H, th.bg)

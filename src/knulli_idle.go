@@ -23,15 +23,12 @@ type knulliIdleGuard struct {
 
 var knulliIdle struct {
 	guard   *knulliIdleGuard
-	checked time.Time // UI goroutine, as for Onion's sleep timer
+	checked time.Time // UI goroutine
 	lastErr string
 }
 
 func initKnulliIdle() {
-	if !isKnulli {
-		return
-	}
-	path := os.Getenv("MIYOOPOD_KNULLI_IDLE_FILE")
+	path := envGet("BETTERPOD_KNULLI_IDLE_FILE")
 	if path == "" {
 		if _, err := os.Stat("/etc/idlewatcher"); err != nil {
 			return // older Knulli and desktop builds have no idle hooks
@@ -86,7 +83,7 @@ func (g *knulliIdleGuard) close() {
 }
 
 func closeKnulliIdle() {
-	if isKnulli && knulliIdle.guard != nil {
+	if knulliIdle.guard != nil {
 		knulliIdle.guard.close()
 	}
 }
@@ -104,7 +101,7 @@ func knulliVideoActive(vv *VideoView) bool {
 // knulliIdleTick runs on each UI's own goroutine, at most once a second.
 // Video views are read here, never by the background playback poller.
 func knulliIdleTick(ui *IpodUI, now time.Time) {
-	if !isKnulli || knulliIdle.guard == nil || now.Sub(knulliIdle.checked) < time.Second {
+	if knulliIdle.guard == nil || now.Sub(knulliIdle.checked) < time.Second {
 		return
 	}
 	knulliIdle.checked = now

@@ -424,9 +424,7 @@ func (ui *IpodUI) youtubeSearchView(watch bool) *View {
 	} else {
 		v.Index = 2 // the recent searches (the field above opens the keyboard)
 	}
-	if !isOnion {
-		go ffmpegReady() // (checked before a video is chosen: it takes a moment)
-	}
+	go ffmpegReady() // (checked before a video is chosen: it takes a moment)
 	return v
 }
 
@@ -786,23 +784,20 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 			}
 			items = append(items, ui.previewRow(key, songs, 0, "Listen", sub, refresh))
 		}
-		// then Watch: the video in the player (Videos, ij_video.go; off on
-		// the Miyoo, see onion.go)
-		if !isOnion {
-			if list := ytPlaylistVideos(i); e.isPlaylist() || len(i.Entries) > 0 {
-				if len(list) > 0 {
-					items = append(items, Item{Label: "Watch the Videos", Sublabel: "In the player, one after another",
-						OnSelect: func() { ui.playVideo(list[0], nil, nil, list, 0, true, 0) }})
-				}
-			} else {
-				sub := "In the player"
-				if vf, _, err := ytPickFormats(i.Formats); err == nil {
-					sub = fmt.Sprintf("In the player, %.0fp", math.Min(vf.W, vf.H))
-				}
-				items = append(items, Item{Label: "Watch Video", Sublabel: sub,
-					OnSelect:  func() { ui.playVideo(e, st.thumb, i, nil, 0, false, 0) },
-					LongPress: ui.videoDownloadOptions(e, i)})
+		// then Watch: the video in the player (Videos, ij_video.go)
+		if list := ytPlaylistVideos(i); e.isPlaylist() || len(i.Entries) > 0 {
+			if len(list) > 0 {
+				items = append(items, Item{Label: "Watch the Videos", Sublabel: "In the player, one after another",
+					OnSelect: func() { ui.playVideo(list[0], nil, nil, list, 0, true, 0) }})
 			}
+		} else {
+			sub := "In the player"
+			if vf, _, err := ytPickFormats(i.Formats); err == nil {
+				sub = fmt.Sprintf("In the player, %.0fp", math.Min(vf.W, vf.H))
+			}
+			items = append(items, Item{Label: "Watch Video", Sublabel: sub,
+				OnSelect:  func() { ui.playVideo(e, st.thumb, i, nil, 0, false, 0) },
+				LongPress: ui.videoDownloadOptions(e, i)})
 		}
 		// the cover it will get (choosing it opens the square)
 		switch {
@@ -849,7 +844,7 @@ func (ui *IpodUI) ytItemView(e ytEntry, th *Album) *View {
 						row.Value = lengthOrEmpty(t.Duration)
 					}
 				}
-				if !isOnion && n < len(list) {
+				if n < len(list) {
 					// Y: in the player, and the next ones after it (Videos)
 					k := n
 					row.LongPress = []SheetOption{{Label: "Watch Video", OnSelect: func() { ui.playVideo(list[k], nil, nil, list, k, true, 0) }}}
@@ -1405,7 +1400,7 @@ func (ui *IpodUI) searchHubView() *View {
 			{Label: "Library", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.searchView(), "") }},
 			{Label: "Internet Archive", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.iaSearchView(), "") }},
 		}
-		if ytEnabled && !isOnion { // (no YouTube on the Miyoo, see onion.go)
+		if ytEnabled {
 			items = append(items, Item{Label: "YouTube", Preview: PrevMusic, OnSelect: func() {
 				if !ytToolsReady() {
 					ui.showView(ui.youtubeSettingsView(), "") // the tools aren't there yet

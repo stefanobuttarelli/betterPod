@@ -10,6 +10,16 @@
 #include <linux/input.h>
 #include <math.h>
 #include <SDL.h>
+// Existing Knulli launchers pass the old environment prefix during an
+// in-app update. New launchers use BETTERPOD_; explicit new values win.
+static const char *betterpod_env(const char *name) {
+    const char *value = getenv(name);
+    if (value || strncmp(name, "BETTERPOD_", 10) != 0) return value;
+    char legacy[128];
+    snprintf(legacy, sizeof(legacy), "MIYOOPOD_%s", name + 10);
+    return getenv(legacy);
+}
+
 extern void GoLogMsg(char* msg);
 extern void DetectDevice(int width, int height);
 
@@ -54,7 +64,7 @@ void c_logd(const char *fmt, int val) {
 // headphones / Bluetooth devices (read directly from /dev/input) are turned
 // into the same keycodes the keyboard would give, through a small queue.
 //
-// Keycodes of the controller buttons (as in MiyooPod's keyboard mapping):
+// Keycodes of the controller buttons:
 //   A = space, B = left ctrl, X = left shift, Y = left alt,
 //   L = 'e', R = 't', START = return, SELECT = right ctrl,
 //   MENU (guide) = application, L2 = tab, R2 = backspace.
@@ -247,11 +257,11 @@ static void handle_axis(int axis, int value) {
 }
 
 void input_init(void) {
-    const char *s = getenv("MIYOOPOD_SWAP_AB");
+    const char *s = betterpod_env("BETTERPOD_SWAP_AB");
     if (s && s[0]) swap_ab = s[0] == '1';
-    const char *sw = getenv("MIYOOPOD_STICK_WHEEL");
+    const char *sw = betterpod_env("BETTERPOD_STICK_WHEEL");
     stick_wheel = sw && sw[0] == '1';
-    const char *st = getenv("MIYOOPOD_WHEEL_STEP");
+    const char *st = betterpod_env("BETTERPOD_WHEEL_STEP");
     if (st) { float f = atof(st); if (f >= 5 && f <= 90) wheel_step = f; }
     SDL_GameControllerEventState(SDL_ENABLE);
     for (int i = 0; i < SDL_NumJoysticks(); i++) open_controller(i);
@@ -261,9 +271,9 @@ void input_init(void) {
 // devices that SDL does not see: the /dev/input/event* devices that have
 // media keys (or a headphone jack switch) are opened non-blocking and read
 // on every poll. The list is refreshed every 2 seconds, so a headset that
-// connects later is picked up. MIYOOPOD_MEDIA_FIFO adds a named pipe that
+// connects later is picked up. BETTERPOD_MEDIA_FIFO adds a named pipe that
 // receives input_events too (for testing, or a helper that forwards keys
-// from elsewhere). MIYOOPOD_MEDIA_KEYS=0 turns all of this off.
+// from elsewhere). BETTERPOD_MEDIA_KEYS=0 turns all of this off.
 //
 //
 static struct { int fd; int bt; int jack; int logged; char name[24]; } media_dev[16];
@@ -310,7 +320,7 @@ static int media_key_for(int code, int jack) {
 }
 
 static void media_scan(void) {
-    const char *fifo = getenv("MIYOOPOD_MEDIA_FIFO");
+    const char *fifo = betterpod_env("BETTERPOD_MEDIA_FIFO");
     DIR *d;
     if (fifo && media_n == 0) {
         int fd = open(fifo, O_RDONLY | O_NONBLOCK);
@@ -388,9 +398,8 @@ static void media_poll(void) {
     int i;
     Uint32 now = SDL_GetTicks();
     if (media_disabled < 0) {
-        const char *v = getenv("MIYOOPOD_MEDIA_KEYS");
-        // Onion: no Bluetooth, and the headphone jack has no buttons
-        media_disabled = (v && v[0] == '0') || onion_mode;
+        const char *v = betterpod_env("BETTERPOD_MEDIA_KEYS");
+        media_disabled = (v && v[0] == '0');
     }
     if (media_disabled) return;
     if (media_last_scan == 0 || now - media_last_scan > 2000) {
@@ -473,7 +482,6 @@ static void present_pending(void);
 int pollEvents() {
     present_pending();
     media_poll();
-    onion_input_poll();
     int queued = evq_pop();
     if (queued != -1) return queued;
 
@@ -481,11 +489,9 @@ int pollEvents() {
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
         case SDL_KEYDOWN:
-            if (onion_drop_sdl_key(event.key.keysym.sym)) break;
             if (event.key.repeat == 0) evq_push(event.key.keysym.sym);
             break;
         case SDL_KEYUP:
-            if (onion_drop_sdl_key(event.key.keysym.sym)) break;
             push_key(event.key.keysym.sym, 0);
             break;
         case SDL_CONTROLLERBUTTONDOWN:
@@ -521,16 +527,12 @@ static SDL_atomic_t frame_pending;
 static int vsync_on;
 int c_vsync(void) { return vsync_on; }
 
-// Update rows y0..y1 of the texture and present. MIYOOPOD_DUMP_FRAME=path
+// Update rows y0..y1 of the texture and present. BETTERPOD_DUMP_FRAME=path
 // writes every frame (raw RGBA 640x480) to path, for screenshots.
 static void present_rows(unsigned char *pixels, int y0, int y1) {
     if (y0 < 0) y0 = 0;
     if (y1 > RENDER_HEIGHT) y1 = RENDER_HEIGHT;
-    if (y1 > y0 && onion_mode) {
-        // the Miyoo SDL2 renderer is only known to work with whole-texture
-        // updates (as MiyooPod does them)
-        SDL_UpdateTexture(texture, NULL, pixels, RENDER_WIDTH * 4);
-    } else if (y1 > y0) {
+    if (y1 > y0) {
         SDL_Rect r = { 0, y0, RENDER_WIDTH, y1 - y0 };
         SDL_UpdateTexture(texture, &r, pixels + (size_t)y0 * RENDER_WIDTH * 4, RENDER_WIDTH * 4);
     }
@@ -541,18 +543,18 @@ static void present_rows(unsigned char *pixels, int y0, int y1) {
     SDL_RenderPresent(renderer);
     static const char *dump;
     static int dump_init;
-    if (!dump_init) { dump = getenv("MIYOOPOD_DUMP_FRAME"); dump_init = 1; }
+    if (!dump_init) { dump = betterpod_env("BETTERPOD_DUMP_FRAME"); dump_init = 1; }
     if (dump) {
         char tmp[512];
         snprintf(tmp, sizeof(tmp), "%s.tmp", dump);
         FILE *f = fopen(tmp, "wb");
         if (f) { fwrite(pixels, 1, RENDER_WIDTH * RENDER_HEIGHT * 4, f); fclose(f); rename(tmp, dump); }
     }
-    // MIYOOPOD_DUMP_SEQ=dir writes every frame as dir/fNNNNN.raw while the
+    // BETTERPOD_DUMP_SEQ=dir writes every frame as dir/fNNNNN.raw while the
     // file dir/on exists (to study animations frame by frame)
     static const char *seq;
     static int seq_init, seq_n;
-    if (!seq_init) { seq = getenv("MIYOOPOD_DUMP_SEQ"); seq_init = 1; }
+    if (!seq_init) { seq = betterpod_env("BETTERPOD_DUMP_SEQ"); seq_init = 1; }
     if (seq) {
         char path[512];
         snprintf(path, sizeof(path), "%s/on", seq);
@@ -575,78 +577,8 @@ static void present_pending(void) {
         present_rows((unsigned char *)pending_pixels, 0, RENDER_HEIGHT);
 }
 
-// Onion: presenting on a thread. The Miyoo SDL2 flips with
-// FBIOPAN_DISPLAY, which waits for the vertical blank (11-13 ms): on the
-// main thread that time is lost to drawing. Each frame is copied for a
-// present thread instead, which uploads and flips it while the next one is
-// drawn; when frames come quicker than the display, the latest one wins.
-// MIYOOPOD_PRESENT_THREAD=0 presents on the main thread as elsewhere.
-static SDL_Thread *pt_thread;
-static SDL_mutex *pt_mu;
-static SDL_cond *pt_cv;
-static unsigned char *pt_pending, *pt_showing;
-static int pt_have, pt_quit;
-
-static int present_thread_fn(void *arg) {
-    (void)arg;
-    for (;;) {
-        unsigned char *t;
-        SDL_LockMutex(pt_mu);
-        while (!pt_have && !pt_quit) SDL_CondWait(pt_cv, pt_mu);
-        if (pt_quit) {
-            SDL_UnlockMutex(pt_mu);
-            return 0;
-        }
-        t = pt_showing; pt_showing = pt_pending; pt_pending = t;
-        pt_have = 0;
-        SDL_UnlockMutex(pt_mu);
-        present_rows(pt_showing, 0, RENDER_HEIGHT);
-    }
-}
-
-static void present_thread_start(void) {
-    const char *e = getenv("MIYOOPOD_PRESENT_THREAD");
-    size_t size = (size_t)RENDER_WIDTH * RENDER_HEIGHT * 4;
-    if (!onion_mode || (e && e[0] == '0')) return;
-    pt_pending = calloc(1, size);
-    pt_showing = calloc(1, size);
-    pt_mu = SDL_CreateMutex();
-    pt_cv = SDL_CreateCond();
-    if (pt_pending && pt_showing && pt_mu && pt_cv)
-        pt_thread = SDL_CreateThread(present_thread_fn, "betterPodPresent", NULL);
-    if (!pt_thread) {
-        c_log("onion: no present thread, presenting on the main thread");
-        return;
-    }
-    vsync_on = 0; // the main thread no longer waits for the display
-    c_log("onion: presenting on a thread");
-}
-
-static void present_thread_stop(void) {
-    if (!pt_thread) return;
-    SDL_LockMutex(pt_mu);
-    pt_quit = 1;
-    SDL_CondSignal(pt_cv);
-    SDL_UnlockMutex(pt_mu);
-    SDL_WaitThread(pt_thread, NULL);
-    pt_thread = NULL;
-}
-
-static void present_submit(unsigned char *pixels) {
-    SDL_LockMutex(pt_mu);
-    memcpy(pt_pending, pixels, (size_t)RENDER_WIDTH * RENDER_HEIGHT * 4);
-    pt_have = 1;
-    SDL_CondSignal(pt_cv);
-    SDL_UnlockMutex(pt_mu);
-}
-
-
 int refreshScreenPtr(unsigned char *pixels) {
     if (!texture) return -1;
-    if (pt_thread) {
-        present_submit(pixels);
-        return 0;
-    }
     if (SDL_ThreadID() == main_thread_id) {
         SDL_AtomicSet(&frame_pending, 0);
         present_frame(pixels);
@@ -659,10 +591,6 @@ int refreshScreenPtr(unsigned char *pixels) {
 
 int refreshScreenRows(unsigned char *pixels, int y0, int y1) {
     if (!texture) return -1;
-    if (pt_thread) {
-        present_submit(pixels);
-        return 0;
-    }
     if (SDL_ThreadID() != main_thread_id) return refreshScreenPtr(pixels);
     SDL_AtomicSet(&frame_pending, 0);
     present_rows(pixels, y0, y1);
@@ -673,9 +601,7 @@ int refreshScreenRows(unsigned char *pixels, int y0, int y1) {
 int init() {
     main_thread_id = SDL_ThreadID();
     c_log("SDL2 init (VIDEO | AUDIO)...");
-    // On Onion the buttons arrive as keyboard keys: no game controller
-    // subsystem (the Miyoo SDL2 build may not have one at all)
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | (onion_mode ? 0 : SDL_INIT_GAMECONTROLLER)) < 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) < 0) {
         c_logf("SDL_Init failed: %s", SDL_GetError());
         return -1;
     }
@@ -694,13 +620,13 @@ int init() {
     c_logd("Display height: %d", display_height);
     DetectDevice(display_width, display_height);
 
-    if (!onion_mode) input_init();
+    input_init();
 
     c_log("Creating window...");
-    window = SDL_CreateWindow("MiyooPod",
+    window = SDL_CreateWindow("betterPod",
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         display_width, display_height,
-        SDL_WINDOW_SHOWN | (getenv("MIYOOPOD_WINDOWED") || onion_mode ? 0 : SDL_WINDOW_FULLSCREEN));
+        SDL_WINDOW_SHOWN | (betterpod_env("BETTERPOD_WINDOWED") ? 0 : SDL_WINDOW_FULLSCREEN));
     if (!window) {
         c_logf("SDL_CreateWindow failed: %s", SDL_GetError());
         return -1;
@@ -708,8 +634,8 @@ int init() {
     c_log("Window created");
 
     c_log("Creating renderer...");
-    // vsync unless MIYOOPOD_VSYNC=0; fall back to no vsync, then software
-    const char *vs = getenv("MIYOOPOD_VSYNC");
+    // vsync unless BETTERPOD_VSYNC=0; fall back to no vsync, then software
+    const char *vs = betterpod_env("BETTERPOD_VSYNC");
     Uint32 fl = SDL_RENDERER_ACCELERATED;
     if (!vs || vs[0] != '0') fl |= SDL_RENDERER_PRESENTVSYNC;
     renderer = SDL_CreateRenderer(window, -1, fl);
@@ -728,9 +654,7 @@ int init() {
     if (!renderer) renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     SDL_ShowCursor(SDL_DISABLE);
 
-    // (Onion: the window is the screen, and the texture is stretched to it
-    // by SDL_RenderCopy, as in MiyooPod)
-    if (renderer && !onion_mode) SDL_RenderSetLogicalSize(renderer, RENDER_WIDTH, RENDER_HEIGHT);
+    if (renderer) SDL_RenderSetLogicalSize(renderer, RENDER_WIDTH, RENDER_HEIGHT);
     if (!renderer) {
         c_logf("SDL_CreateRenderer failed: %s", SDL_GetError());
         return -1;
@@ -747,12 +671,10 @@ int init() {
     }
     c_log("Texture created");
 
-    present_thread_start();
     return 0;
 }
 
 void quit() {
-    present_thread_stop();
     if (texture) {
         SDL_DestroyTexture(texture);
     }

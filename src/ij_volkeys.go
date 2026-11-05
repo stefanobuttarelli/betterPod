@@ -48,7 +48,7 @@ func hasVolumeKeys(f *os.File) bool {
 // startVolumeKeyWatch starts a reader for every input device with volume
 // keys.
 func startVolumeKeyWatch() {
-	if os.Getenv("MIYOOPOD_VOLUME_KEYS") == "0" {
+	if envGet("BETTERPOD_VOLUME_KEYS") == "0" {
 		return
 	}
 	paths, _ := filepath.Glob("/dev/input/event*")

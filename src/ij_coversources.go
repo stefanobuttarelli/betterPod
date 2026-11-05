@@ -15,7 +15,7 @@ package main
 // Every result is a coverCand, the same as MusicBrainz's release groups,
 // and goes through the same checks (same title, same artist) before the
 // automatic search may take it. The bases can point elsewhere for tests
-// (MIYOOPOD_ITUNES_BASE, MIYOOPOD_DEEZER_BASE, MIYOOPOD_WIKI_BASE).
+// (BETTERPOD_ITUNES_BASE, BETTERPOD_DEEZER_BASE, BETTERPOD_WIKI_BASE).
 
 import (
 	"bytes"
@@ -25,7 +25,6 @@ import (
 	"image"
 	"io"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -118,7 +117,7 @@ func coverJSON(source, u string, v any) error {
 }
 
 func envBase(env, def string) string {
-	if b := os.Getenv(env); b != "" {
+	if b := envGet(env); b != "" {
 		return strings.TrimRight(b, "/")
 	}
 	return def
@@ -144,7 +143,7 @@ func itunesWait() {
 func itunesSearch(term string, limit int) ([]coverCand, error) {
 	itunesWait()
 	u := fmt.Sprintf("%s/search?entity=album&limit=%d&term=%s",
-		envBase("MIYOOPOD_ITUNES_BASE", "https://itunes.apple.com"), limit, url.QueryEscape(term))
+		envBase("BETTERPOD_ITUNES_BASE", "https://itunes.apple.com"), limit, url.QueryEscape(term))
 	var out struct {
 		Results []struct {
 			Collection string `json:"collectionName"`
@@ -187,7 +186,7 @@ func itunesSearch(term string, limit int) ([]coverCand, error) {
 // as too many requests, as JSON with status 200).
 func deezerSearch(term string, limit int) ([]coverCand, error) {
 	u := fmt.Sprintf("%s/search/album?limit=%d&q=%s",
-		envBase("MIYOOPOD_DEEZER_BASE", "https://api.deezer.com"), limit, url.QueryEscape(term))
+		envBase("BETTERPOD_DEEZER_BASE", "https://api.deezer.com"), limit, url.QueryEscape(term))
 	var out struct {
 		Data []struct {
 			Title  string `json:"title"`
@@ -264,7 +263,7 @@ func wikiKind(desc string) string {
 // words, with the picture at their top (the free ones and the others:
 // album covers and game boxes are not free).
 func wikiSearch(term string, limit int) ([]coverCand, error) {
-	u := envBase("MIYOOPOD_WIKI_BASE", "https://en.wikipedia.org") +
+	u := envBase("BETTERPOD_WIKI_BASE", "https://en.wikipedia.org") +
 		"/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=0" +
 		fmt.Sprintf("&gsrlimit=%d&gsrsearch=%s", limit, url.QueryEscape(term)) +
 		"&prop=pageimages%7Cdescription&piprop=thumbnail%7Coriginal&pithumbsize=250&pilicense=any"

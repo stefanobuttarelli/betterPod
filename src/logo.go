@@ -8,11 +8,11 @@ import (
 	"github.com/fogleman/gg"
 )
 
-// drawLogo draws the MiyooPod logo with the given theme colors
+// drawLogo draws the BetterPod logo with the given theme colors
 // x, y: center position of the logo
 // scale: size multiplier (1.0 = original 249x330 size)
 // colorScreen: if true, colors the screen area with theme background color instead of black
-func (app *MiyooPod) drawLogo(x, y float64, scale float64, colorScreen bool) {
+func (app *BetterPod) drawLogo(x, y float64, scale float64, colorScreen bool) {
 	dc := app.DC
 
 	// Save current state
@@ -73,7 +73,7 @@ func (app *MiyooPod) drawLogo(x, y float64, scale float64, colorScreen bool) {
 }
 
 // generateIconPNG creates a 64x64 icon PNG with the current theme colors
-func (app *MiyooPod) generateIconPNG() error {
+func (app *BetterPod) generateIconPNG() error {
 	// Create a new context for the icon
 	iconSize := 64
 	iconDC := gg.NewContext(iconSize, iconSize)
@@ -126,7 +126,7 @@ func (app *MiyooPod) generateIconPNG() error {
 }
 
 // drawLogoSplash draws the logo on the splash screen with theme-tinted background
-func (app *MiyooPod) drawLogoSplash() {
+func (app *BetterPod) drawLogoSplash() {
 	// Clear with theme background
 	app.DC.SetHexColor(app.CurrentTheme.BG)
 	app.DC.Clear()
@@ -135,10 +135,10 @@ func (app *MiyooPod) drawLogoSplash() {
 	logoScale := 0.6 // Scale down to ~150px width
 	app.drawLogo(SCREEN_WIDTH/2, SCREEN_HEIGHT/2-60, logoScale, false)
 
-	// Draw "MiyooPod" title below the logo
+	// Draw "betterPod" title below the logo
 	app.DC.SetFontFace(app.FontTitle)
 	app.DC.SetHexColor(app.CurrentTheme.HeaderTxt)
-	app.DC.DrawStringWrapped("MiyooPod", SCREEN_WIDTH/2, SCREEN_HEIGHT/2+100, 0.5, 0.5, 600, 1.5, gg.AlignCenter)
+	app.DC.DrawStringWrapped("betterPod", SCREEN_WIDTH/2, SCREEN_HEIGHT/2+100, 0.5, 0.5, 600, 1.5, gg.AlignCenter)
 
 	// Draw "Loading..." text
 	app.DC.SetFontFace(app.FontSmall)

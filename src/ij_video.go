@@ -18,9 +18,6 @@ package main
 //	Y (hold A)    options: Watch from the Start, Download (As Video, As
 //	              Audio Only, As an Album with chapters)
 //	B             back: the video stops; Recently Watched keeps the place
-//
-// Off on the Miyoo: YouTube is (yt-dlp needs more memory than it has), and
-// Onion has no ffmpeg.
 
 import (
 	"compress/gzip"
@@ -1499,10 +1496,10 @@ func (ui *IpodUI) pauseMusicFor(why string) {
 }
 
 // videoGain: the video's sound at the app's own volume when the console's
-// isn't used (MIYOOPOD_SOFT_VOLUME), as the mixer plays the music.
+// isn't used (BETTERPOD_SOFT_VOLUME), as the mixer plays the music.
 func (ui *IpodUI) videoGain() {
 	g := 1.0
-	if !isOnion && !sysVol.ok {
+	if !sysVol.ok {
 		g = float64(int(ui.volume*100+0.5)) / 128
 	}
 	videoSetGain(g)

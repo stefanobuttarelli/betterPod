@@ -9,7 +9,7 @@ import (
 )
 
 // DrawCoverflow renders the current album art centered on the Now Playing screen
-func (app *MiyooPod) DrawCoverflow() {
+func (app *BetterPod) DrawCoverflow() {
 	cf := app.Coverflow
 	if cf == nil || len(cf.Albums) == 0 {
 		return
@@ -37,7 +37,7 @@ func (app *MiyooPod) DrawCoverflow() {
 }
 
 // getCachedCover returns a resized cover image from cache.
-func (app *MiyooPod) getCachedCover(album *Album, size int) image.Image {
+func (app *BetterPod) getCachedCover(album *Album, size int) image.Image {
 	key := fmt.Sprintf("%s|%s_%d", album.Artist, album.Name, size)
 
 	app.Coverflow.CoverCacheMu.Lock()

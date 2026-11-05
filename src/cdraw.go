@@ -5,22 +5,16 @@ package main
 */
 import "C"
 
-// cdraw.go — the hottest pixel loops of the interface (blitShiftX,
-// darkenColumns, dimRect, drawTex, a fading blit) run in C (cdraw.c), with the same
-// arithmetic as the Go code they replace (tools/onion/unittest checks it
-// pixel for pixel). On the Miyoo's Cortex-A7 the Go loops were most of a
-// frame; clang vectorises them and drops the bounds checks
-// (tools/onion/bench.sh compares them). MIYOOPOD_GO_DRAW=1 keeps the Go
-// versions. Elsewhere the Go loops stay, unless MIYOOPOD_C_DRAW=1: the C
-// ones haven't been tried on the H700.
+// cdraw.go provides the C pixel loops used by default on Knulli. Unit tests
+// compare their output with the Go implementations. BETTERPOD_C_DRAW=0 or
+// BETTERPOD_GO_DRAW=1 selects the Go fallback.
 
 import (
 	"image"
-	"os"
 	"unsafe"
 )
 
-var cDraw = os.Getenv("MIYOOPOD_GO_DRAW") != "1" && (isOnion || os.Getenv("MIYOOPOD_C_DRAW") == "1")
+var cDraw = envGet("BETTERPOD_GO_DRAW") != "1" && envGet("BETTERPOD_C_DRAW") != "0"
 
 func pixPtr(img *image.RGBA, off int) *C.uint8_t {
 	return (*C.uint8_t)(unsafe.Pointer(&img.Pix[off]))

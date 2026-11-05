@@ -36,7 +36,7 @@ func lockQueue() {
 // unlockQueue frees the queue; a play/pause pressed meanwhile takes effect
 // now (not after a stop: the queue's end isn't played again by it), unless
 // another skip waits: then it is kept for that one's song.
-func (app *MiyooPod) unlockQueue() {
+func (app *BetterPod) unlockQueue() {
 	if queueWaiting.Load() > 0 {
 		queueMu.Unlock()
 		return
@@ -56,7 +56,7 @@ func (app *MiyooPod) unlockQueue() {
 const maxPlayFails = 5
 
 // playTrackFromList starts playing a track from a list, building a queue from the context
-func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
+func (app *BetterPod) playTrackFromList(tracks []*Track, startIdx int) {
 	if len(tracks) == 0 || startIdx < 0 || startIdx >= len(tracks) {
 		return
 	}
@@ -86,7 +86,7 @@ func (app *MiyooPod) playTrackFromList(tracks []*Track, startIdx int) {
 }
 
 // shuffleAllAndPlay queues all library tracks, shuffles, and starts playing
-func (app *MiyooPod) shuffleAllAndPlay() {
+func (app *BetterPod) shuffleAllAndPlay() {
 	if len(app.Library.Tracks) == 0 {
 		return
 	}
@@ -111,7 +111,7 @@ func (app *MiyooPod) shuffleAllAndPlay() {
 // playCurrentQueueTrack loads and plays the current track in the queue
 // (false: it couldn't). The caller holds queueMu (but the classic UI,
 // which does everything on its own loop).
-func (app *MiyooPod) playCurrentQueueTrack() bool {
+func (app *BetterPod) playCurrentQueueTrack() bool {
 	track := app.getCurrentTrack()
 	if track == nil {
 		return false
@@ -173,7 +173,7 @@ func playFailed(t *Track) {
 }
 
 // getCurrentTrack returns the current track based on queue and shuffle state
-func (app *MiyooPod) getCurrentTrack() *Track {
+func (app *BetterPod) getCurrentTrack() *Track {
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		return nil
 	}
@@ -191,7 +191,7 @@ func (app *MiyooPod) getCurrentTrack() *Track {
 	return nil
 }
 
-func (app *MiyooPod) togglePlayPause() {
+func (app *BetterPod) togglePlayPause() {
 	if previewActive() {
 		return // (a Listen plays: A on its row pauses it)
 	}
@@ -206,7 +206,7 @@ func (app *MiyooPod) togglePlayPause() {
 
 // playPause plays or pauses the current song. Stopped with a song (the end
 // of the queue), it plays it again. The caller holds queueMu.
-func (app *MiyooPod) playPause() {
+func (app *BetterPod) playPause() {
 	if app.Playing == nil || app.Playing.Track == nil {
 		return
 	}
@@ -216,7 +216,7 @@ func (app *MiyooPod) playPause() {
 }
 
 // queueMaxIdx: the last play position.
-func (app *MiyooPod) queueMaxIdx() int {
+func (app *BetterPod) queueMaxIdx() int {
 	if app.Queue.Shuffle && len(app.Queue.ShuffleOrder) > 0 {
 		return len(app.Queue.ShuffleOrder) - 1
 	}
@@ -225,7 +225,7 @@ func (app *MiyooPod) queueMaxIdx() int {
 
 // queueStep moves to the next play position (Repeat All: from the last to
 // the first). false: nothing comes after this song.
-func (app *MiyooPod) queueStep() bool {
+func (app *BetterPod) queueStep() bool {
 	maxIdx := app.queueMaxIdx()
 	if app.Queue.CurrentIndex < maxIdx {
 		app.Queue.CurrentIndex++
@@ -241,7 +241,7 @@ func (app *MiyooPod) queueStep() bool {
 
 // playForward plays the song at the current position; one that won't play
 // is skipped for the next (maxPlayFails in a row at most, then it stops).
-func (app *MiyooPod) playForward() {
+func (app *BetterPod) playForward() {
 	for fails := 0; !app.playCurrentQueueTrack(); {
 		fails++
 		if fails >= maxPlayFails || !app.queueStep() {
@@ -250,7 +250,7 @@ func (app *MiyooPod) playForward() {
 	}
 }
 
-func (app *MiyooPod) nextTrack() {
+func (app *BetterPod) nextTrack() {
 	if previewActive() {
 		return // (a Listen has the mixer: its own rows pick its songs)
 	}
@@ -275,7 +275,7 @@ func (app *MiyooPod) nextTrack() {
 	app.playForward()
 }
 
-func (app *MiyooPod) prevTrack() {
+func (app *BetterPod) prevTrack() {
 	if previewActive() {
 		return // (a Listen has the mixer: its own rows pick its songs)
 	}
@@ -306,7 +306,7 @@ func (app *MiyooPod) prevTrack() {
 	app.playCurrentQueueTrack()
 }
 
-func (app *MiyooPod) handleTrackEnd() {
+func (app *BetterPod) handleTrackEnd() {
 	lockQueue()
 	defer app.unlockQueue()
 	if previewActive() || trackEndGen.Load() != loadGen.Load() {
@@ -340,7 +340,7 @@ func (app *MiyooPod) handleTrackEnd() {
 	app.requestRedraw()
 }
 
-func (app *MiyooPod) toggleShuffle() {
+func (app *BetterPod) toggleShuffle() {
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		return
 	}
@@ -379,7 +379,7 @@ func (app *MiyooPod) toggleShuffle() {
 	app.NPCacheDirty = true
 }
 
-func (app *MiyooPod) cycleRepeat() {
+func (app *BetterPod) cycleRepeat() {
 	if app.Queue == nil {
 		return
 	}
@@ -394,7 +394,7 @@ func (app *MiyooPod) cycleRepeat() {
 	app.NPCacheDirty = true
 }
 
-func (app *MiyooPod) buildShuffleOrder(startIdx int) {
+func (app *BetterPod) buildShuffleOrder(startIdx int) {
 	app.Queue.ShuffleOrder = shuffleOrder(len(app.Queue.Tracks), startIdx)
 }
 
@@ -417,7 +417,7 @@ func shuffleOrder(n, startIdx int) []int {
 	return order
 }
 
-func (app *MiyooPod) updateCoverflowForCurrentTrack() {
+func (app *BetterPod) updateCoverflowForCurrentTrack() {
 	if app.Playing == nil || app.Playing.Track == nil {
 		return
 	}
@@ -446,7 +446,7 @@ func (app *MiyooPod) updateCoverflowForCurrentTrack() {
 
 // drawNowPlayingScreen renders the Now Playing screen with background caching.
 // Static elements are cached as a pixel buffer. Only progress bar redraws each second.
-func (app *MiyooPod) drawNowPlayingScreen() {
+func (app *BetterPod) drawNowPlayingScreen() {
 	dc := app.DC
 
 	if app.Playing == nil || app.Playing.Track == nil {
@@ -478,7 +478,7 @@ func (app *MiyooPod) drawNowPlayingScreen() {
 
 // updateProgressBarOnly is the fast path called by the playback poller.
 // Only updates progress bar region, bypasses gg entirely.
-func (app *MiyooPod) updateProgressBarOnly() {
+func (app *BetterPod) updateProgressBarOnly() {
 	if app.Playing == nil || app.NowPlayingBG == nil {
 		return
 	}
@@ -499,12 +499,12 @@ func (app *MiyooPod) updateProgressBarOnly() {
 	// Draw progress bar with direct pixel ops
 	app.fastDrawProgressBar(40, PROGRESS_BAR_Y, SCREEN_WIDTH-80, app.Playing.Position, app.Playing.Duration)
 
-	// Full refresh (partial was buggy on Miyoo Mini SDL2)
+	// Refresh the complete Now Playing frame.
 	app.triggerRefresh()
 }
 
 // renderNowPlayingFull draws all static now-playing elements via gg
-func (app *MiyooPod) renderNowPlayingFull() {
+func (app *BetterPod) renderNowPlayingFull() {
 	dc := app.DC
 	track := app.Playing.Track
 
@@ -561,7 +561,7 @@ func (app *MiyooPod) renderNowPlayingFull() {
 
 // drawFormatTag draws a small pill badge showing the audio format (e.g. "FLAC") and
 // average bitrate (e.g. "1234 kbps") to the right of it, matching the button hint style.
-func (app *MiyooPod) drawFormatTag(track *Track, x, y float64) {
+func (app *BetterPod) drawFormatTag(track *Track, x, y float64) {
 	dc := app.DC
 	dc.SetFontFace(app.FontSmall)
 

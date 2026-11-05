@@ -1,94 +1,85 @@
-# betterPod — notes for Claude
+# betterPod — project notes
 
-betterPod is an iPod-style music player: the iPod classic interface, rebuilt natively from iPod.js, on retro handhelds. One code base runs on two systems:
-
-- **Knulli** on Anbernic handhelds with the Allwinner H700 (aarch64): where betterPod started (as KnulliPod, from MiyooPod).
-- **Onion OS** on the Miyoo Mini family (armv7): the Miyoo version, which grew as a fork called MacriPod and joined this repository at 0.67.
-
-Each system has its own launcher, package, build and update manifest. The interface, the library and the player are shared.
+betterPod is an iPod-style music player for Anbernic handhelds running Knulli on the Allwinner H700 (aarch64). The interface is rebuilt natively from iPod.js. Knulli is the only supported console platform. `mac/` contains the separate betterPod Share companion app.
 
 ## Rules
 
-- **English everywhere:** code, comments, README, changelog, commits. Short plain sentences, in the style of the existing text.
-- **One code base.** Shared code lives in `src/`; platform code lives in files of its own (`knulli.go` for Knulli; `onion.go`, `onion.c`, `onion_sleep.go`, `cdraw.*`, `ij_effects.go` for Onion). In a shared file, a difference between the systems is a small `isOnion` / `isKnulli` switch with a comment that says why.
-- **Both systems, or a reason.** A new feature works on both. When one system can't carry it, it is switched off there (not removed), with the reason in the code and a line in README's features table. What is off on the Miyoo so far is listed under Onion below.
-- **Audio first, then fluidity.** Music must never crackle; then the interface should be smooth. On the Miyoo (two Cortex-A7, 128 MB) anything that adds steady CPU load needs a reason and a measurement (`tools/onion/perf.sh`): an animation that keeps redrawing, a timer, a program run every few seconds.
-- **One version.** `BETTERPOD_VERSION` in `src/ij_update.go` is the version on both systems. Each system has its own zip and manifest in `release/` (`latest-knulli.json`, `latest-onion.json`). A fix for one system can be released for that system alone.
-- **One changelog.** A change that concerns one system says so ("On the Miyoo: …"). A version for one system alone carries only that system's zip and manifest; its GitHub release is titled "(Knulli only)" or "(Miyoo only)" (`tools/gh_releases.py`, from the zips in `release/`), and "Latest" stays on the newest release with Knulli's zip.
-- **Build and test both** before a release that touches shared code.
+- **English everywhere:** code, comments, README, changelog and commits. Use short, plain sentences.
+- **Audio first, then fluidity.** Music must not crackle. Avoid steady work in frame loops; measure before adding it.
+- **One version.** `BETTERPOD_VERSION` in `src/ij_update.go` names the app and package. `APP_VERSION` aliases it for the classic interface.
+- **One changelog.** Each release has a `## v<version> (YYYY-MM-DD)` section. A stable release summarizes changes since the previous stable release.
+- **Build and test Knulli** before release: `tools/unittest.sh`, `tools/docker-build.sh`. Run `python3 -m unittest discover -s tools -p 'test_gh_releases.py'` for release-script changes.
+- **Preserve existing data.** `src/compat.go` keeps the established database filenames and accepts the environment prefix from older Knulli launchers. The launcher and current options use `BETTERPOD_*`. Do not rename persisted data without a tested migration. Keep third-party copyright and license notices.
 
-## The platform switch
+## Knulli runtime
 
-`isKnulli` (`knulli.go`) and `isOnion` (`onion.go`) are set by `MIYOOPOD_PLATFORM` (`knulli`, or `miyoo` / `onion`), which the launchers export. Without it, the 32-bit ARM build is Onion and the others are Knulli. `platformAbout()` names the system and its consoles for About.
+- **Hardware:** Allwinner H700, four Cortex-A53 cores, 1 GB RAM, aarch64, 640×480 display. Go can use all cores.
+- **Launch:** `port/betterPod.sh` → `/userdata/roms/ports/betterPod.sh`; application files in `ports/betterpod/`, binary `betterpod`. PortMaster's `control.txt` supplies controller mappings.
+- **Paths:** `/userdata/music` (the network music share), otherwise `betterpod/music`; database defaults to `betterpod/conf`, movable in Settings → Database; additional cards under `/media`. App log `betterpod/betterpod.log`, launcher output `betterpod/log.txt`.
+- **Video:** system SDL2 with vsync. C pixel loops are the default, verified against the Go implementations; `BETTERPOD_GO_DRAW=1` or `BETTERPOD_C_DRAW=0` selects the fallback. UI animation uses 30 fps monotonic whole-loop deadlines, including input/callback work. Idle polling remains 25 ms; screen-off polling 200 ms; video can request an earlier audio-clock deadline. Settings → Effects offers Full (default) and Light.
+- **Audio:** bundled SDL_mixer, patched for ALAC, AAC and 24-bit FLAC; float mixing and native sample-rate switching. Volume uses PipeWire's default sink through `pactl`, followed with `pactl subscribe`. Bluetooth uses `bluetoothctl` and PipeWire.
+- **Controls:** SDL game controller and PortMaster mapping; sticks act as arrows or a wheel (`BETTERPOD_STICK_WHEEL=1`). MENU tap turns the screen off; hold 5 seconds quits. System volume and POWER remain owned by Knulli. Wired/Bluetooth headphone buttons are read from input devices.
+- **Backlight:** `/dev/disp` ioctl, then system brightness tools, then sysfs. The launcher restores brightness and governors after the app exits.
+- **Idle:** Knulli's idlewatcher can mute after five minutes and suspend after fifteen despite active audio. During music, Listen and video playback, `knulli_idle.go` holds an app-owned `/var/run/battery-saver/*.pause` marker. Loading/buffering and brief track transitions stay protected; pause, stop and exit release it. The launcher cleans up after a binary crash. Manual POWER behavior is unchanged.
 
-## Knulli (Anbernic H700)
+## Build and tests
 
-- **Hardware:** Allwinner H700, 4 × Cortex-A53, 1 GB of RAM, aarch64; a 640×480 screen. Go uses all the cores.
-- **System:** Knulli (Batocera-based). betterPod is a PortMaster-style port: `port/betterPod.sh` → `/userdata/roms/ports/betterPod.sh`, the app in `ports/betterpod/` (binary `betterpod`). The launcher sources PortMaster's `control.txt` for the controller mapping.
-- **Paths:** music in `/userdata/music` (the "music" network share), else `betterpod/music`; the database in `betterpod/conf` (Settings → Database can move it, cards are under `/media`); the log is `betterpod/miyoopod.log`, the launcher's output `betterpod/log.txt`.
-- **Video:** the system's SDL2, with vsync.
-- **Audio:** SDL_mixer from `port/betterpod/libs`, patched for ALAC, AAC and 24-bit. The output is reopened at each track's sample rate, with float mixing. The volume is the PipeWire default sink, through `pactl` (`pactl subscribe` follows changes made elsewhere). Bluetooth through `bluetoothctl`, the sound going to its PipeWire sink.
-- **Keys:** the gamepad through SDL's game controller (`SDL_GAMECONTROLLERCONFIG` from PortMaster); the sticks act as the arrows, or as a wheel (`MIYOOPOD_STICK_WHEEL=1`). MENU (the function key): tap = screen off, hold 5 s = quit. The volume keys belong to the system. Headphone buttons (wired and Bluetooth) are read from their input devices (`main.c`).
-- **Backlight:** the display engine's `/dev/disp` ioctl first, then `batocera-brightness` / `brightness`, then sysfs.
-- **Sleep:** Knulli's own. Its idlewatcher can mute after 5 minutes and suspend after 15 even while sound plays. During playback (music, Listen and videos), betterPod holds its own `/var/run/battery-saver/*.pause` file, which the idle and extended hooks honor. It releases the file on pause, stop and exit; the launcher also removes its own file if the binary crashes. Manual POWER still belongs to Knulli. MENU turns only betterPod's screen off.
-- **Videos** (`video.go`, `ij_video.go`, `ij_videodl.go`): the player covers the whole screen, header included (`videoInPlace`), with the title and the time over the picture for 2.5 s after a key. Knulli's ffmpeg (`/usr/bin/ffmpeg`, there for EmulationStation's videos; a static build is downloaded into `tools/` only where there is none). Two ffmpeg per stretch of playback, started again at each seek: RGBA frames at the size shown, and the sound in the mixer's format through `Mix_HookMusic` (`audio.c`), whose count is the clock. YouTube's streams go through a server on 127.0.0.1 that fetches them in 10 MB ranges (a request for more gets slowed down to a crawl). YouTube refuses some links for a moment now and then (403, a varying part of a video's formats): each candidate's link is tried with a 2-byte range before playing, a refused piece is asked for again after a pause, and then the links are asked for again once. YouTube's links work only from their `available_at`, a few seconds after yt-dlp gets them (403 before): the player and Listen wait for it (`ytWaitLinks`). A Listen stops for a video, leaving the music paused. Opening a video is mostly yt-dlp solving YouTube's challenge: Deno, the tools' first choice, takes a fifth of QuickJS's time, and the log times each step. Download Video joins the streamed picture and sound into one MP4 in the data folder's `videos/` (not the music folder: the library would take an MP4 for a song); a video there plays from its file. `MIYOOPOD_PERF=1` logs a `VIDEO:` line each second; `MIYOOPOD_VIDEO_AV_MS` shifts the picture against the sound.
-- **Build:** `tools/build.sh` (Go 1.24, zig cc for aarch64 with glibc 2.28, an SDL2 sysroot in `SDL2_SYSROOT`) → `dist/betterpod-knulli.zip` (and the bridge zip for installations still called KnulliPod).
+The binary is built from the explicit `src/*.go` file list, because `main.go` and `pz_*.go` include C implementations. Build scripts hash the C sources and headers into `CGO_CFLAGS` to invalidate Go's cache when they change.
 
-## Onion OS (Miyoo Mini, Mini Plus, Mini v4, Mini Flip)
+- `tools/Dockerfile` builds the reproducible Go 1.24 / Zig compiler image and aarch64 SDL2 sysroot.
+- `tools/docker-build.sh` builds for `aarch64-linux-gnu.2.28`, verifies ELF dependencies and GLIBC requirements, and writes `build/betterpod`, `dist/betterpod-knulli.zip` and the old KnulliPod bridge package.
+- `tools/build.sh` is the native build; it needs `SDL2_SYSROOT`, Go and Zig (`CC` can override the compiler).
+- `tools/unittest.sh` runs `tools/unittest/*_test.go` natively against Debian SDL2 in Docker. Test files carry `//go:build ignore` and are copied into `src` by the harness. Tests cover playback, streaming, metadata edits, updates, database/file safety, drawing and the idle guard.
 
-- **Hardware:** SigmaStar SSD202D, 2 × Cortex-A7, 128 MB of RAM (Onion keeps about half), armv7 hard-float, glibc 2.28. A 640×480 screen (without a `full_resolution` file Onion runs the app at 640×480 on the v4 and Flip too). Wi-Fi on the Mini Plus, v4 and Flip; volume keys on the Mini Plus.
-- **System:** Onion OS. The app is `onion/betterpod/` → `/mnt/SDCARD/App/betterpod/` (binary `betterpod`, `launch.sh`, `config.json`, the Miyoo's SDL2 in `libs/`). Apps run from `launch.sh` through Onion's `runtime.sh`, which starts keymon and MainUI again afterwards: a launcher must not start MainUI itself.
-- **Paths:** music in `/mnt/SDCARD/Media/Music`; the database in `App/betterpod/conf` (or `.betterpod` in the music folder; one card, so no `/media`); the log is `App/betterpod/miyoopod.log` (kept under 1 MB).
-- **`launch.sh`** stops Onion's audioserver (with Onion's `stop_audioserver.sh`), kills keymon (it would suspend the app on POWER and own the volume keys) and sets the CPU governor to performance; after the app it puts the governor and `scaling_min_freq` back and switches the panel on.
-- **SDL2** (from MiyooPod 0.0.8, steward-fu's `mmiyoo` build, SDL 2.0.20): the buttons are keyboard keys (A space, B left Ctrl, X left Shift, Y left Alt, L e, R t, L2 Tab, R2 Backspace, SELECT right Ctrl, START Return, MENU Escape). No joystick and no game controller subsystem. Its input thread reads `/dev/input/event0` without grabbing it; POWER and the volume keys are not mapped, so `onion.c` reads them itself.
-- **Video:** the renderer only copies whole textures reliably (sub-rectangle copies are misplaced), so Onion uploads full frames. The present is `FBIOPAN_DISPLAY`, which waits for the vertical blank (11–13 ms), hence the present thread in `main.c`. No logical size, no fullscreen flag. The hottest pixel loops are in C (`cdraw.c`).
-- **Audio:** S16, 44.1 kHz, buffers of 2048 frames, no rate switching (the driver assumes 2 bytes per sample). The driver sends each buffer with `MI_AO_SendFrame(…, 1 ms)` and sleeps; `onion.c` exports its own `MI_AO_SendFrame`, which waits up to 1 s for room, so nothing is dropped (MI_AO queues 6 buffers). The volume is MI_AO's hardware volume (Onion's `volume.h` ioctl and curve, scaled to end at 0 dB). Formats: MP3, FLAC, Ogg, WAV, AIFF; the Miyoo's SDL_mixer has no AAC or ALAC decoder, so `.m4a` is skipped.
-- **Memory:** Go keeps to one core (`GOMAXPROCS=1`, the other is left to SDL_mixer's decoding), a 48 MB soft limit, a 16 MB artwork cache; tracks up to 24 MB play from RAM, bigger ones are read ahead gently. The live heap sits around 16–26 MB along the smoke test and nearer 40 MB in Cover Flow with the artwork cache full, so whatever a frame allocates soon makes the GC run again and again: a screen that animates must reuse its buffers (`aaPoly` once made a 640×480 rasterizer per polygon, 2.4 MB a call, and the GC ran 6 times a second while Share waited). Covers are decoded one at a time, once per album, and averaged down before Catmull-Rom (`shrinkImage`): from a big picture, Catmull-Rom alone takes a buffer of the new width times the picture's height (46 MB for a 480 px cover from a 3000 px scan). The classic UI's fonts, loaded on both UIs, keep 32 glyphs a face with the iPod UI (512 took 8 MB). `GODEBUG=gctrace=1 tools/onion/smoketest.sh` shows the GC along the walk; a heap profile (`pprof.WriteHeapProfile`) shows what holds it.
-- **Keys:** the d-pad is the wheel; B and MENU are back; POWER tap = screen off with the music playing, hold 5 s = quit; the volume keys set the volume (also with the screen off); MENU + volume keys and L2 / R2 set the brightness in Onion's eleven steps (`3·e^(0.350656·level)` of the PWM duty cycle).
-- **Sleep** (`onion_sleep.go`): killing keymon also kills Onion's sleep timer, so betterPod does its job. With nothing playing, system.json's `hibernate` minutes (5 by default, 0 = never) without a key turn the screen off, and a minute later `/tmp/.offOrder` is written and the app quits, so `runtime.sh` powers off; the screen off by POWER powers off after the timer and one minute. Never while music plays, while charging or while something is under way (a download, a scan, a cover search, tags being written, an update). The screen off is the backlight at 0 and the LCD panel off (gpio4, as Onion's `display_setScreen`); 10 s after the music stops, `scaling_min_freq` goes to the lowest and MI_AO is muted. `tools/onion/sleeptest.sh` checks it.
-- **Battery:** batmon's `/tmp/percBat`; charging from gpio59 (Mini, model 283) or `axp_test` (Mini Plus, 354), the model in `/tmp/deviceModel`.
-- **SD card:** FAT, so chmod can fail (Software Update ignores it) and names must avoid `: * ? " < > |`.
-- **Off on the Miyoo, and why:** YouTube (yt-dlp needs about 90 MB of Python and more than 96 MB of QuickJS heap; measured under emulation), Videos (they play YouTube, and Onion has no ffmpeg), Bluetooth (none), Music Folder (one card slot), the screensaver's Visualizer (the whole screen 30 times a second with an FFT), the lossless badge (its bars keep Now Playing redrawing, and the output is 16-bit anyway), headphone buttons (no media input device), covers over 3000 px a side (`decodeAlbumSource`: a 5000 px PNG needs 100 MB). Toned down: Settings → **Effects** (on both systems) is Light by default on the Miyoo (no Ken Burns pan, still Weather icons, sheets without their slide); Internet Archive downloads redraw at most 5 times a second and don't offer ALAC; the screensaver keeps 48 covers ready instead of 240; Share's screen, which moves for as long as a share waits and runs, is drawn 10 times a second with Light effects; Share refuses AAC / ALAC before anything moves (the offer carries the songs' formats, `shareOffer`; the receiver answers with `RejectWith`, which the sender shows), and stops at the first song when an older sender doesn't say them; the Wi-Fi icon isn't read while the screen is off; there is no "back from sleep" (the Miyoo never suspends under betterPod: a jump of the clock is only the time being set).
-- **Build** (Docker, Go 1.24, zig cc for `arm-linux-gnueabihf.2.28`): `tools/onion/build.sh` → `dist/sdcard/App/betterpod/` and `dist/betterpod-v<version>-onion.zip` (unzip at the root of the SD card). Check after a build: `readelf -d` NEEDED is only libSDL2.so, libSDL2_mixer.so, libc, libm, libpthread, libdl; the highest GLIBC symbol is at most 2.28 (2.7 so far, the Puzzles' `__isoc99_sscanf`); `MI_AO_SendFrame` is in `--dyn-syms` (exported by Go's `-rdynamic`).
-- **Tests** (all in Docker):
-  - `tools/onion/unittest.sh`: `tools/onion/unittest/*_test.go` (tagged `//go:build ignore`, copied into `src` to run natively): the update zip, versions, volume and brightness curves, the sleep timer's decisions, key directions, the C pixel loops byte for byte against Go, Album Info, Podcasts.
-  - `tools/onion/smoketest.sh`: the real ARM binary emulated with Debian's SDL2 in Xvfb, keys through xdotool and POWER / volume through `MIYOOPOD_ONION_INPUT`; a PNG per step. About 7 minutes: run it in the background.
-  - `tools/onion/sleeptest.sh`: the sleep timer with a 3-second "minute". About a minute.
-  - `tools/onion/perf.sh`: the interface natively on one core in Onion mode, fps and main-thread load per scenario, and a CPU profile. The host is much faster than the A7: compare versions and scenarios, never absolute times. `tools/onion/bench.sh` compares Go and C pixel loops on emulated ARM (only scalar comparisons mean anything under QEMU).
-- **Release:** `tools/onion/release.sh "what's new" …` copies the zip to `release/betterpod-v<version>-onion.zip` and writes `release/latest-onion.json`; commit and push both.
+## UI persistence and artwork
 
-## The build, for both
+`savePrefs` makes an immutable snapshot on the UI goroutine. A single lazy writer coalesces changes (250 ms debounce, at most two seconds during a burst) and keeps atomic Write/Sync/Rename. `flushPrefs` is a durability barrier for folder transitions; `closePrefs` flushes and stops the worker before exit/Exec. `withPrefsPathChange` serializes snapshots and database/music root changes. Do not copy stale preference files over a newly active database after switching.
 
-The binary is built from the file list `src/*.go`, not as a package, because `main.go` and `pz_*.go` include C files (`main.c`, `audio.c`, `onion.c`, `src/puzzles/*.c`). Go's build cache doesn't see those C files change: `tools/onion/build.sh` puts their hash in `CGO_CFLAGS`.
+Artwork frame lookups are RAM-only. Bounded foreground workers do disk reads, decoding and resizing, with two decoder slots and foreground priority. Epochs reject stale results after clear, replacement and database changes. Common default artwork sizes are prepared before the UI loop. Hidden Cover Flow skips rasterization while its state still advances.
 
-## Album Info tags
+`BETTERPOD_PERF=1` distinguishes drawn/presented/unchanged frames and records full-loop work plus continuous-animation gaps over 50 ms. These are diagnostics, not proof of physical LCD scanout timing. Benchmark percentiles and PipeWire error deltas together; preserve audio buffers/quality when optimizing the UI.
 
-Choosing an online result replaces every supplied field, even when a value is already present or only its spelling or edition note differs. A missing track artist uses the selected album artist; absent source fields do not erase tags. `albumEdit.trackMatches` first pairs complete tracklists of equal size by disc and track order, without trusting old titles or durations. For files in the downloader's `YouTube/<artist>/<album>/NN Title.m4a` layout, the filename numbers come first: tag edits do not change them, so they can repair an earlier title-based match that saved wrong numbers. Otherwise, complete tag numbering establishes the order. Incomplete or unnumbered lists fall back to individual title, number and duration matches (`matchTracks`); alphabetical position is never an order. The screen reports partial matches and different song counts. Track totals are inferred only from a complete source list. `tools/onion/unittest/albuminfo_tracklist_test.go` covers shifted titles across 16 songs, already-corrupted YouTube numbers, full metadata replacement, discs and incomplete lists.
+## Software Update and releases
 
-`tagwrite.go` writes only edited fields in MP3, FLAC, Ogg and M4A. M4A edits (`tagwrite_m4a.go`) use the box parser in `ij_m4a.go`, without rebuilding the sound track: audio stays at its original offsets, untouched boxes and tags are copied byte for byte, and the edited `moov` goes at the end. A temporary file is synced and renamed over the original only after the write succeeds. Movie metadata is limited to 16 MB; fragmented files and metadata layouts that can't be safely read are refused. Track and disc totals are kept when only their numbers change. Onion still skips M4A because its mixer has no decoder. `tools/onion/unittest.sh` installs ffmpeg to verify real AAC and ALAC edits by decoding before and after, alongside malformed-file and metadata-preservation tests.
+Settings → Software Update reads `release/latest-knulli.json` through GitHub's contents API, with raw.githubusercontent.com as fallback. With Beta Versions on, it also reads `release/beta-knulli.json` and offers the newer version. `version.go` sorts a beta before its final release.
 
-## Software Update
+The package contains `betterPod.sh` and `betterpod/`. The updater verifies size and SHA-256, stages every file next to its target as `.kpnew`, then renames them into place with the binary last. The previous binary is `betterpod.prev`; `conf/` is never replaced.
 
-Settings → Software Update reads `release/latest-<system>.json` (`updateDistro()`: `knulli` or `onion`) through GitHub's API, with raw.githubusercontent.com as the fallback, and downloads the zip at its `path`, checking size and SHA-256. Knulli's zip holds `betterPod.sh` and `betterpod/`; Onion's holds `App/betterpod/` (unzipped at the root of the card by hand), and the update takes what is under `App/`. Every file is first copied next to its target (`.kpnew`), then renamed into place, the binary last; the old binary is kept as `betterpod.prev`, and `conf/` is never touched.
+For a release:
 
-**Betas** (from 0.92): a version like `1.1-beta.1` (`version.go`: a beta sorts before its release) goes to `release/beta-<system>.json` instead of `latest-`; only consoles with **Beta Versions** on (Settings → Software Update's column, `updateColumn`) read it, and they are offered the newer of the two manifests. `tools/onion/release.sh` writes the beta manifest when the version has a `-`; `tools/gh_releases.py` makes betas pre-releases, never "Latest". A beta has its own changelog section (`## v1.1-beta.1`).
+1. Update the version and CHANGELOG; run the tests and build.
+2. Copy the verified ZIP to `release/betterpod-v<version>-knulli.zip` and update `latest-knulli.json` (stable) or `beta-knulli.json` (beta) with its version, path, URL, size, SHA-256 and notes.
+3. Use a commit subject beginning `v<version>:` and include all source and release artifacts in that commit.
+4. Prepare a PR. A merge changing CHANGELOG on `main` runs `.github/workflows/releases.yml`. `tools/gh_releases.py` publishes the newest CHANGELOG section after checking the package against its manifest and the release commit. Stable releases become Latest; betas are prereleases.
 
-## Where things are
+`release/latest.json` and the bridge launcher serve historical installations still named KnulliPod. Keep their legacy binary names only for that compatibility. Existing published releases and historical changelog sections are archival records.
+
+## Videos and Listen
+
+`video.go`, `ij_video.go` and `ij_videodl.go` implement video playback and downloads. The player covers the screen and shows its title/time for 2.5 seconds after input. Knulli's `/usr/bin/ffmpeg` decodes video; a static build is offered only when absent. Two ffmpeg processes provide sized RGBA frames and audio through `Mix_HookMusic`; audio sample count is the playback clock. They restart after seeking.
+
+YouTube streams pass through a localhost server that fetches 10 MB ranges. Each candidate URL is probed before playback; rejected ranges retry, then refresh formats once. `ytWaitLinks` waits for yt-dlp's `available_at`, because early requests can return 403. Deno is preferred over QuickJS to solve challenges faster. Listen yields to video and keeps local music paused. Downloaded MP4s live in the database's `videos/` folder, outside the scanned music tree. `BETTERPOD_PERF=1` logs timings; `BETTERPOD_VIDEO_AV_MS` adjusts audio/video alignment.
+
+## Album Info and tags
+
+An online result replaces every supplied field, including existing titles, numbering and artist values. Missing source fields leave current tags intact. Complete equal-sized tracklists match by disc and track order before titles or lengths. YouTube filenames (`YouTube/<artist>/<album>/NN Title.m4a`) retain original order even after incorrect tag edits; otherwise complete tag numbering establishes it. Partial/unnumbered tracklists use individual matches, with partial matches and count differences reported. Track totals are inferred only from a complete source list.
+
+`tagwrite.go` handles MP3, FLAC and Ogg. `tagwrite_m4a.go` uses the `ij_m4a.go` box parser: audio remains at its original offsets, untouched boxes/tags are copied, and the new `moov` is appended. Temporary output is synced and renamed only on success. Metadata is limited to 16 MB; fragmented or unsafe layouts are refused. Tests decode real AAC/ALAC audio before and after editing and check unrelated metadata.
+
+## Source map
 
 | Path | Contents |
 |---|---|
-| `src/ij_*.go` | The interface: views, Cover Flow, Now Playing, settings, apps, Software Update (Genius: `ij_genius.go`) |
-| `src/video.go`, `src/ij_video.go`, `src/ij_videodl.go` | Videos (Knulli): playing with ffmpeg, the streams' server; the menu and the player's screen; Download Video |
-| `src/main.c`, `src/audio.c` | SDL2 input, display, vsync and the present thread; SDL_mixer playback |
-| `src/knulli.go` | Knulli: paths, backlight, the platform switch |
-| `src/onion.go`, `src/onion.c`, `src/onion_sleep.go` | Onion: keys, MI_AO volume and its queue, backlight, battery, memory, sleep |
-| `src/cdraw.c`, `src/cdraw.go`, `src/ij_effects.go` | The Miyoo's C pixel loops; Settings → Effects |
-| `port/` | Knulli's package: `betterPod.sh`, `betterpod/` (assets, fonts, libs), shared assets |
-| `onion/betterpod/` | Onion's app folder: `launch.sh`, `config.json`, icon, the Miyoo's SDL2 |
-| `tools/build.sh` | Knulli's build |
-| `tools/onion/` | Onion's build, tests, perf and release |
-| `release/` | The zips and the manifest of each system |
+| `src/ij_*.go` | Interface, views, settings, apps, library, Software Update |
+| `src/main.c`, `src/audio.c` | SDL2 input/display and SDL_mixer playback |
+| `src/knulli.go`, `src/knulli_idle.go` | Knulli hardware helpers and playback idle protection |
+| `src/compat.go` | Compatibility with existing Knulli data and launchers |
+| `src/cdraw.*`, `src/ij_effects.go` | C pixel loops and Go fallback and Full/Light effects |
+| `port/` | Launcher, assets, fonts and bundled libraries |
+| `tools/` | Build, tests, release tooling and historical recovery utilities |
+| `release/` | Knulli packages and stable/beta manifests |
+| `mac/` | Share for Mac companion app |
 
-## When something goes wrong on a console
+## Troubleshooting
 
-Ask for the log (`betterpod/miyoopod.log` on Knulli, `App/betterpod/miyoopod.log` on Onion). For stutter, `MIYOOPOD_PERF=1` in the launcher logs drawing times every second; on the Miyoo the log also reports, on exit, the audio buffers MI_AO played and refused, and each screen off notes the CPU's clock. The Onion launcher lists switches for quick experiments (`MIYOOPOD_PRESENT_THREAD=0`, `MIYOOPOD_AO_TIMEOUT=0`, `MIYOOPOD_AUDIO_CHUNK`…).
+Read `betterpod/betterpod.log`. `BETTERPOD_PERF=1` records drawing/video timings once per second. For silent Bluetooth audio while playback advances, check the named PipeWire sink's mute state and the app's idle marker before changing the codec or reconnecting devices.

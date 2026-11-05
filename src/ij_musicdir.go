@@ -4,7 +4,7 @@ package main
 // and moving it to another memory card.
 //
 // The folder chosen is kept in musicdir.txt in the port's data folder
-// (MIYOOPOD_DATA_DIR); without it, it's the launcher's (/userdata/music).
+// (BETTERPOD_DATA_DIR); without it, it's the launcher's (/userdata/music).
 // If the chosen card is missing at start, the default one is used for that
 // run and the screen says so.
 //
@@ -56,7 +56,7 @@ import (
 
 const musicDirPointer = "musicdir.txt"
 
-var moveSlow, _ = strconv.Atoi(os.Getenv("MIYOOPOD_MOVE_SLOW"))
+var moveSlow, _ = strconv.Atoi(envGet("BETTERPOD_MOVE_SLOW"))
 
 var (
 	musicDirMu       sync.Mutex
@@ -66,19 +66,15 @@ var (
 
 // defaultMusicRoot: the launcher's music folder (no trailing slash).
 func defaultMusicRoot() string {
-	dir := os.Getenv("MIYOOPOD_MUSIC_DIR")
+	dir := envGet("BETTERPOD_MUSIC_DIR")
 	if dir == "" {
-		if isKnulli {
-			dir = "/userdata/music"
-		} else {
-			dir = "/mnt/SDCARD/Media/Music"
-		}
+		dir = "/userdata/music"
 	}
 	return filepath.Clean(dir)
 }
 
 func musicPointerPath() string {
-	if d := os.Getenv("MIYOOPOD_DATA_DIR"); d != "" {
+	if d := envGet("BETTERPOD_DATA_DIR"); d != "" {
 		return filepath.Join(d, musicDirPointer)
 	}
 	return ""
@@ -106,6 +102,10 @@ func readMusicDirPointer() string {
 
 // setMusicRoot makes dir the music folder and remembers it.
 func setMusicRoot(dir string) error {
+	return withPrefsPathChange(func() error { return setMusicRootNow(dir) })
+}
+
+func setMusicRootNow(dir string) error {
 	dir = filepath.Clean(dir)
 	p := musicPointerPath()
 	if p == "" {
@@ -177,11 +177,11 @@ func cardName(dev, mnt string) string {
 }
 
 // musicCards: the cards the music could go to: the default folder's and
-// those under /media (MIYOOPOD_FAKE_CARDS: other folders, for tests),
+// those under /media (BETTERPOD_FAKE_CARDS: other folders, for tests),
 // writable and not the boot partition.
 func musicCards() []musicCard {
 	var roots []string
-	if f := os.Getenv("MIYOOPOD_FAKE_CARDS"); f != "" {
+	if f := envGet("BETTERPOD_FAKE_CARDS"); f != "" {
 		roots = strings.Split(f, ":")
 	} else {
 		roots = append(roots, filepath.Dir(defaultMusicRoot()))
@@ -194,7 +194,7 @@ func musicCards() []musicCard {
 			continue
 		}
 		mnt, dev := mountOf(r)
-		if os.Getenv("MIYOOPOD_FAKE_CARDS") != "" {
+		if envGet("BETTERPOD_FAKE_CARDS") != "" {
 			mnt, dev = r, r
 		}
 		if mnt == "" || seen[dev] {
@@ -299,14 +299,14 @@ func (ui *IpodUI) startMusicMove(c musicCard, move bool) {
 	}
 	j := &moveJob{from: from, to: to, fromName: cardName(fromDev, from), toName: c.Name, move: move,
 		phase: "count", stop: make(chan struct{})}
-	if os.Getenv("MIYOOPOD_FAKE_CARDS") != "" {
+	if envGet("BETTERPOD_FAKE_CARDS") != "" {
 		j.fromName = filepath.Base(filepath.Dir(from))
 	}
 	if j.fromName == c.Name {
 		j.fromName = "Here"
 	}
 	j.cardRoot = filepath.Dir(to)
-	if os.Getenv("MIYOOPOD_FAKE_CARDS") == "" {
+	if envGet("BETTERPOD_FAKE_CARDS") == "" {
 		_, j.cardDev = mountOf(j.cardRoot)
 		j.cardUUID = uuidOf(j.cardDev)
 		j.fsType = fsTypeOf(j.cardRoot)
@@ -693,6 +693,9 @@ func (j *moveJob) switchTo(ui *IpodUI) error {
 	// deleted): copied here first, then again on the UI goroutine what
 	// changed meanwhile, so nothing is written while it switches
 	if j.dataRel != "" {
+		if err := flushPrefs(); err != nil {
+			return err
+		}
 		from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
 		if err := copyItems(from, to, folderItems(from), false, nil); err != nil {
 			return err
@@ -702,6 +705,10 @@ func (j *moveJob) switchTo(ui *IpodUI) error {
 	ui.postSure(func() {
 		if j.dataRel != "" {
 			ui.savePrefs()
+			if err := flushPrefs(); err != nil {
+				res <- err
+				return
+			}
 			from, to := filepath.Join(j.from, j.dataRel), filepath.Join(j.to, j.dataRel)
 			if err := copyItems(from, to, folderItems(from), true, nil); err != nil {
 				res <- err
@@ -712,7 +719,11 @@ func (j *moveJob) switchTo(ui *IpodUI) error {
 				return
 			}
 		}
-		res <- setMusicRoot(j.to)
+		err := setMusicRoot(j.to)
+		if err == nil {
+			ui.artc.clear()
+		}
+		res <- err
 	})
 	return <-res
 }
@@ -855,7 +866,7 @@ func (j *moveJob) copyFile(f *moveFile, buf []byte, force bool, progress func(in
 		}
 		n, rerr := r.Read(buf)
 		if moveSlow > 0 && n > 0 {
-			time.Sleep(time.Duration(moveSlow) * time.Millisecond) // (tests: MIYOOPOD_MOVE_SLOW, ms per MB)
+			time.Sleep(time.Duration(moveSlow) * time.Millisecond) // (tests: BETTERPOD_MOVE_SLOW, ms per MB)
 		}
 		if n > 0 {
 			if _, werr := out.Write(buf[:n]); werr != nil {
@@ -1045,6 +1056,7 @@ func (ui *IpodUI) askMusicMove(c musicCard) {
 					ui.showToast("Couldn't: " + shortErr(err))
 					return
 				}
+				ui.artc.clear()
 				ui.clearNowPlaying()
 				ui.rescanLibrary()
 				ui.showToast("Music folder: " + c.Name)

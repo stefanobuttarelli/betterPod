@@ -13,6 +13,7 @@ if [ -d "$OLD" ] && [ ! -e "$NEW" ]; then
   mv "$OLD" "$NEW"
 fi
 if [ -d "$NEW" ]; then
+  # Historical KnulliPod installations used this executable name.
   [ -f "$NEW/MiyooPod" ] && [ ! -f "$NEW/betterpod" ] && mv "$NEW/MiyooPod" "$NEW/betterpod"
   rm -f "$NEW/MiyooPod" "$NEW/MiyooPod.prev"
   chmod +x "$NEW/betterpod" 2>/dev/null

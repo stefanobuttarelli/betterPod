@@ -1,7 +1,7 @@
 package main
 
 // datadir.go — where the database lives (library cache, artwork, settings,
-// scan statistics, game saves). The default is MIYOOPOD_DATA_DIR (the port's
+// scan statistics, game saves). The default is BETTERPOD_DATA_DIR (the port's
 // conf folder); Settings → Database can move it to another folder, e.g. the
 // SD card with the music. The choice is kept in a small pointer file in the
 // default folder, which is always there. All paths are computed on use
@@ -28,11 +28,9 @@ const dataDirPointer = "datadir.txt"
 // under way), and the pointers datadir.txt and musicdir.txt, which stay in
 // the default folder.
 var dataItems = []string{
-	".miyoopod_library.json",
-	".miyoopod_settings.json",
-	".miyoopod_playback.json",
-	".miyoopod_update.json",
-	".miyoopod_update_status",
+	libraryFile,
+	settingsFile,
+	playbackFile,
 	".update_check.json",
 	"scan_stats.json",
 	"ipodjs_settings.json",
@@ -50,7 +48,7 @@ var dataItems = []string{
 	"quiz_best.txt",
 	"puzzles",
 	"chosen_covers",
-	".miyoopod_artwork",
+	artworkFolder,
 	".ipod_art",
 	"tools",
 }
@@ -77,7 +75,7 @@ var (
 
 // defaultDataDir is the launcher's data folder (upstream: the music root).
 func defaultDataDir() string {
-	dir := os.Getenv("MIYOOPOD_DATA_DIR")
+	dir := envGet("BETTERPOD_DATA_DIR")
 	if dir == "" {
 		dir = musicRoot()
 	}
@@ -118,6 +116,10 @@ func dataDir() string {
 
 // setDataDir makes dir the database folder and remembers the choice.
 func setDataDir(dir string) error {
+	return withPrefsPathChange(func() error { return setDataDirAfterPrefs(dir) })
+}
+
+func setDataDirAfterPrefs(dir string) error {
 	dir = filepath.Clean(dir)
 	def := defaultDataDir()
 	ptr := filepath.Join(def, dataDirPointer)
@@ -139,6 +141,22 @@ func setDataDir(dir string) error {
 	dataDirMu.Unlock()
 	dataDirMissing = ""
 	return nil
+}
+
+// switchDataDirWithPrefs copies the latest preferences immediately before a
+// database move switches folders. Later saves can only target the destination.
+func switchDataDirWithPrefs(from, to string) error {
+	return withPrefsPathChange(func() error {
+		src := filepath.Join(from, ipodPrefsFile)
+		if _, err := os.Stat(src); err == nil {
+			if err := copyFile(src, filepath.Join(to, ipodPrefsFile)); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return setDataDirAfterPrefs(to)
+	})
 }
 
 // checkWritable tells whether the database could be written in dir. If dir
@@ -171,7 +189,7 @@ func checkWritable(dir string) error {
 
 // hasDatabase reports whether dir already holds a betterPod library.
 func hasDatabase(dir string) bool {
-	st, err := os.Stat(filepath.Join(dir, ".miyoopod_library.json"))
+	st, err := os.Stat(filepath.Join(dir, libraryFile))
 	return err == nil && st.Size() > 0
 }
 
@@ -181,6 +199,19 @@ func hasDatabase(dir string) bool {
 // pass of a move, for what the app wrote while copying).
 func copyDatabase(src, dst string, onlyNewer bool, progress func(int)) error {
 	return copyItems(src, dst, dataItems, onlyNewer, progress)
+}
+
+// copyDatabaseAfterSwitch finishes a move without overwriting preferences
+// already saved in the destination. Their last old-folder snapshot was copied
+// under the switch barrier before the destination became current.
+func copyDatabaseAfterSwitch(src, dst string) error {
+	items := make([]string, 0, len(dataItems))
+	for _, item := range dataItems {
+		if item != ipodPrefsFile {
+			items = append(items, item)
+		}
+	}
+	return copyItems(src, dst, items, true, nil)
 }
 
 // copyItems: copyDatabase for the items named.
@@ -378,7 +409,7 @@ func dataArtPath(p string) string {
 		return ""
 	}
 	switch filepath.Base(filepath.Dir(p)) {
-	case ".miyoopod_artwork":
+	case artworkFolder:
 		return ARTWORK_DIR() + filepath.Base(p)
 	case "chosen_covers":
 		return filepath.Join(dataDir(), "chosen_covers", filepath.Base(p))

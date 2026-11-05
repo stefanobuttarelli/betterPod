@@ -10,7 +10,7 @@ import (
 
 // parsePlaylists reads the library's playlists (lower: see m3uTrack, made
 // once for all of them, and only if needed).
-func (app *MiyooPod) parsePlaylists(lib *Library) {
+func (app *BetterPod) parsePlaylists(lib *Library) {
 	var lower map[string]*Track
 	for _, pl := range lib.Playlists {
 		app.parsePlaylist(pl, lib, &lower)
@@ -18,7 +18,7 @@ func (app *MiyooPod) parsePlaylists(lib *Library) {
 }
 
 // parsePlaylist reads an M3U file and resolves track references
-func (app *MiyooPod) parsePlaylist(pl *Playlist, lib *Library, lower *map[string]*Track) {
+func (app *BetterPod) parsePlaylist(pl *Playlist, lib *Library, lower *map[string]*Track) {
 	data, err := os.ReadFile(pl.Path)
 	if err != nil {
 		logMsg("ERROR: Failed to read playlist " + pl.Path + ": " + err.Error())

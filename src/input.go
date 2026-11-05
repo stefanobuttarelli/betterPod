@@ -1,101 +1,8 @@
 package main
 
-import (
-	"encoding/binary"
-	"fmt"
-	"os"
-	"time"
-)
+import "time"
 
-// Linux input event structure
-type inputEvent struct {
-	Time  syscallTimeval
-	Type  uint16
-	Code  uint16
-	Value int32
-}
-
-type syscallTimeval struct {
-	Sec  int32
-	Usec int32
-}
-
-const (
-	EV_KEY         = 0x01
-	KEY_POWER      = 116
-	KEY_VOLUMEUP   = 115
-	KEY_VOLUMEDOWN = 114
-	KEY_ESC        = 1 // MENU button (ESC key)
-)
-
-// startPowerButtonMonitor reads power button and volume events directly from /dev/input/event0
-// This bypasses SDL2 which doesn't have power button mapping in the prebuilt library
-func (app *MiyooPod) startPowerButtonMonitor() {
-	if isKnulli || isOnion {
-		// event0 on the H700 is the gamepad/power device handled elsewhere;
-		// reading it here would steal or duplicate events. On Onion,
-		// onion.c reads POWER and the volume keys and queues them with
-		// the other keys (LOCK, VOL_UP, VOL_DOWN), on the main thread.
-		return
-	}
-	go func() {
-		file, err := os.Open("/dev/input/event0")
-		if err != nil {
-			logMsg(fmt.Sprintf("WARNING: Could not open /dev/input/event0: %v", err))
-			return
-		}
-		defer file.Close()
-
-		logMsg("Power button monitor started on /dev/input/event0")
-
-		var ev inputEvent
-		for app.Running {
-			err := binary.Read(file, binary.LittleEndian, &ev)
-			if err != nil {
-				logMsg(fmt.Sprintf("ERROR: Reading input event: %v", err))
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-
-			// Only process key events
-			if ev.Type != EV_KEY {
-				continue
-			}
-
-			// Handle power button
-			if ev.Code == KEY_POWER {
-				if ev.Value == 1 { // Key pressed
-					logMsg("DEBUG: Power button PRESSED (from /dev/input/event0)")
-					app.handlePowerButtonPress()
-				} else if ev.Value == 0 { // Key released
-					logMsg("DEBUG: Power button RELEASED (from /dev/input/event0)")
-					app.handlePowerButtonRelease()
-				}
-			}
-
-			// Handle volume up
-			if ev.Code == KEY_VOLUMEUP && ev.Value == 1 {
-				app.handleVolumeUp()
-			}
-
-			// Handle volume down
-			if ev.Code == KEY_VOLUMEDOWN && ev.Value == 1 {
-				app.handleVolumeDown()
-			}
-
-			// Track MENU key state for brightness control
-			if ev.Code == KEY_ESC {
-				if ev.Value == 1 { // Pressed
-					app.MenuKeyPressed = true
-				} else if ev.Value == 0 { // Released
-					app.MenuKeyPressed = false
-				}
-			}
-		}
-	}()
-}
-
-func (app *MiyooPod) handlePowerButtonPress() {
+func (app *BetterPod) handlePowerButtonPress() {
 	if !app.PowerButtonPressed {
 		app.PowerButtonPressed = true
 		app.PowerButtonPressTime = time.Now()
@@ -116,7 +23,7 @@ func (app *MiyooPod) handlePowerButtonPress() {
 	}
 }
 
-func (app *MiyooPod) handlePowerButtonRelease() {
+func (app *BetterPod) handlePowerButtonRelease() {
 	if app.PowerButtonPressed {
 		holdDuration := time.Since(app.PowerButtonPressTime)
 		app.PowerButtonPressed = false
@@ -130,7 +37,7 @@ func (app *MiyooPod) handlePowerButtonRelease() {
 	}
 }
 
-func (app *MiyooPod) stopPowerTimers() {
+func (app *BetterPod) stopPowerTimers() {
 	if app.PowerHoldTimer != nil {
 		app.PowerHoldTimer.Stop()
 		app.PowerHoldTimer = nil
@@ -138,27 +45,5 @@ func (app *MiyooPod) stopPowerTimers() {
 	if app.PowerExitTimer != nil {
 		app.PowerExitTimer.Stop()
 		app.PowerExitTimer = nil
-	}
-}
-
-func (app *MiyooPod) handleVolumeUp() {
-	if app.Locked {
-		return
-	}
-	if app.MenuKeyPressed {
-		app.adjustBrightness(10)
-	} else {
-		app.adjustVolume(5)
-	}
-}
-
-func (app *MiyooPod) handleVolumeDown() {
-	if app.Locked {
-		return
-	}
-	if app.MenuKeyPressed {
-		app.adjustBrightness(-10)
-	} else {
-		app.adjustVolume(-5)
 	}
 }

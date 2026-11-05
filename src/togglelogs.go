@@ -6,7 +6,7 @@ import (
 )
 
 // toggleLocalLogs toggles the local logs setting
-func (app *MiyooPod) toggleLocalLogs() {
+func (app *BetterPod) toggleLocalLogs() {
 	app.LocalLogsEnabled = !app.LocalLogsEnabled
 
 	// Rebuild the settings menu to update the label
@@ -30,7 +30,7 @@ func (app *MiyooPod) toggleLocalLogs() {
 }
 
 // cycleAutoLock cycles through auto-lock options: 1min -> 3min -> 5min -> 10min -> Off -> 1min...
-func (app *MiyooPod) cycleAutoLock() {
+func (app *BetterPod) cycleAutoLock() {
 	switch app.AutoLockMinutes {
 	case 1:
 		app.AutoLockMinutes = 3
@@ -66,7 +66,7 @@ func (app *MiyooPod) cycleAutoLock() {
 }
 
 // toggleSentry toggles the Sentry (developer logs) setting
-func (app *MiyooPod) toggleSentry() {
+func (app *BetterPod) toggleSentry() {
 	app.SentryEnabled = !app.SentryEnabled
 
 	// Rebuild the settings menu to update the label

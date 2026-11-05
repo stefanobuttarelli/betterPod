@@ -25,9 +25,6 @@ import (
 
 // audioPrepareFor reopens the output at the sample rate of the next track.
 func audioPrepareFor(path string) {
-	if isOnion && os.Getenv("MIYOOPOD_RATE_SWITCH") != "1" {
-		return // MI_AO stays at 44.1 kHz; SDL_mixer resamples
-	}
 	rate := probeSampleRate(path)
 	if rate > 0 {
 		C.audio_set_rate(C.int(rate))
@@ -37,9 +34,6 @@ func audioPrepareFor(path string) {
 // supportedAudioExt: formats the patched SDL_mixer can play (MP3, FLAC,
 // Ogg, WAV, AIFF, ALAC and AAC in MP4).
 func supportedAudioExt(ext string) bool {
-	if _, no := onionUnsupported(ext); no {
-		return false
-	}
 	switch ext {
 	case ".mp3", ".flac", ".ogg", ".wav", ".aif", ".aiff", ".m4a", ".mp4", ".alac":
 		return true
@@ -273,7 +267,7 @@ var (
 
 func btConnected() bool { return atomic.LoadInt32(&btState) == 1 || fakeBT }
 
-var fakeBT = os.Getenv("MIYOOPOD_FAKE_BT") == "1" // (tests)
+var fakeBT = envGet("BETTERPOD_FAKE_BT") == "1" // (tests)
 
 func btLostTake() bool { return atomic.SwapInt32(&btLost, 0) == 1 }
 
@@ -355,7 +349,7 @@ func defaultSink() (string, bool) {
 // initSystemVolume returns the current system volume (0..1) or -1 if the
 // console's volume can't be controlled (then the player uses software volume).
 func initSystemVolume() float64 {
-	if os.Getenv("MIYOOPOD_SOFT_VOLUME") == "1" {
+	if envGet("BETTERPOD_SOFT_VOLUME") == "1" {
 		return -1
 	}
 	if findBin("pactl") == "" && findBin("batocera-audio") == "" {
@@ -480,7 +474,7 @@ func (s *sysVolume) refresher() {
 		case <-s.events:
 		default:
 		}
-		if sink, ok := defaultSink(); ok && os.Getenv("MIYOOPOD_BT_ICON") != "0" {
+		if sink, ok := defaultSink(); ok && envGet("BETTERPOD_BT_ICON") != "0" {
 			on := int32(0)
 			if strings.HasPrefix(sink, "bluez_output.") || strings.HasPrefix(sink, "bluez_sink.") {
 				on = 1
@@ -522,7 +516,7 @@ func (s *sysVolume) takeChange() int {
 // startBluetoothWatch: Bluetooth state comes from the same watcher; when the
 // system volume isn't used, run the watcher just for the icon.
 func startBluetoothWatch() {
-	if os.Getenv("MIYOOPOD_BT_ICON") == "0" || sysVol.ok || findBin("pactl") == "" {
+	if envGet("BETTERPOD_BT_ICON") == "0" || sysVol.ok || findBin("pactl") == "" {
 		return
 	}
 	go sysVol.watch()

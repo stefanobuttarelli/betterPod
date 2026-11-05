@@ -27,7 +27,7 @@ import (
 // The onComplete callback (if non-nil) is called when the scan finishes.
 // It reports false (and doesn't call onComplete) when a scan is already
 // running.
-func (app *MiyooPod) startLibraryScan(onComplete func()) bool {
+func (app *BetterPod) startLibraryScan(onComplete func()) bool {
 	scanStartMu.Lock()
 	defer scanStartMu.Unlock()
 	if app.LibScanRunning {
@@ -56,7 +56,7 @@ var scanStartMu sync.Mutex
 // say) runs now, whichever scan it waited for; before, only a rescan
 // started by rescanLibrary looked, and the new album could stay unseen
 // until a manual one.
-func (app *MiyooPod) scanEnded() {
+func (app *BetterPod) scanEnded() {
 	app.LibScanRunning = false
 	if rescanPending.Swap(false) {
 		if ui := ipodUI; ui != nil {
@@ -72,7 +72,7 @@ var scanLib *Library
 // installLibrary makes lib the library: on the iPod UI's goroutine (which
 // reads it every frame), pointing the queue and the queued marks at the new
 // tracks too.
-func (app *MiyooPod) installLibrary(lib *Library) {
+func (app *BetterPod) installLibrary(lib *Library) {
 	ui := ipodUI
 	if ui == nil {
 		app.Library = lib
@@ -97,13 +97,13 @@ func (app *MiyooPod) installLibrary(lib *Library) {
 
 // remapQueue points the queue at the tracks of a new library (by path) and
 // drops the ones that are gone; the song playing stays.
-func (app *MiyooPod) remapQueue(lib *Library) {
+func (app *BetterPod) remapQueue(lib *Library) {
 	app.remapQueueWith(func(t *Track) *Track { return lib.TracksByPath[t.Path] })
 }
 
 // remapQueueWith replaces each queued track by find(track), dropping those
 // it returns nil for (except the one playing). UI goroutine.
-func (app *MiyooPod) remapQueueWith(find func(*Track) *Track) {
+func (app *BetterPod) remapQueueWith(find func(*Track) *Track) {
 	q := app.Queue
 	var cur *Track
 	if app.Playing != nil {
@@ -168,7 +168,7 @@ func (app *MiyooPod) remapQueueWith(find func(*Track) *Track) {
 
 // runLibraryScan is the background goroutine that performs the actual library scan.
 // IMPORTANT: Never call draw functions from here — only update state and requestRedraw.
-func (app *MiyooPod) runLibraryScan(onComplete func()) {
+func (app *BetterPod) runLibraryScan(onComplete func()) {
 	start := time.Now()
 	logMsg("INFO: Scanning music library...")
 
@@ -260,11 +260,6 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 		if name, ok := unsupportedAudio[ext]; ok {
 			scanNote(func(s *ScanStats) { s.Skipped[name]++ })
 			logMsg("[SCAN] unsupported format: " + path)
-		}
-		if name, no := onionUnsupported(ext); no {
-			scanNote(func(s *ScanStats) { s.Skipped[name]++ })
-			logMsg("[SCAN] not playable on the Miyoo: " + path)
-			return nil
 		}
 		switch ext {
 		case ".mp3", ".flac", ".ogg", ".wav", ".m4a", ".mp4", ".aif", ".aiff":
@@ -369,7 +364,7 @@ func (app *MiyooPod) runLibraryScan(onComplete func()) {
 }
 
 // scanTrack reads metadata from a single audio file
-func (app *MiyooPod) scanTrack(path string) {
+func (app *BetterPod) scanTrack(path string) {
 	f, err := os.Open(path)
 	if err != nil {
 		return
@@ -505,7 +500,7 @@ func (app *MiyooPod) scanTrack(path string) {
 }
 
 // fetchMissingAlbumArt fetches album artwork from MusicBrainz for albums without embedded art
-func (app *MiyooPod) fetchMissingAlbumArt() {
+func (app *BetterPod) fetchMissingAlbumArt() {
 	missingCount := 0
 	fetchedCount := 0
 
@@ -535,7 +530,7 @@ func (app *MiyooPod) fetchMissingAlbumArt() {
 }
 
 // decodeArtwork decodes raw artwork bytes into an image
-func (app *MiyooPod) decodeArtwork(artData []byte, artExt string) image.Image {
+func (app *BetterPod) decodeArtwork(artData []byte, artExt string) image.Image {
 	if len(artData) == 0 {
 		return nil
 	}
@@ -552,7 +547,7 @@ func (app *MiyooPod) decodeArtwork(artData []byte, artExt string) image.Image {
 
 // decodeAlbumArt decodes raw art bytes into images for all albums
 // NOW: Only decode on-demand to save memory and startup time
-func (app *MiyooPod) decodeAlbumArt() {
+func (app *BetterPod) decodeAlbumArt() {
 	if useIpodUI {
 		// these 200 px covers are the classic UI's: the iPod UI scales its
 		// own (ij_art.go), so here they only took 160 KB an album for good
@@ -653,7 +648,7 @@ func (app *MiyooPod) decodeAlbumArt() {
 }
 
 // rgbaCachePath returns the path for an album's pre-resized RGBA cache file, or "" if no art
-func (app *MiyooPod) rgbaCachePath(album *Album) string {
+func (app *BetterPod) rgbaCachePath(album *Album) string {
 	if album.ArtPath == "" && album.ArtData == nil {
 		return ""
 	}
@@ -662,7 +657,7 @@ func (app *MiyooPod) rgbaCachePath(album *Album) string {
 }
 
 // loadRGBACache loads a pre-resized RGBA pixel buffer from disk
-func (app *MiyooPod) loadRGBACache(path string, size int) image.Image {
+func (app *BetterPod) loadRGBACache(path string, size int) image.Image {
 	expectedSize := size * size * 4 // RGBA = 4 bytes per pixel
 	data, err := os.ReadFile(path)
 	if err != nil || len(data) != expectedSize {
@@ -677,7 +672,7 @@ func (app *MiyooPod) loadRGBACache(path string, size int) image.Image {
 }
 
 // saveRGBACache writes a pre-resized RGBA pixel buffer to disk
-func (app *MiyooPod) saveRGBACache(path string, img *image.RGBA) {
+func (app *BetterPod) saveRGBACache(path string, img *image.RGBA) {
 	os.MkdirAll(ARTWORK_DIR(), 0755)
 	if err := os.WriteFile(path, img.Pix, 0644); err != nil {
 		logMsg(fmt.Sprintf("WARNING: Failed to save RGBA cache: %v", err))
@@ -686,7 +681,7 @@ func (app *MiyooPod) saveRGBACache(path string, img *image.RGBA) {
 
 // deferredArtExtraction runs in background after startup to extract album art
 // from MP3 tags for albums that don't have cached artwork yet.
-func (app *MiyooPod) deferredArtExtraction() {
+func (app *BetterPod) deferredArtExtraction() {
 	extracted := 0
 	for _, album := range app.Library.Albums {
 		// Skip albums that already have art (loaded from cache or RGBA)
@@ -779,7 +774,7 @@ var onArtExtracted func()
 
 // drawLibraryScanScreen renders the library scan progress screen.
 // Called from drawCurrentScreen on the main thread only.
-func (app *MiyooPod) drawLibraryScanScreen() {
+func (app *BetterPod) drawLibraryScanScreen() {
 	dc := app.DC
 
 	dc.SetHexColor(app.CurrentTheme.BG)
@@ -831,7 +826,7 @@ func (app *MiyooPod) drawLibraryScanScreen() {
 }
 
 // drawLibraryScanResults renders the results after library scan is complete.
-func (app *MiyooPod) drawLibraryScanResults() {
+func (app *BetterPod) drawLibraryScanResults() {
 	dc := app.DC
 	y := MENU_TOP_Y
 
@@ -893,7 +888,7 @@ func (app *MiyooPod) drawLibraryScanResults() {
 }
 
 // drawLibraryScanStatusBar renders the status bar for the library scan screen.
-func (app *MiyooPod) drawLibraryScanStatusBar() {
+func (app *BetterPod) drawLibraryScanStatusBar() {
 	dc := app.DC
 
 	barY := float64(SCREEN_HEIGHT - STATUS_BAR_HEIGHT)
@@ -912,7 +907,7 @@ func (app *MiyooPod) drawLibraryScanStatusBar() {
 }
 
 // handleLibraryScanKey handles key input on the library scan screen.
-func (app *MiyooPod) handleLibraryScanKey(key Key) {
+func (app *BetterPod) handleLibraryScanKey(key Key) {
 	switch key {
 	case B, MENU:
 		if app.LibScanDone {
@@ -929,7 +924,7 @@ func (app *MiyooPod) handleLibraryScanKey(key Key) {
 var libSaveMu sync.Mutex
 
 // saveLibraryJSON writes the library to a JSON file
-func (app *MiyooPod) saveLibraryJSON() error {
+func (app *BetterPod) saveLibraryJSON() error {
 	libSaveMu.Lock()
 	defer libSaveMu.Unlock()
 	if app.Library == nil {
@@ -955,7 +950,7 @@ func (app *MiyooPod) saveLibraryJSON() error {
 }
 
 // loadLibraryJSON loads the library from a JSON file
-func (app *MiyooPod) loadLibraryJSON() error {
+func (app *BetterPod) loadLibraryJSON() error {
 	logMsg("Loading library from JSON...")
 	start := time.Now()
 
@@ -1063,7 +1058,7 @@ var rateProbeMiss *Track
 // fillTrackTechInfo lazily populates the track's sample rate and average bitrate
 // (used by the Now Playing format badge). Cheap and idempotent: it only reads the
 // file header / stats the file when a value is still missing.
-func (app *MiyooPod) fillTrackTechInfo(track *Track, duration float64) {
+func (app *BetterPod) fillTrackTechInfo(track *Track, duration float64) {
 	if track == nil {
 		return
 	}

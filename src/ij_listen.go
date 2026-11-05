@@ -576,9 +576,6 @@ func iaListenSongs(it *iaItem) []listenSong {
 	g := ""
 	for _, o := range []string{"MP3", "FLAC", "WAV", "AIFF", "ALAC"} {
 		if len(it.Groups[o]) > 0 {
-			if _, no := onionUnsupported(".m4a"); no && o == "ALAC" {
-				continue // (not on the Miyoo)
-			}
 			g = o
 			break
 		}

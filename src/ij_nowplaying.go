@@ -246,10 +246,6 @@ func (np *NowPlayingView) OnScroll(ui *IpodUI, dir int, velocity float64) {
 }
 
 func (ui *IpodUI) applyVolume() {
-	if isOnion {
-		onionApplyVolume(ui.app, ui.volume)
-		return
-	}
 	if sysVol.ok {
 		sysVol.set(int(ui.volume*100 + 0.5))
 		return
@@ -414,7 +410,7 @@ func (ui *IpodUI) drawNPInfo(dst *image.RGBA, np *NowPlayingView, t *Track, npMe
 	for _, l := range lines {
 		h += l.lh
 	}
-	af, hasFmt := ui.npTrackFormat(t) // (no lossless badge on Onion, see onion.go)
+	af, hasFmt := ui.npTrackFormat(t)
 	badge := hasFmt && af.lossless
 	if badge {
 		h += losslessBadgeGap + losslessBadgeHeight(af)

@@ -18,7 +18,6 @@ package main
 import (
 	"image"
 	"math"
-	"os"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -58,10 +57,10 @@ var mini = miniState{
 var skipDir = 1.0
 
 // miniPauseHide: the block slides away after the song has been paused this
-// long, and comes back when it plays again (MIYOOPOD_PAUSE_HIDE, in seconds,
+// long, and comes back when it plays again (BETTERPOD_PAUSE_HIDE, in seconds,
 // changes it).
 var miniPauseHide = func() time.Duration {
-	if v, err := strconv.Atoi(os.Getenv("MIYOOPOD_PAUSE_HIDE")); err == nil && v > 0 {
+	if v, err := strconv.Atoi(envGet("BETTERPOD_PAUSE_HIDE")); err == nil && v > 0 {
 		return time.Duration(v) * time.Second
 	}
 	return 10 * time.Minute

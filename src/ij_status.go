@@ -45,7 +45,7 @@ func startWifiWatch() {
 // dormant. The signal comes from /proc/net/wireless, else from iw, else
 // from wpa_cli; connected with no signal to read shows all five.
 func readWifi() int {
-	if v := os.Getenv("MIYOOPOD_FAKE_WIFI"); v != "" { // (tests)
+	if v := envGet("BETTERPOD_FAKE_WIFI"); v != "" { // (tests)
 		n, _ := strconv.Atoi(v)
 		return n
 	}

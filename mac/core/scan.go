@@ -26,8 +26,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// playable: what betterPod plays (src/ij_audio.go; a Miyoo plays them but
-// .m4a, and says so before anything moves).
+// playable: the audio formats supported by betterPod (src/ij_audio.go).
 var playable = map[string]bool{".mp3": true, ".flac": true, ".ogg": true, ".wav": true, ".aif": true, ".aiff": true, ".m4a": true}
 
 type Song struct {

@@ -581,8 +581,8 @@ func (ui *IpodUI) shCover(dst *image.RGBA, s *ShareView, x, y float64, now time.
 	}
 }
 
-// renderUnplayable: the receiving betterPod can't play the songs' format (a
-// Miyoo and AAC): the share stopped before anything moved, and both screens
+// renderUnplayable: the receiving betterPod can't play the songs' format.
+// The share stopped before anything moved, and both screens
 // say so. The pedestal's light turns red, and on it, instead of the cover,
 // a file's tag with the format and a red "no" badge, shaken once as a
 // wrong password is.

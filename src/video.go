@@ -17,8 +17,8 @@ package main
 //   - ffmpeg is the system's (Knulli has it, for EmulationStation's videos)
 //     or, where there is none, a static build Videos downloads into tools/.
 //
-// MIYOOPOD_VIDEO_AV_MS adds milliseconds to the sound's latency (positive
-// when the picture is ahead of the sound); MIYOOPOD_FFMPEG points at another
+// BETTERPOD_VIDEO_AV_MS adds milliseconds to the sound's latency (positive
+// when the picture is ahead of the sound); BETTERPOD_FFMPEG points at another
 // ffmpeg (tests).
 
 /*
@@ -67,7 +67,7 @@ const (
 // ffmpegPath: the one downloaded into tools/ (only when the system has
 // none that works), else the system's; "" if there is none.
 func ffmpegPath() string {
-	if p := os.Getenv("MIYOOPOD_FFMPEG"); p != "" {
+	if p := envGet("BETTERPOD_FFMPEG"); p != "" {
 		return p
 	}
 	if p := filepath.Join(ytToolsDir(), "ffmpeg"); fileExists(p) {
@@ -442,7 +442,7 @@ type videoPlayer struct {
 	shownSeq int    // changes with it
 	shownT   float64
 
-	// for MIYOOPOD_PERF's line each second
+	// for BETTERPOD_PERF's line each second
 	nShown, nSkipped int
 	perfAt           time.Time
 	specAt           time.Time // when the mixer's format was last looked at
@@ -455,7 +455,7 @@ func newVideoPlayer(src vSource, at float64) (*videoPlayer, error) {
 	}
 	p := &videoPlayer{src: src, fps: videoFPS(src.FPS)}
 	p.fw, p.fh = videoFit(src.W, src.H, videoBoxW, videoBoxH)
-	p.extra = float64(envInt("MIYOOPOD_VIDEO_AV_MS", 0, -500, 1000)) / 1000
+	p.extra = float64(envInt("BETTERPOD_VIDEO_AV_MS", 0, -500, 1000)) / 1000
 	if C.video_audio_hook(1) == 0 {
 		var rate, f32, ch C.int
 		C.video_audio_spec(&rate, &f32, &ch)
@@ -749,7 +749,7 @@ func (p *videoPlayer) show(f []byte, t float64) {
 	p.nShown++
 }
 
-// perfLine: MIYOOPOD_PERF's line about the video, once a second (where it
+// perfLine: BETTERPOD_PERF's line about the video, once a second (where it
 // is, the frames shown and skipped, the sound waiting).
 func (p *videoPlayer) perfLine(now time.Time) {
 	if !perfLog || now.Sub(p.perfAt) < time.Second {
@@ -797,7 +797,7 @@ func (p *videoPlayer) close() {
 	p.pool, p.shown = nil, nil
 }
 
-// setGain: the app's own volume (MIYOOPOD_SOFT_VOLUME) for the sound, as
+// setGain: the app's own volume (BETTERPOD_SOFT_VOLUME) for the sound, as
 // the mixer gives it to the music (0..100 of 128); 1 with the console's.
 func videoSetGain(v float64) { C.video_audio_gain(C.float(v)) }
 

@@ -7,7 +7,7 @@ import (
 )
 
 // showAboutScreen displays the about page with version info, credits, and donation QR code
-func (app *MiyooPod) showAboutScreen() {
+func (app *BetterPod) showAboutScreen() {
 	dc := app.DC
 
 	// Set background
@@ -17,7 +17,7 @@ func (app *MiyooPod) showAboutScreen() {
 	// Title
 	dc.SetFontFace(app.FontTitle)
 	dc.SetHexColor(app.CurrentTheme.HeaderTxt)
-	dc.DrawStringAnchored("About MiyooPod", SCREEN_WIDTH/2, 30, 0.5, 0.5)
+	dc.DrawStringAnchored("About betterPod", SCREEN_WIDTH/2, 30, 0.5, 0.5)
 
 	// Version and author info
 	dc.SetFontFace(app.FontMenu)
@@ -32,7 +32,7 @@ func (app *MiyooPod) showAboutScreen() {
 	yPos += 40
 	dc.SetFontFace(app.FontSmall)
 	dc.SetHexColor(app.CurrentTheme.Dim)
-	dc.DrawStringAnchored("A music player for Miyoo Mini", SCREEN_WIDTH/2, float64(yPos), 0.5, 0.5)
+	dc.DrawStringAnchored("A music player for Knulli", SCREEN_WIDTH/2, float64(yPos), 0.5, 0.5)
 
 	yPos += 20
 	dc.DrawStringAnchored("Inspired by classic music players", SCREEN_WIDTH/2, float64(yPos), 0.5, 0.5)
@@ -66,7 +66,7 @@ func (app *MiyooPod) showAboutScreen() {
 }
 
 // waitForAboutExit waits for the user to press B to exit the about screen
-func (app *MiyooPod) waitForAboutExit() {
+func (app *BetterPod) waitForAboutExit() {
 	for app.Running {
 		key := Key(C_GetKeyPress())
 		if key == NONE {

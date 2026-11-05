@@ -244,7 +244,7 @@ func (ui *IpodUI) updateColumn() *View {
 
 func (ui *IpodUI) saverSummary() *View {
 	style := "Cover Flip"
-	if saverStyle == "viz" && !isOnion {
+	if saverStyle == "viz" {
 		style = "Visualizer"
 	}
 	items := []Item{{Label: "Starts", Value: saverLabel()}, {Label: "Style", Value: style}, {Label: "Dim the Screen", Value: onOff(saverDim)}}

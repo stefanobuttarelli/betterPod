@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func PLAYBACK_STATE_PATH() string { return dataPath(".miyoopod_playback.json") }
+func PLAYBACK_STATE_PATH() string { return dataPath(playbackFile) }
 
 // PlaybackState stores queue and playback position for session persistence
 type PlaybackState struct {
@@ -29,7 +29,7 @@ type PlaybackState struct {
 
 // The queue's part of the file is kept while the queue doesn't change:
 // it is saved every 10 s for the position, and a big shuffled queue would
-// otherwise be made again each time (MBs of garbage on the Miyoo).
+// otherwise be made again each time, creating megabytes of garbage.
 var (
 	saveMu        sync.Mutex
 	saveQueueKey  uint64
@@ -55,7 +55,7 @@ func queueKey(tracks []*Track, order []int) uint64 {
 }
 
 // savePlaybackState persists the current queue and playback position to disk
-func (app *MiyooPod) savePlaybackState() {
+func (app *BetterPod) savePlaybackState() {
 	saveMu.Lock()
 	defer saveMu.Unlock()
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
@@ -212,7 +212,7 @@ func restoreQueue(ps *PlaybackState, lookup func(string) *Track) (tracks []*Trac
 }
 
 // restorePlaybackState loads a previously saved queue and resumes paused at the saved position
-func (app *MiyooPod) restorePlaybackState() {
+func (app *BetterPod) restorePlaybackState() {
 	data, err := os.ReadFile(PLAYBACK_STATE_PATH())
 	if err != nil {
 		// No saved state, nothing to restore

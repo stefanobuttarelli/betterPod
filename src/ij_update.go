@@ -3,15 +3,14 @@ package main
 // ij_update.go — Settings → Software Update: betterPod updates itself over
 // Wi-Fi from its GitHub repository.
 //
-// The repository carries a small manifest per system: for Knulli
-// release/latest-knulli.json, for Onion (the Miyoo) release/latest-onion.json
-// with a betterpod-v<version>-onion.zip (tools/onion/release.sh):
+// The repository carries release/latest-knulli.json and a
+// betterpod-v<version>-knulli.zip:
 //
 //	{"version": "0.61", "path": "release/betterpod-v0.61-knulli.zip",
 //	 "url": "https://raw.githubusercontent.com/…/betterpod-v0.61-knulli.zip",
 //	 "sha256": "…", "size": 6012345, "notes": "…"}
 //
-// Both are read through GitHub's API (current right after a push), with
+// The manifest is read through GitHub's API (current right after a push), with
 // raw.githubusercontent.com as the fallback; the repository is looked for
 // under its name, then under the one it had before (knullipod).
 //
@@ -24,7 +23,7 @@ package main
 // betterpod/betterpod.prev.
 //
 // Betas: with Beta Versions on (Settings → Software Update's column, kept
-// in the preferences), release/beta-<system>.json is read too, a manifest
+// in the preferences), release/beta-knulli.json is read too, a manifest
 // of the same kind for a version like "1.1-beta.2", and the newer of the
 // two is offered (version.go: a beta comes before its release, so the
 // release follows it). Off, only the stable manifest is read, and a beta
@@ -68,42 +67,21 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "1.1-beta.8"
-	betterPodBuildDate = "2026-10-29"
-	// the installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod
-	// on Knulli; /mnt/SDCARD/App/betterpod/betterpod (with its launch.sh) on
-	// Onion, where App/ is the folder above, as ports/ is on Knulli
+	BETTERPOD_VERSION  = "1.1"
+	betterPodBuildDate = "2026-11-05"
+	// The installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod.
 	appDir    = "betterpod"
 	appScript = "betterPod.sh"
 	appBin    = "betterpod"
 )
 
-// updateDistro: the system this build is for, which names its manifest
-// (release/latest-<distro>.json) and its zip.
-func updateDistro() string {
-	if isOnion {
-		return "onion"
-	}
-	return "knulli"
-}
-
-func updateManifestRel() string { return "release/latest-" + updateDistro() + ".json" }
+func updateManifestRel() string { return "release/latest-knulli.json" }
 
 // updateBetaRel: the betas' manifest (only read with Beta Versions on).
-func updateBetaRel() string { return "release/beta-" + updateDistro() + ".json" }
+func updateBetaRel() string { return "release/beta-knulli.json" }
 
 // betaUpdates: Beta Versions is on (ij_prefs.go keeps it).
 var betaUpdates bool
-
-// updateZipRoot: where the installation starts inside the zip. Onion's zip
-// is unpacked at the root of the SD card by hand (App/betterpod/…); the
-// update takes what is under App/, as Knulli's takes the zip's root.
-func updateZipRoot() string {
-	if isOnion {
-		return "App/"
-	}
-	return ""
-}
 
 // updateRepos: the repository, by its name and by the one it had before
 // (GitHub sends the old one on to the new one; both are tried in turn).
@@ -455,8 +433,8 @@ func writeUpdCheck(f updCheckFile) {
 	}
 }
 
-// autoUpdOff: MIYOOPOD_AUTO_UPDATE_CHECK=0, read once (not at each frame).
-var autoUpdOff = os.Getenv("MIYOOPOD_AUTO_UPDATE_CHECK") == "0"
+// autoUpdOff: BETTERPOD_AUTO_UPDATE_CHECK=0, read once (not at each frame).
+var autoUpdOff = envGet("BETTERPOD_AUTO_UPDATE_CHECK") == "0"
 
 var autoUpd struct {
 	next    time.Time // when the next check is due (zero: not planned yet)
@@ -686,12 +664,12 @@ func newSharedTransport() *http.Transport {
 // too: the newer of the two. No beta manifest (no beta out), or one that
 // can't be read, leaves the stable one.
 func fetchManifest() (*updateManifest, error) {
-	m, err := fetchChannel(updateManifestRel(), os.Getenv("MIYOOPOD_UPDATE_URL"))
+	m, err := fetchChannel(updateManifestRel(), envGet("BETTERPOD_UPDATE_URL"))
 	if err != nil || !betaUpdates {
 		return m, err
 	}
 	repo := updRepo
-	b, berr := fetchChannel(updateBetaRel(), os.Getenv("MIYOOPOD_UPDATE_BETA_URL"))
+	b, berr := fetchChannel(updateBetaRel(), envGet("BETTERPOD_UPDATE_BETA_URL"))
 	if berr != nil {
 		updRepo = repo // (the zip of the stable version is read there)
 		logMsg("No beta: " + berr.Error())
@@ -762,7 +740,7 @@ func fetchManifestFrom(url string, api bool) (*updateManifest, error) {
 // openDownload starts the download of the zip: through the API when the
 // manifest names its path, else (or if that fails) from its URL.
 func openDownload(m *updateManifest) (*http.Response, error) {
-	if m.Path != "" && os.Getenv("MIYOOPOD_UPDATE_URL") == "" {
+	if m.Path != "" && envGet("BETTERPOD_UPDATE_URL") == "" {
 		resp, err := githubGet(apiBase(updRepo)+m.Path, true, 10*time.Minute)
 		if err == nil && resp.StatusCode == 200 {
 			return resp, nil
@@ -932,8 +910,7 @@ func installFiles(newDir, ports, port string, files []string) error {
 }
 
 // unpackUpdate extracts betterPod.sh and betterpod/… (never betterpod/conf)
-// into dir and returns their relative paths (Onion: betterpod/… from the
-// zip's App/, launch.sh inside it).
+// into dir and returns their relative paths.
 func unpackUpdate(zipPath, dir string) ([]string, error) {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -943,12 +920,6 @@ func unpackUpdate(zipPath, dir string) ([]string, error) {
 	var files []string
 	for _, f := range zr.File {
 		zname := f.Name
-		if root := updateZipRoot(); root != "" {
-			if !strings.HasPrefix(zname, root) {
-				continue
-			}
-			zname = strings.TrimPrefix(zname, root)
-		}
 		name := filepath.Clean(filepath.FromSlash(zname))
 		if f.FileInfo().IsDir() {
 			continue
@@ -966,7 +937,7 @@ func unpackUpdate(zipPath, dir string) ([]string, error) {
 		if mode == 0 {
 			mode = 0644
 		}
-		if name == appScript || name == filepath.Join(appDir, appBin) || name == filepath.Join(appDir, "launch.sh") {
+		if name == appScript || name == filepath.Join(appDir, appBin) {
 			mode = 0755
 		}
 		dst := filepath.Join(dir, name)
@@ -1040,7 +1011,7 @@ func copyFileMode(src, dst string, mode os.FileMode) error {
 	if err := out.Close(); err != nil {
 		return err
 	}
-	// FAT (Onion's SD card) can't keep modes: a refused chmod is not an error
+	// Some filesystems cannot store Unix modes; preserve the copied file.
 	os.Chmod(dst, mode)
 	return nil
 }

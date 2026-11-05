@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func SETTINGS_PATH() string { return dataPath(".miyoopod_settings.json") }
+func SETTINGS_PATH() string { return dataPath(settingsFile) }
 
 type Settings struct {
 	InstallationID        string `json:"installation_id,omitempty"`
@@ -24,7 +24,7 @@ type Settings struct {
 }
 
 // loadSettings loads theme and lock key preferences from a lightweight JSON file
-func (app *MiyooPod) loadSettings() error {
+func (app *BetterPod) loadSettings() error {
 	data, err := os.ReadFile(SETTINGS_PATH())
 	if err != nil {
 		return err
@@ -95,21 +95,6 @@ func (app *MiyooPod) loadSettings() error {
 		}
 	}
 
-	// Restore volume (default 50 if not set; on Knulli the system owns it)
-	// (the iPod UI keeps its own volume in ipodjs_settings.json)
-	if settings.Volume != nil && !isKnulli && !useIpodUI {
-		app.SystemVolume = *settings.Volume
-		setMiAOVolume(app.SystemVolume)
-		logMsg(fmt.Sprintf("INFO: Restored volume: %d%%", app.SystemVolume))
-	}
-
-	// Restore brightness (default to current if not set)
-	if settings.Brightness != nil && !isKnulli && !useIpodUI {
-		app.SystemBrightness = *settings.Brightness
-		setBrightness(app.SystemBrightness)
-		logMsg(fmt.Sprintf("INFO: Restored brightness: %d%%", app.SystemBrightness))
-	}
-
 	// Restore font size (default Medium if not set)
 	if settings.FontSize != nil && *settings.FontSize != app.FontSize {
 		if *settings.FontSize >= FontSizeSmall && *settings.FontSize <= FontSizeLarge {
@@ -133,7 +118,7 @@ func (app *MiyooPod) loadSettings() error {
 }
 
 // saveSettings saves current theme and lock key preferences
-func (app *MiyooPod) saveSettings() error {
+func (app *BetterPod) saveSettings() error {
 	settings := Settings{
 		InstallationID:        app.InstallationID,
 		Theme:                 app.CurrentTheme.Name,
