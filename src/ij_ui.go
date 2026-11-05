@@ -1602,7 +1602,8 @@ func (ui *IpodUI) Run() {
 		}
 		ui.tickOverlays(now)
 		ui.saverTick(now)
-		ui.videoTick(now)      // (Videos: the frame for the sound heard, ij_video.go)
+		ui.videoTick(now) // (Videos: the frame for the sound heard, ij_video.go)
+		knulliIdleTick(ui, now)
 		ui.onionSleepTick(now) // (Onion's sleep timer, onion_sleep.go)
 		if ui.saver != nil && !ui.saver.exiting && !app.Locked {
 			ui.saverFrame(now)

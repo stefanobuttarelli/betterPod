@@ -206,6 +206,9 @@ func createApp() *MiyooPod {
 }
 
 func main() {
+	initKnulliIdle()
+	defer closeKnulliIdle()
+
 	// Global panic recovery — logs the panic and the stack before dying
 	defer func() {
 		if r := recover(); r != nil {
@@ -320,6 +323,7 @@ func main() {
 		ipodUI.Run()
 	}
 	for app.Running {
+		knulliIdleTick(nil, time.Now())
 		keyEvent := C_GetKeyPress()
 		if keyEvent != -1 {
 			if keyEvent == int(LOCK) {
@@ -419,6 +423,7 @@ func main() {
 	// Cleanup: close refresh channel to unblock RunUI goroutine
 	close(app.RefreshChan)
 
+	closeKnulliIdle()
 	sdlCleanup()
 
 	// after Settings → Software Update: start the new binary

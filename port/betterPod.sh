@@ -85,7 +85,19 @@ bright_tool=$(command -v batocera-brightness 2> /dev/null)
 old_bright=""
 [ -n "$bright_tool" ] && old_bright=$("$bright_tool" 2> /dev/null)
 
+# Knulli's idle hooks check these markers before muting or suspending.
+# The app holds its own marker only while media plays; the launcher also
+# removes it if the binary crashes. An in-app update keeps the same path.
+knulli_idle_file=""
+if [ -d /etc/idlewatcher ]; then
+  knulli_idle_file="/var/run/battery-saver/betterpod-$$.pause"
+  export MIYOOPOD_KNULLI_IDLE_FILE="$knulli_idle_file"
+  trap 'rm -f -- "$knulli_idle_file"' EXIT
+fi
+
 ./$BIN
+
+[ -n "$knulli_idle_file" ] && rm -f -- "$knulli_idle_file"
 
 for pair in $old_governors; do
   g=${pair%%=*}; v=${pair#*=}

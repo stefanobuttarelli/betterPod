@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1-beta.8 (2026-11-05)
+
+### Fixed
+- **On Knulli, music keeps playing while the console is idle.** Knulli's battery saver could mute the audio after a few minutes without a button press, even though the song kept advancing and Bluetooth stayed connected. betterPod now holds Knulli's idle pause file during playback, including Listen and videos, and releases it when playback is paused or stopped or the app closes. The console's automatic sleep settings apply again when playback stops.
+
 ## v1.1-beta.7 (2026-11-04)
 
 ### Fixed
