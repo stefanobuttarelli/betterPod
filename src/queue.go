@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 // isTrackInQueue checks if a track is in the queue
-func (app *MiyooPod) isTrackInQueue(track *Track) bool {
+func (app *BetterPod) isTrackInQueue(track *Track) bool {
 	if app.Queue == nil || track == nil {
 		return false
 	}
@@ -16,7 +16,7 @@ func (app *MiyooPod) isTrackInQueue(track *Track) bool {
 }
 
 // drawQueueScreen renders the queue view
-func (app *MiyooPod) drawQueueScreen() {
+func (app *BetterPod) drawQueueScreen() {
 	dc := app.DC
 	dc.SetHexColor(app.CurrentTheme.BG)
 	dc.Clear()
@@ -122,7 +122,7 @@ func (app *MiyooPod) drawQueueScreen() {
 }
 
 // handleQueueKey processes key input when viewing the queue
-func (app *MiyooPod) handleQueueKey(key Key) {
+func (app *BetterPod) handleQueueKey(key Key) {
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		if key == B || key == LEFT {
 			app.setScreen(ScreenNowPlaying)
@@ -171,7 +171,7 @@ func (app *MiyooPod) handleQueueKey(key Key) {
 }
 
 // clearQueueExceptCurrent removes all tracks except the currently playing one
-func (app *MiyooPod) clearQueueExceptCurrent() {
+func (app *BetterPod) clearQueueExceptCurrent() {
 	if app.Queue == nil || len(app.Queue.Tracks) == 0 {
 		return
 	}
@@ -214,7 +214,7 @@ func (app *MiyooPod) clearQueueExceptCurrent() {
 }
 
 // clearQueue removes all tracks from the queue and stops playback
-func (app *MiyooPod) clearQueue() {
+func (app *BetterPod) clearQueue() {
 	if app.Queue == nil {
 		return
 	}
@@ -233,7 +233,7 @@ func (app *MiyooPod) clearQueue() {
 
 // removeFromQueueAtPlaybackPosition removes a track at the given playback position
 // (respecting shuffle order if active)
-func (app *MiyooPod) removeFromQueueAtPlaybackPosition(playbackPos int) {
+func (app *BetterPod) removeFromQueueAtPlaybackPosition(playbackPos int) {
 	if app.Queue == nil || playbackPos < 0 {
 		return
 	}
@@ -318,7 +318,7 @@ func (app *MiyooPod) removeFromQueueAtPlaybackPosition(playbackPos int) {
 }
 
 // removeFromQueue removes a track at the specified physical index
-func (app *MiyooPod) removeFromQueue(idx int) {
+func (app *BetterPod) removeFromQueue(idx int) {
 	if app.Queue == nil || idx < 0 || idx >= len(app.Queue.Tracks) {
 		return
 	}
@@ -377,7 +377,7 @@ func (app *MiyooPod) removeFromQueue(idx int) {
 }
 
 // addToQueue appends a track to the queue
-func (app *MiyooPod) addToQueue(track *Track) {
+func (app *BetterPod) addToQueue(track *Track) {
 	if app.Queue == nil {
 		return
 	}
@@ -426,7 +426,7 @@ func (app *MiyooPod) addToQueue(track *Track) {
 }
 
 // addTracksToQueue appends multiple tracks to the queue
-func (app *MiyooPod) addTracksToQueue(tracks []*Track) {
+func (app *BetterPod) addTracksToQueue(tracks []*Track) {
 	if app.Queue == nil || len(tracks) == 0 {
 		return
 	}

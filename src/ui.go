@@ -14,7 +14,7 @@ import (
 )
 
 // drawHeader draws the top header bar with a title and optional play state indicator
-func (app *MiyooPod) drawHeader(title string) {
+func (app *BetterPod) drawHeader(title string) {
 	dc := app.DC
 
 	// Header background
@@ -145,7 +145,7 @@ func (app *MiyooPod) drawHeader(title string) {
 }
 
 // advanceMarquee updates the marquee scroll offset based on elapsed time.
-func (app *MiyooPod) advanceMarquee() {
+func (app *BetterPod) advanceMarquee() {
 	now := time.Now()
 	if now.After(app.MarqueePauseUntil) {
 		elapsed := now.Sub(app.MarqueeTime).Seconds()
@@ -164,7 +164,7 @@ func (app *MiyooPod) advanceMarquee() {
 
 // pollMarquee does a partial framebuffer update for the marquee text area.
 // Called from the main loop at ~30Hz. Only updates when marquee is actively scrolling.
-func (app *MiyooPod) pollMarquee() {
+func (app *BetterPod) pollMarquee() {
 	screenHasMarquee := app.CurrentScreen == ScreenMenu || app.CurrentScreen == ScreenQueue
 	if app.MarqueeBuf == nil || !screenHasMarquee || app.MarqueeDstW <= 0 || app.Locked || app.OverlayVisible || app.PowerExitWarning || app.LastKey != NONE {
 		return
@@ -182,7 +182,7 @@ func (app *MiyooPod) pollMarquee() {
 }
 
 // drawMenuItem draws a single menu row
-func (app *MiyooPod) drawMenuItem(y int, label string, selected bool, hasSubmenu bool, isPlaying bool, isInQueue bool) {
+func (app *BetterPod) drawMenuItem(y int, label string, selected bool, hasSubmenu bool, isPlaying bool, isInQueue bool) {
 	dc := app.DC
 
 	// Selection highlight
@@ -232,7 +232,7 @@ func (app *MiyooPod) drawMenuItem(y int, label string, selected bool, hasSubmenu
 }
 
 // drawScrollBar draws a vertical scroll indicator on the right edge
-func (app *MiyooPod) drawScrollBar(totalItems, scrollOff, visibleItems int) {
+func (app *BetterPod) drawScrollBar(totalItems, scrollOff, visibleItems int) {
 	if totalItems <= visibleItems {
 		return
 	}
@@ -254,7 +254,7 @@ func (app *MiyooPod) drawScrollBar(totalItems, scrollOff, visibleItems int) {
 }
 
 // drawProgressBar draws the playback progress bar
-func (app *MiyooPod) drawProgressBar(x, y, width int, position, duration float64) {
+func (app *BetterPod) drawProgressBar(x, y, width int, position, duration float64) {
 	dc := app.DC
 
 	// Background track
@@ -283,7 +283,7 @@ func (app *MiyooPod) drawProgressBar(x, y, width int, position, duration float64
 }
 
 // drawPlayIcon draws a small play triangle
-func (app *MiyooPod) drawPlayIcon(x, y, size int) {
+func (app *BetterPod) drawPlayIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -297,7 +297,7 @@ func (app *MiyooPod) drawPlayIcon(x, y, size int) {
 }
 
 // drawPauseIcon draws two small pause bars
-func (app *MiyooPod) drawPauseIcon(x, y, size int) {
+func (app *BetterPod) drawPauseIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -311,7 +311,7 @@ func (app *MiyooPod) drawPauseIcon(x, y, size int) {
 }
 
 // drawNextIcon draws a next track icon (>>)
-func (app *MiyooPod) drawNextIcon(x, y, size int) {
+func (app *BetterPod) drawNextIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -333,7 +333,7 @@ func (app *MiyooPod) drawNextIcon(x, y, size int) {
 }
 
 // drawPrevIcon draws a previous track icon (<<)
-func (app *MiyooPod) drawPrevIcon(x, y, size int) {
+func (app *BetterPod) drawPrevIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -355,7 +355,7 @@ func (app *MiyooPod) drawPrevIcon(x, y, size int) {
 }
 
 // drawShuffleIcon draws a shuffle icon (two crossing arrows)
-func (app *MiyooPod) drawShuffleIcon(x, y, size int) {
+func (app *BetterPod) drawShuffleIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -392,7 +392,7 @@ func (app *MiyooPod) drawShuffleIcon(x, y, size int) {
 }
 
 // drawRepeatIcon draws a repeat icon (rounded rectangle loop)
-func (app *MiyooPod) drawRepeatIcon(x, y, size int) {
+func (app *BetterPod) drawRepeatIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -439,7 +439,7 @@ func (app *MiyooPod) drawRepeatIcon(x, y, size int) {
 }
 
 // drawRepeatOneIcon draws a repeat one icon (rounded rectangle loop with vertical bar)
-func (app *MiyooPod) drawRepeatOneIcon(x, y, size int) {
+func (app *BetterPod) drawRepeatOneIcon(x, y, size int) {
 	dc := app.DC
 	fx := float64(x)
 	fy := float64(y)
@@ -491,7 +491,7 @@ func (app *MiyooPod) drawRepeatOneIcon(x, y, size int) {
 }
 
 // measureTextCached measures text width with caching to avoid expensive font operations
-func (app *MiyooPod) measureTextCached(text string, face font.Face) float64 {
+func (app *BetterPod) measureTextCached(text string, face font.Face) float64 {
 	// Cache key uses text + font ID (zero-allocation for cache hits)
 	cacheKey := text + "|" + app.fontID(face)
 
@@ -507,7 +507,7 @@ func (app *MiyooPod) measureTextCached(text string, face font.Face) float64 {
 }
 
 // fontID returns a short stable key for a font face (zero-allocation)
-func (app *MiyooPod) fontID(face font.Face) string {
+func (app *BetterPod) fontID(face font.Face) string {
 	switch face {
 	case app.FontHeader:
 		return "H"
@@ -531,7 +531,7 @@ func (app *MiyooPod) fontID(face font.Face) string {
 // truncateText truncates text with "..." if it exceeds maxWidth
 // Optimized with caching and binary search instead of O(n²) linear scan
 // Requires font face to be passed for caching
-func (app *MiyooPod) truncateText(text string, maxWidth float64, face font.Face) string {
+func (app *BetterPod) truncateText(text string, maxWidth float64, face font.Face) string {
 	w := app.measureTextCached(text, face)
 	if w <= maxWidth {
 		return text
@@ -588,7 +588,7 @@ func formatTime(seconds float64) string {
 }
 
 // drawCenteredText draws text centered horizontally at the given Y position
-func (app *MiyooPod) drawCenteredText(text string, y float64, face font.Face, color string) {
+func (app *BetterPod) drawCenteredText(text string, y float64, face font.Face, color string) {
 	dc := app.DC
 	dc.SetFontFace(face)
 	dc.SetHexColor(color)
@@ -603,7 +603,7 @@ func (app *MiyooPod) drawCenteredText(text string, y float64, face font.Face, co
 	dc.DrawStringAnchored(displayText, SCREEN_WIDTH/2, y, 0.5, 0.5)
 }
 
-func (app *MiyooPod) drawStatusIndicators(y int) {
+func (app *BetterPod) drawStatusIndicators(y int) {
 	dc := app.DC
 
 	// Controls centered on screen (640/2 = 320, icon group span ≈ 210)
@@ -649,7 +649,7 @@ func (app *MiyooPod) drawStatusIndicators(y int) {
 }
 
 // drawStatusBar draws a permanent status bar at the bottom of the screen
-func (app *MiyooPod) drawStatusBar() {
+func (app *BetterPod) drawStatusBar() {
 	dc := app.DC
 	barY := float64(SCREEN_HEIGHT - STATUS_BAR_HEIGHT)
 
@@ -717,7 +717,7 @@ func (app *MiyooPod) drawStatusBar() {
 }
 
 // drawButtonLegend draws a single button label like "[A] Select"
-func (app *MiyooPod) drawButtonLegend(x int, centerY float64, button string, label string) {
+func (app *BetterPod) drawButtonLegend(x int, centerY float64, button string, label string) {
 	dc := app.DC
 
 	// Button badge
@@ -745,18 +745,13 @@ func (app *MiyooPod) drawButtonLegend(x int, centerY float64, button string, lab
 
 // getBatteryLevel reads the battery percentage from the system
 func getBatteryLevel() int {
-	// Try reading battery capacity from various paths
-	// Miyoo Mini Plus stores battery percentage in /tmp/percBat
+	// Read the battery capacity exposed by the system.
 	paths := []string{
-		"/tmp/percBat", // Miyoo Mini Plus
 		"/sys/class/power_supply/battery/capacity",
 		"/sys/class/power_supply/BAT0/capacity",
 		"/sys/class/power_supply/axp22-battery/capacity",
 		"/sys/class/power_supply/axp2202-battery/capacity", // Anbernic H700 (Knulli)
 		"/proc/battery",
-		"/proc/miyoo/battery",
-		"/sys/class/mstar/battery",
-		"/mnt/SDCARD/.tmp_update/battery",
 		"/tmp/battery_capacity",
 	}
 
@@ -775,7 +770,7 @@ func getBatteryLevel() int {
 }
 
 // drawBatteryIcon draws a battery icon with percentage-based fill
-func (app *MiyooPod) drawBatteryIcon(x, y, percent int) {
+func (app *BetterPod) drawBatteryIcon(x, y, percent int) {
 	dc := app.DC
 
 	// Battery dimensions
@@ -819,14 +814,14 @@ func (app *MiyooPod) drawBatteryIcon(x, y, percent int) {
 }
 
 // showError displays an error message popup for 1 second
-func (app *MiyooPod) showError(message string) {
+func (app *BetterPod) showError(message string) {
 	app.ErrorMessage = message
 	app.ErrorTime = time.Now()
 	app.drawCurrentScreen() // Redraw immediately to show the error
 }
 
 // drawErrorPopup draws an error popup overlay if an error is active
-func (app *MiyooPod) drawErrorPopup() {
+func (app *BetterPod) drawErrorPopup() {
 	if app.ErrorMessage == "" {
 		return
 	}
@@ -891,7 +886,7 @@ func (app *MiyooPod) drawErrorPopup() {
 }
 
 // toggleLock toggles the screen lock state
-func (app *MiyooPod) toggleLock() {
+func (app *BetterPod) toggleLock() {
 	app.Locked = !app.Locked
 
 	if app.Locked {
@@ -916,7 +911,7 @@ func (app *MiyooPod) toggleLock() {
 }
 
 // drawLockOverlay draws a dimmed overlay when screen is locked
-func (app *MiyooPod) drawLockOverlay() {
+func (app *BetterPod) drawLockOverlay() {
 	dc := app.DC
 
 	// Semi-transparent black overlay to dim the screen
@@ -935,16 +930,16 @@ func (app *MiyooPod) drawLockOverlay() {
 	// Hint text
 	dc.SetFontFace(app.FontSmall)
 	dc.SetHexColor("#CCCCCC")
-	dc.DrawStringAnchored("Press POWER to unlock", centerX, centerY+15, 0.5, 0.5)
+	dc.DrawStringAnchored("Press MENU to unlock", centerX, centerY+15, 0.5, 0.5)
 
 	// Exit hint
 	dc.SetHexColor("#999999")
-	dc.DrawStringAnchored("Hold POWER 5s to quit", centerX, centerY+40, 0.5, 0.5)
+	dc.DrawStringAnchored("Hold MENU 5s to quit", centerX, centerY+40, 0.5, 0.5)
 }
 
-// drawPowerExitWarning draws an overlay when the user is holding power button
+// drawPowerExitWarning draws an overlay while the function key is held
 // past 1 second, warning them to keep holding to exit.
-func (app *MiyooPod) drawPowerExitWarning() {
+func (app *BetterPod) drawPowerExitWarning() {
 	dc := app.DC
 
 	dc.SetRGBA(0, 0, 0, 0.5)
@@ -956,47 +951,21 @@ func (app *MiyooPod) drawPowerExitWarning() {
 
 	dc.SetFontFace(app.FontTitle)
 	dc.SetHexColor("#FF4444")
-	dc.DrawStringAnchored("Keep holding to exit MiyooPod", centerX, centerY-10, 0.5, 0.5)
+	dc.DrawStringAnchored("Keep holding to exit betterPod", centerX, centerY-10, 0.5, 0.5)
 
 	dc.SetFontFace(app.FontSmall)
 	dc.SetHexColor("#CCCCCC")
 	dc.DrawStringAnchored("Release to cancel", centerX, centerY+20, 0.5, 0.5)
 }
 
-// getBrightness reads the current PWM duty_cycle (brightness level)
-func getBrightness() int {
-	if isKnulli || isOnion {
-		return getBacklightPercent()
-	}
-	data, err := os.ReadFile("/sys/class/pwm/pwmchip0/pwm0/duty_cycle")
-	if err != nil {
-		return -1
-	}
-	brightness, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return -1
-	}
-	return brightness
-}
+// getBrightness returns the current backlight percentage.
+func getBrightness() int { return getBacklightPercent() }
 
-// setBrightness sets the PWM duty_cycle (brightness level)
-// Valid range is typically 0-100 for Miyoo Mini Plus
-func setBrightness(level int) {
-	if level < 0 {
-		level = 0
-	}
-	if level > 100 {
-		level = 100
-	}
-	if isKnulli || isOnion {
-		setBacklightPercent(level)
-		return
-	}
-	os.WriteFile("/sys/class/pwm/pwmchip0/pwm0/duty_cycle", []byte(fmt.Sprintf("%d", level)), 0644)
-}
+// setBrightness applies a backlight percentage.
+func setBrightness(level int) { setBacklightPercent(level) }
 
 // drawVolumeOrBrightnessOverlay draws Mac-style overlay for volume/brightness
-func (app *MiyooPod) drawVolumeOrBrightnessOverlay() {
+func (app *BetterPod) drawVolumeOrBrightnessOverlay() {
 	dc := app.DC
 
 	// Overlay dimensions (centered)
@@ -1050,7 +1019,7 @@ func (app *MiyooPod) drawVolumeOrBrightnessOverlay() {
 }
 
 // drawBrightnessIcon draws a sun icon for brightness
-func (app *MiyooPod) drawBrightnessIcon(x, y, size float64) {
+func (app *BetterPod) drawBrightnessIcon(x, y, size float64) {
 	dc := app.DC
 	centerX := x + size/2
 	centerY := y + size/2
@@ -1076,7 +1045,7 @@ func (app *MiyooPod) drawBrightnessIcon(x, y, size float64) {
 }
 
 // drawVolumeIcon draws a speaker icon for volume
-func (app *MiyooPod) drawVolumeIcon(x, y, size float64) {
+func (app *BetterPod) drawVolumeIcon(x, y, size float64) {
 	dc := app.DC
 	s := size // shorthand
 

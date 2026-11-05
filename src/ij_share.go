@@ -22,7 +22,7 @@ package main
 // so the receiver can show the album and its cover while the rest comes.
 //
 // The offer also carries the songs' formats (shareOffer): a betterPod that
-// can't play them (a Miyoo and AAC) says no before anything moves, with the
+// can't play them says no before anything moves, with the
 // reason, and both screens show it. From a sender that doesn't say them
 // (before 0.73), the receiver stops at the first song's name in the zip.
 
@@ -65,10 +65,10 @@ const (
 // with BETTERPOD_WORMHOLE_URL and BETTERPOD_WORMHOLE_RELAY).
 func shareClient() *wormhole.Client {
 	c := &wormhole.Client{AppID: shareAppID}
-	if u := os.Getenv("BETTERPOD_WORMHOLE_URL"); u != "" {
+	if u := envGet("BETTERPOD_WORMHOLE_URL"); u != "" {
 		c.RendezvousURL = u
 	}
-	if r := os.Getenv("BETTERPOD_WORMHOLE_RELAY"); r != "" {
+	if r := envGet("BETTERPOD_WORMHOLE_RELAY"); r != "" {
 		c.TransitRelayAddress = r
 	}
 	return c
@@ -96,7 +96,7 @@ type shareOffer struct {
 }
 
 // shareUnplayable: the formats among exts this betterPod can't play, by
-// name ("AAC / ALAC (.m4a)").
+// name.
 func shareUnplayable(exts []string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -105,10 +105,7 @@ func shareUnplayable(exts []string) []string {
 		if supportedAudioExt(e) {
 			continue
 		}
-		name, ok := onionUnsupported(e)
-		if !ok {
-			name = strings.ToUpper(strings.TrimPrefix(e, ".")) + " (" + e + ")"
-		}
+		name := strings.ToUpper(strings.TrimPrefix(e, ".")) + " (" + e + ")"
 		if !seen[name] {
 			seen[name] = true
 			out = append(out, name)
@@ -118,7 +115,7 @@ func shareUnplayable(exts []string) []string {
 }
 
 // shareUnplayableReason: the rejection the sender gets, as "TransferError:
-// Can't play AAC / ALAC (.m4a) on Onion OS"; an older betterPod shows it so.
+// Can't play WMA (.wma) on Knulli"; older versions show it as text.
 func shareUnplayableReason(names []string) string {
 	sys, _ := platformAbout()
 	return "Can't play " + strings.Join(names, ", ") + " on " + sys
@@ -187,7 +184,7 @@ type ShareView struct {
 	lineAt time.Time // its last step
 
 	unplayable []string    // formats the receiving betterPod can't play (by name)
-	unplayOn   string      // and its system ("Onion OS")
+	unplayOn   string      // and its system
 	refused    atomic.Bool // receiver: stopped at the first song (sharePeek)
 }
 
@@ -195,7 +192,7 @@ type ShareView struct {
 // received (from looking for the sender to the last file unpacked).
 var shareRunning atomic.Int32
 
-// shareBusy: a share is under way (the Miyoo's sleep timer waits for it).
+// shareBusy reports whether a share is under way.
 func shareBusy() bool { return shareRunning.Load() > 0 }
 
 func (s *ShareView) setPhase(p int) {
@@ -657,7 +654,7 @@ func (ui *IpodUI) shareReceive(s *ShareView) {
 
 // shareRoom: the zip (in the data folder's tmp) and the songs unpacked
 // from it (in the music folder) both fit, with 64 MB to spare: about twice
-// the share when both are on the same card, as on the Miyoo.
+// the share when both are on the same card.
 func shareRoom(zipBytes, unpacked int64) bool {
 	music, tmp := musicRoot(), dataPath("")
 	fm, ft := freeBytes(music), freeBytes(tmp)
@@ -695,7 +692,7 @@ func (ui *IpodUI) shareReceiveData(ctx context.Context, s *ShareView, msg *wormh
 		close(peeked)
 	}()
 	buf := make([]byte, 256<<10)
-	slow := os.Getenv("BETTERPOD_SHARE_SLOW") != "" // (for tests: to watch it)
+	slow := envGet("BETTERPOD_SHARE_SLOW") != "" // (for tests: to watch it)
 	if slow {
 		buf = buf[:16<<10]
 	}
@@ -1111,7 +1108,7 @@ func (s *ShareView) OnCenter(ui *IpodUI) {
 func (s *ShareView) OnScroll(ui *IpodUI, dir int, velocity float64) {}
 
 // Animating: the screen moves all the time while waiting and sending, which
-// can last minutes; with Light effects (the Miyoo's default, ij_effects.go)
+// can last minutes; with Light effects (ij_effects.go)
 // it is drawn 10 times a second instead of at every frame, leaving the
 // processor to the music and the transfer.
 func (s *ShareView) Animating(now time.Time) bool {

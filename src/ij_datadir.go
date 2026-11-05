@@ -33,27 +33,17 @@ func musicDataDir() string { return filepath.Join(MUSIC_ROOT, ".betterpod") }
 
 // portFolderLabel: the default folder (the app's conf folder).
 func portFolderLabel() string {
-	if isOnion {
-		return "App folder"
-	}
 	return "Port folder"
 }
 
-// browseRoot: where "Choose a folder…" starts (the SD card on Onion).
+// browseRoot: where "Choose a folder…" starts.
 func browseRoot() string {
-	if isOnion {
-		return "/mnt/SDCARD"
-	}
 	return "/userdata"
 }
 
-// externalRoots lists mounted cards and drives under /media (none on the
-// Miyoo: it has one card).
+// externalRoots lists mounted cards and drives under /media.
 func externalRoots() []string {
 	var out []string
-	if isOnion {
-		return nil
-	}
 	entries, _ := os.ReadDir("/media")
 	for _, e := range entries {
 		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {

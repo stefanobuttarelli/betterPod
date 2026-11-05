@@ -12,7 +12,7 @@ The original v0.20 source tree was lost on 2026-10-26, when the workspace it liv
 
 ## Method
 
-The starting point was the upstream [MiyooPod](https://github.com/danfragoso/miyoopod) sources. Each file was then rewritten until the compiler produced the same machine code as v0.20.
+The starting point was Danilo Fragoso's original player sources (see the third-party licenses). Each file was then rewritten until the compiler produced the same machine code as v0.20.
 
 1. **Reference material.** The v0.20 archive was relinked with Go's internal linker to get DWARF back. Three dumps came out of it:
    - every function's parameters, locals and inlined calls, each with its line;

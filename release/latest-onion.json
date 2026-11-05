@@ -1,8 +1,0 @@
-{
-  "version": "1.0.1",
-  "path": "release/betterpod-v1.0.1-onion.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.0.1-onion.zip",
-  "sha256": "3a46b1e60a811e2550c5f45d961c4ddbcc3af24541c9b816f557161efe5a5f97",
-  "size": 28407405,
-  "notes": "- Genius goes straight to Now Playing: the menu no longer changes first, while the song loads."
-}

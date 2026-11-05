@@ -8,7 +8,7 @@ package main
 //	BPScan(paths)      the files and folders dropped (a JSON array) →
 //	                   {"id", "kind", "title", "artist", "songs", "bytes",
 //	                    "cover" (JPEG, base64), "albums": [{"album", "artist",
-//	                    "songs", "cover"}], "skipped", "m4a"} or {"error"}
+//	                    "songs", "cover"}], "skipped"} or {"error"}
 //	BPSend(id, from)   sends that selection → a share's id
 //	BPStatus(share)    {"phase", "code", "done", "total", "rate", "error",
 //	                    "unplayable", "on"}
@@ -21,7 +21,6 @@ import "C"
 
 import (
 	"encoding/json"
-	"strings"
 	"sync"
 	"unsafe"
 )
@@ -50,7 +49,6 @@ type scanJSON struct {
 	Cover   []byte      `json:"cover,omitempty"`
 	Albums  []albumJSON `json:"albums,omitempty"`
 	Skipped []string    `json:"skipped,omitempty"`
-	M4A     bool        `json:"m4a,omitempty"`
 	Error   string      `json:"error,omitempty"`
 }
 
@@ -73,11 +71,6 @@ func BPScan(paths *C.char) *C.char {
 		Cover: sel.CoverJPG, Skipped: sel.Skipped}
 	for _, g := range sel.Groups {
 		out.Albums = append(out.Albums, albumJSON{Album: g.Album, Artist: g.Artist, Songs: len(g.Songs), Cover: g.CoverJPG})
-		for _, t := range g.Songs {
-			if strings.EqualFold(extOf(t.Path), ".m4a") {
-				out.M4A = true
-			}
-		}
 	}
 	regMu.Lock()
 	out.ID = nextID

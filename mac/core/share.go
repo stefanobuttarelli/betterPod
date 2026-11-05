@@ -10,7 +10,7 @@
 // What goes, in this order (the receiver shows the album while the rest
 // comes): betterpod-share.json (what, from whom), cover.jpg, then the songs,
 // in one folder. The offer carries the songs' formats, so a betterPod that
-// can't play them (a Miyoo and AAC) says no before anything moves.
+// can't play them says no before anything moves.
 //
 // Keep in step with src/ij_share.go: shareAppID, shareInfo, shareOffer, the
 // code's form and the rejection's wording.
@@ -288,7 +288,7 @@ func (s *Share) fail(ctx context.Context, err error) {
 	s.phase = phFailed
 }
 
-// parseUnplayable: a betterPod's "Can't play AAC / ALAC (.m4a) on Onion OS".
+// parseUnplayable reads a receiver's unsupported-format response.
 func parseUnplayable(err error) (names []string, on string, ok bool) {
 	if err == nil {
 		return nil, "", false

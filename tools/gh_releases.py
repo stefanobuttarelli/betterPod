@@ -1,111 +1,97 @@
 #!/usr/bin/env python3
-"""Publish a GitHub release for every version in CHANGELOG.md that has none.
+"""Publish the newest CHANGELOG version and its verified Knulli package.
 
-Run by .github/workflows/releases.yml. A version's release is tagged at the
-commit whose subject starts with "vX.Y:" (or "X.Y:"; the last such commit), gets its
-CHANGELOG section as notes, and the zips from release/ (Knulli's and
-Onion's) when they are still there: the title says which systems it is for
-("Knulli + Miyoo", "Knulli only", "Miyoo only") and an install table ends the
-notes. The newest version with Knulli's zip is marked as the latest release.
+Run by .github/workflows/releases.yml. Historical releases stay unchanged.
+The tag targets the last commit whose subject starts with "vX.Y:".
 """
-import json, os, re, subprocess, sys
-
-def sh(*a):
-    return subprocess.run(a, capture_output=True, text=True, check=True).stdout
-
-def gh(*a):
-    return subprocess.run(["gh", *a], capture_output=True, text=True)
-
-repo = os.environ["GITHUB_REPOSITORY"]
-log = sh("git", "log", "--format=%H %s").splitlines()
-have = set(json.loads(gh("api", f"repos/{repo}/releases", "--paginate", "--jq", "[.[].tag_name]").stdout.replace("][", ",") or "[]"))
-parts = re.split(r"^## v", open("CHANGELOG.md").read(), flags=re.M)[1:]
-versions = []
-for p in parts:
-    head, body = p.split("\n", 1)
-    versions.append((head.split()[0], body.strip()))
-only = os.environ.get("ONLY_SINCE", "0.65")
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
 
 
-def beta(v):
-    """A beta ("1.1-beta.2"): a pre-release on GitHub, never "Latest"."""
-    return "-" in v
+def run(*args):
+    return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
 
-def key(v):
-    """Sorts as src/version.go does: a beta before its release."""
-    base, _, pre = v.partition("-")
-    nums = [int(x) for x in base.split(".")]
-    while len(nums) < 4:
-        nums.append(0)
-    last = pre.rsplit(".", 1)[-1]
-    rank = (int(last) if last.isdigit() else 0) if pre else 1 << 30
-    return nums + [rank]
+def release_section(changelog):
+    sections = re.split(r"^## v", changelog, flags=re.M)[1:]
+    if not sections:
+        raise ValueError("CHANGELOG has no version section")
+    head, body = sections[0].split("\n", 1)
+    version = head.split()[0]
+    if not re.fullmatch(r"\d+(?:\.\d+)+(?:-beta\.\d+)?", version):
+        raise ValueError(f"Invalid version: {version}")
+    return version, body.strip()
 
 
-# "Latest" goes to the newest release that isn't a beta
-newest = next((v for v, _ in versions if not beta(v)), versions[0][0])
-
-def systems(knulli, onion):
-    """The release title's systems, from the zips it carries."""
-    if knulli and onion:
-        return " (Knulli + Miyoo)"
-    if knulli:
-        return " (Knulli only)"
-    if onion:
-        return " (Miyoo only)"
-    return ""
-
-
-def release_notes(v, body, knulli, onion):
-    notes = body + "\n\n---\n\n"
-    if knulli or onion:
-        notes += "### Install\n\n| Console | File | How |\n|---|---|---|\n"
-        if knulli:
-            notes += f"| Anbernic (Knulli) | `betterpod-v{v}-knulli.zip` | unzip into `/userdata/roms/ports/`, or Settings → Software Update |\n"
-        if onion:
-            notes += f"| Miyoo Mini family (Onion OS) | `betterpod-v{v}-onion.zip` | unzip at the root of the SD card, or Settings → Software Update |\n"
-        if not (knulli and onion):
-            other = "Miyoo" if knulli else "Anbernic"
-            notes += f"\nNothing new for the {other} in this version: it stays on its latest release.\n"
-    else:
-        notes += "**Install:** update from Settings → Software Update, or get the newest release's zip.\n"
-    notes += "\n**On a Mac?** [betterPod Share for Mac](https://betterpod.xyz/mac/) sends songs and albums to a betterPod with an 8-digit code.\n"
-    return notes
+def verify_package(root, version):
+    source = (root / "src/ij_update.go").read_text()
+    match = re.search(r'BETTERPOD_VERSION\s*=\s*"([^"]+)"', source)
+    if match is None or match[1] != version:
+        raise ValueError("Source version does not match the CHANGELOG version")
+    channel = "beta" if "-" in version else "latest"
+    manifest = json.loads((root / f"release/{channel}-knulli.json").read_text())
+    package = f"release/betterpod-v{version}-knulli.zip"
+    if manifest["version"] != version or manifest["path"] != package:
+        raise ValueError("Release manifest does not match the CHANGELOG version")
+    path = root / package
+    if path.stat().st_size != manifest["size"]:
+        raise ValueError("Release package size does not match the manifest")
+    if hashlib.sha256(path.read_bytes()).hexdigest() != manifest["sha256"]:
+        raise ValueError("Release package SHA-256 does not match the manifest")
+    return path
 
 
-for v, body in reversed(versions):  # oldest first, so the newest ends up on top
-    if key(v) < key(only):
-        continue
-    zipf = f"release/betterpod-v{v}-knulli.zip"
-    onionf = f"release/betterpod-v{v}-onion.zip"
-    if "v" + v in have:
-        # releases from 0.73 (both systems) get their title and install table
-        # once, if they were made before these existed
-        if key(v) >= key("0.73"):
-            cur = json.loads(gh("api", f"repos/{repo}/releases/tags/v{v}").stdout or "{}")
-            names = [a["name"] for a in cur.get("assets", [])]
-            k, o = f"betterpod-v{v}-knulli.zip" in names, f"betterpod-v{v}-onion.zip" in names
-            if cur and "(" not in cur.get("name", ""):
-                open("/tmp/notes.md", "w").write(release_notes(v, body, k, o))
-                r = gh("release", "edit", f"v{v}", "--title", f"betterPod {v}{systems(k, o)}", "--notes-file", "/tmp/notes.md")
-                print(f"v{v} updated:", r.stdout.strip(), r.stderr.strip())
-        continue
-    # (the "v" in front was once forgotten: "1.0-beta.11: …")
-    commits = [l.split()[0] for l in log if l.split(" ", 1)[1].startswith((f"v{v}:", f"{v}:"))]
-    if not commits:
-        print(f"v{v}: no commit, skipped")
-        continue
-    k, o = os.path.exists(zipf), os.path.exists(onionf)
-    open("/tmp/notes.md", "w").write(release_notes(v, body, k, o))
-    # "Latest" stays on the newest release that carries Knulli's zip when
-    # this one is for the Miyoo only (Anbernic users follow that link too)
-    args = ["release", "create", f"v{v}", "--target", commits[0], "--title", f"betterPod {v}{systems(k, o)}",
-            "--notes-file", "/tmp/notes.md", f"--latest={'true' if v == newest and k else 'false'}"]
-    if beta(v):
-        args.append("--prerelease")
-    args += [f for f in (zipf, onionf) if os.path.exists(f)]
-    r = gh(*args)
-    print(f"v{v}:", r.stdout.strip(), r.stderr.strip())
-    if r.returncode:
-        sys.exit(r.returncode)
+def release_notes(body, version):
+    return (body + "\n\n---\n\n### Install\n\n"
+            f"Download `betterpod-v{version}-knulli.zip` and unzip it into "
+            "`/userdata/roms/ports/`, or use Settings → Software Update. "
+            "Your library and settings are kept.\n\n"
+            "**On a Mac?** [betterPod Share for Mac](https://betterpod.xyz/mac/) "
+            "sends songs and albums to betterPod with an 8-digit code.\n")
+
+
+def main():
+    root = Path(__file__).resolve().parent.parent
+    os.chdir(root)
+    repo = os.environ["GITHUB_REPOSITORY"]
+    version, body = release_section((root / "CHANGELOG.md").read_text())
+    tag = "v" + version
+    existing = json.loads(run("gh", "api", f"repos/{repo}/releases", "--paginate", "--slurp"))
+    if any(r["tag_name"] == tag for page in existing for r in page):
+        print(f"{tag}: already published")
+        return
+    package = verify_package(root, version)
+    log = run("git", "log", "--format=%H %s").splitlines()
+    target = next((line.split(" ", 1)[0] for line in log
+                   if line.split(" ", 1)[1].startswith(f"v{version}:")), None)
+    if target is None:
+        raise ValueError(f"No release commit starts with v{version}:")
+    # A tag left by an interrupted run must not point at different source.
+    existing_tag = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}^{{commit}}"],
+        capture_output=True, text=True)
+    if existing_tag.returncode == 0 and existing_tag.stdout.strip() != target:
+        raise ValueError(f"Existing tag {tag} points at a different commit")
+    # Tag the source that actually carries this exact package and manifest.
+    diff = run("git", "diff", target, "HEAD", "--", "src", "port", "go.mod", "go.sum", "release")
+    if diff:
+        raise ValueError("Source or package changed after the release commit")
+    with tempfile.TemporaryDirectory(prefix="betterpod-release-") as tmp:
+        notes = Path(tmp) / "notes.md"
+        notes.write_text(release_notes(body, version))
+        args = ["gh", "release", "create", tag, "--repo", repo, "--target", target,
+                "--title", f"betterPod {version}", "--notes-file", str(notes),
+                "--latest=false" if "-" in version else "--latest=true"]
+        if "-" in version:
+            args.append("--prerelease")
+        args.append(str(package))
+        print(run(*args).strip())
+
+
+if __name__ == "__main__":
+    main()

@@ -27,7 +27,7 @@ const (
 
 // isSearchableMenu returns true if the current menu shows items that can be searched
 // (Artists, Albums, Songs, or Playlists lists — not the root menu or settings)
-func (app *MiyooPod) isSearchableMenu() bool {
+func (app *BetterPod) isSearchableMenu() bool {
 	if len(app.MenuStack) < 2 {
 		// Don't search the root menu
 		return false
@@ -41,7 +41,7 @@ func (app *MiyooPod) isSearchableMenu() bool {
 }
 
 // toggleSearch activates or deactivates the search panel
-func (app *MiyooPod) toggleSearch() {
+func (app *BetterPod) toggleSearch() {
 	if app.SearchActive {
 		// Panel is open — close it (keep filter)
 		app.closeSearchPanel()
@@ -72,13 +72,13 @@ func (app *MiyooPod) toggleSearch() {
 
 // closeSearchPanel hides the search grid but keeps the filtered results.
 // The user can then navigate the filtered list normally.
-func (app *MiyooPod) closeSearchPanel() {
+func (app *BetterPod) closeSearchPanel() {
 	app.SearchActive = false
 	// Keep SearchAllItems and SearchQuery so we can restore later if needed
 }
 
 // cancelSearch fully exits search mode, restoring the original unfiltered list.
-func (app *MiyooPod) cancelSearch() {
+func (app *BetterPod) cancelSearch() {
 	if app.SearchAllItems == nil {
 		app.SearchActive = false
 		return
@@ -96,7 +96,7 @@ func (app *MiyooPod) cancelSearch() {
 }
 
 // filterMenuItems filters the current menu items based on the search query
-func (app *MiyooPod) filterMenuItems() {
+func (app *BetterPod) filterMenuItems() {
 	if len(app.MenuStack) == 0 || app.SearchAllItems == nil {
 		return
 	}
@@ -137,7 +137,7 @@ func (app *MiyooPod) filterMenuItems() {
 
 // handleSearchKey processes key input when the search panel is active.
 // Returns true if the key was consumed.
-func (app *MiyooPod) handleSearchKey(key Key) bool {
+func (app *BetterPod) handleSearchKey(key Key) bool {
 	if !app.SearchActive {
 		return false
 	}
@@ -197,7 +197,7 @@ func (app *MiyooPod) handleSearchKey(key Key) bool {
 }
 
 // drawSearchPanel renders the search grid on the right side of the screen
-func (app *MiyooPod) drawSearchPanel(panelX, panelY, panelW int) {
+func (app *BetterPod) drawSearchPanel(panelX, panelY, panelW int) {
 	dc := app.DC
 
 	// Search input field at top

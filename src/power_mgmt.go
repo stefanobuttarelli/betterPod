@@ -4,30 +4,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 )
 
 // restoreBrightness sets brightness back to a visible level before app exits
-func restoreBrightness() {
-	if isKnulli || isOnion {
-		restoreBacklight()
-		return
-	}
-	// Set to mid-level brightness (duty_cycle range is typically 0-100)
-	brightnessPath := "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
-	defaultBrightness := "50"
-
-	if err := os.WriteFile(brightnessPath, []byte(defaultBrightness), 0644); err != nil {
-		logMsg(fmt.Sprintf("WARNING: Could not restore brightness: %v", err))
-	} else {
-		logMsg("Brightness restored to default level")
-	}
-}
+func restoreBrightness() { restoreBacklight() }
 
 // startInactivityMonitor runs in background and auto-locks screen after period of inactivity
-func (app *MiyooPod) startInactivityMonitor() {
+func (app *BetterPod) startInactivityMonitor() {
 	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
 	defer ticker.Stop()
 
@@ -51,18 +38,16 @@ func (app *MiyooPod) startInactivityMonitor() {
 	}
 }
 
-// exitAppGracefully quits after the power button was held 5 s. It runs on
+// exitAppGracefully quits after the function key was held 5 s. It runs on
 // a timer's goroutine, so it only stops the main loop: the loop's way out
 // (main.go) saves playback and puts the backlight and the CPU back, without
 // racing the interface.
-func (app *MiyooPod) exitAppGracefully() {
-	logMsg("INFO: Power button held for 5s — exiting gracefully")
+func (app *BetterPod) exitAppGracefully() {
+	logMsg("INFO: Function key held for 5s — exiting gracefully")
 	app.Running = false
 }
 
-// watchQuitSignals: a shutdown (SIGTERM from the system, e.g. Onion on a
-// low battery, or Knulli closing the port) saves the queue and position
-// and quits cleanly, through the main loop's way out.
+// watchQuitSignals saves playback and quits cleanly when the system closes the port.
 func watchQuitSignals() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
@@ -76,7 +61,6 @@ func watchQuitSignals() {
 	// if the main loop can't get there in time
 	time.AfterFunc(3*time.Second, func() {
 		logMsg("Signal: the main loop didn't quit in 3 s, quitting here")
-		onionWake()
 		app.savePlaybackState()
 		restoreBrightness()
 		app.restoreCPUGovernor()
@@ -86,7 +70,7 @@ func watchQuitSignals() {
 }
 
 // showPowerExitWarning brightens the screen if dimmed and shows the exit warning overlay.
-func (app *MiyooPod) showPowerExitWarning() {
+func (app *BetterPod) showPowerExitWarning() {
 	if app.Locked {
 		restoreBrightness()
 	}
@@ -95,7 +79,7 @@ func (app *MiyooPod) showPowerExitWarning() {
 }
 
 // hidePowerExitWarning removes the exit warning overlay and re-dims the screen if locked.
-func (app *MiyooPod) hidePowerExitWarning() {
+func (app *BetterPod) hidePowerExitWarning() {
 	if !app.PowerExitWarning {
 		return
 	}
@@ -107,35 +91,21 @@ func (app *MiyooPod) hidePowerExitWarning() {
 }
 
 // resetInactivityTimer resets the inactivity timer (called on user interaction)
-func (app *MiyooPod) resetInactivityTimer() {
+func (app *BetterPod) resetInactivityTimer() {
 	app.LastActivityTime = time.Now()
 }
 
 // dimScreen reduces brightness to minimum (for locked state)
-func (app *MiyooPod) dimScreen() {
-	if isKnulli || isOnion {
-		setBacklightRaw(0)
-		logMsg("Screen dimmed (locked)")
-		return
-	}
-	brightnessPath := "/sys/class/pwm/pwmchip0/pwm0/duty_cycle"
-	dimBrightness := "0"
-
-	if err := os.WriteFile(brightnessPath, []byte(dimBrightness), 0644); err != nil {
-		logMsg(fmt.Sprintf("WARNING: Could not dim screen: %v", err))
-	} else {
-		logMsg("Screen dimmed (locked)")
-	}
+func (app *BetterPod) dimScreen() {
+	setBacklightRaw(0)
+	logMsg("Screen dimmed (locked)")
 }
 
 // --- CPU governor management ---
 
 // cpuGovernorPaths returns the sysfs paths for all CPU cores' scaling_governor
 func cpuGovernorPaths() []string {
-	var paths []string
-	for i := 0; i < 2; i++ { // Dual-core Cortex-A7
-		paths = append(paths, fmt.Sprintf("/sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", i))
-	}
+	paths, _ := filepath.Glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor")
 	return paths
 }
 
@@ -159,7 +129,7 @@ func writeCPUGovernor(governor string) error {
 }
 
 // initCPUGovernor saves the original CPU governor for later restoration on exit
-func (app *MiyooPod) initCPUGovernor() {
+func (app *BetterPod) initCPUGovernor() {
 	app.OriginalCPUGovernor = readCPUGovernor()
 	if app.OriginalCPUGovernor != "" {
 		logMsg(fmt.Sprintf("INFO: Original CPU governor: %s", app.OriginalCPUGovernor))
@@ -167,21 +137,21 @@ func (app *MiyooPod) initCPUGovernor() {
 }
 
 // setCPUGovernorLocked switches to powersave (screen off, audio-only — max battery savings)
-func (app *MiyooPod) setCPUGovernorLocked() {
+func (app *BetterPod) setCPUGovernorLocked() {
 	if err := writeCPUGovernor("powersave"); err != nil {
 		logMsg(fmt.Sprintf("WARNING: Could not set CPU governor to powersave: %v", err))
 	}
 }
 
 // setCPUGovernorUnlocked switches to performance (full speed for responsive UI)
-func (app *MiyooPod) setCPUGovernorUnlocked() {
+func (app *BetterPod) setCPUGovernorUnlocked() {
 	if err := writeCPUGovernor("performance"); err != nil {
 		logMsg(fmt.Sprintf("WARNING: Could not set CPU governor to performance: %v", err))
 	}
 }
 
 // restoreCPUGovernor restores the original CPU governor on app exit
-func (app *MiyooPod) restoreCPUGovernor() {
+func (app *BetterPod) restoreCPUGovernor() {
 	if app.OriginalCPUGovernor == "" {
 		return
 	}
@@ -193,7 +163,7 @@ func (app *MiyooPod) restoreCPUGovernor() {
 }
 
 // cpuOnLockLabel returns the settings menu label for the CPU-on-lock option.
-func (app *MiyooPod) cpuOnLockLabel() string {
+func (app *BetterPod) cpuOnLockLabel() string {
 	if app.KeepPerformanceOnLock {
 		return "CPU on Lock: Performance"
 	}
@@ -203,7 +173,7 @@ func (app *MiyooPod) cpuOnLockLabel() string {
 // toggleKeepPerformanceOnLock flips whether the CPU stays in performance while
 // the screen is locked (instead of dropping to powersave). It updates the menu
 // label in place and, if currently locked, applies the change immediately.
-func (app *MiyooPod) toggleKeepPerformanceOnLock() {
+func (app *BetterPod) toggleKeepPerformanceOnLock() {
 	app.KeepPerformanceOnLock = !app.KeepPerformanceOnLock
 
 	// Apply immediately if the screen is already locked.

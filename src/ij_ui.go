@@ -23,7 +23,7 @@ import (
 )
 
 type IpodUI struct {
-	app *MiyooPod
+	app *BetterPod
 	fb  *image.RGBA
 
 	saver *screensaver // the screensaver, over everything (ij_screensaver.go)
@@ -80,16 +80,16 @@ type IpodUI struct {
 // are uploaded (refreshFramebufferRows).
 //
 
-// MIYOOPOD_PERF=1 logs frame timings once a second (render, present,
+// BETTERPOD_PERF=1 logs frame timings once a second (render, present,
 // late and unchanged frames).
-var perfLog = os.Getenv("MIYOOPOD_PERF") != ""
+var perfLog = envGet("BETTERPOD_PERF") != ""
 var (
 	perfFrames         int
 	perfTotal, perfMax time.Duration
 	perfStart          = time.Now()
 )
 
-func newIpodUI(app *MiyooPod) *IpodUI {
+func newIpodUI(app *BetterPod) *IpodUI {
 	ui := &IpodUI{
 		app:         app,
 		fb:          newCanvas(640, 480),
@@ -114,9 +114,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	}
 	ui.loadPrefs()
 	ui.updateTheme()
-	if isOnion {
-		ui.onionInitVolume() // MI_AO hardware volume (onion.go)
-	} else if v := initSystemVolume(); v >= 0 {
+	if v := initSystemVolume(); v >= 0 {
 		// the console volume is the player volume; SDL_mixer stays at 100%
 		// (the wheel and the console keys move the same value)
 		ui.volume = math.Min(math.Max(v, 0), 1)
@@ -141,9 +139,7 @@ func newIpodUI(app *MiyooPod) *IpodUI {
 	startBluetoothWatch()
 	startWifiWatch()
 	startHealthLog()
-	if isKnulli {
-		startVolumeKeyWatch()
-	}
+	startVolumeKeyWatch()
 	home := ui.homeView()
 	home.firstIn = true
 	home.enter = newAnim(0)
@@ -1179,7 +1175,6 @@ func (ui *IpodUI) renderFrame(now time.Time) {
 	// hold badge and volume overlay
 	ui.drawHoldBadge(fb, now)
 	ui.drawVolumeOSD(fb, now)
-	ui.drawPowerExitOSD(fb)
 
 	// views that finished sliding out
 	keep := ui.gone[:0]
@@ -1394,9 +1389,6 @@ func batteryInfo() (int, bool) {
 }
 
 func batteryCharging() bool {
-	if isOnion {
-		return onionChargingNow() // (read in the background: axp_test may take 2 s)
-	}
 	for _, p := range []string{"/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
 		if b, err := os.ReadFile(p); err == nil {
 			s := string(b)
@@ -1428,12 +1420,6 @@ func (ui *IpodUI) onlyKenBurns(now time.Time) bool {
 // the previous one).
 func (ui *IpodUI) present() bool {
 	pix := ui.fb.Pix
-	if isOnion {
-		// Onion uploads the whole frame anyway (main.c): comparing it with
-		// the last one row by row would cost more than it saves
-		refreshFramebuffer(unsafe.Pointer(&pix[0]))
-		return true
-	}
 	stride := ui.fb.Stride
 	h := len(pix) / stride
 	if len(ui.prevFB) != len(pix) {
@@ -1462,7 +1448,7 @@ func (ui *IpodUI) present() bool {
 
 func (ui *IpodUI) Run() {
 	app := ui.app
-	if pf := os.Getenv("MIYOOPOD_PPROF"); pf != "" {
+	if pf := envGet("BETTERPOD_PPROF"); pf != "" {
 		if f, err := os.Create(pf); err == nil {
 			pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
@@ -1477,7 +1463,7 @@ func (ui *IpodUI) Run() {
 	lastMiniHas := false // (the Now Playing block was there)
 	logMsg(fmt.Sprintf("Display vsync: %v", vsync))
 	lastSecond := -1
-	lastLocked, lastWarn := app.Locked, app.PowerExitWarning
+	lastLocked := app.Locked
 	lastStatus := -1
 	var lastWall time.Time
 	wasAnim := false    // an animation was running at the last frame
@@ -1505,11 +1491,6 @@ func (ui *IpodUI) Run() {
 			if ev >= 0 && menuKey.down {
 				ui.lockKeyCombo("another key") // MENU + a key: not the lock
 			}
-			// Onion: volume keys, MENU, L2 / R2 (onion.go)
-			ev, used := ui.onionKey(ev)
-			if used {
-				continue
-			}
 			// headphone buttons work in Hold and with the screen off too,
 			// like an iPod remote (and unplugging them pauses)
 			if ui.mediaKey(ev) {
@@ -1521,7 +1502,7 @@ func (ui *IpodUI) Run() {
 			if keyLog {
 				logMsg(fmt.Sprintf("KEY %d", ev))
 			}
-			// SELECT + START quits (kept from MiyooPod); SELECT alone = Hold
+			// SELECT + START quits; SELECT alone = Hold
 			if Key(ev) == START && hold.selDown {
 				app.Running = false
 				break
@@ -1546,17 +1527,10 @@ func (ui *IpodUI) Run() {
 			ui.dirty = true // (the black frame, or the screen back)
 			ui.lockChanged()
 		}
-		if app.PowerExitWarning != lastWarn {
-			lastWarn = app.PowerExitWarning
-			ui.dirty = true
-		}
 		ui.lockKeyPoll(now)
 		// back from sleep: the wall clock jumped, the monotonic one didn't
 		wall := time.Now()
-		// (not on Onion: launch.sh stops keymon, so the Miyoo never sleeps
-		// under betterPod; a jump is the clock being set, and would light the
-		// screen in the pocket)
-		if !isOnion && !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
+		if !lastWall.IsZero() && wall.Round(0).Sub(lastWall.Round(0))-wall.Sub(lastWall) > 5*time.Second {
 			ui.onResume()
 		}
 		lastWall = wall
@@ -1604,7 +1578,6 @@ func (ui *IpodUI) Run() {
 		ui.saverTick(now)
 		ui.videoTick(now) // (Videos: the frame for the sound heard, ij_video.go)
 		knulliIdleTick(ui, now)
-		ui.onionSleepTick(now) // (Onion's sleep timer, onion_sleep.go)
 		if ui.saver != nil && !ui.saver.exiting && !app.Locked {
 			ui.saverFrame(now)
 		}
@@ -1650,10 +1623,9 @@ func (ui *IpodUI) Run() {
 		ended := wasAnim && !anim
 		wasAnim = anim
 		presentBlocked := false
-		// screen off: the black frame is drawn and presented once (on Onion
-		// a whole frame through the present thread), not at each redraw the
-		// music asks for every second
-		black := app.Locked && !(isOnion && app.PowerExitWarning) // (Onion: the quit warning over the frame)
+		// Screen off: present the black frame once, rather than on each
+		// redraw requested by playback progress.
+		black := app.Locked
 		if black && blackShown {
 			ui.dirty = false
 		}
@@ -1706,18 +1678,11 @@ func (ui *IpodUI) Run() {
 			frame = 25 * time.Millisecond
 		} else if ui.onlyKenBurns(now) {
 			frame = 50 * time.Millisecond // slow pan: fewer frames save battery
-			if isOnion && !lightEffects() {
-				// 2.4 px a second: 10 frames keep it smooth on the Miyoo
-				frame = 100 * time.Millisecond
-			}
 			if !ui.kb.transStart.IsZero() || ui.listMarquee(now) || marqueeActive {
 				frame = 33 * time.Millisecond
 			}
 		}
 
-		if isOnion && app.Locked {
-			frame = onionLockedFrame() // Onion: POWER and the volume keys answer within 0.1 s (onion_sleep.go)
-		}
 		if d, ok := ui.videoFrameWait(); ok && !app.Locked && d < frame {
 			frame = d // a video's next frame is due sooner
 		}

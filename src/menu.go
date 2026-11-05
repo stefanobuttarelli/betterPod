@@ -9,9 +9,9 @@ import (
 )
 
 // buildRootMenu creates the top-level Music menu
-func (app *MiyooPod) buildRootMenu() *MenuScreen {
+func (app *BetterPod) buildRootMenu() *MenuScreen {
 	root := &MenuScreen{
-		Title: "MiyooPod",
+		Title: "betterPod",
 	}
 
 	items := []*MenuItem{}
@@ -143,7 +143,7 @@ func (app *MiyooPod) buildRootMenu() *MenuScreen {
 	return root
 }
 
-func (app *MiyooPod) buildPlaylistMenuItems(root *MenuScreen) []*MenuItem {
+func (app *BetterPod) buildPlaylistMenuItems(root *MenuScreen) []*MenuItem {
 	items := make([]*MenuItem, 0, len(app.Library.Playlists))
 	for _, pl := range app.Library.Playlists {
 		playlist := pl // capture
@@ -163,7 +163,7 @@ func (app *MiyooPod) buildPlaylistMenuItems(root *MenuScreen) []*MenuItem {
 	return items
 }
 
-func (app *MiyooPod) buildArtistMenuItems(root *MenuScreen) []*MenuItem {
+func (app *BetterPod) buildArtistMenuItems(root *MenuScreen) []*MenuItem {
 	items := make([]*MenuItem, 0, len(app.Library.Artists))
 	for _, artist := range app.Library.Artists {
 		a := artist // capture
@@ -201,7 +201,7 @@ func (app *MiyooPod) buildArtistMenuItems(root *MenuScreen) []*MenuItem {
 	return items
 }
 
-func (app *MiyooPod) buildAlbumMenuItems(root *MenuScreen) []*MenuItem {
+func (app *BetterPod) buildAlbumMenuItems(root *MenuScreen) []*MenuItem {
 	items := make([]*MenuItem, 0, len(app.Library.Albums))
 	for _, album := range app.Library.Albums {
 		alb := album // capture
@@ -222,7 +222,7 @@ func (app *MiyooPod) buildAlbumMenuItems(root *MenuScreen) []*MenuItem {
 	return items
 }
 
-func (app *MiyooPod) buildSongMenuItems() []*MenuItem {
+func (app *BetterPod) buildSongMenuItems() []*MenuItem {
 	tracks := make([]*Track, len(app.Library.Tracks))
 	copy(tracks, app.Library.Tracks)
 	sort.Slice(tracks, func(i, j int) bool {
@@ -232,7 +232,7 @@ func (app *MiyooPod) buildSongMenuItems() []*MenuItem {
 	return app.buildTrackMenuItems(tracks)
 }
 
-func (app *MiyooPod) buildThemeMenuItems(root *MenuScreen) []*MenuItem {
+func (app *BetterPod) buildThemeMenuItems(root *MenuScreen) []*MenuItem {
 	themes := AllThemes()
 	items := make([]*MenuItem, 0, len(themes))
 
@@ -249,7 +249,7 @@ func (app *MiyooPod) buildThemeMenuItems(root *MenuScreen) []*MenuItem {
 	return items
 }
 
-func (app *MiyooPod) buildSettingsMenuItems(root *MenuScreen) []*MenuItem {
+func (app *BetterPod) buildSettingsMenuItems(root *MenuScreen) []*MenuItem {
 	items := []*MenuItem{}
 
 	// Themes submenu
@@ -318,26 +318,6 @@ func (app *MiyooPod) buildSettingsMenuItems(root *MenuScreen) []*MenuItem {
 		},
 	})
 
-	// Check for Updates
-	items = append(items, &MenuItem{
-		Label: "Check for Updates",
-		Action: func() {
-			app.manualCheckForUpdates()
-		},
-	})
-
-	// Update Notifications toggle
-	updateNotifStatus := "Off"
-	if app.UpdateNotifications {
-		updateNotifStatus = "On"
-	}
-	items = append(items, &MenuItem{
-		Label: "Update Notifications: " + updateNotifStatus,
-		Action: func() {
-			app.toggleUpdateNotifications()
-		},
-	})
-
 	// Clear App Data
 	items = append(items, &MenuItem{
 		Label: "Clear App Data",
@@ -349,11 +329,11 @@ func (app *MiyooPod) buildSettingsMenuItems(root *MenuScreen) []*MenuItem {
 	return items
 }
 
-func (app *MiyooPod) buildTrackMenuItems(tracks []*Track) []*MenuItem {
+func (app *BetterPod) buildTrackMenuItems(tracks []*Track) []*MenuItem {
 	return app.buildTrackMenuItemsWithNumbers(tracks, false)
 }
 
-func (app *MiyooPod) buildTrackMenuItemsWithNumbers(tracks []*Track, showTrackNum bool) []*MenuItem {
+func (app *BetterPod) buildTrackMenuItemsWithNumbers(tracks []*Track, showTrackNum bool) []*MenuItem {
 	// Sort by disc/track number if showing track numbers (album view)
 	if showTrackNum {
 		tracksToSort := make([]*Track, len(tracks))
@@ -390,7 +370,7 @@ func (app *MiyooPod) buildTrackMenuItemsWithNumbers(tracks []*Track, showTrackNu
 }
 
 // handleMenuKey processes key input when on the menu screen
-func (app *MiyooPod) handleMenuKey(key Key) {
+func (app *BetterPod) handleMenuKey(key Key) {
 	if len(app.MenuStack) == 0 {
 		return
 	}
@@ -494,7 +474,7 @@ func (ms *MenuScreen) adjustScroll() {
 }
 
 // drawMenuScreen renders the current menu
-func (app *MiyooPod) drawMenuScreen() {
+func (app *BetterPod) drawMenuScreen() {
 	if len(app.MenuStack) == 0 {
 		return
 	}
@@ -527,7 +507,7 @@ func (app *MiyooPod) drawMenuScreen() {
 
 // drawStandardMenuCached draws a standard menu using frame caching.
 // Only redraws the 2 changed rows on key press; full gg draw only on menu entry or scroll.
-func (app *MiyooPod) drawStandardMenuCached(current *MenuScreen) {
+func (app *BetterPod) drawStandardMenuCached(current *MenuScreen) {
 	cacheKey := fmt.Sprintf("%s:%d", current.Title, current.ScrollOff)
 
 	// Check if we can use the cache (same menu, same scroll, selection changed)
@@ -575,7 +555,7 @@ func (app *MiyooPod) drawStandardMenuCached(current *MenuScreen) {
 }
 
 // drawMenuWithSearchPanel renders the menu list on the left with search grid on the right
-func (app *MiyooPod) drawMenuWithSearchPanel(current *MenuScreen) {
+func (app *BetterPod) drawMenuWithSearchPanel(current *MenuScreen) {
 	dc := app.DC
 
 	dc.SetHexColor(app.CurrentTheme.BG)
@@ -645,7 +625,7 @@ func (app *MiyooPod) drawMenuWithSearchPanel(current *MenuScreen) {
 }
 
 // drawStandardMenu renders a normal menu without preview panel
-func (app *MiyooPod) drawStandardMenu(current *MenuScreen) {
+func (app *BetterPod) drawStandardMenu(current *MenuScreen) {
 	dc := app.DC
 
 	// Background
@@ -683,7 +663,7 @@ func (app *MiyooPod) drawStandardMenu(current *MenuScreen) {
 }
 
 // drawAlbumListWithPreview renders the album list with preview panel on the right
-func (app *MiyooPod) drawAlbumListWithPreview(current *MenuScreen) {
+func (app *BetterPod) drawAlbumListWithPreview(current *MenuScreen) {
 	dc := app.DC
 
 	// Background
@@ -765,7 +745,7 @@ func (app *MiyooPod) drawAlbumListWithPreview(current *MenuScreen) {
 }
 
 // drawAlbumPreview draws album art and info in the preview panel
-func (app *MiyooPod) drawAlbumPreview(album *Album, x, y, width int) {
+func (app *BetterPod) drawAlbumPreview(album *Album, x, y, width int) {
 	dc := app.DC
 
 	centerX := x + width/2
@@ -831,7 +811,7 @@ func (app *MiyooPod) drawAlbumPreview(album *Album, x, y, width int) {
 }
 
 // refreshRootMenu updates the root menu to include/exclude Now Playing
-func (app *MiyooPod) refreshRootMenu() {
+func (app *BetterPod) refreshRootMenu() {
 	app.MenuBG = nil
 	if app.RootMenu == nil {
 		return
@@ -887,7 +867,7 @@ func (app *MiyooPod) refreshRootMenu() {
 }
 
 // rescanLibrary performs a full library scan and rebuilds the menu
-func (app *MiyooPod) rescanLibrary() {
+func (app *BetterPod) rescanLibrary() {
 	// Stop any current playback
 	if app.Playing.State == StatePlaying {
 		audioStop()

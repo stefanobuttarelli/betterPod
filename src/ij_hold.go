@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"math"
-	"os"
 	"strconv"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 
 // Hold: SELECT pressed and released on its own toggles it; while on, the
 // screen dims, every key is ignored except UP/DOWN (brightness, when
-// MIYOOPOD_HOLD_ADJUST isn't 0) and, after 5 s, Now Playing is shown.
+// BETTERPOD_HOLD_ADJUST isn't 0) and, after 5 s, Now Playing is shown.
 // The Hold badge (padlock) shows in the header while it is on.
 type holdState struct {
 	on, selDown, selCombo bool
@@ -33,12 +32,12 @@ type holdState struct {
 	repStart, repLast     time.Time
 }
 
-var hold = holdState{badge: newAnim(0), repKey: NONE, adjust: os.Getenv("MIYOOPOD_HOLD_ADJUST") != "0"}
+var hold = holdState{badge: newAnim(0), repKey: NONE, adjust: envGet("BETTERPOD_HOLD_ADJUST") != "0"}
 
-var keyLog = os.Getenv("MIYOOPOD_KEYLOG") != ""
+var keyLog = envGet("BETTERPOD_KEYLOG") != ""
 
 func holdDimPercent() int {
-	if v, err := strconv.Atoi(os.Getenv("MIYOOPOD_HOLD_BRIGHTNESS")); err == nil && v >= 1 && v <= 100 {
+	if v, err := strconv.Atoi(envGet("BETTERPOD_HOLD_BRIGHTNESS")); err == nil && v >= 1 && v <= 100 {
 		return v
 	}
 	return 0
@@ -231,9 +230,9 @@ func headphonesOut() bool {
 	return btConnected() || headphoneJack() == 1 || headphonesEnv // (the last for tests)
 }
 
-// headphonesEnv: MIYOOPOD_HEADPHONES=1, read once (headphonesOut is asked
+// headphonesEnv: BETTERPOD_HEADPHONES=1, read once (headphonesOut is asked
 // at each frame).
-var headphonesEnv = os.Getenv("MIYOOPOD_HEADPHONES") == "1"
+var headphonesEnv = envGet("BETTERPOD_HEADPHONES") == "1"
 
 // volIcons: the header's little speaker and headphones, in the header's
 // text colour (made once per colour).
@@ -512,10 +511,6 @@ func (ui *IpodUI) showBrightnessOSD(level int) {
 // stepBrightness: L2 (down) / R2 (up), in steps of 5% (1% at the bottom),
 // shown in the header for a moment.
 func (ui *IpodUI) stepBrightness(up bool) {
-	if isOnion {
-		ui.onionStepBrightness(up) // (Onion's eleven levels, see onion.go)
-		return
-	}
 	cur := briOSD.level
 	if briOSD.until.IsZero() || cur <= 0 { // (held: from the level just set, not read again)
 		if b := getBacklightPercent(); b > 0 {

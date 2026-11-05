@@ -11,7 +11,7 @@ import (
 
 // startPlaybackPoller checks audio state and updates progress display.
 // Runs in its own goroutine. Minimal work per tick to avoid starving audio.
-func (app *MiyooPod) startPlaybackPoller() {
+func (app *BetterPod) startPlaybackPoller() {
 	lastDrawnSecond := -1
 	saveTickCount := 0
 
@@ -114,7 +114,7 @@ var audioLoadMu sync.Mutex
 // song end (a skip loaded since then: that end is old news).
 var loadGen, trackEndGen atomic.Int64
 
-func (app *MiyooPod) mpvLoadFile(path string) error {
+func (app *BetterPod) mpvLoadFile(path string) error {
 	// one load at a time: a song picked (loaded in the background) and a
 	// track end (on the UI's loop) must never reopen the audio device
 	// together (it could hang the mixer)
@@ -123,35 +123,17 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 	atomic.StoreInt32(&trackLoading, 1)
 	defer atomic.StoreInt32(&trackLoading, 0)
 	loadGen.Add(1)
-	// (the Miyoo: the last song's read-ahead stops)
-	atomic.AddInt32(&warmGen, 1)
 
 	var maxRAMSize int64 = 48 * 1024 * 1024 // 48MB (hi-res FLAC fits; the H700 has 1GB)
-	if isOnion {
-		maxRAMSize = onionMaxRAMTrack() // the Miyoo has 128 MB
-	}
 
 	// Reopen the audio device at the track's sample rate (no resampling).
 	audioPrepareFor(path)
 
-	// Ensure hardware volume is set before playback starts.
-	// loadSettings may have set it too early (during Init) when MI_AO isn't ready yet.
-	setMiAOVolume(app.SystemVolume)
-
 	if info, err := os.Stat(path); err == nil && info.Size() > 0 && info.Size() < maxRAMSize {
-		if isOnion {
-			// the last song goes before this one is read: the Miyoo
-			// would hold both (up to 2 × 24 MB) for a moment
-			audioUnload()
-		}
 		loadErr := audioLoadFileToMemory(path)
 		if loadErr == nil {
 			playErr := audioPlay()
 			if playErr == nil {
-				// Re-apply volume now that the audio hardware is active. On a
-				// restored session the track is paused immediately after load,
-				// so the pre-play set above doesn't stick until this point.
-				setMiAOVolume(app.SystemVolume)
 				return nil
 			}
 			logMsg(fmt.Sprintf("WARNING: RAM play failed (%v), falling back to streaming: %s", playErr, path))
@@ -161,9 +143,6 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 		audioStop()
 	}
 
-	if isOnion {
-		go onionWarmFile(path) // streamed from the card: keep ahead of it
-	}
 	err := audioLoadFile(path)
 	if err != nil {
 		return err
@@ -171,11 +150,10 @@ func (app *MiyooPod) mpvLoadFile(path string) error {
 	if err := audioPlay(); err != nil {
 		return err
 	}
-	setMiAOVolume(app.SystemVolume)
 	return nil
 }
 
-func (app *MiyooPod) mpvTogglePause() {
+func (app *BetterPod) mpvTogglePause() {
 	// After a sample-rate switch (or a restored session) the mixer may have
 	// no track loaded: "play" then reloads the current track and seeks back
 	// to the saved position.
@@ -201,11 +179,11 @@ func (app *MiyooPod) mpvTogglePause() {
 	}
 }
 
-func (app *MiyooPod) mpvStop() {
+func (app *BetterPod) mpvStop() {
 	audioStop()
 }
 
-func (app *MiyooPod) mpvSeek(seconds float64) {
+func (app *BetterPod) mpvSeek(seconds float64) {
 	if app.Playing == nil {
 		return
 	}

@@ -21,7 +21,7 @@ func (ui *IpodUI) homeView() *View {
 			items = append(items[:2], append([]Item{{Label: "Podcasts", Preview: PrevMusic,
 				OnSelect: func() { ui.showView(ui.podcastsView(), "") }}}, items[2:]...)...)
 		}
-		if ytEnabled && !isOnion { // Videos plays YouTube (off on the Miyoo, see onion.go)
+		if ytEnabled {
 			at := 2
 			if podsInMenu {
 				at = 3
@@ -305,7 +305,7 @@ func (ui *IpodUI) settingsView() *View {
 	// A few choices show in the right column; more open a page (Settings'
 	// rule since 0.77).
 	v.Build = func() []Item {
-		return onionSettings([]Item{ // (no YouTube or Bluetooth on the Miyoo, see onion.go)
+		return []Item{
 			page("About", "", ui.aboutSummary, ui.aboutView),
 			col("Software Update", updateLabel(), ui.updateColumn),
 			col("Shuffle", shuffleLabel(ui.shuffleMode), ui.shuffleView),
@@ -321,7 +321,7 @@ func (ui *IpodUI) settingsView() *View {
 			page("Bluetooth", btSettingsValue(), ui.btSummary, ui.bluetoothView),
 			col("Sharing", shareNameLabel(), ui.sharingSettingsView),
 			col("Quit betterPod", "", ui.quitView),
-		})
+		}
 	}
 	v.Items = v.Build()
 	return v
@@ -516,7 +516,7 @@ func (ui *IpodUI) refreshBuilt() {
 }
 
 // quitView: Settings → Quit betterPod, one row: A quits (the music stops;
-// Knulli's or Onion's menu comes back).
+// Knulli's menu comes back).
 func (ui *IpodUI) quitView() *View {
 	return &View{ID: "quit", Title: "Quit betterPod", Kind: KindSplit, Items: []Item{{
 		Label: "Quit Now", NoArrow: true, Preview: PrevSettings,

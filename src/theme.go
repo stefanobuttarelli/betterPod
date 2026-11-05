@@ -3,7 +3,7 @@ package main
 import "fmt"
 
 // setTheme changes the current theme and refreshes the screen
-func (app *MiyooPod) setTheme(theme Theme) {
+func (app *BetterPod) setTheme(theme Theme) {
 	app.CurrentTheme = theme
 	app.NPCacheDirty = true // Force Now Playing screen to re-render
 	app.MenuBG = nil        // Force full menu redraw with new theme colors

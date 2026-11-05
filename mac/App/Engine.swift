@@ -23,7 +23,6 @@ struct ScanResult: Decodable {
     let cover: Data?
     let albums: [ScanAlbum]?
     let skipped: [String]?
-    let m4a: Bool?
     let error: String?
 }
 
@@ -55,7 +54,7 @@ enum Engine {
             return r
         }
         return ScanResult(id: nil, kind: nil, title: nil, artist: nil, songs: nil, bytes: nil, cover: nil,
-                          albums: nil, skipped: nil, m4a: nil, error: "Couldn't read these files")
+                          albums: nil, skipped: nil, error: "Couldn't read these files")
     }
 
     static func send(selection: Int, from: String) -> Int {

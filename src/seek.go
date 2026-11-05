@@ -11,7 +11,7 @@ const (
 
 // seekAmount returns how many seconds to seek per tick, accelerating over time.
 // Mimics iOS: starts at 2s/tick, ramps to 10s/tick over ~5 seconds of holding.
-func (app *MiyooPod) seekAmount() float64 {
+func (app *BetterPod) seekAmount() float64 {
 	held := time.Since(app.SeekStartTime).Seconds()
 	switch {
 	case held < 2:
@@ -26,7 +26,7 @@ func (app *MiyooPod) seekAmount() float64 {
 // seekKeyPressed is called when L or R is pressed on the Now Playing screen.
 // It records the press time and direction. The main loop calls pollSeek() to
 // detect holds and perform seeking.
-func (app *MiyooPod) seekKeyPressed(direction int) {
+func (app *BetterPod) seekKeyPressed(direction int) {
 	// Ignore if already tracking a press
 	if app.SeekHeld {
 		return
@@ -41,7 +41,7 @@ func (app *MiyooPod) seekKeyPressed(direction int) {
 // seekKeyReleased is called when L or R is released.
 // If seek was never activated (short tap), it returns the direction for prev/next.
 // Returns 0 if no action needed (seek was active or no press was tracked).
-func (app *MiyooPod) seekKeyReleased() int {
+func (app *BetterPod) seekKeyReleased() int {
 	if !app.SeekHeld {
 		return 0
 	}
@@ -66,7 +66,7 @@ func (app *MiyooPod) seekKeyReleased() int {
 
 // pollSeek is called from the main loop (~30Hz). It checks if a held L/R
 // has passed the threshold and performs seek ticks at regular intervals.
-func (app *MiyooPod) pollSeek() {
+func (app *BetterPod) pollSeek() {
 	if !app.SeekHeld || app.SeekStartTime.IsZero() {
 		return
 	}
@@ -102,7 +102,7 @@ func (app *MiyooPod) pollSeek() {
 }
 
 // performSeekTick executes a single seek step in the current direction
-func (app *MiyooPod) performSeekTick() {
+func (app *BetterPod) performSeekTick() {
 	if app.Playing == nil || app.Playing.State == StateStopped {
 		return
 	}

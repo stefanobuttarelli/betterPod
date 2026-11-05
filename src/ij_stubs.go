@@ -1,6 +1,6 @@
 package main
 
-// ij_stubs.go — glue between the ipod.js UI and the MiyooPod back end.
+// ij_stubs.go — glue between the ipod.js UI and the BetterPod back end.
 
 import (
 	"fmt"

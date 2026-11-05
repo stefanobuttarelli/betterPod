@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1 (2026-11-05)
+
+betterPod 1.1 is the stable release of the eight 1.1 betas, dedicated to Knulli on Anbernic H700 handhelds.
+
+### Added
+- **Videos:** search YouTube, stream with a full-screen player, pause, seek, change volume and move through a playlist. Recently Watched remembers your place. Download videos to watch offline, separately from your music library.
+- **Album Info saves M4A tags (AAC and ALAC).** Edit album, artists, year, genre, song titles and track/disc numbers without changing audio, embedded artwork or unrelated metadata.
+
+### Fixed
+- **Playback stays audible while the console is idle.** Music, Listen and videos prevent Knulli's automatic battery saver from muting or suspending active playback. Pausing or stopping restores normal idle behavior; MENU can still turn off the screen.
+- **YouTube streams wait until their links are ready,** avoiding early 403 failures. Deno opens videos faster, with retries and refreshed formats when necessary.
+- **Album Info replaces wrong metadata with the selected online result.** Complete tracklists match by numbered order before old titles; downloaded YouTube albums can recover their original order from filenames. Partial matches are reported. Edited fields stay visible above the keyboard, and Save Changes uses the normal blue selection.
+
+### Changed
+- **Knulli is the only supported console platform.** Support for Miyoo handhelds and Onion OS has ended. Removed their hardware layer, launchers, packages, update manifests, build tools and restrictions from the shared player and interface. Documentation and tests now describe Knulli.
+- **Advanced options use `BETTERPOD_*`.** Existing Knulli launchers and saved databases remain compatible during an update. The app log is now `betterpod.log`.
+
 ## v1.1-beta.8 (2026-11-05)
 
 ### Fixed

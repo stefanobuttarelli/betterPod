@@ -4,7 +4,6 @@ package main
 #cgo CFLAGS: -I/root/include/SDL2 -O2 -w -D_GNU_SOURCE=1 -D_REENTRANT
 #cgo LDFLAGS: -Wl,-rpath,'$ORIGIN/libs' -lSDL2 -lSDL2_mixer -lm -lpthread
 #include <stdlib.h>
-#include "onion.c"
 #include "main.c"
 #include "audio.c"
 */
@@ -25,17 +24,13 @@ import (
 )
 
 func init() {
-	// Use all the H700 cores (Cortex-A53 x4); on the Miyoo (2 x Cortex-A7)
-	// Go keeps to one core, the other is left to audio decoding
+	// Use all the H700 cores (Cortex-A53 x4).
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if isOnion {
-		runtime.GOMAXPROCS(onionGoProcs())
-	}
 	// Pin main goroutine to a stable OS thread for CGO/SDL calls
 	runtime.LockOSThread()
 }
 
-func (app *MiyooPod) Init() {
+func (app *BetterPod) Init() {
 	// Set global reference for logger
 	globalApp = app
 
@@ -46,7 +41,7 @@ func (app *MiyooPod) Init() {
 	// Analytics and crash reporting are disabled on Knulli: nothing is
 	// sent anywhere.
 
-	logMsg("INFO: Initializing MiyooPod...")
+	logMsg("INFO: Initializing betterPod...")
 	logMsg("INFO: SDL init...")
 	if C.init() != 0 {
 		logMsg("FATAL: SDL init failed!")
@@ -99,7 +94,7 @@ func (app *MiyooPod) Init() {
 	app.SystemVolume = 50
 	app.SystemBrightness = 50
 
-	// Always max SDL2_mixer volume — MI_AO controls actual hardware volume
+	// Always max SDL2_mixer volume; PipeWire controls hardware volume
 	audioSetVolume(100)
 
 	// Load settings (theme and lock key) before showing splash - fast parse
@@ -115,28 +110,15 @@ func (app *MiyooPod) Init() {
 		app.drawLogoSplash()
 	}
 
-	// Check for updates asynchronously (don't block startup)
-	app.VersionCheckDone = make(chan struct{})
-	go func() {
-		app.checkVersion()
-		close(app.VersionCheckDone)
-	}()
-
-	// Start power button monitor (reads directly from /dev/input/event0)
-	app.startPowerButtonMonitor()
-
-	// Generate initial icon PNG with current theme (not on Onion: the app's
-	// own icon.png is kept, and nothing is written to the card at start)
-	if !isOnion {
-		if err := app.generateIconPNG(); err != nil {
-			logMsg(fmt.Sprintf("ERROR: Failed to generate icon: %v", err))
-		}
+	// Generate the icon PNG with the current theme.
+	if err := app.generateIconPNG(); err != nil {
+		logMsg(fmt.Sprintf("ERROR: Failed to generate icon: %v", err))
 	}
 
-	logMsg("INFO: MiyooPod init OK!")
+	logMsg("INFO: betterPod init OK!")
 }
 
-func (app *MiyooPod) loadFonts() {
+func (app *BetterPod) loadFonts() {
 	fontPath := "./assets/ui_font.ttf"
 	scale := fontScaleFactor(app.FontSize)
 
@@ -153,7 +135,7 @@ func (app *MiyooPod) loadFonts() {
 	// These faces are the classic UI's: the iPod UI draws its own text
 	// (ij_fonts.go) and reaches them only in a few spots, so there each
 	// keeps 32 glyphs ready instead of freetype's 512 (512 of a face's
-	// largest glyph: 8 MB for the seven, a sixth of the Miyoo's 48)
+	// largest glyph: 8 MB for the seven)
 	cache := 0
 	if useIpodUI {
 		cache = 32
@@ -170,7 +152,7 @@ func (app *MiyooPod) loadFonts() {
 	app.FontSmall = face(FONT_SIZE_SMALL * scale)
 }
 
-func (app *MiyooPod) RunUI() {
+func (app *BetterPod) RunUI() {
 	for range app.RefreshChan {
 		if !app.Running {
 			break
@@ -182,7 +164,7 @@ func (app *MiyooPod) RunUI() {
 
 // triggerRefresh signals the UI goroutine to present the framebuffer.
 // Non-blocking: if a refresh is already pending, this is a no-op.
-func (app *MiyooPod) triggerRefresh() {
+func (app *BetterPod) triggerRefresh() {
 	select {
 	case app.RefreshChan <- struct{}{}:
 	default:
@@ -191,15 +173,15 @@ func (app *MiyooPod) triggerRefresh() {
 
 // requestRedraw signals the main loop to call drawCurrentScreen on the next iteration.
 // Safe to call from any goroutine. Non-blocking.
-func (app *MiyooPod) requestRedraw() {
+func (app *BetterPod) requestRedraw() {
 	select {
 	case app.RedrawChan <- struct{}{}:
 	default:
 	}
 }
 
-func createApp() *MiyooPod {
-	return &MiyooPod{
+func createApp() *BetterPod {
+	return &BetterPod{
 		Running: true,
 		FB:      image.NewRGBA(image.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)),
 	}
@@ -235,7 +217,7 @@ func main() {
 	installCrashHandler()
 
 	logMsg("\n\n\n-----------")
-	logMsg("INFO: MiyooPod started!")
+	logMsg("INFO: betterPod started!")
 
 	app := createApp()
 	app.Init()
@@ -304,17 +286,6 @@ func main() {
 	// Draw initial menu
 	app.drawCurrentScreen()
 
-	// Check for update status from a previous OTA update
-	app.handleUpdateStatus()
-
-	// Wait for async version check to complete, then show update prompt if needed
-	go func() {
-		<-app.VersionCheckDone
-		if app.UpdateAvailable && app.UpdateNotifications && app.Running {
-			app.showUpdatePrompt()
-		}
-	}()
-
 	// The iPod UI runs its own loop (input, animations, rendering) until
 	// the app quits; the classic UI uses the loop below.
 	//
@@ -330,12 +301,6 @@ func main() {
 				app.handlePowerButtonPress()
 			} else if keyEvent == -int(LOCK)-1 {
 				app.handlePowerButtonRelease()
-			} else if keyEvent == int(VOL_UP) {
-				app.handleVolumeUp()
-			} else if keyEvent == int(VOL_DOWN) {
-				app.handleVolumeDown()
-			} else if keyEvent == -int(VOL_UP)-1 || keyEvent == -int(VOL_DOWN)-1 {
-				// acted on press
 			} else if keyEvent < 0 {
 				// Key release — clear repeat state if it's the held key
 				keyReleased := Key(-keyEvent - 1)
@@ -402,9 +367,6 @@ func main() {
 		time.Sleep(sleepDur)
 	}
 
-	// Onion: a quit while asleep (onion_sleep.go) gives the sound back
-	onionWake()
-
 	// Save playback state before exit
 	app.savePlaybackState()
 
@@ -413,11 +375,8 @@ func main() {
 
 	// Hold or a locked screen may have dimmed the backlight (on Knulli only
 	// then: otherwise the brightness set in the app stays)
-	if isOnion || app.Locked || hold.on {
+	if app.Locked || hold.on {
 		restoreBrightness()
-	}
-	if isOnion {
-		onionLogAudio()
 	}
 
 	// Cleanup: close refresh channel to unblock RunUI goroutine
@@ -431,18 +390,18 @@ func main() {
 }
 
 // setScreen changes the current screen
-func (app *MiyooPod) setScreen(screen ScreenType) {
+func (app *BetterPod) setScreen(screen ScreenType) {
 	app.setScreenWithContext(screen, nil)
 }
 
 // setScreenWithContext changes screen (properties were for telemetry,
 // removed before 1.0)
-func (app *MiyooPod) setScreenWithContext(screen ScreenType, properties map[string]interface{}) {
+func (app *BetterPod) setScreenWithContext(screen ScreenType, properties map[string]interface{}) {
 	app.CurrentScreen = screen
 }
 
 // handleKeyRelease handles key release events
-func (app *MiyooPod) handleKeyRelease(key Key) {
+func (app *BetterPod) handleKeyRelease(key Key) {
 	if key == SELECT {
 		app.SelectKeyPressed = false
 	}
@@ -466,7 +425,7 @@ func (app *MiyooPod) handleKeyRelease(key Key) {
 	}
 }
 
-func (app *MiyooPod) handleKey(key Key) {
+func (app *BetterPod) handleKey(key Key) {
 	// Update last activity time for any key press
 	app.LastActivityTime = time.Now()
 
@@ -474,7 +433,7 @@ func (app *MiyooPod) handleKey(key Key) {
 	if key == SELECT {
 		app.SelectKeyPressed = true
 	}
-	// MENU + volume keys = brightness (Onion: POWER and volume come from onion.c)
+	// Track MENU while it is held.
 	if key == MENU {
 		app.MenuKeyPressed = true
 	}
@@ -485,13 +444,8 @@ func (app *MiyooPod) handleKey(key Key) {
 		return
 	}
 
-	// If update prompt is showing, it consumes all keys
-	if app.handleUpdatePromptKey(key) {
-		return
-	}
-
 	// If locked, swallow all controller keys so nothing triggers accidentally.
-	// Lock/unlock is handled solely by the POWER button (see input.go).
+	// Lock/unlock is handled solely by the function key (see input.go).
 	if app.Locked {
 		return
 	}
@@ -578,7 +532,7 @@ func (app *MiyooPod) handleKey(key Key) {
 	}
 }
 
-func (app *MiyooPod) handleNowPlayingKey(key Key) {
+func (app *BetterPod) handleNowPlayingKey(key Key) {
 	switch key {
 	case LEFT, B:
 		app.setScreen(ScreenMenu)
@@ -607,7 +561,7 @@ func (app *MiyooPod) handleNowPlayingKey(key Key) {
 	}
 }
 
-func (app *MiyooPod) drawCurrentScreen() {
+func (app *BetterPod) drawCurrentScreen() {
 	if useIpodUI {
 		return
 	}
@@ -644,16 +598,9 @@ func (app *MiyooPod) drawCurrentScreen() {
 	// Draw error popup overlay if active
 	app.drawErrorPopup()
 
-	// Draw power exit warning overlay if holding power button
+	// Draw the exit warning while the function key is held
 	if app.PowerExitWarning {
 		app.drawPowerExitWarning()
-	}
-
-	// Draw update prompt overlay if showing
-	if app.ShowingUpdatePrompt {
-		app.drawUpdatePromptOverlay()
-		// drawUpdatePromptOverlay calls triggerRefresh, so skip the one below
-		return
 	}
 
 	// Restore brightness now that overlay is gone (avoids bright lock overlay flash)
@@ -697,7 +644,7 @@ func audioLoadFile(path string) error {
 }
 
 // audioLoadFileToMemory loads entire audio file into RAM to avoid SD card I/O during playback.
-// The file is read straight into C memory (no Go copy: the Miyoo has 128 MB).
+// The file is read straight into C memory without an extra Go copy.
 func audioLoadFileToMemory(path string) error {
 	f, err := os.Open(path)
 	if err != nil {

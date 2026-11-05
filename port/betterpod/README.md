@@ -11,7 +11,7 @@ The interface is a native recreation of [iPod.js](https://github.com/tvillarete/
 
 Sizes, colours, icons and animation timings come from the original code.
 
-Playback and the library scan come from [MiyooPod](https://github.com/danfragoso/miyoopod) by Danilo Fragoso. Both projects are MIT-licensed (see `LICENSE.ipod.js` and `LICENSE.MiyooPod`). The Inter and Noto Sans JP fonts are under the SIL Open Font License. The Apple Lossless decoder is Apple's reference implementation (Apache 2.0). See `THIRD_PARTY_LICENSES.md`.
+Playback and the library scan are based on the work of Danilo Fragoso. Both projects are MIT-licensed; see `THIRD_PARTY_LICENSES.md` for the original notices. The Inter and Noto Sans JP fonts are under the SIL Open Font License. The Apple Lossless decoder is Apple's reference implementation (Apache 2.0). See `THIRD_PARTY_LICENSES.md`.
 
 Source code, screenshots and updates: https://github.com/stefanobuttarelli/betterPod
 
@@ -46,7 +46,7 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/bette
 - **Now Playing:**
   - up/down change the volume;
   - the centre button switches to the scrubber, and then up/down move through the track.
-- **Screen:** it doesn't turn off by itself, as in iPod.js. Press MENU (function key) to turn it off, and again to turn it back on.
+- **Screen:** press MENU (function key) to turn it off, and again to turn it back on. During music, Listen and video playback, betterPod prevents Knulli's automatic battery saver from muting or suspending playback; pausing or stopping releases that protection.
 
 **Hold:** press SELECT to put the iPod in your pocket.
 
@@ -84,19 +84,19 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/bette
 
 ## Options (in `betterPod.sh`)
 
-- `MIYOOPOD_SWAP_AB=0`: swap A and B, if they are reversed on your console.
-- `MIYOOPOD_STICK_WHEEL=1`: turn the stick like the iPod click wheel instead of using it as arrows. Spinning faster scrolls faster.
-- `MIYOOPOD_WHEEL_STEP=15`: with the wheel on, degrees of rotation per step.
-- `MIYOOPOD_HOLD_BRIGHTNESS=10`: brightness in % during Hold, until you change it with the arrows (default: a fifth of the current one).
-- `MIYOOPOD_HOLD_ADJUST=0`: the arrows don't change the brightness in Hold (Hold is completely inert).
-- `MIYOOPOD_SOFT_VOLUME=1`: use the app's internal volume instead of the console's.
-- `MIYOOPOD_MEDIA_KEYS=0`: ignore headphone buttons.
-- `MIYOOPOD_BT_ICON=0`: no Bluetooth icon and no pause on disconnect.
-- `MIYOOPOD_VOLUME_KEYS=0`: don't read the volume keys (the volume overlay then follows the system volume only).
-- `MIYOOPOD_AUTO_UPDATE_CHECK=0`: no automatic daily check for new versions.
-- `MIYOOPOD_PERF=1`: log the drawing times every second (useful if something stutters).
-- `MIYOOPOD_VSYNC=0`: disable vertical sync.
-- `MIYOOPOD_CLASSIC_UI=1`: go back to the original MiyooPod interface.
+- `BETTERPOD_SWAP_AB=0`: swap A and B, if they are reversed on your console.
+- `BETTERPOD_STICK_WHEEL=1`: turn the stick like the iPod click wheel instead of using it as arrows. Spinning faster scrolls faster.
+- `BETTERPOD_WHEEL_STEP=15`: with the wheel on, degrees of rotation per step.
+- `BETTERPOD_HOLD_BRIGHTNESS=10`: brightness in % during Hold, until you change it with the arrows (default: a fifth of the current one).
+- `BETTERPOD_HOLD_ADJUST=0`: the arrows don't change the brightness in Hold (Hold is completely inert).
+- `BETTERPOD_SOFT_VOLUME=1`: use the app's internal volume instead of the console's.
+- `BETTERPOD_MEDIA_KEYS=0`: ignore headphone buttons.
+- `BETTERPOD_BT_ICON=0`: no Bluetooth icon and no pause on disconnect.
+- `BETTERPOD_VOLUME_KEYS=0`: don't read the volume keys (the volume overlay then follows the system volume only).
+- `BETTERPOD_AUTO_UPDATE_CHECK=0`: no automatic daily check for new versions.
+- `BETTERPOD_PERF=1`: log the drawing times every second (useful if something stutters).
+- `BETTERPOD_VSYNC=0`: disable vertical sync.
+- `BETTERPOD_CLASSIC_UI=1`: use the classic list interface.
 
 ## Notes
 
@@ -112,9 +112,9 @@ Source code, screenshots and updates: https://github.com/stefanobuttarelli/bette
   - If there already is one (for example a card used on another console), you can use it as it is ("Use database there") or replace it with the current one ("Replace with current").
 
   The choice is stored in `betterpod/conf/datadir.txt`. If the folder is missing at start-up (card removed), betterPod uses the port folder and says so on the same screen.
-- **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts betterPod. Your library, settings and saves are not touched, and the previous binary is kept as `betterpod/MiyooPod.prev`. betterPod also checks once a day by itself: when a new version is out, the main menu shows "Update Available".
+- **Settings → Software Update:** with Wi-Fi on, "Check for Updates" looks for a new version on GitHub and shows what's new. "Download and Install" fills the download bar, checks the file, replaces the app's files and restarts betterPod. Your library, settings and saves are not touched, and the previous binary is kept as `betterpod/betterpod.prev`. betterPod also checks once a day by itself: when a new version is out, the main menu shows "Update Available".
 - **Music → Internet Archive:** with Wi-Fi on, search archive.org; every result shows its license. An item offers a download for each format it has (FLAC, ALAC, WAV, AIFF or MP3), or a single track; downloads go to `Internet Archive/<creator>/<title>/` in the music folder and appear in the library when they finish. An item's identifier (the part of the link after `/details/`) can be typed to open it directly. Download only what you have the right to.
-- **Log:** the app log is `betterpod/miyoopod.log`.
+- **Log:** the app log is `betterpod/betterpod.log`.
 - **Settings → Theme:** light (as iPod.js), dark, or automatic (dark from 20:00 to 7:00).
 - **Shuffle and Repeat:** in Settings they open a submenu, with a tick on the active option.
 - **Settings → Library** shows:

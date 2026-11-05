@@ -7,13 +7,12 @@ package main
 import (
 	"image"
 	"math"
-	"os"
 	"time"
 	"unsafe"
 )
 
-// ipod.js UI by default (MIYOOPOD_CLASSIC_UI=1: classic screens)
-var useIpodUI = os.Getenv("MIYOOPOD_CLASSIC_UI") == ""
+// ipod.js UI by default (BETTERPOD_CLASSIC_UI=1: classic screens)
+var useIpodUI = envGet("BETTERPOD_CLASSIC_UI") == ""
 
 // drawSpinner draws the spinner centred at (cx, cy) device px, sizeCSS wide.
 func drawSpinner(dst *image.RGBA, cx, cy, sizeCSS float64, now time.Time) {
@@ -74,7 +73,7 @@ func drawThickLine(dst *image.RGBA, x0, y0, x1, y1, w float64, c Col) {
 }
 
 // ipodLoadingScreen animates the spinner until done is closed.
-func ipodLoadingScreen(app *MiyooPod, done chan struct{}) {
+func ipodLoadingScreen(app *BetterPod, done chan struct{}) {
 	fb := newCanvas(640, 480)
 	for {
 		select {

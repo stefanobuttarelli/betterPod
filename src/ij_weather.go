@@ -30,14 +30,14 @@ import (
 )
 
 func meteoGeoBase() string {
-	if b := os.Getenv("MIYOOPOD_METEO_GEO"); b != "" {
+	if b := envGet("BETTERPOD_METEO_GEO"); b != "" {
 		return strings.TrimRight(b, "/")
 	}
 	return "https://geocoding-api.open-meteo.com"
 }
 
 func meteoAPIBase() string {
-	if b := os.Getenv("MIYOOPOD_METEO_API"); b != "" {
+	if b := envGet("BETTERPOD_METEO_API"); b != "" {
 		return strings.TrimRight(b, "/")
 	}
 	return "https://api.open-meteo.com"

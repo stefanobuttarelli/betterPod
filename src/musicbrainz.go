@@ -22,7 +22,7 @@ import (
 const (
 	MUSICBRAINZ_API_URL       = "https://musicbrainz.org/ws/2/"
 	COVERART_ARCHIVE_URL      = "https://coverartarchive.org/release/%s/front"
-	MUSICBRAINZ_USER_AGENT    = "MiyooPod/1.0.0 (https://github.com/danfragoso/miyoopod)"
+	MUSICBRAINZ_USER_AGENT    = "betterPod/" + BETTERPOD_VERSION + " (https://github.com/stefanobuttarelli/betterPod)"
 	MUSICBRAINZ_RATE_LIMIT_MS = 1000 // 1 request per second as per MusicBrainz guidelines
 )
 
@@ -45,7 +45,7 @@ type MusicBrainzReleaseSearch struct {
 }
 
 // fetchAlbumArtFromMusicBrainz attempts to fetch album artwork from MusicBrainz/Cover Art Archive
-func (app *MiyooPod) fetchAlbumArtFromMusicBrainz(album *Album) bool {
+func (app *BetterPod) fetchAlbumArtFromMusicBrainz(album *Album) bool {
 	if album == nil || album.Name == "" {
 		return false
 	}
@@ -342,7 +342,7 @@ func albumArtKey(a *Album) string {
 }
 
 // saveAlbumArtwork saves album artwork to disk and clears ArtData from memory
-func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
+func (app *BetterPod) saveAlbumArtwork(album *Album) error {
 	if album == nil || album.ArtData == nil || len(album.ArtData) == 0 {
 		return fmt.Errorf("no artwork data to save")
 	}
@@ -377,7 +377,7 @@ func (app *MiyooPod) saveAlbumArtwork(album *Album) error {
 }
 
 // loadAlbumArtwork loads album artwork from disk if available
-func (app *MiyooPod) loadAlbumArtwork(album *Album) error {
+func (app *BetterPod) loadAlbumArtwork(album *Album) error {
 	if album == nil || album.ArtPath == "" {
 		return fmt.Errorf("no artwork path set")
 	}

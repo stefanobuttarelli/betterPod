@@ -52,7 +52,7 @@ const (
 )
 
 // faceID maps a font face to a small stable id for cache keys.
-func (app *MiyooPod) faceID(face font.Face) uint8 {
+func (app *BetterPod) faceID(face font.Face) uint8 {
 	switch face {
 	case app.FontHeader:
 		return 1
@@ -75,7 +75,7 @@ func (app *MiyooPod) faceID(face font.Face) uint8 {
 
 // getGlyph returns the cached white sprite + metrics for a rune, rendering it
 // on first sight. Never returns nil (whitespace yields a sprite-less advance).
-func (app *MiyooPod) getGlyph(face font.Face, fid uint8, r rune) *Glyph {
+func (app *BetterPod) getGlyph(face font.Face, fid uint8, r rune) *Glyph {
 	key := GlyphKey{Face: fid, R: r}
 	if g, ok := app.GlyphCache[key]; ok {
 		return g
@@ -119,7 +119,7 @@ func (app *MiyooPod) getGlyph(face font.Face, fid uint8, r rune) *Glyph {
 
 // measureTextFast returns the pixel width of s using cached glyph advances and
 // kerning. Self-consistent with getLabelSprite's composition.
-func (app *MiyooPod) measureTextFast(s string, fid uint8, face font.Face) int {
+func (app *BetterPod) measureTextFast(s string, fid uint8, face font.Face) int {
 	var width fixed.Int26_6
 	prev := rune(-1)
 	for _, r := range s {
@@ -137,7 +137,7 @@ func (app *MiyooPod) measureTextFast(s string, fid uint8, face font.Face) int {
 }
 
 // getLabelSprite composes (and caches) a white-on-transparent sprite for text.
-func (app *MiyooPod) getLabelSprite(text string, fid uint8, face font.Face) *LabelSprite {
+func (app *BetterPod) getLabelSprite(text string, fid uint8, face font.Face) *LabelSprite {
 	key := LabelKey{Text: text, Face: fid}
 	if ls, ok := app.LabelCache[key]; ok {
 		return ls
@@ -192,7 +192,7 @@ func (app *MiyooPod) getLabelSprite(text string, fid uint8, face font.Face) *Lab
 // drawLabelCached blits a tinted, vertically-centered label at the given left
 // edge x. centerY is the vertical center of the font metric box, matching
 // gg.DrawStringAnchored(text, x, centerY, 0, 0.5).
-func (app *MiyooPod) drawLabelCached(text string, x, centerY int, fid uint8, face font.Face, col color.RGBA) {
+func (app *BetterPod) drawLabelCached(text string, x, centerY int, fid uint8, face font.Face, col color.RGBA) {
 	if text == "" {
 		return
 	}

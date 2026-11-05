@@ -12,8 +12,8 @@ package main
 //     what a game rip (Colin McRae Rally 2.0) can get.
 //
 // A search gives albumInfo rows; detail() fetches the songs of the one
-// chosen. The bases are the cover sources' (MIYOOPOD_MB_BASE,
-// MIYOOPOD_ITUNES_BASE, MIYOOPOD_DEEZER_BASE, MIYOOPOD_WIKI_BASE).
+// chosen. The bases are the cover sources' (BETTERPOD_MB_BASE,
+// BETTERPOD_ITUNES_BASE, BETTERPOD_DEEZER_BASE, BETTERPOD_WIKI_BASE).
 
 import (
 	"fmt"
@@ -204,7 +204,7 @@ func titleCase(s string) string {
 
 func itunesAlbumSearch(term string) ([]albumInfo, error) {
 	itunesWait()
-	u := fmt.Sprintf("%s/search?entity=album&limit=8&term=%s", envBase("MIYOOPOD_ITUNES_BASE", "https://itunes.apple.com"), url.QueryEscape(term))
+	u := fmt.Sprintf("%s/search?entity=album&limit=8&term=%s", envBase("BETTERPOD_ITUNES_BASE", "https://itunes.apple.com"), url.QueryEscape(term))
 	var out struct {
 		Results []struct {
 			ID         int64  `json:"collectionId"`
@@ -240,7 +240,7 @@ func itunesAlbumSearch(term string) ([]albumInfo, error) {
 
 func itunesAlbumDetail(a *albumInfo) error {
 	itunesWait()
-	u := fmt.Sprintf("%s/lookup?entity=song&limit=200&id=%s", envBase("MIYOOPOD_ITUNES_BASE", "https://itunes.apple.com"), url.QueryEscape(a.ID))
+	u := fmt.Sprintf("%s/lookup?entity=song&limit=200&id=%s", envBase("BETTERPOD_ITUNES_BASE", "https://itunes.apple.com"), url.QueryEscape(a.ID))
 	var out struct {
 		Results []struct {
 			Wrapper string  `json:"wrapperType"`
@@ -265,7 +265,7 @@ func itunesAlbumDetail(a *albumInfo) error {
 // ---- Deezer ----
 
 func deezerAlbumSearch(term string) ([]albumInfo, error) {
-	base := envBase("MIYOOPOD_DEEZER_BASE", "https://api.deezer.com")
+	base := envBase("BETTERPOD_DEEZER_BASE", "https://api.deezer.com")
 	var out struct {
 		Data []struct {
 			ID     int64  `json:"id"`
@@ -303,7 +303,7 @@ func deezerAlbumSearch(term string) ([]albumInfo, error) {
 }
 
 func deezerAlbumDetail(a *albumInfo) error {
-	base := envBase("MIYOOPOD_DEEZER_BASE", "https://api.deezer.com")
+	base := envBase("BETTERPOD_DEEZER_BASE", "https://api.deezer.com")
 	type dzErr *struct {
 		Message string `json:"message"`
 	}
@@ -407,7 +407,7 @@ func wikiClean(s string) string {
 }
 
 func wikiAlbumDetail(a *albumInfo) error {
-	u := envBase("MIYOOPOD_WIKI_BASE", "https://en.wikipedia.org") +
+	u := envBase("BETTERPOD_WIKI_BASE", "https://en.wikipedia.org") +
 		"/w/api.php?action=parse&format=json&formatversion=2&prop=wikitext&section=0&page=" + url.QueryEscape(a.ID)
 	var out struct {
 		Parse struct {

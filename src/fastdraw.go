@@ -32,7 +32,7 @@ func parseHexColor(hex string) (r, g, b, a uint8) {
 }
 
 // initDigitSprites pre-renders '0'-'9' and ':' at the given font face
-func (app *MiyooPod) initDigitSprites(face font.Face) {
+func (app *BetterPod) initDigitSprites(face font.Face) {
 	app.Digits = &DigitSprites{
 		Glyphs: make(map[byte]*image.RGBA),
 		GlyphW: make(map[byte]int),
@@ -76,7 +76,7 @@ func (app *MiyooPod) initDigitSprites(face font.Face) {
 
 // fastFillRect fills a rectangle directly in the framebuffer with the given color
 // Much faster than gg.DrawRectangle + Fill on ARM
-func (app *MiyooPod) fastFillRect(x, y, w, h int, r, g, b, a uint8) {
+func (app *BetterPod) fastFillRect(x, y, w, h int, r, g, b, a uint8) {
 	fb := app.FB
 	bounds := fb.Rect
 	stride := fb.Stride
@@ -136,7 +136,7 @@ func fastCopyRegion(dst, src *image.RGBA, y0, y1 int) {
 
 // fastBlitTinted blits a pre-rendered glyph sprite onto the framebuffer
 // with color tinting (source alpha * tint color)
-func (app *MiyooPod) fastBlitTinted(sprite *image.RGBA, dx, dy int, tr, tg, tb uint8) {
+func (app *BetterPod) fastBlitTinted(sprite *image.RGBA, dx, dy int, tr, tg, tb uint8) {
 	fb := app.FB
 	fbBounds := fb.Rect
 	spBounds := sprite.Rect
@@ -181,7 +181,7 @@ func (app *MiyooPod) fastBlitTinted(sprite *image.RGBA, dx, dy int, tr, tg, tb u
 
 // fastDrawTimeString draws a time string like "1:23" using pre-rendered digit sprites
 // Returns the total width drawn
-func (app *MiyooPod) fastDrawTimeString(text string, x, y int, r, g, b uint8) int {
+func (app *BetterPod) fastDrawTimeString(text string, x, y int, r, g, b uint8) int {
 	if app.Digits == nil || !app.Digits.Loaded {
 		return 0
 	}
@@ -200,7 +200,7 @@ func (app *MiyooPod) fastDrawTimeString(text string, x, y int, r, g, b uint8) in
 }
 
 // fastDrawTimeStringRight draws a time string right-aligned at x
-func (app *MiyooPod) fastDrawTimeStringRight(text string, x, y int, r, g, b uint8) {
+func (app *BetterPod) fastDrawTimeStringRight(text string, x, y int, r, g, b uint8) {
 	if app.Digits == nil || !app.Digits.Loaded {
 		return
 	}
@@ -219,7 +219,7 @@ func (app *MiyooPod) fastDrawTimeStringRight(text string, x, y int, r, g, b uint
 
 // fastDrawProgressBar draws the progress bar using direct pixel operations
 // This is the hot path called every second - must be as fast as possible
-func (app *MiyooPod) fastDrawProgressBar(x, y, width int, position, duration float64) {
+func (app *BetterPod) fastDrawProgressBar(x, y, width int, position, duration float64) {
 	bgR, bgG, bgB, _ := parseHexColor(app.CurrentTheme.ProgBG)
 	fgR, fgG, fgB, _ := parseHexColor(app.CurrentTheme.Progress)
 	dimR, dimG, dimB, _ := parseHexColor(app.CurrentTheme.Dim)
@@ -250,7 +250,7 @@ func (app *MiyooPod) fastDrawProgressBar(x, y, width int, position, duration flo
 
 // fastBlitImage copies an image.Image directly to the framebuffer at dx,dy
 // Much faster than gg.DrawImage for pre-rendered images
-func (app *MiyooPod) fastBlitImage(src image.Image, dx, dy int) {
+func (app *BetterPod) fastBlitImage(src image.Image, dx, dy int) {
 	fb := app.FB
 	bounds := src.Bounds()
 	sw := bounds.Dx()
@@ -305,7 +305,7 @@ const (
 // blitMarqueeWindow blits a horizontal sliding window from a pre-rendered strip
 // onto the framebuffer, wrapping around seamlessly. Only non-transparent pixels
 // are drawn (tinted with tr,tg,tb), so the header background shows through.
-func (app *MiyooPod) blitMarqueeWindow(dstX, dstY, windowW int, strip *image.RGBA, offset int, tr, tg, tb uint8) {
+func (app *BetterPod) blitMarqueeWindow(dstX, dstY, windowW int, strip *image.RGBA, offset int, tr, tg, tb uint8) {
 	fb := app.FB
 	fbBounds := fb.Rect
 	stripW := strip.Rect.Dx()

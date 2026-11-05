@@ -11,7 +11,7 @@ import (
 
 // scanAlbumArt starts fetching missing album artwork in a background goroutine.
 // Switches to ScreenAlbumArt so the main loop handles keys normally.
-func (app *MiyooPod) scanAlbumArt() {
+func (app *BetterPod) scanAlbumArt() {
 	if app.AlbumArtFetching {
 		return
 	}
@@ -59,7 +59,7 @@ func (app *MiyooPod) scanAlbumArt() {
 
 // runAlbumArtFetch is the background goroutine that fetches album art.
 // IMPORTANT: Never call draw functions from here — only update state and requestRedraw.
-func (app *MiyooPod) runAlbumArtFetch() {
+func (app *BetterPod) runAlbumArtFetch() {
 	start := time.Now()
 
 	for _, album := range app.Library.Albums {
@@ -113,7 +113,7 @@ func (app *MiyooPod) runAlbumArtFetch() {
 
 // drawAlbumArtScreen renders the album art fetch screen using list-style layout.
 // Called from drawCurrentScreen on the main thread only.
-func (app *MiyooPod) drawAlbumArtScreen() {
+func (app *BetterPod) drawAlbumArtScreen() {
 	dc := app.DC
 
 	dc.SetHexColor(app.CurrentTheme.BG)
@@ -212,7 +212,7 @@ func (app *MiyooPod) drawAlbumArtScreen() {
 }
 
 // drawAlbumArtResults renders the results after album art scanning is done.
-func (app *MiyooPod) drawAlbumArtResults() {
+func (app *BetterPod) drawAlbumArtResults() {
 	dc := app.DC
 	y := MENU_TOP_Y
 
@@ -272,7 +272,7 @@ func (app *MiyooPod) drawAlbumArtResults() {
 }
 
 // drawAlbumArtStatusBar renders the status bar for the album art screen.
-func (app *MiyooPod) drawAlbumArtStatusBar() {
+func (app *BetterPod) drawAlbumArtStatusBar() {
 	dc := app.DC
 
 	barY := float64(SCREEN_HEIGHT - STATUS_BAR_HEIGHT)
@@ -296,7 +296,7 @@ func (app *MiyooPod) drawAlbumArtStatusBar() {
 }
 
 // handleAlbumArtKey handles key input on the album art screen.
-func (app *MiyooPod) handleAlbumArtKey(key Key) {
+func (app *BetterPod) handleAlbumArtKey(key Key) {
 	switch key {
 	case B, MENU:
 		app.AlbumArtFetching = false // Signal goroutine to stop

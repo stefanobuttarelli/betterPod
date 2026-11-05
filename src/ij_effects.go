@@ -1,31 +1,14 @@
 package main
 
-// ij_effects.go — Settings → Effects: Full (the interface as it is, the
-// default on Knulli) or Light, the default on the Miyoo, whose Cortex-A7
-// can't redraw the slow pans 20 times a second and still keep up with
-// everything else:
-//
-//   - the album covers beside the menus stand still (no Ken Burns pan) and
-//     cross-fade in 0.6 s instead of 2 s;
-//   - the Now Playing preview shows the cover without panning;
-//   - the Weather icons stand still (in Games and in the forecast): an
-//     animated one is 60 frames drawn with gg, about a second of the A7
-//     and up to 16 MB, then redrawn 20 times a second;
-//   - option sheets and toasts appear and go at once: their slide redraws
-//     the whole screen under them, dimmed pixel by pixel, at every frame,
-//     which the Miyoo shows as a few jerky steps;
-//
-// so a screen nobody touches is not redrawn at all. Menu slides, Cover
-// Flow and Now Playing are the same in both.
+// ij_effects.go — Settings → Effects: Full (the default) or Light.
+// Light keeps covers and Weather icons still and shows sheets and toasts
+// immediately, so an idle screen can avoid continuous redraws.
 
 import "time"
 
 var effectsMode = defaultEffects()
 
 func defaultEffects() string {
-	if isOnion {
-		return "light"
-	}
 	return "full"
 }
 

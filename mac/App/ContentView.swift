@@ -332,10 +332,6 @@ struct Panel: View {
                  : "\(sk.count) files stay here: betterPod can't play them.")
                 .font(.system(size: 12)).foregroundColor(subInk)
         }
-        if model.scan?.m4a == true {
-            Text("A Miyoo can't play M4A: it will say no before anything is sent.")
-                .font(.system(size: 12)).foregroundColor(subInk)
-        }
     }
 
     var sharingPanel: some View {

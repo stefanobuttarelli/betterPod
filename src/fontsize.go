@@ -4,7 +4,7 @@ import "fmt"
 
 // applyFontSize reloads the font faces at the current FontSize scale and clears
 // every size-dependent cache so the UI re-renders with the new metrics.
-func (app *MiyooPod) applyFontSize() {
+func (app *BetterPod) applyFontSize() {
 	app.loadFonts()
 
 	// Glyph/label/measure caches are keyed by face id, not size, so they must
@@ -26,7 +26,7 @@ func (app *MiyooPod) applyFontSize() {
 
 // cycleFontSize advances the font size preset (Small -> Medium -> Large -> Small),
 // reapplies fonts, rebuilds the settings menu label, and persists the choice.
-func (app *MiyooPod) cycleFontSize() {
+func (app *BetterPod) cycleFontSize() {
 	switch app.FontSize {
 	case FontSizeSmall:
 		app.FontSize = FontSizeMedium

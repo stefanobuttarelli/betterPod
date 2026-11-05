@@ -6,14 +6,14 @@ import (
 )
 
 // adjustVolume changes system volume and shows overlay
-func (app *MiyooPod) adjustVolume(delta int) {
+func (app *BetterPod) adjustVolume(delta int) {
 	newVolume := clamp(app.SystemVolume+delta, 0, 100)
 
 	// Always max SDL2_mixer volume
 	audioSetVolume(100)
 
-	// Set MI_AO system volume
-	setMiAOVolume(newVolume)
+	// Hardware volume belongs to the system.
+	setSystemVolume(newVolume)
 	app.SystemVolume = newVolume
 
 	app.showOverlay("volume", newVolume)
@@ -25,7 +25,7 @@ func (app *MiyooPod) adjustVolume(delta int) {
 }
 
 // adjustBrightness changes screen brightness and shows overlay
-func (app *MiyooPod) adjustBrightness(delta int) {
+func (app *BetterPod) adjustBrightness(delta int) {
 	newBrightness := clamp(app.SystemBrightness+delta, 10, 100) // Min 10% so screen stays visible
 
 	setBrightness(newBrightness)
@@ -40,7 +40,7 @@ func (app *MiyooPod) adjustBrightness(delta int) {
 }
 
 // showOverlay displays the volume/brightness overlay for 2 seconds
-func (app *MiyooPod) showOverlay(overlayType string, value int) {
+func (app *BetterPod) showOverlay(overlayType string, value int) {
 	// Cancel existing timer
 	if app.OverlayTimer != nil {
 		app.OverlayTimer.Stop()

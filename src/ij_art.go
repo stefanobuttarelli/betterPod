@@ -46,14 +46,9 @@ type artEntry struct {
 	img *image.RGBA
 }
 
-// 128 MB of scaled images (16 MB on the Miyoo), at most 2 decoded at the
-// same time (1 on the Miyoo: Go has one core there, so a second decode
-// only adds its picture to the memory)
+// 128 MB of scaled images, with at most two decoded at the same time.
 func newArtCache() *artCache {
 	budget, decoders := 128<<20, 2
-	if isOnion {
-		budget, decoders = int(onionArtBudget()), 1
-	}
 	return &artCache{
 		imgs:    map[artKey]*list.Element{},
 		lru:     list.New(),
@@ -141,39 +136,11 @@ func decodeAlbumSource(a *Album) image.Image {
 		return nil
 	}
 	defer f.Close()
-	// its size first: on the Miyoo (128 MB) a picture too big to decode is
-	// left out (a 5000 px PNG takes 100 MB once decoded)
-	if isOnion {
-		cfg, _, err := image.DecodeConfig(f)
-		if err != nil {
-			return nil
-		}
-		if cfg.Width > onionMaxArtSide || cfg.Height > onionMaxArtSide {
-			bigArtLog(a.ArtPath, cfg.Width, cfg.Height)
-			return nil
-		}
-		if _, err := f.Seek(0, 0); err != nil {
-			return nil
-		}
-	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		return nil
 	}
 	return img
-}
-
-// onionMaxArtSide: the biggest cover the Miyoo decodes, on a side (3000 ×
-// 3000 is 36 MB as RGBA, 13 MB as a JPEG's YCbCr).
-const onionMaxArtSide = 3000
-
-// bigArtLog logs a cover left out, once per file.
-var bigArtLogged sync.Map
-
-func bigArtLog(p string, w, h int) {
-	if _, seen := bigArtLogged.LoadOrStore(p, true); !seen {
-		logMsg(fmt.Sprintf("Artwork: %s is %d×%d, too big for the Miyoo: left out", p, w, h))
-	}
 }
 
 // art returns the album artwork scaled to devSize, or nil while it is being
@@ -367,12 +334,6 @@ func (ui *IpodUI) prefetchArt(lib *Library) {
 		k := artKey{a, 96}
 		c := ui.artc
 		c.mu.Lock()
-		if isOnion && c.bytes > c.budget/2 {
-			// a small cache: keep half of it for what is on screen
-			// (the scaled files on disk are still made as covers show up)
-			c.mu.Unlock()
-			break
-		}
 		have := c.get(k) != nil || c.pending[k]
 		if !have {
 			c.pending[k] = true
@@ -542,7 +503,7 @@ func readArtJPEG(p string, dev int) *image.RGBA {
 
 // pruneArtCaches deletes the cached covers no album uses any more (after a
 // scan, in the background): .ipod_art's scaled copies are named from their
-// cover file's path, size and time, .miyoopod_artwork's from the album's key,
+// cover file's path, size and time, the artwork cache's from the album's key,
 // so a changed cover or a renamed album leaves its old files behind for
 // good. Only files older than 10 minutes go (not one just written for an
 // album the scan is still filling in).

@@ -50,7 +50,7 @@ The SDL_mixer build includes Apple's [reference ALAC decoder](https://github.com
 - **Replaceable:** they are separate shared libraries, so they can be swapped for another build.
 - **Configure flags:** `--disable-everything --disable-autodetect --enable-decoder=aac --enable-parser=aac --disable-programs --disable-doc --disable-avformat --disable-swscale --disable-swresample --disable-avdevice --disable-avfilter --disable-network --enable-shared --disable-static --enable-pic --build-suffix=_kp`.
 
-## Go modules (compiled into `MiyooPod`)
+## Go modules (compiled into `betterpod`)
 
 | Module | License |
 | --- | --- |

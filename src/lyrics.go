@@ -135,7 +135,7 @@ func wrapLyrics(text string, maxWidth float64, face font.Face, measure func(stri
 
 // buildLyricsCache parses and word-wraps lyrics for the current track.
 // No-op if the cache is already valid for this track.
-func (app *MiyooPod) buildLyricsCache() {
+func (app *BetterPod) buildLyricsCache() {
 	track := app.Playing.Track
 	if track == nil || app.LyricsCachedTrack == track.Path {
 		return
@@ -171,7 +171,7 @@ func (app *MiyooPod) buildLyricsCache() {
 // Mirrors the menu's full-redraw approach: dc.Clear() + header + content + status bar.
 // The marquee suppression (LastKey != NONE guard in pollMarquee) prevents conflicts
 // during key-repeat scroll, same as the menu screen.
-func (app *MiyooPod) drawLyricsScreen() {
+func (app *BetterPod) drawLyricsScreen() {
 	dc := app.DC
 	track := app.Playing.Track
 
@@ -202,7 +202,7 @@ func (app *MiyooPod) drawLyricsScreen() {
 }
 
 // drawLRCLines renders timed LRC lyrics with auto-scroll and active-line highlight.
-func (app *MiyooPod) drawLRCLines() {
+func (app *BetterPod) drawLRCLines() {
 	dc := app.DC
 	display := app.LyricsCachedDisplay
 
@@ -266,7 +266,7 @@ func (app *MiyooPod) drawLRCLines() {
 }
 
 // drawPlainLines renders plain-text (non-LRC) lyrics.
-func (app *MiyooPod) drawPlainLines() {
+func (app *BetterPod) drawPlainLines() {
 	dc := app.DC
 	lines := app.LyricsPlainLines
 
@@ -299,7 +299,7 @@ func (app *MiyooPod) drawPlainLines() {
 }
 
 // drawLyricsScrollbar draws the right-edge scroll indicator.
-func (app *MiyooPod) drawLyricsScrollbar(totalLines, maxOff int) {
+func (app *BetterPod) drawLyricsScrollbar(totalLines, maxOff int) {
 	dc := app.DC
 	if totalLines <= lyricsVisLines {
 		return
@@ -321,7 +321,7 @@ func (app *MiyooPod) drawLyricsScrollbar(totalLines, maxOff int) {
 }
 
 // handleLyricsKey handles input on the lyrics screen.
-func (app *MiyooPod) handleLyricsKey(key Key) {
+func (app *BetterPod) handleLyricsKey(key Key) {
 	switch key {
 	case UP:
 		if app.LyricsScrollOffset > 0 {
@@ -346,7 +346,7 @@ func (app *MiyooPod) handleLyricsKey(key Key) {
 }
 
 // measureString returns the pixel width of s rendered in face.
-func (app *MiyooPod) measureString(s string, face font.Face) float64 {
+func (app *BetterPod) measureString(s string, face font.Face) float64 {
 	app.DC.SetFontFace(face)
 	w, _ := app.DC.MeasureString(s)
 	return w

@@ -13,14 +13,10 @@ static int last_volume = 128;   // re-applied after the device is reopened
 
 // Bigger chunks at high sample rates keep the callback rate (and the CPU
 // cost) about the same as 4096 frames at 44.1/48 kHz.
-// MIYOOPOD_AUDIO_CHUNK overrides it (frames). On Onion the default is 2048
-// (46 ms): MI_AO queues 6 buffers and, with MI_AO_SendFrame waiting for room
-// (onion.c), stays full, so about 0.28 s of sound is always buffered while
-// a pause still takes effect quickly.
+// BETTERPOD_AUDIO_CHUNK overrides it (frames).
 static int chunk_for(int rate) {
-    const char *e = getenv("MIYOOPOD_AUDIO_CHUNK");
+    const char *e = betterpod_env("BETTERPOD_AUDIO_CHUNK");
     if (e && atoi(e) >= 256 && atoi(e) <= 65536) return atoi(e);
-    if (onion_mode) return 2048;
     return rate <= 48000 ? 4096 : rate <= 96000 ? 8192 : 16384;
 }
 
@@ -140,7 +136,7 @@ static void SDLCALL va_hook(void *udata, Uint8 *stream, int len) {
             SDL_AtomicSet(&va_r, (int)(r + (unsigned)n));
             got = n;
             if (va_gain < 0.999f) {
-                // the app's own volume (MIYOOPOD_SOFT_VOLUME): hooks get no
+                // the app's own volume (BETTERPOD_SOFT_VOLUME): hooks get no
                 // music volume from the mixer
                 if (va_f32) {
                     float *s = (float *)stream;
@@ -260,15 +256,9 @@ int audio_init() {
     c_log("audio_init entered");
 
     c_log("calling Mix_OpenAudio...");
-    if (onion_mode) {
-        // MI_AO plays 16-bit: mixing in float would only add a conversion
-        if (Mix_OpenAudio(44100, AUDIO_S16SYS, 2, chunk_for(44100)) < 0) {
-            c_logf("Mix_OpenAudio failed: %s", SDL_GetError());
-            return -1;
-        }
     // Float output first (no clipping in the mixer); fall back to the
     // default 16-bit format.
-    } else if (Mix_OpenAudio(44100, AUDIO_F32SYS, 2, chunk_for(44100)) < 0) {
+    if (Mix_OpenAudio(44100, AUDIO_F32SYS, 2, chunk_for(44100)) < 0) {
         c_logf("Mix_OpenAudio (f32) failed: %s", SDL_GetError());
         if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, chunk_for(44100)) < 0) {
             c_logf("Mix_OpenAudio failed: %s", SDL_GetError());
@@ -316,7 +306,6 @@ int audio_set_rate(int rate) {
     int freq = 0, ch = 0;
     Uint16 fmt = 0;
     if (rate < 8000 || rate > 384000 || rate == cur_rate) return 0;
-    if (onion_mode) return 0; // MI_AO stays at 44.1 kHz (SDL_mixer resamples)
     pthread_mutex_lock(&music_mu);
     free_current();
     Mix_CloseAudio();
@@ -342,8 +331,7 @@ int audio_set_rate(int rate) {
     return 0;
 }
 
-// audio_unload frees the current track (the Miyoo: before the next one is
-// read into RAM, so the two never take memory together).
+// audio_unload frees the current track.
 void audio_unload(void) {
     pthread_mutex_lock(&music_mu);
     free_current();

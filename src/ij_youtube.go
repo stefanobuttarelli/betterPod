@@ -8,7 +8,7 @@ package main
 // JavaScript runtime for YouTube: QuickJS-ng (small) or, failing that,
 // Deno. Neither ships with betterPod: the settings page downloads them
 // into the data folder (tools/) the first time YouTube is turned on, and
-// can update or remove them. MIYOOPOD_YTDLP / MIYOOPOD_YTJS point at other
+// can update or remove them. BETTERPOD_YTDLP / BETTERPOD_YTJS point at other
 // programs (tests).
 
 import (
@@ -46,7 +46,7 @@ func ytToolsDir() string { return dataPath("tools/") }
 
 // ytdlpPath: the unpacked build if it is there, else the one-file build.
 func ytdlpPath() string {
-	if p := os.Getenv("MIYOOPOD_YTDLP"); p != "" {
+	if p := envGet("BETTERPOD_YTDLP"); p != "" {
 		return p
 	}
 	if p := filepath.Join(ytToolsDir(), "ytdlp", ytOneName); fileExists(p) {
@@ -60,7 +60,7 @@ func ytdlpPath() string {
 // solves YouTube's challenge, the slow part of opening a video, in a fifth
 // of QuickJS's time (0.5 s against 2.4 s on the same CPU).
 func ytRuntime() string {
-	if p := os.Getenv("MIYOOPOD_YTJS"); p != "" {
+	if p := envGet("BETTERPOD_YTJS"); p != "" {
 		return p
 	}
 	if p := filepath.Join(ytToolsDir(), "deno"); fileExists(p) {

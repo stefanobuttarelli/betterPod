@@ -29,7 +29,7 @@ package main
 // at download time, the same link gives different files.
 //
 // Episodes in a format the console can't play (supportedAudioExt) are
-// shown but can't be downloaded. MIYOOPOD_ITUNES_BASE points the search
+// shown but can't be downloaded. BETTERPOD_ITUNES_BASE points the search
 // elsewhere (tests).
 
 import (
@@ -144,7 +144,7 @@ func freeName(base, ext string, taken func(string) bool) string {
 func podcastSearch(term string) ([]podcast, error) {
 	itunesWait()
 	u := fmt.Sprintf("%s/search?media=podcast&entity=podcast&limit=25&term=%s",
-		envBase("MIYOOPOD_ITUNES_BASE", "https://itunes.apple.com"), url.QueryEscape(term))
+		envBase("BETTERPOD_ITUNES_BASE", "https://itunes.apple.com"), url.QueryEscape(term))
 	var out struct {
 		Results []struct {
 			Name   string `json:"collectionName"`
@@ -1053,7 +1053,7 @@ func podSaveCover(u, path string) error {
 // then its name, and it's noted in p's entry.
 func podFinish(p podcast, e podEpisode, part, name, cover string) error {
 	ext, ok := sniffAudio(part)
-	ok = ok && supportedAudioExt(ext) // no M4A on the Miyoo (onion.go)
+	ok = ok && supportedAudioExt(ext)
 	if !ok {
 		os.Remove(part)
 		if ext == "" {

@@ -43,9 +43,9 @@ import (
 	"golang.org/x/image/font"
 )
 
-// iaBase is archive.org (MIYOOPOD_IA_BASE points elsewhere, for tests).
+// iaBase is archive.org (BETTERPOD_IA_BASE points elsewhere, for tests).
 func iaBase() string {
-	if b := os.Getenv("MIYOOPOD_IA_BASE"); b != "" {
+	if b := envGet("BETTERPOD_IA_BASE"); b != "" {
 		return strings.TrimRight(b, "/")
 	}
 	return "https://archive.org"
@@ -233,7 +233,7 @@ func iaMetadata(id string) (*iaItem, error) {
 			it.Cover = name
 		}
 		g, rank := iaAudioGroup(format)
-		if g == "" || isOnion && g == "ALAC" { // (the Miyoo can't play ALAC, see onion.go)
+		if g == "" {
 			continue
 		}
 		size, _ := strconv.ParseInt(jsonString(f["size"]), 10, 64)
@@ -497,7 +497,7 @@ func (ui *IpodUI) loadThumbs(v *View, source string, jobs []thumbJob, current fu
 					continue
 				}
 				// a row's picture is small: a big one isn't kept whole (a source's
-				// can be 1000 px, too much memory on the Miyoo for a list)
+				// can be 1000 px, larger than a list thumbnail needs)
 				if b := img.Bounds(); b.Dx() > 240 || b.Dy() > 240 {
 					w, h := 240, 240*b.Dy()/max(b.Dx(), 1)
 					img = scaleImage(shrinkImage(img, w, h), w, h)
@@ -709,9 +709,9 @@ type iaDownload struct {
 var iaCur *iaDownload
 
 // iaStall: a download that receives nothing for this long is stopped
-// (MIYOOPOD_IA_STALL, in seconds, changes it for tests).
+// (BETTERPOD_IA_STALL, in seconds, changes it for tests).
 var iaStall = func() time.Duration {
-	if v, err := strconv.Atoi(os.Getenv("MIYOOPOD_IA_STALL")); err == nil && v > 0 {
+	if v, err := strconv.Atoi(envGet("BETTERPOD_IA_STALL")); err == nil && v > 0 {
 		return time.Duration(v) * time.Second
 	}
 	return 30 * time.Second
@@ -1311,9 +1311,6 @@ func (dv *IADownloadView) progress() float64 {
 }
 
 func (dv *IADownloadView) Animating(now time.Time) bool {
-	if isOnion && now.Sub(dv.tickAt) < onionProgressEvery {
-		return false // (at most 5 redraws a second on Onion, see onion.go)
-	}
 	if math.Abs(dv.progress()-dv.shown) > 0.002 {
 		return true
 	}

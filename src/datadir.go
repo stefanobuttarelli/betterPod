@@ -1,7 +1,7 @@
 package main
 
 // datadir.go — where the database lives (library cache, artwork, settings,
-// scan statistics, game saves). The default is MIYOOPOD_DATA_DIR (the port's
+// scan statistics, game saves). The default is BETTERPOD_DATA_DIR (the port's
 // conf folder); Settings → Database can move it to another folder, e.g. the
 // SD card with the music. The choice is kept in a small pointer file in the
 // default folder, which is always there. All paths are computed on use
@@ -28,11 +28,9 @@ const dataDirPointer = "datadir.txt"
 // under way), and the pointers datadir.txt and musicdir.txt, which stay in
 // the default folder.
 var dataItems = []string{
-	".miyoopod_library.json",
-	".miyoopod_settings.json",
-	".miyoopod_playback.json",
-	".miyoopod_update.json",
-	".miyoopod_update_status",
+	libraryFile,
+	settingsFile,
+	playbackFile,
 	".update_check.json",
 	"scan_stats.json",
 	"ipodjs_settings.json",
@@ -50,7 +48,7 @@ var dataItems = []string{
 	"quiz_best.txt",
 	"puzzles",
 	"chosen_covers",
-	".miyoopod_artwork",
+	artworkFolder,
 	".ipod_art",
 	"tools",
 }
@@ -77,7 +75,7 @@ var (
 
 // defaultDataDir is the launcher's data folder (upstream: the music root).
 func defaultDataDir() string {
-	dir := os.Getenv("MIYOOPOD_DATA_DIR")
+	dir := envGet("BETTERPOD_DATA_DIR")
 	if dir == "" {
 		dir = musicRoot()
 	}
@@ -171,7 +169,7 @@ func checkWritable(dir string) error {
 
 // hasDatabase reports whether dir already holds a betterPod library.
 func hasDatabase(dir string) bool {
-	st, err := os.Stat(filepath.Join(dir, ".miyoopod_library.json"))
+	st, err := os.Stat(filepath.Join(dir, libraryFile))
 	return err == nil && st.Size() > 0
 }
 
@@ -378,7 +376,7 @@ func dataArtPath(p string) string {
 		return ""
 	}
 	switch filepath.Base(filepath.Dir(p)) {
-	case ".miyoopod_artwork":
+	case artworkFolder:
 		return ARTWORK_DIR() + filepath.Base(p)
 	case "chosen_covers":
 		return filepath.Join(dataDir(), "chosen_covers", filepath.Base(p))

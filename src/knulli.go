@@ -6,54 +6,21 @@ int headphone_jack(void);
 */
 import "C"
 
-// Knulli / PortMaster platform layer.
-//
-// Upstream MiyooPod talks directly to Miyoo Mini hardware (MI_AO audio ioctl,
-// PWM backlight, raw power-button events, OTA updates of armhf builds).
-// On Knulli (Anbernic H700 and similar) the OS owns the power and volume keys,
-// the backlight lives under /sys/class/backlight, and updates come from
-// PortMaster, so those paths are replaced here.
+// Knulli / PortMaster platform layer. The system owns the power and volume
+// keys. The app controls the backlight and installs its own updates.
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 )
 
-// isKnulli: MIYOOPOD_PLATFORM=knulli or =miyoo chooses; by default the
-// 32-bit ARM build (the Miyoo Mini) runs on Onion and the others on
-// Knulli. The Onion layer is in onion.go / onion.c.
-var isKnulli = platformIsKnulli()
-
-// platformAbout: the system and its consoles, for About.
-func platformAbout() (string, string) {
-	if isOnion {
-		return "Onion OS", "Miyoo Mini, Mini Plus, Mini v4, Mini Flip"
-	}
-	return "Knulli", "Anbernic handhelds with the Allwinner H700"
-}
-
-func platformIsKnulli() bool {
-	switch os.Getenv("MIYOOPOD_PLATFORM") {
-	case "knulli":
-		return true
-	case "miyoo", "onion":
-		return false
-	}
-	return runtime.GOARCH != "arm"
-}
-
-// otaDisabled: upstream MiyooPod's OTA (version.go) would install MiyooPod
-// over this app. Updates come from Settings → Software Update (ij_update.go).
-var otaDisabled = true
-
 // musicRoot returns the folder scanned for music, always with a trailing slash.
-// Default on Knulli is /userdata/music; override with MIYOOPOD_MUSIC_DIR.
+// Default on Knulli is /userdata/music; override with BETTERPOD_MUSIC_DIR.
 // The folder chosen in Settings → Library → Music Folder comes first
 // (ij_musicdir.go).
 func musicRoot() string {
@@ -68,7 +35,7 @@ func musicRoot() string {
 
 // dataPath returns where library cache, settings and artwork are stored:
 // the database folder (datadir.go), by default the port's conf folder
-// (MIYOOPOD_DATA_DIR); without it, upstream behaviour (inside music root).
+// (BETTERPOD_DATA_DIR); without it, upstream behaviour (inside music root).
 func dataPath(name string) string {
 	dir := dataDir()
 	_ = os.MkdirAll(dir, 0755)
@@ -102,7 +69,7 @@ var (
 func brightnessTool() string {
 	if !brightToolInit {
 		brightToolInit = true
-		if os.Getenv("MIYOOPOD_SYSFS_BACKLIGHT") != "1" {
+		if envGet("BETTERPOD_SYSFS_BACKLIGHT") != "1" {
 			brightTool = findBin("batocera-brightness")
 		}
 		if brightTool != "" {
@@ -131,7 +98,7 @@ func brightWriter() {
 // even when the launcher trimmed PATH.
 func toolEnv() []string {
 	env := os.Environ()
-	path := os.Getenv("PATH")
+	path := envGet("PATH")
 	for _, d := range []string{"/usr/bin", "/bin", "/usr/sbin", "/sbin"} {
 		if !strings.Contains(":"+path+":", ":"+d+":") {
 			path += ":" + d
@@ -240,9 +207,6 @@ func readInt(path string) int {
 }
 
 func getBacklightPercent() int {
-	if isOnion {
-		return onionBacklightGet()
-	}
 	if _, err := os.Stat("/dev/disp"); err == nil {
 		brightMu.Lock()
 		cur, pending := brightCur, brightWant >= 0
@@ -300,10 +264,6 @@ func setBacklightPercent(pct int) {
 	if pct > 100 {
 		pct = 100
 	}
-	if isOnion {
-		onionBacklightSet(pct)
-		return
-	}
 	if _, err := os.Stat("/dev/disp"); err == nil {
 		if r := int(C.disp_brightness(C.int(dispRaw(pct)))); r == 0 {
 			brightMu.Lock()
@@ -354,10 +314,6 @@ func restoreBacklight() {
 	if backlightAtStart <= 0 {
 		return
 	}
-	if isOnion {
-		onionBacklightSet(backlightAtStart)
-		return
-	}
 	if t := brightnessTool(); t != "" {
 		brightMu.Lock()
 		brightWant = -1
@@ -369,13 +325,81 @@ func restoreBacklight() {
 }
 
 func init() {
-	if isKnulli || isOnion {
-		backlightAtStart = getBacklightPercent() // remember the starting level before anything dims it
-	}
-	if isKnulli {
-		go watchQuitSignals() // (Onion starts it in onion.go)
-	}
+	backlightAtStart = getBacklightPercent() // remember the starting level before anything dims it
+	go watchQuitSignals()
 }
 
 // headphoneJack: wired headphones in the jack (1), not (0), unknown (-1).
 func headphoneJack() int { return int(C.headphone_jack()) }
+
+// platformAbout names the supported system and consoles.
+func platformAbout() (string, string) {
+	return "Knulli", "Anbernic handhelds with the Allwinner H700"
+}
+
+// envInt reads an integer switch, with a default and a valid range.
+func envInt(name string, def, min, max int) int {
+	if v, err := strconv.Atoi(envGet(name)); err == nil && v >= min && v <= max {
+		return v
+	}
+	return def
+}
+
+// readTrim reads a sysfs value without its trailing newline.
+func readTrim(p string) string {
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// powerSupplyCharging reads the kernel's charger and battery status.
+func powerSupplyCharging() (charging, ok bool) {
+	dirs, _ := filepath.Glob("/sys/class/power_supply/*")
+	for _, d := range dirs {
+		if v := readTrim(d + "/online"); v != "" && readTrim(d+"/type") != "Battery" {
+			ok = true
+			if v == "1" {
+				return true, true
+			}
+		}
+		if v := readTrim(d + "/status"); v != "" {
+			ok = true
+			if v == "Charging" || v == "Full" {
+				return true, true
+			}
+		}
+	}
+	return false, ok
+}
+
+// lockChanged restores the backlight and CPU after the screen is unlocked.
+func (ui *IpodUI) lockChanged() {
+	app := ui.app
+	ui.dirty = true
+	if app.Locked || !app.BrightnessNeedsRestore {
+		return
+	}
+	app.BrightnessNeedsRestore = false
+	lvl := app.BrightnessBeforeLock
+	if lvl <= 0 {
+		lvl = backlightAtStart
+	}
+	if lvl <= 0 {
+		lvl = 50
+	}
+	setBacklightPercent(lvl)
+	if app.OriginalCPUGovernor != "" {
+		if err := writeCPUGovernor(app.OriginalCPUGovernor); err != nil {
+			logMsg(fmt.Sprintf("WARNING: Could not set CPU governor to %s: %v", app.OriginalCPUGovernor, err))
+		}
+		return
+	}
+	app.setCPUGovernorUnlocked()
+}
+
+// npTrackFormat returns the format shown in the Now Playing badge.
+func (ui *IpodUI) npTrackFormat(t *Track) (audioFormat, bool) {
+	return ui.trackFormat(t)
+}

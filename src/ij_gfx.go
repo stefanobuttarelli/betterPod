@@ -336,9 +336,8 @@ func scaleImage(src image.Image, w, h int) *image.RGBA {
 // shrinkImage averages src over blocks of whole pixels, so that Catmull-Rom
 // has only the last step to do. On its own, Catmull-Rom from a big picture
 // (a cover scanned at 3000 px) is slow, and its buffer is w times the
-// source's height in float64s: 46 MB for a 480 px preview, more than the
-// Miyoo has to spare. The blocks are the biggest that keep src at least
-// twice w x h (Catmull-Rom then gives what it gives alone, to the eye),
+// source's height in float64s: 46 MB for a 480 px preview. The blocks
+// are the biggest that keep src at least twice w x h (Catmull-Rom then gives what it gives alone, to the eye),
 // or at least w x h above 320 px: those sizes aren't kept on disk
 // (artDiskPath), so they are made again each time they show, and twice
 // would still leave Catmull-Rom 15 MB or more. src comes back as it is
