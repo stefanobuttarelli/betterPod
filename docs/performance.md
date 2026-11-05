@@ -56,7 +56,7 @@ Two repeated runs of the combined changes completed on the same H700 console, us
 
 The preference workload's original whole-loop p95 was 42.819 ms and its active gap p95 was 64.463 ms. Both repeats substantially reduce that measured stall. No continuous-animation presentation gap exceeded 50 ms in these samples. There was still a **58.091 ms UI loop** in Up Next during run 1, while it was not continuously animating. Rendering/presentation occupied about 14.2 ms; the remaining delay was after presentation in diagnostic accounting/logging. This is not a zero-stall claim. Now Playing's whole-phase count was about 24.7 presentations/s because it includes intentional idle/unchanged frames; active intervals remained near the nominal 30 fps cadence.
 
-The measured build predates only the final failed-write retry fix. Its successful-write and UI paths are unchanged; the final retry behavior received unit/race tests and the final binary smoke check below. These measurements do not establish a physical display lock or a guaranteed minimum rate in other workloads.
+The instrumented H700 binary had SHA-256 `07127ebcdf2a557188556592d9c8c4109e1fb39fc79d8fe23a13651cdf3e397e` after stripping. Timing runs exercise successful writes and predate the final preferences error-recovery changes, which also adjust worker startup bookkeeping. Debounce, coalescing, atomic disk writes, rendering and pacing retain the measured behavior; the final retry changes received unit/race tests and the final binary smoke check below. These measurements do not establish a physical display lock or a guaranteed minimum rate in other workloads.
 
 ## Audio and visual evidence
 
