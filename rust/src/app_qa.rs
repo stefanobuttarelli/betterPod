@@ -888,5 +888,32 @@ fn custom_menu_entries_and_back_restore_visible_panels() {
         app.handle(Action::Back);
         visible(&mut app, &mut r, &window, "rapid podcast back");
     }
+    // The cover's own animation must not leave the full-width player at
+    // Cover Flow's hidden panel position. These use real, unsnapped inputs;
+    // fixed scene captures would silently repair the stale panel state.
+    for _ in 0..3 {
+        app.handle(Action::BackHeld);
+        settle(&mut app, &mut r, &window);
+        select(&mut app, "Cover Flow");
+        visible(&mut app, &mut r, &window, "cover flow");
+        app.handle(Action::Select);
+        visible(&mut app, &mut r, &window, "cover flow album card");
+        app.handle(Action::Select);
+        assert_eq!(app.screen(), Screen::NowPlaying);
+        visible(&mut app, &mut r, &window, "cover flow song player");
+        assert!(app.visual_menu_active_offset().abs() < 0.001);
+        app.handle(Action::Back);
+        assert_eq!(app.screen(), Screen::CoverFlow);
+        visible(&mut app, &mut r, &window, "back to album card");
+        app.handle(Action::Select);
+        visible(&mut app, &mut r, &window, "resume album song player");
+        app.handle(Action::Start);
+        assert_eq!(app.screen(), Screen::CoverFlow);
+        visible(&mut app, &mut r, &window, "player flipped to album card");
+        app.handle(Action::Back);
+        assert_eq!(app.screen(), Screen::NowPlaying);
+        visible(&mut app, &mut r, &window, "back from flipped album card");
+        assert!(app.visual_menu_active_offset().abs() < 0.001);
+    }
     app.shutdown(&r).unwrap();
 }

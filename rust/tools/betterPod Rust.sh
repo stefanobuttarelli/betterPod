@@ -77,14 +77,19 @@ old_bright=""
 # Both firmware helpers read a percentage with no arguments; a single
 # numeric argument restores it ("get" is not their command-line API).
 [ -z "$bright_tool" ] || old_bright=$("$bright_tool" 2>/dev/null)
-paused_es=""
+frontend_state="$BETTERPOD_RUST_DATA_DIR/.frontend-audio.json"
+app_log="$GAMEDIR/betterpod-rust.log"
 app_pid=""
 cleanup() {
   trap - EXIT INT TERM HUP
+  # A frozen frontend audio client can hold up the app's SDL shutdown.
+  # Resume it and restore only its own streams before waiting for the app.
+  "$GAMEDIR/betterpod-rust" --frontend-audio release "$frontend_state" "$$" >> "$app_log" 2>&1 || true
   if [ -n "$app_pid" ] && kill -0 "$app_pid" 2>/dev/null; then
     kill -TERM "$app_pid" 2>/dev/null || true
     wait "$app_pid" 2>/dev/null || true
   fi
+  "$GAMEDIR/betterpod-rust" --frontend-audio finish "$frontend_state" "$$" >> "$app_log" 2>&1 || true
   rm -f -- "$BETTERPOD_RUST_IDLE_FILE"
   for pair in $old_governors; do
     file=${pair%%=*}; value=${pair#*=}
@@ -94,20 +99,18 @@ cleanup() {
     ''|*[!0-9]*) ;;
     *) "$bright_tool" "$old_bright" >/dev/null 2>&1 || true ;;
   esac
-  for pid in $paused_es; do
-    [ "$(cat "/proc/$pid/comm" 2>/dev/null)" != emulationstatio ] && [ "$(cat "/proc/$pid/comm" 2>/dev/null)" != emulationstation ] || kill -CONT "$pid" 2>/dev/null || true
-  done
   if [ "$(type -t pm_finish)" = function ]; then pm_finish; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
-for pid in $(pidof emulationstation 2>/dev/null || true); do
-  state=$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)
-  case "$state" in T|t) ;; *) kill -STOP "$pid" 2>/dev/null && paused_es="$paused_es $pid" ;; esac
-done
+es_pids=$(pidof emulationstation 2>/dev/null || true)
+: > "$app_log"
+# pidof supplies numeric IDs. The Rust helper validates process start times,
+# parks their verified audio streams, then freezes the matching frontends.
+"$GAMEDIR/betterpod-rust" --frontend-audio prepare "$frontend_state" "$$" $es_pids >> "$app_log" 2>&1 || exit 1
 cd "$GAMEDIR" || exit 1
-./betterpod-rust > "$GAMEDIR/betterpod-rust.log" 2>&1 &
+./betterpod-rust >> "$app_log" 2>&1 &
 app_pid=$!
 wait "$app_pid"
 result=$?

@@ -189,9 +189,7 @@ impl App {
             if self.cover_from_np {
                 self.cover_from_np = false;
                 self.cover_card = None;
-                if self.pages.len() > 1 {
-                    self.pages.pop();
-                }
+                self.pop_navigation_page();
                 return true;
             }
             return false;
@@ -205,9 +203,7 @@ impl App {
                 }
                 // Cover Flow owns its playing view and returns to its card.
                 if self.player_visual.flow_context {
-                    if self.pages.len() > 1 {
-                        self.pages.pop();
-                    }
+                    self.pop_navigation_page();
                     self.cover_card = Some(self.player_visual.card_selected);
                     return true;
                 }
@@ -217,9 +213,7 @@ impl App {
                 self.cover_card = None;
                 if self.cover_from_np {
                     self.cover_from_np = false;
-                    if self.pages.len() > 1 {
-                        self.pages.pop();
-                    }
+                    self.pop_navigation_page();
                 } else {
                     self.player_visual.flow_context = false;
                 }
@@ -253,9 +247,7 @@ impl App {
                                 // rather than stack another player on its card.
                                 self.cover_from_np = false;
                                 self.cover_card = None;
-                                if self.pages.len() > 1 {
-                                    self.pages.pop();
-                                }
+                                self.pop_navigation_page();
                                 self.song(index);
                             } else {
                                 self.song(index);

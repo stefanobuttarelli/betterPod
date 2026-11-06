@@ -6,6 +6,8 @@ use super::*;
 const MINI_HEIGHT: f32 = 116.0;
 const HEADER_HEIGHT: f32 = 40.0;
 const SCROLLBAR_WIDTH: f32 = 18.0;
+const MAX_LAYOUTS: usize = 12;
+const MAX_LAYOUT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) enum PreviewKind {
@@ -142,7 +144,7 @@ pub(super) fn row_tops(rows: &[Row]) -> Vec<f32> {
 }
 
 struct Layout {
-    rows: Arc<Vec<Row>>,
+    rows: std::sync::Weak<Vec<Row>>,
     tops: Vec<f32>,
 }
 struct Navigation {
@@ -323,20 +325,32 @@ impl MenuVisual {
         self.cycle.seeded = true;
     }
     fn layout_index(&mut self, rows: &Arc<Vec<Row>>) -> usize {
+        // Height caching must not own old search results or retired libraries.
+        // Weak identity also changes when Arc::make_mut modifies shared rows.
+        self.layouts.retain(|layout| layout.rows.strong_count() > 0);
+        let key = Arc::downgrade(rows);
         if let Some(index) = self
             .layouts
             .iter()
-            .position(|layout| Arc::ptr_eq(&layout.rows, rows))
+            .position(|layout| std::sync::Weak::ptr_eq(&layout.rows, &key))
         {
             return index;
         }
-        if self.layouts.len() >= 12 {
-            self.layouts.remove(0);
+        let tops = row_tops(rows);
+        let bytes = tops.capacity() * std::mem::size_of::<f32>();
+        let mut cached_bytes: usize = self
+            .layouts
+            .iter()
+            .map(|layout| layout.tops.capacity() * std::mem::size_of::<f32>())
+            .sum();
+        while !self.layouts.is_empty()
+            && (self.layouts.len() >= MAX_LAYOUTS
+                || cached_bytes.saturating_add(bytes) > MAX_LAYOUT_BYTES)
+        {
+            let retired = self.layouts.remove(0);
+            cached_bytes -= retired.tops.capacity() * std::mem::size_of::<f32>();
         }
-        self.layouts.push(Layout {
-            rows: Arc::clone(rows),
-            tops: row_tops(rows),
-        });
+        self.layouts.push(Layout { rows: key, tops });
         self.layouts.len() - 1
     }
 }
@@ -697,6 +711,16 @@ impl App {
     /// Call after mutating the navigation stack. Previous rows are Arc snapshots.
     pub(super) fn visual_menu_navigation(&mut self, previous: Option<Page>, forward: bool) {
         if let (Some(previous), Some(current)) = (previous, self.pages.last().cloned()) {
+            if matches!(previous.screen, Screen::NowPlaying | Screen::CoverFlow)
+                && matches!(current.screen, Screen::NowPlaying | Screen::CoverFlow)
+            {
+                // These are two states of the same animated player. Its cover
+                // owns the flip, while the outer panels still need to follow
+                // the current page kind and the retained navigation depth.
+                // In particular, Cover Flow leaves the full panel offscreen.
+                self.visual_menu_snap_state(self.visual_time);
+                return;
+            }
             self.visual_menu.navigate(
                 previous,
                 current,
@@ -721,7 +745,7 @@ impl App {
             .navigate(previous, current, depth, forward, now);
     }
 
-    /// Deterministic endpoint for fixture captures; ordinary navigation uses tick.
+    /// Reconcile panel endpoints for fixed captures and the internally animated player.
     pub(super) fn visual_menu_snap_state(&mut self, now: f64) {
         self.visual_time = now;
         self.visual_menu_sync(now);
@@ -3253,6 +3277,48 @@ mod tests {
         assert_ne!(next, first);
         assert_eq!(visual.layouts[next].tops[2], 100.0);
         assert_eq!(visual.layouts.len(), 2);
+    }
+    #[test]
+    fn expired_search_rows_are_released_and_mutation_rebuilds_heights() {
+        let mut visual = MenuVisual::new();
+        let old_results = Arc::new(vec![Row::new("Old search result", Intent::Noop)]);
+        let old = Arc::downgrade(&old_results);
+        visual.layout_index(&old_results);
+        assert_eq!(Arc::strong_count(&old_results), 1);
+        drop(old_results);
+        assert!(
+            old.upgrade().is_none(),
+            "height cache retained old result rows"
+        );
+
+        let mut results = Arc::new(vec![Row::new("New search result", Intent::Noop)]);
+        let index = visual.layout_index(&results);
+        assert_eq!(visual.layouts.len(), 1);
+        assert_eq!(visual.layouts[index].tops, vec![0.0, 50.0]);
+        let before_mutation = Arc::downgrade(&results);
+        // Only weak cache references remain. make_mut must invalidate that
+        // identity even though no second strong Arc forced a row clone.
+        Arc::make_mut(&mut results)[0].detail = "A second line".into();
+        assert!(before_mutation.upgrade().is_none());
+        let index = visual.layout_index(&results);
+        assert_eq!(visual.layouts.len(), 1);
+        assert_eq!(visual.layouts[index].tops, vec![0.0, 80.0]);
+    }
+    #[test]
+    fn live_prefix_heights_share_a_byte_budget() {
+        let mut visual = MenuVisual::new();
+        let rows = Arc::new(vec![Row::new("Retained page", Intent::Noop)]);
+        // Simulate a fully used metric budget without allocating a large
+        // synthetic library just to check cache eviction.
+        visual.layouts.push(Layout {
+            rows: Arc::downgrade(&rows),
+            tops: vec![0.0; MAX_LAYOUT_BYTES / std::mem::size_of::<f32>()],
+        });
+        let current = Arc::new(vec![Row::new("Current page", Intent::Noop)]);
+        let index = visual.layout_index(&current);
+        assert_eq!(visual.layouts.len(), 1);
+        assert_eq!(visual.layouts[index].tops, vec![0.0, 50.0]);
+        assert_eq!(Arc::strong_count(&rows), 1);
     }
     #[test]
     fn interrupted_nested_navigation_keeps_both_source_clocks() {

@@ -7,6 +7,7 @@ pub mod curation;
 pub mod downloads;
 pub mod files;
 pub mod font_metrics;
+pub mod frontend_audio;
 pub mod games;
 pub mod inline_keys;
 pub mod input;

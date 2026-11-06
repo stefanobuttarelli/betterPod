@@ -4,6 +4,9 @@ use glow::HasContext;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
+#[path = "render_font.rs"]
+mod fallback;
+use fallback::{OutlineFont, RasterFont};
 #[cfg(test)]
 #[path = "render_qa.rs"]
 mod qa;
@@ -32,7 +35,7 @@ struct FontAtlas {
     advances: HashMap<(char, u16, u16), f32>,
     fonts: HashMap<u16, fontdue::Font>,
     metrics: HashMap<u16, crate::font_metrics::MetricsFont>,
-    fallback: [Option<fontdue::Font>; 2],
+    fallback: [Option<OutlineFont>; 2],
     pixels: Vec<u8>,
     x: usize,
     y: usize,
@@ -194,8 +197,11 @@ impl Renderer {
                 );
             }
         }
-        let fallback = ["NotoSansJP-Regular.otf", "NotoSansJP-Bold.otf"]
-            .map(|name| load_font(&directory.join(name)).ok());
+        let fallback = ["NotoSansJP-Regular.otf", "NotoSansJP-Bold.otf"].map(|name| {
+            std::fs::read(directory.join(name))
+                .ok()
+                .and_then(|data| OutlineFont::new(data).ok())
+        });
         let pixels = vec![0; 2048 * 2048 * 4];
         let atlas_texture = upload(&gl, 2048, 2048, &pixels)?;
         let backend = unsafe {
@@ -657,7 +663,7 @@ impl Renderer {
             clip: self.clip,
         });
     }
-    fn font(&self, c: char, weight: u16) -> &fontdue::Font {
+    fn font(&self, c: char, weight: u16) -> RasterFont<'_> {
         let primary = self
             .atlas
             .fonts
@@ -667,9 +673,9 @@ impl Renderer {
             self.atlas.fallback[usize::from(weight >= 600)]
                 .as_ref()
                 .filter(|f| f.lookup_glyph_index(c) != 0)
-                .unwrap_or(primary)
+                .map_or(RasterFont::Primary(primary), RasterFont::Fallback)
         } else {
-            primary
+            RasterFont::Primary(primary)
         }
     }
     fn glyph(&mut self, c: char, size: f32, weight: u16) -> Glyph {
@@ -1143,7 +1149,9 @@ impl Renderer {
                 errors.push(e);
             }
         }
-        serde_json::json!({"vertices":self.vertices.len()/9,"batches":self.batches.len(),"transforms":self.transforms.len(),"clips":self.clips.len(),"gl_errors":errors})
+        serde_json::json!({"vertices":self.vertices.len()/9,"batches":self.batches.len(),"transforms":self.transforms.len(),"clips":self.clips.len(),"gl_errors":errors,
+            "fallback_font_bytes":self.atlas.fallback.iter().flatten().map(OutlineFont::source_bytes).sum::<usize>(),
+            "fallback_cached_metrics":self.atlas.fallback.iter().flatten().map(OutlineFont::cached_metrics).sum::<usize>()})
     }
 }
 

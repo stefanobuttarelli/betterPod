@@ -19,7 +19,9 @@ docker run --rm \
   -v betterpod-rust-git:/opt/cargo/git \
   -v betterpod-rust-target-native:/target-native -v betterpod-rust-target-knulli:/target-knulli \
   -e BUILD_MODE="$MODE" -e CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" "$IMAGE" sh -ec '
-    mkdir -p /w && cp -R /repo/rust /w/rust
+    mkdir -p /w
+    # Host Cargo caches are not source and can dwarf the entire checkout.
+    tar -C /repo --exclude=rust/target -cf - rust | tar -C /w -xf -
     cd /w/rust
     if [ "$BUILD_MODE" = test ] || [ "$BUILD_MODE" = all ]; then
       cargo test --locked --all-targets --target-dir /target-native

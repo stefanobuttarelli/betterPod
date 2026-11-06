@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{Cursor, Read};
+use std::io::{BufWriter, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crate::storage::atomic_write;
+use crate::storage::{atomic_write, atomic_write_with};
 
 const CACHE_VERSION: u32 = 6;
 const CACHE_NAME: &str = "library.json";
@@ -138,6 +138,45 @@ struct Cache {
     library: Library,
 }
 
+#[derive(Serialize)]
+struct CacheRef<'a> {
+    version: u32,
+    root: &'a Path,
+    inventory: &'a Inventory,
+    library: &'a Library,
+}
+
+struct BoundedWriter<W> {
+    inner: W,
+    remaining: u64,
+}
+impl<W: Write> Write for BoundedWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() as u64 > self.remaining {
+            return Err(std::io::Error::other(
+                "Library cache exceeds its size limit",
+            ));
+        }
+        let written = self.inner.write(bytes)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+fn write_cache(path: &Path, cache: &CacheRef<'_>, limit: u64) -> std::io::Result<()> {
+    atomic_write_with(path, |file| {
+        let mut writer = BoundedWriter {
+            inner: BufWriter::with_capacity(64 * 1024, file),
+            remaining: limit,
+        };
+        serde_json::to_writer(&mut writer, cache).map_err(std::io::Error::other)?;
+        writer.flush()
+    })
+}
+
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct GoAlbum {
@@ -234,6 +273,10 @@ impl Library {
             track.cover = imported_cover.or(folder_cover).or(track.cover);
             tracks.push(track);
         }
+        // Imported metadata is no longer needed. Do not keep another library
+        // alive while deriving indices and writing the new private cache.
+        drop(imported);
+        drop(folder_covers);
         crate::curation::apply(&data, &mut tracks);
         let mut library = Self::from_tracks(tracks);
         library.scan_folders = inventory.folders.clone();
@@ -270,20 +313,15 @@ impl Library {
             by_format,
             skipped_formats: inventory.counts.skipped_formats.clone(),
         });
-        let cache = Cache {
+        let cache = CacheRef {
             version: CACHE_VERSION,
-            root: music,
-            inventory,
-            library: library.clone(),
+            root: &music,
+            inventory: &inventory,
+            library: &library,
         };
         // A read-only/full card must not make an otherwise playable library fail.
-        match serde_json::to_vec(&cache) {
-            Ok(bytes) => {
-                if let Err(error) = atomic_write(&cache_path, &bytes) {
-                    eprintln!("Library cache was not saved: {error}");
-                }
-            }
-            Err(error) => eprintln!("Library cache could not be encoded: {error}"),
+        if let Err(error) = write_cache(&cache_path, &cache, MAX_CACHE_BYTES) {
+            eprintln!("Library cache was not saved: {error}");
         }
         Ok(library)
     }
@@ -955,6 +993,47 @@ mod tests {
     fn dummy(path: &Path) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"not audio; test metadata fallback").unwrap();
+    }
+
+    #[test]
+    fn streamed_cache_preserves_format_and_failed_write_preserves_previous_file() {
+        let root = temporary("streamed-cache");
+        let path = root.join(CACHE_NAME);
+        let inventory = Inventory {
+            music: Vec::new(),
+            covers: Vec::new(),
+            overrides: None,
+            override_digest: String::new(),
+            folders: Vec::new(),
+            counts: InventoryCounts::default(),
+        };
+        let library = Library::from_tracks(vec![Track {
+            path: root.join("音楽/à song.flac"),
+            title: "音楽 à song".into(),
+            artist: "Artist".into(),
+            album: "Album".into(),
+            cover: Some(root.join("cover.png")),
+            ..Track::default()
+        }]);
+        let cache = CacheRef {
+            version: CACHE_VERSION,
+            root: &root,
+            inventory: &inventory,
+            library: &library,
+        };
+        write_cache(&path, &cache, MAX_CACHE_BYTES).unwrap();
+        let saved = fs::read(&path).unwrap();
+        let decoded: Cache = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(decoded.version, CACHE_VERSION);
+        assert_eq!(decoded.root, root);
+        assert_eq!(decoded.inventory, inventory);
+        assert_eq!(decoded.library.tracks[0].title, "音楽 à song");
+        assert_eq!(decoded.library.albums[0].cover, library.albums[0].cover);
+        assert_eq!(serde_json::to_vec(&decoded).unwrap(), saved);
+        assert!(write_cache(&path, &cache, 32).is_err());
+        assert_eq!(fs::read(&path).unwrap(), saved);
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

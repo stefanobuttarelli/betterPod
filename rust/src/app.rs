@@ -1114,12 +1114,7 @@ impl App {
                 self.page(screen)
             };
             self.pages.push(page);
-            if !previous.as_ref().is_some_and(|p| {
-                matches!(p.screen, Screen::NowPlaying | Screen::CoverFlow)
-                    && matches!(screen, Screen::NowPlaying | Screen::CoverFlow)
-            }) {
-                self.visual_menu_navigation(previous, true);
-            }
+            self.visual_menu_navigation(previous, true);
         }
         self.preview_focus = false;
         if screen == Screen::Settings {

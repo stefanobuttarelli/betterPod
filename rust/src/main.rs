@@ -15,6 +15,13 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 fn main() {
+    if let Some(result) = betterpod_rust::frontend_audio::run_cli(std::env::args_os().skip(1)) {
+        if let Err(error) = result {
+            eprintln!("Frontend audio: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Err(error) = run() {
         eprintln!("betterPod Rust: {error}");
         std::process::exit(1);
@@ -280,6 +287,14 @@ fn run() -> Result<(), String> {
         }
         let maintenance_dark = app.dark();
         let maintenance_library = app.maintenance_library();
+        // Preserve opt-in measurements even if a peripheral stalls in shutdown.
+        // This runs at an exit/maintenance barrier, never during frame drawing.
+        if let Some(metrics) = &metrics {
+            let path = env_path("BETTERPOD_RUST_METRICS", data.join("frames.csv"));
+            if let Err(error) = metrics.save(&path) {
+                eprintln!("Metrics snapshot before shutdown: {error}");
+            }
+        }
         let shutdown = app.shutdown(&renderer);
         let user_quit = app.user_quit;
         let request = app.maintenance_request.take();

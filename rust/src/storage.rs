@@ -620,6 +620,15 @@ pub(crate) fn create_dir_all_synced(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    atomic_write_with(path, |file| file.write_all(bytes))
+}
+
+/// Stream a snapshot into the same durable, private atomic replacement.
+/// A failed encoder leaves the previous file intact and removes the temporary.
+pub(crate) fn atomic_write_with(
+    path: &Path,
+    write: impl FnOnce(&mut File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "Path has no parent")
     })?;
@@ -652,7 +661,7 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         )
     })?;
     let result = (|| {
-        file.write_all(bytes)?;
+        write(&mut file)?;
         file.sync_all()?;
         drop(file);
         fs::rename(&temporary, path)?;

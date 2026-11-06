@@ -16,6 +16,13 @@ pub(super) fn search(library: &Library, playlists: &[Playlist], query: &str) -> 
     let mut categories: [Vec<Row>; 4] = std::array::from_fn(|_| Vec::new());
     let needle = query.trim().to_lowercase();
     if !needle.is_empty() {
+        let mut first_albums = std::collections::HashMap::new();
+        for album in &library.albums {
+            // Match the original first exact artist match, including an
+            // album without artwork. Build this transient index once on the
+            // search worker instead of walking all albums for every artist.
+            first_albums.entry(album.artist.as_str()).or_insert(album);
+        }
         for (i, artist) in library
             .artists
             .iter()
@@ -23,7 +30,7 @@ pub(super) fn search(library: &Library, playlists: &[Playlist], query: &str) -> 
             .filter(|(_, a)| a.to_lowercase().contains(&needle))
         {
             let mut row = Row::new(artist, Intent::Open(Screen::Artist(i)));
-            let album = library.albums.iter().find(|a| a.artist == *artist);
+            let album = first_albums.get(artist.as_str()).copied();
             row.cover = album.and_then(|album| album.cover.clone());
             row.visual.thumbnail = album.is_some();
             if album.is_none() {
@@ -131,5 +138,56 @@ mod tests {
         assert_eq!(result.categories[2].len(), 1);
         assert_eq!(result.categories[2][0].label, "Needle Song");
         assert_eq!(search(&library, &[], " ").rows.len(), 1);
+    }
+    #[test]
+    fn artist_search_keeps_first_exact_album_and_missing_cover_semantics() {
+        use betterpod_rust::library::Album;
+        let library = Library {
+            artists: vec![
+                "Artist".into(),
+                "artist".into(),
+                "Artist without album".into(),
+            ],
+            albums: vec![
+                Album {
+                    artist: "Artist".into(),
+                    cover: Some("/covers/first.jpg".into()),
+                    ..Default::default()
+                },
+                Album {
+                    artist: "Artist".into(),
+                    cover: Some("/covers/later.jpg".into()),
+                    ..Default::default()
+                },
+                Album {
+                    artist: "artist".into(),
+                    cover: None,
+                    ..Default::default()
+                },
+                Album {
+                    artist: "artist".into(),
+                    cover: Some("/covers/later-lowercase.jpg".into()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let result = search(&library, &[], "ARTIST");
+        let rows = &result.categories[0];
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].label, "Artist");
+        assert_eq!(
+            rows[0].cover.as_deref(),
+            Some(std::path::Path::new("/covers/first.jpg"))
+        );
+        assert!(rows[0].visual.thumbnail);
+        assert_eq!(rows[1].label, "artist");
+        assert!(rows[1].cover.is_none());
+        assert!(rows[1].visual.thumbnail);
+        assert!(rows[1].visual.icon.is_empty());
+        assert_eq!(rows[2].label, "Artist without album");
+        assert!(rows[2].cover.is_none());
+        assert!(!rows[2].visual.thumbnail);
+        assert_eq!(rows[2].visual.icon, "artists_icon");
     }
 }

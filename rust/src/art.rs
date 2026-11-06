@@ -8,6 +8,8 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Instant;
+#[path = "art_decode.rs"]
+mod decoder;
 
 struct Pixels {
     generation: u64,
@@ -48,6 +50,7 @@ impl Decoders {
             match thread::Builder::new()
                 .name(format!("artwork-{n}"))
                 .spawn(move || {
+                    background_priority();
                     while !stop.load(Ordering::Acquire) {
                         let (generation, path) = match jobs.lock() {
                             Ok(r) => match r.recv() {
@@ -105,6 +108,23 @@ impl Decoders {
         while self.rx.try_recv().is_ok() {}
     }
 }
+
+fn background_priority() {
+    // On Linux niceness belongs to this worker thread. JPEG's short-lived
+    // per-component helpers inherit it; UI/audio keep their existing priority.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        if libc::getpriority(libc::PRIO_PROCESS, 0) < 10
+            && libc::setpriority(libc::PRIO_PROCESS, 0, 10) != 0
+        {
+            eprintln!(
+                "Artwork background priority: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+    }
+}
+
 impl Drop for Decoders {
     fn drop(&mut self) {
         self.shutdown();
@@ -437,19 +457,7 @@ pub(crate) fn mipmap_levels(image: &image::RgbaImage) -> Vec<image::RgbaImage> {
     levels
 }
 fn decode(path: &Path) -> Result<image::RgbaImage, String> {
-    let mut reader = image::ImageReader::open(path)
-        .map_err(|e| e.to_string())?
-        .with_guessed_format()
-        .map_err(|e| e.to_string())?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(128 * 1024 * 1024);
-    reader.limits(limits);
-    let image = reader.decode().map_err(|e| e.to_string())?;
-    Ok(image
-        .resize(512, 512, image::imageops::FilterType::Triangle)
-        .to_rgba8())
+    decoder::decode(path)
 }
 #[cfg(test)]
 mod tests {

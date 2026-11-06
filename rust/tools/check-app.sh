@@ -24,6 +24,7 @@ docker run --rm --network none -v "$ROOT:/repo:ro" -v "$MUSIC:/music:ro" -v "$RO
   trap "kill $! 2>/dev/null || true" EXIT
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust -- --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::controller_routes_and_real_screens -- --ignored --exact --nocapture --test-threads=1
+  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::custom_menu_entries_and_back_restore_visible_panels -- --ignored --exact --nocapture --test-threads=1
   # SDL dummy supports one output. A private null sink allows the retained,
   # paused music mixer plus the independent Listen/video output, without devices.
   export SDL_AUDIODRIVER=pulseaudio PULSE_SERVER=unix:/tmp/bp-qa-pulse PULSE_SINK=qa

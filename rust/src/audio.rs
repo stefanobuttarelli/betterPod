@@ -277,6 +277,34 @@ impl AudioEngine {
         }
     }
 
+    /// On-demand QA only. SDL_mixer owns an opaque SDL device ID; the runtime
+    /// supports 16 open IDs, including legacy ID 1. Do not assume the mixer is 1.
+    pub fn diagnostic_device_statuses(&self) -> Vec<(u32, &'static str)> {
+        let statuses = (1..=16)
+            .map(|id| {
+                let status = unsafe { sys::SDL_GetAudioDeviceStatus(id) };
+                let status = match status {
+                    sys::SDL_AudioStatus::SDL_AUDIO_PLAYING => "playing",
+                    sys::SDL_AudioStatus::SDL_AUDIO_PAUSED => "paused",
+                    _ => "stopped_or_closed",
+                };
+                (id, status)
+            })
+            .collect();
+        // Querying an unopened ID can set this thread's SDL error string.
+        unsafe { sys::SDL_ClearError() };
+        statuses
+    }
+
+    pub fn diagnostic_driver(&self) -> Option<String> {
+        let driver = unsafe { sys::SDL_GetCurrentAudioDriver() };
+        (!driver.is_null()).then(|| unsafe {
+            std::ffi::CStr::from_ptr(driver)
+                .to_string_lossy()
+                .into_owned()
+        })
+    }
+
     pub fn visualizer(&self, output: &mut [f32]) -> usize {
         let tick = CALLBACK_TICK.load(Ordering::Acquire);
         let frequency = CLOCK_FREQUENCY.load(Ordering::Relaxed).max(1);

@@ -7,7 +7,9 @@ The source-faithful UI and behavior implementation pass is complete locally;
 its finite checks and deferred hardware acceptance are recorded in
 [PARITY.md](PARITY.md). Historical
 prototype results do not validate this expanded workload. The first on-console UI/audio-counter comparison is recorded in
-[CONSOLE_QA.md](CONSOLE_QA.md); Bluetooth listening and endurance remain separate acceptance work. The original app and
+[CONSOLE_QA.md](CONSOLE_QA.md). The subsequent Sony Bluetooth session, its
+YouTube memory failure and the corrective verification are recorded in
+[BLUETOOTH_QA.md](BLUETOOTH_QA.md). The original app and
 its release artifacts remain available. No Rust build is pushed, released or
 installed automatically.
 
@@ -97,6 +99,8 @@ All options use the `BETTERPOD_RUST_` prefix. They do not override the stable ap
 | — | Q | Quit. |
 
 Headset media play/pause/next/previous keys are read by a separate Linux worker without grabbing input devices. Knulli owns the physical volume and POWER buttons. The experimental input layer does not intercept those buttons through a second key-mapping process.
+
+Before suspending EmulationStation, the Knulli launcher uses the Rust executable to park only its verified audio streams on the stable internal output. It restores their mute/routing policy and process state on exit. This prevents a frozen frontend client from blocking Bluetooth reconnection; firmware audio/graphics libraries stay unchanged.
 
 ## Rewrite coverage
 

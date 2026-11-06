@@ -15,6 +15,7 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 semver = "1"
 lofty = "0.25"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+jpeg-decoder = { version = "=0.3.2", default-features = false }
 fontdue = "0.9"
 libc = "0.2"
 ureq = { version = "3", features = ["json"] }

@@ -11,18 +11,22 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+#[cfg(test)]
+use std::thread;
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     sync::{LazyLock, Mutex},
-    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 #[path = "downloads_archive.rs"]
 mod archive;
+#[path = "downloads_process.rs"]
+mod process;
 pub use archive::status as archive_status;
+pub use process::run_command;
 #[derive(Clone, Debug)]
 pub enum DownloadRequest {
     Archive {
@@ -763,124 +767,13 @@ pub fn yt_json(context: &Context, data: &Path, args: &[&str]) -> Result<Value, S
     let _tools = TOOLS.lock().map_err(|e| e.to_string())?;
     let mut command = yt_command(data);
     command.arg("-J").args(args);
-    let output = run_command(context, &mut command, Duration::from_secs(120))?;
+    let output = process::run_ytdlp(context, &mut command, Duration::from_secs(120))?;
     output
         .lines()
         .rev()
         .find(|line| line.trim_start().starts_with('{'))
         .ok_or_else(|| "yt-dlp returned no metadata".to_string())
         .and_then(|line| serde_json::from_str(line).map_err(|e| e.to_string()))
-}
-pub fn run_command(
-    context: &Context,
-    command: &mut Command,
-    timeout: Duration,
-) -> Result<String, String> {
-    use std::os::unix::process::CommandExt;
-    command
-        .process_group(0)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("Start {:?}: {e}", command.get_program()))?;
-    let pid = child.id();
-    let stdout = child.stdout.take().ok_or("Missing command output")?;
-    let stderr = child.stderr.take().ok_or("Missing command errors")?;
-    let ctx = context.clone();
-    let out = thread::spawn(move || capture(stdout, 64 * 1024 * 1024, Some(ctx)));
-    let err = thread::spawn(move || capture(stderr, 1024 * 1024, None));
-    let started = Instant::now();
-    let status = loop {
-        if context.check().is_err() || started.elapsed() > timeout {
-            unsafe {
-                libc::kill(-(pid as i32), libc::SIGTERM);
-            };
-            let until = Instant::now() + Duration::from_secs(5);
-            loop {
-                if child.try_wait().map_err(|e| e.to_string())?.is_some() {
-                    break;
-                }
-                if Instant::now() > until {
-                    unsafe {
-                        libc::kill(-(pid as i32), libc::SIGKILL);
-                    };
-                    break;
-                }
-                thread::sleep(Duration::from_millis(25));
-            }
-            let _ = child.wait();
-            let _ = out.join();
-            let _ = err.join();
-            return Err(if context.check().is_err() {
-                "Cancelled"
-            } else {
-                "Command timed out"
-            }
-            .into());
-        }
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            break status;
-        }
-        thread::sleep(Duration::from_millis(25));
-    };
-    let output = out.join().map_err(|_| "Command output reader failed")??;
-    let errors = err.join().map_err(|_| "Command error reader failed")??;
-    if !status.success() {
-        return Err(errors
-            .lines()
-            .rev()
-            .find(|s| !s.trim().is_empty())
-            .unwrap_or("External tool failed")
-            .to_string());
-    }
-    Ok(output)
-}
-fn capture(
-    mut reader: impl Read,
-    limit: usize,
-    context: Option<Context>,
-) -> Result<String, String> {
-    let mut bytes = Vec::new();
-    let mut buffer = [0u8; 8192];
-    let mut overflow = false;
-    let mut line = String::new();
-    let mut last = Instant::now() - Duration::from_secs(1);
-    loop {
-        let n = reader.read(&mut buffer).map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
-        }
-        if bytes.len().saturating_add(n) <= limit {
-            bytes.extend_from_slice(&buffer[..n]);
-        } else {
-            overflow = true;
-        }
-        if let Some(context) = &context {
-            for part in String::from_utf8_lossy(&buffer[..n]).split_inclusive('\n') {
-                if line.len() < 65536 {
-                    line.push_str(part);
-                }
-                if part.ends_with('\n') {
-                    if let Some(progress) = line.trim().strip_prefix("BP_PROGRESS|") {
-                        let mut fields = progress.split('|');
-                        let done = fields.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-                        let total = fields.next().and_then(|s| s.parse().ok());
-                        if last.elapsed() > Duration::from_millis(200) {
-                            context.progress(done, total, "Downloading YouTube");
-                            last = Instant::now();
-                        }
-                    }
-                    line.clear();
-                }
-            }
-        }
-    }
-    if overflow {
-        return Err("External tool output was too large".into());
-    }
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 fn youtube_download(
     context: &Context,
@@ -950,7 +843,7 @@ fn youtube_download(
         ]);
     }
     command.arg(url);
-    run_command(context, &mut command, Duration::from_secs(7200))?;
+    process::run_ytdlp(context, &mut command, Duration::from_secs(7200))?;
     let source = fs::read_dir(&stage)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
