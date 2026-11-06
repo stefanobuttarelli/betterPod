@@ -1,5 +1,57 @@
 //! Opt-in real GLES checks. No console, screenshots or synthetic frame-rate claims.
 use super::*;
+
+#[test]
+#[ignore = "requires SDL/OpenGL and original fonts; run with Xvfb"]
+fn scrollbar_rails_are_centered_in_full_split_and_album_columns() {
+    let assets = std::path::PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").unwrap());
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    video
+        .gl_attr()
+        .set_context_profile(sdl2::video::GLProfile::GLES);
+    video.gl_attr().set_context_version(2, 0);
+    let window = video
+        .window("Scrollbar alignment", 640, 480)
+        .opengl()
+        .hidden()
+        .build()
+        .unwrap();
+    let _context = window.gl_create_context().unwrap();
+    let mut r = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+    let columns = [(622, 60), (302, 180), (490, 300)];
+    r.begin(WHITE);
+    for (column, y) in columns {
+        r.rounded_rect(
+            scrollbar_track_x(column as f32, 18.),
+            y as f32,
+            12.,
+            60.,
+            6.,
+            BLACK,
+        );
+    }
+    r.finish();
+    let image = r.capture_rgba();
+    for (column, y) in columns {
+        let ink: Vec<_> = (column..column + 18)
+            .filter(|&x| image.get_pixel(x, y + 30)[0] < 10)
+            .collect();
+        assert_eq!(ink.len(), 12, "rail width changed for column {column}");
+        assert_eq!(
+            ink[0] - column,
+            column + 17 - ink[11],
+            "rail is biased to one side for column {column}"
+        );
+    }
+    if let Some(out) = std::env::var_os("BETTERPOD_RUST_QA_OUTPUT") {
+        let out = std::path::PathBuf::from(out);
+        std::fs::create_dir_all(&out).unwrap();
+        image.save(out.join("scrollbar-centered.png")).unwrap();
+    }
+    assert_eq!(r.diagnostics()["gl_errors"], serde_json::json!([]));
+}
+
 #[test]
 #[ignore = "requires SDL/OpenGL and original fonts; run with Xvfb"]
 fn atlas_rollover_preserves_earlier_text_in_the_same_frame() {

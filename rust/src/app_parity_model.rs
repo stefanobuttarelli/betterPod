@@ -247,6 +247,13 @@ impl App {
             };
             rows.push(videos);
         }
+        let downloads = self.extras.active_download_count();
+        if downloads > 0 {
+            let mut row = Row::new("Downloads", Intent::Extra(ExtraPage::ActiveDownloads));
+            row.visual.value = downloads.to_string();
+            row.visual.preview = PreviewKind::None;
+            rows.push(row);
+        }
         let mut apps = Row::new("Apps", Intent::Open(Screen::Apps));
         apps.visual.preview = PreviewKind::Apps;
         rows.push(apps);

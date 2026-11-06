@@ -131,6 +131,23 @@ struct PartInfo {
     total: u64,
 }
 pub(crate) static TOOLS: Mutex<()> = Mutex::new(());
+fn tools_guard(context: &Context) -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    let mut reported = Instant::now() - Duration::from_secs(1);
+    loop {
+        context.check()?;
+        match TOOLS.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(error)) => return Err(error.to_string()),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                if reported.elapsed() >= Duration::from_millis(500) {
+                    context.progress(0, None, "Waiting for the current YouTube task");
+                    reported = Instant::now();
+                }
+                context.sleep(Duration::from_millis(50))?;
+            }
+        }
+    }
+}
 static COMMIT_LOCK: Mutex<()> = Mutex::new(());
 static ACTIVE_DOWNLOADS: LazyLock<Mutex<std::collections::HashSet<PathBuf>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
@@ -764,7 +781,7 @@ fn yt_command(data: &Path) -> Command {
     command
 }
 pub fn yt_json(context: &Context, data: &Path, args: &[&str]) -> Result<Value, String> {
-    let _tools = TOOLS.lock().map_err(|e| e.to_string())?;
+    let _tools = tools_guard(context)?;
     let mut command = yt_command(data);
     command.arg("-J").args(args);
     let output = process::run_ytdlp(context, &mut command, Duration::from_secs(120))?;
@@ -807,7 +824,7 @@ fn youtube_download(
         private_dir(data, &["downloads", "YouTube", &artist, &title])?
     };
     let stage = private_dir(data, &["tmp", "youtube", &context.id.to_string()])?;
-    let _tools = TOOLS.lock().map_err(|e| e.to_string())?;
+    let _tools = tools_guard(context)?;
     let mut command = yt_command(data);
     command
         .args([
@@ -1137,7 +1154,7 @@ pub struct ToolStatus {
     pub runtime: String,
 }
 pub fn tool_status(context: &Context, data: &Path) -> Result<ToolStatus, String> {
-    let _lock = TOOLS.lock().map_err(|e| e.to_string())?;
+    let _lock = tools_guard(context)?;
     context.check()?;
     let path = ytdlp_path(data);
     if !path.is_file() {
@@ -1186,7 +1203,7 @@ pub fn tool_status(context: &Context, data: &Path) -> Result<ToolStatus, String>
 }
 pub fn install_tools(context: &Context, data: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
-    let _lock = TOOLS.lock().map_err(|e| e.to_string())?;
+    let _lock = tools_guard(context)?;
     let tools = private_dir(data, &["tools"])?;
     let staging = private_dir(
         data,
@@ -1296,7 +1313,7 @@ pub fn install_tools(context: &Context, data: &Path) -> Result<(), String> {
 /// Remove only recognized tools from this Rust application's owned data.
 /// Imported stable tools and environment overrides are never removal targets.
 pub fn remove_tools(context: &Context, data: &Path) -> Result<(), String> {
-    let _lock = TOOLS.lock().map_err(|e| e.to_string())?;
+    let _lock = tools_guard(context)?;
     context.check()?;
     let marker = data.join(".betterpod-rust.json");
     let metadata = fs::symlink_metadata(&marker).map_err(|e| e.to_string())?;
@@ -1433,6 +1450,22 @@ fn extract_zip(archive: &Path, destination: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn waiting_for_youtube_tools_can_be_cancelled() {
+        let guard = TOOLS.lock().unwrap();
+        let context = Context::standalone();
+        let worker_context = context.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = thread::spawn(move || {
+            tx.send(tools_guard(&worker_context).map(|_| ())).unwrap();
+        });
+        thread::sleep(Duration::from_millis(30));
+        context.cancel();
+        let result = rx.recv_timeout(Duration::from_millis(500));
+        drop(guard);
+        worker.join().unwrap();
+        assert_eq!(result.unwrap(), Err("Cancelled".into()));
+    }
     #[test]
     fn removing_tools_preserves_music_unknown_files_and_symlink_targets() {
         let root =

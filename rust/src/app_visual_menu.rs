@@ -43,6 +43,7 @@ pub(crate) struct RowVisual {
     pub duration: String,
     pub queue_mark: String,
     pub progress: f32,
+    pub progress_visible: bool,
     pub preview: PreviewKind,
     pub search_field: bool,
     pub placeholder: String,
@@ -122,7 +123,7 @@ pub(super) fn row_height(row: &Row) -> f32 {
     if row.visual.header {
         return 44.0;
     }
-    if row.visual.progress > 0.0 {
+    if row.visual.progress_visible || row.visual.progress > 0.0 {
         return 136.0;
     }
     let mut height = 16.0 + line_box(28.0).0;
@@ -284,6 +285,13 @@ impl MenuVisual {
         }
     }
     pub fn tick(&mut self, now: f64) {
+        if self
+            .navigation
+            .as_ref()
+            .is_some_and(|n| now - n.started >= if n.cross_panel { 0.4 } else { 0.3 })
+        {
+            self.navigation = None;
+        }
         let active = self.active_view;
         let outgoing = self.navigation.as_ref().map(|nav| nav.previous_id);
         self.views.retain(|view| {
@@ -305,13 +313,6 @@ impl MenuVisual {
         }
         if now > self.brightness_until && self.brightness_osd.target() == 1.0 {
             self.brightness_osd.set(0.0, 0.3, Curve::Css, 0.0, now);
-        }
-        if self
-            .navigation
-            .as_ref()
-            .is_some_and(|n| now - n.started >= if n.cross_panel { 0.4 } else { 0.3 })
-        {
-            self.navigation = None;
         }
     }
     pub fn seed_preview_order(&mut self, order: Vec<usize>, started: f64) {
@@ -421,9 +422,10 @@ impl MenuVisual {
         };
         let previous_id = if let Some(id) = self.active_view.filter(|id| {
             self.views.iter().any(|view| {
-                view.id == *id
-                    && view.page.screen == previous.screen
-                    && view.depth == previous_depth
+                // A controller can own several logical pages above its single
+                // App stack entry. The visible view is still the outgoing one
+                // when leaving that whole controller, regardless of its depth.
+                view.id == *id && view.page.screen == previous.screen
             })
         }) {
             if let Some(view) = self.views.iter_mut().find(|view| view.id == id) {
@@ -475,6 +477,12 @@ impl MenuVisual {
             });
             id
         };
+        // Keep the destination's ancestors and the one outgoing view. Deeper
+        // pages of a departed controller, and siblings from an abandoned
+        // branch, must never reappear underneath a later panel transition.
+        self.views.retain(|view| {
+            view.id == previous_id || view.id == current_id || view.depth < current_depth
+        });
         for view in &mut self.views {
             if view.id == previous_id {
                 if forward && !cross {
@@ -1283,8 +1291,11 @@ impl App {
         self.visual_menu_rows(r, page, 0.0, width, bottom, !outgoing, false);
         r.pop_transform();
         r.pop_clip();
+        // Custom full pages share the same list viewport. Even when their
+        // header/transform is owned by the compositor, draw the mini-player
+        // that the list reserved space for.
+        self.visual_menu_mini(r, page, 0.0);
         if whole_panel {
-            self.visual_menu_mini(r, page, 0.0);
             r.pop_transform();
         }
         if page.split() && whole_panel {
@@ -2418,7 +2429,7 @@ fn draw_row(
     }
     let color = if selected { WHITE } else { th.text };
     let sub = if selected { WHITE } else { th.sub };
-    if row.visual.progress > 0.0 {
+    if row.visual.progress_visible || row.visual.progress > 0.0 {
         let title = ellipsize(r, &row.label, 28.0, 700, width - 48.0);
         let detail = ellipsize(r, &row.detail, 24.0, 400, width - 48.0);
         r.text_baseline(
@@ -2996,7 +3007,7 @@ fn draw_scrollbar(
     dark: bool,
     opacity: f32,
 ) {
-    let x0 = x + (width - 12.0) * 0.5 - 2.0;
+    let x0 = crate::render::scrollbar_track_x(x, width);
     let y0 = y + 6.0;
     let y1 = y + height - 6.0;
     let (track, border, thumb) = if dark {
@@ -3358,6 +3369,61 @@ mod tests {
                     < 1e-6
             );
         }
+    }
+    #[test]
+    fn leaving_a_nested_controller_retires_the_actual_visible_page() {
+        let home = page(Screen::Home, ViewKind::Split);
+        let music = page(Screen::Music, ViewKind::Split);
+        let mut search = page(Screen::Extra, ViewKind::Full);
+        search.title = "Search YouTube".into();
+        let mut result = search.clone();
+        result.title = "YouTube results".into();
+        let mut visual = MenuVisual::new();
+        visual.navigate(home.clone(), music.clone(), 1, true, 0.0);
+        visual.navigate(music.clone(), search.clone(), 2, true, 0.4);
+        visual.navigate(search, result.clone(), 3, true, 0.8);
+        let visible_id = visual.active_view.unwrap();
+        visual.navigate(result, music.clone(), 1, false, 1.2);
+        assert_eq!(visual.navigation.as_ref().unwrap().previous_id, visible_id);
+        assert!(visual
+            .views
+            .iter()
+            .all(|view| { view.depth <= 1 || (view.id == visible_id && view.exiting) }));
+        visual.tick(1.7);
+        assert!(visual
+            .views
+            .iter()
+            .all(|view| view.page.screen != Screen::Extra));
+        visual.navigate(music, home.clone(), 0, false, 1.8);
+        visual.tick(2.3);
+        for i in 0..3 {
+            let now = 3.0 + i as f64;
+            let apps = page(Screen::Apps, ViewKind::Split);
+            visual.navigate(home.clone(), apps.clone(), 1, true, now);
+            assert!(visual
+                .views
+                .iter()
+                .all(|view| view.page.screen != Screen::Extra));
+            visual.navigate(apps, home.clone(), 0, false, now + 0.1);
+            visual.tick(now + 0.6);
+        }
+    }
+    #[test]
+    fn entering_a_new_branch_drops_old_controller_layers_even_mid_exit() {
+        let home = page(Screen::Home, ViewKind::Split);
+        let mut search = page(Screen::Extra, ViewKind::Full);
+        search.title = "Search YouTube".into();
+        let mut visual = MenuVisual::new();
+        visual.navigate(home.clone(), search.clone(), 1, true, 0.0);
+        visual.navigate(search.clone(), search.clone(), 2, true, 0.4);
+        visual.navigate(search, home.clone(), 0, false, 0.8);
+        // No settling frame: the next real input can arrive during the exit.
+        visual.navigate(home, page(Screen::Apps, ViewKind::Split), 1, true, 0.82);
+        assert!(visual
+            .views
+            .iter()
+            .all(|view| view.page.screen != Screen::Extra));
+        assert_eq!(visual.views.len(), 2);
     }
     #[test]
     fn coverflow_preview_and_full_panel_reversals_sample_the_existing_pose() {

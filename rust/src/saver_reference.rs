@@ -1782,7 +1782,7 @@ fn rgb(r: u8, g: u8, b: u8) -> Color {
     [r as f32 / 255., g as f32 / 255., b as f32 / 255., 1.]
 }
 fn scrollbar(r: &mut Renderer, x: f32, h: f32, scroll: f32, total: f32, alpha: f64, dark: bool) {
-    let x = x + 1.;
+    let x = crate::render::scrollbar_track_x(x, 18.);
     let y = 6.;
     let height = h - 12.;
     let border = if dark {

@@ -917,3 +917,106 @@ fn custom_menu_entries_and_back_restore_visible_panels() {
     }
     app.shutdown(&r).unwrap();
 }
+
+#[test]
+#[ignore = "requires SDL/GLES and the copied music fixture"]
+fn playlist_full_page_draws_its_reserved_mini_player() {
+    let music = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_MUSIC").unwrap());
+    let assets = PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").unwrap());
+    let out = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_OUTPUT").unwrap());
+    let data = out.join(format!(
+        "playlist-mini-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&data).unwrap();
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let _audio = sdl.audio().unwrap();
+    video
+        .gl_attr()
+        .set_context_profile(sdl2::video::GLProfile::GLES);
+    video.gl_attr().set_context_version(2, 0);
+    let window = video
+        .window("Rust playlist viewport regression", 640, 480)
+        .opengl()
+        .build()
+        .unwrap();
+    let _context = window.gl_create_context().unwrap();
+    let mut r = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+    let mut app = App::new(music, data.clone(), assets, None, &r).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.scanning && Instant::now() < deadline {
+        app.tick(1. / 60., &r);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!app.scanning && !app.library.tracks.is_empty());
+    app.settings.theme = "light".into();
+    let track = app.library.tracks[0].clone();
+    app.queue = Arc::new(vec![track.path.clone()]);
+    app.now_track = Some(track);
+    app.execute(Intent::Playlist(betterpod_rust::playlists::Playlist {
+        name: "Playlist viewport".into(),
+        path: data.join("playlists/viewport.m3u8"),
+        tracks: app
+            .library
+            .tracks
+            .iter()
+            .take(16)
+            .map(|t| t.path.clone())
+            .collect(),
+        read_only: false,
+    }));
+    capture(
+        &mut app,
+        &mut r,
+        &window,
+        &out,
+        "rust-playlist-full-with-mini",
+    );
+    let page = app.navigation_page().unwrap();
+    assert_eq!(page.kind, ViewKind::Full);
+    assert!(page.mini);
+    assert_eq!(app.visual_menu_content_height(&page), 324.0);
+    let (wanted, shown) = app.visual_menu_qa_mini_state();
+    assert!(wanted && shown > 0.99, "reserved player not drawn: {shown}");
+    let image = r.capture_rgba();
+    let bottom_ink = image
+        .enumerate_pixels()
+        .filter(|(_, y, p)| *y >= 380 && (p[0] < 210 || p[1] < 210 || p[2] < 210))
+        .count();
+    assert!(
+        bottom_ink > 1000,
+        "bottom viewport is empty despite its reserved mini-player"
+    );
+    assert_eq!(r.diagnostics()["gl_errors"], serde_json::json!([]));
+    assert!(!app
+        .reference_home_rows()
+        .iter()
+        .any(|row| row.label == "Downloads"));
+    // A real local failure exercises the start/finish lifecycle without any
+    // provider or console dependency. The UI owns queued state immediately.
+    app.extras
+        .download(betterpod_rust::downloads::DownloadRequest::File {
+            url: "http://127.0.0.1:9/offline-fixture".into(),
+            name: "Local download fixture".into(),
+            category: "QA".into(),
+            tags: None,
+        });
+    let home = app.reference_home_rows();
+    let downloads = home.iter().find(|row| row.label == "Downloads").unwrap();
+    assert_eq!(downloads.visual.value, "1");
+    let until = Instant::now() + Duration::from_secs(3);
+    while app.extras.active_download_count() > 0 && Instant::now() < until {
+        app.tick(0.01, &r);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.extras.active_download_count(), 0);
+    assert!(!app
+        .reference_home_rows()
+        .iter()
+        .any(|row| row.label == "Downloads"));
+    app.shutdown(&r).unwrap();
+}

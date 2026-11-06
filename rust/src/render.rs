@@ -15,6 +15,12 @@ pub type Color = [f32; 4];
 pub const WHITE: Color = [1.0; 4];
 pub const BLACK: Color = [0.0, 0.0, 0.0, 1.0];
 
+/// Physical-pixel placement shared by menu, album-card and saver scrollbars.
+/// Keep the twelve-pixel rail centered in its reserved column.
+pub fn scrollbar_track_x(column_x: f32, column_width: f32) -> f32 {
+    column_x + (column_width - 12.0) * 0.5
+}
+
 #[derive(Clone, Copy)]
 pub struct Texture {
     pub id: glow::NativeTexture,

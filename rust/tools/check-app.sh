@@ -18,13 +18,15 @@ docker run --rm --network none -v "$ROOT:/repo:ro" -v "$MUSIC:/music:ro" -v "$RO
  -e BETTERPOD_RUST_QA_MUSIC=/music -e BETTERPOD_RUST_ASSETS_DIR=/repo/port/betterpod/assets \
  -e BETTERPOD_RUST_QA_OUTPUT=/out/app-captures \
  "$AUDIO_QA_IMAGE" sh -ec '
-  mkdir -p /w && cp -R /repo/rust /w/rust
+  mkdir -p /w
+  tar -C /repo --exclude=rust/target -cf - rust | tar -C /w -xf -
   if [ "$(uname -m)" = aarch64 ]; then export LD_LIBRARY_PATH=/repo/port/betterpod/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}; fi
   Xvfb :94 -screen 0 640x480x24 +extension GLX > /out/app-captures/xvfb.log 2>&1 &
   trap "kill $! 2>/dev/null || true" EXIT
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust -- --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::controller_routes_and_real_screens -- --ignored --exact --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::custom_menu_entries_and_back_restore_visible_panels -- --ignored --exact --nocapture --test-threads=1
+  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::playlist_full_page_draws_its_reserved_mini_player -- --ignored --exact --nocapture --test-threads=1
   # SDL dummy supports one output. A private null sink allows the retained,
   # paused music mixer plus the independent Listen/video output, without devices.
   export SDL_AUDIODRIVER=pulseaudio PULSE_SERVER=unix:/tmp/bp-qa-pulse PULSE_SINK=qa

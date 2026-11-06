@@ -2,6 +2,47 @@
 
 Branch: `hello-rust`. Target: a separate RG35XX Plus / Knulli application with the betterPod 1.1 feature set. The local checks below preceded the separate on-console session. Hardware fixes and timing measurements are recorded in [CONSOLE_QA.md](CONSOLE_QA.md). No publication or release was performed.
 
+## Manual bug reports: playlist, menus and downloads
+
+This follow-up changes only the separate Rust app. No console installation or
+hardware test was performed for this batch; the ZIP is prepared for manual
+acceptance on the device.
+
+- Full-page playlist lists now draw the mini-player whose space they reserve.
+  Empty playlist names keep the keyboard editable and show a bounded message.
+  Long notices wrap inside the display; podcast artwork reserves a placeholder
+  before loading. Scrollbar rails are centered in their reserved column.
+- Menu transitions discard abandoned controller layers. Asynchronous browser
+  results target the page that requested them, and leaving a browser cancels
+  its pending navigation. A tools-status response cannot replace YouTube search.
+- Downloads have a separate bounded worker at background priority. Archive
+  receipt reads no longer wait for an entire album transfer. Archive progress
+  counts the whole requested album, with received bytes, total size when known,
+  track status and an explicit terminal result.
+- Home shows Downloads while transfers are active, with individual progress and
+  cancellation. Progress stays in Downloads and its source page; completion or
+  failure produces one notice. Navigation and music remain independent of the
+  download queue. Transfers also retain the automatic-suspend guard when music
+  is paused.
+- YouTube operations still share one tools process group to bound memory use.
+  A concurrent YouTube request shows an explicit, cancellable waiting state.
+  This does not serialize Archive transfers with YouTube search.
+
+Focused local regressions cover layout, page ownership, cancelled searches,
+YouTube tools callbacks, concurrent browsing/download queues and cumulative
+Archive progress. Actual SDL/GLES captures verify the playlist's reserved
+mini-player and all three scrollbar widths. Fixture checks do not establish
+live-provider availability or audible continuity on the console.
+
+Validation for this batch: 238 library, 83 application and 6 proxy tests pass
+in the ordinary suite (327 total; opt-in tests remain excluded). The focused
+SDL/GLES playlist/Downloads lifecycle test and scrollbar raster test also pass.
+The AArch64 release build verifies a maximum glibc requirement of 2.28. Final
+suite, graphics and build logs are under
+`build/rust/manual-issues-2026-11-06/`; targeted service logs are under
+`build/rust/bugfix-ui/`, with the scrollbar evidence in
+`build/rust/scrollbar-qa-tests.log`.
+
 ## Local source-port checks before console fixes
 
 The local source-port implementation and integration pass is complete. Its finite

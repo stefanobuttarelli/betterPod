@@ -1,6 +1,8 @@
 //! UI for background library services. No task or menu callback performs I/O.
 #[path = "app_cover.rs"]
 mod app_cover;
+#[path = "app_services_downloads.rs"]
+mod downloads_ui;
 #[path = "app_listen.rs"]
 mod listen_ui;
 #[path = "app_metadata.rs"]
@@ -11,6 +13,9 @@ mod share_visual;
 mod videos_ui;
 #[path = "app_services_visual.rs"]
 mod visual;
+use downloads_ui::DownloadState;
+#[path = "app_services_lists.rs"]
+mod lists_ui;
 #[path = "app_weather_visual.rs"]
 mod weather_visual;
 use super::{Keyboard, KeyboardEffect, VisualAssets, FG, MUTED, WHITE};
@@ -41,6 +46,7 @@ pub(super) enum ExtraPage {
     Online(Provider),
     Podcasts,
     Downloads,
+    ActiveDownloads,
     Tools,
     Bluetooth,
     AlbumInfo,
@@ -148,6 +154,8 @@ enum Choice {
     ResumeVideo(OnlineItem, f64),
     Recent(OnlineItem),
     Download(DownloadRequest),
+    ShowDownload(u64),
+    CancelDownload(u64),
     Media(String, String, bool),
     Feed(Podcast),
     Subscribe(Podcast),
@@ -232,11 +240,16 @@ impl Item {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PageRole {
+    ActiveDownloads,
+    DownloadedFiles,
+    Tools,
     AlbumInfo,
     SongInfo(usize),
     SongsInfo,
     Combined,
     Normal,
+    Playlists(bool),
+    PlaylistSongs,
     Search(Provider, bool),
     ArchiveItem,
     PodcastFeed,
@@ -248,9 +261,13 @@ enum PageRole {
     RecentVideos,
     Sheet,
 }
+static NEXT_PAGE_KEY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 struct Page {
+    key: u64,
+    resource: Option<String>,
     mini: bool,
     role: PageRole,
+    playlist_path: Option<PathBuf>,
     title: String,
     rows: Vec<Item>,
     selected: usize,
@@ -262,6 +279,8 @@ struct Page {
 impl Page {
     fn new(title: impl Into<String>, rows: Vec<Item>) -> Self {
         Self {
+            key: NEXT_PAGE_KEY.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            resource: None,
             title: title.into(),
             rows,
             selected: 0,
@@ -269,6 +288,7 @@ impl Page {
             target: 0.0,
             mini: false,
             role: PageRole::Normal,
+            playlist_path: None,
             visual_rows: None,
             visual_status: String::new(),
         }
@@ -293,9 +313,11 @@ enum Purpose {
     Details {
         metadata: bool,
         generation: u64,
+        item: OnlineItem,
     },
     Feed {
         generation: u64,
+        podcast: Podcast,
     },
     Download,
     ArchiveStatus {
@@ -390,6 +412,7 @@ struct SearchState {
     page: u32,
     error: String,
     busy: bool,
+    generation: u64,
 }
 
 pub(super) struct Extras {
@@ -419,6 +442,10 @@ pub(super) struct Extras {
     lists: Arc<Vec<Playlist>>,
     services: Services,
     jobs: HashMap<u64, (JobHandle, Purpose)>,
+    job_pages: HashMap<u64, u64>,
+    download_states: std::collections::BTreeMap<u64, DownloadState>,
+    status_job: Option<u64>,
+    status_page: Option<u64>,
     pages: Vec<Page>,
     pending_navigation: Option<(super::Page, bool, f64)>,
     keyboard: Option<(Keyboard, Typing)>,
@@ -528,6 +555,10 @@ impl Extras {
             media_queue: Vec::new(),
             media_generation: 0,
             jobs: HashMap::new(),
+            job_pages: HashMap::new(),
+            download_states: std::collections::BTreeMap::new(),
+            status_job: None,
+            status_page: None,
             pages: Vec::new(),
             pending_navigation: None,
             keyboard: None,
@@ -729,6 +760,8 @@ impl Extras {
         self.pages.clear();
         self.push(&playlist.name, self.playlist_rows(&playlist));
         let page = self.pages.last_mut().unwrap();
+        page.role = PageRole::PlaylistSongs;
+        page.playlist_path = Some(playlist.path);
         page.mini = true;
         page.selected = 1;
     }
@@ -869,6 +902,9 @@ impl Extras {
                 }
             }
         }
+        self.status.clear();
+        self.status_job = None;
+        self.status_page = None;
         self.pages.push(Page::new(title, rows));
     }
     fn replace(&mut self, title: impl Into<String>, rows: Vec<Item>) {
@@ -876,6 +912,10 @@ impl Extras {
         let mut page = Page::new(title, rows);
         if let Some(old) = self.pages.pop() {
             if old.title == page.title {
+                page.key = old.key;
+                page.resource = old.resource;
+                page.role = old.role;
+                page.playlist_path = old.playlist_path;
                 page.selected = old.selected.min(page.rows.len().saturating_sub(1));
                 page.scroll = old.scroll;
                 page.target = old.target;
@@ -885,14 +925,57 @@ impl Extras {
         self.pages.push(page);
     }
     fn task(&mut self, task: Task, purpose: Purpose) {
-        let cover_job = matches!(purpose, Purpose::CoverContext { .. })
-            || matches!(purpose, Purpose::Combined { .. })
-                && self.combined.as_ref().is_some_and(|state| state.cover);
+        let download = DownloadState::from_task(&task);
+        if let Some(state) = &download {
+            if let Some((&id, _)) = self
+                .download_states
+                .iter()
+                .find(|(_, old)| old.active && old.key == state.key)
+            {
+                self.show_downloads(Some(id));
+                return;
+            }
+        }
+        let hidden = matches!(
+            task,
+            Task::ToolsStatus
+                | Task::Subscriptions
+                | Task::VideoCatalog
+                | Task::RememberVideoInfo { .. }
+                | Task::RememberVideo { .. }
+                | Task::ArchiveStatus { .. }
+                | Task::CacheArtwork { .. }
+        ) || matches!(
+            purpose,
+            Purpose::Combined { .. } | Purpose::CoverContext { .. } | Purpose::Stream { .. }
+        );
+        let page = self.pages.last().map(|page| page.key);
         match self.services.submit(task) {
             Ok(handle) => {
-                self.jobs.insert(handle.id, (handle, purpose));
-                if !cover_job {
+                let id = handle.id;
+                self.jobs.insert(id, (handle, purpose));
+                if let Some(page) = page {
+                    self.job_pages.insert(id, page);
+                }
+                if let Some(mut state) = download {
+                    if state.title == "YouTube download" {
+                        if let Some(item) = self.detail_item.as_ref() {
+                            state.title = item.title.clone();
+                        }
+                    }
+                    self.download_states.insert(id, state);
+                    self.refresh_download_pages();
+                    if !self
+                        .pages
+                        .last()
+                        .is_some_and(|page| page.role == PageRole::ArchiveItem)
+                    {
+                        self.show_downloads(Some(id));
+                    }
+                } else if !hidden {
                     self.status = "Working...".into();
+                    self.status_job = Some(id);
+                    self.status_page = page;
                 }
             }
             Err(error) => self.effects.push(Effect::Notice(error)),
@@ -904,6 +987,7 @@ impl Extras {
         }
     }
     pub(super) fn open(&mut self, page: ExtraPage) {
+        self.cancel_browse_jobs();
         self.pending_share = None;
         self.videos.watch_depth = None;
         self.retain_current_visual();
@@ -954,7 +1038,9 @@ impl Extras {
                     vec![Item::new("New Playlist…", Choice::NewPlaylist)],
                 );
                 self.playlist_command(playlists::Command::List);
-                self.pages.last_mut().unwrap().mini = page == ExtraPage::Playlists;
+                let target = self.pages.last_mut().unwrap();
+                target.mini = page == ExtraPage::Playlists;
+                target.role = PageRole::Playlists(page == ExtraPage::AddToPlaylist);
             }
             ExtraPage::SearchSources => {
                 self.push(
@@ -969,7 +1055,16 @@ impl Extras {
                     .filter(|p| {
                         self.youtube || !matches!(p, Provider::YouTube | Provider::YouTubePlaylists)
                     })
-                    .map(|p| Item::new(p.name(), Choice::Page(ExtraPage::Online(p))))
+                    .map(|p| {
+                        Item::new(
+                            match p {
+                                Provider::YouTube => "YouTube Videos",
+                                Provider::YouTubePlaylists => "YouTube Albums",
+                                _ => p.name(),
+                            },
+                            Choice::Page(ExtraPage::Online(p)),
+                        )
+                    })
                     .collect(),
                 );
             }
@@ -989,11 +1084,14 @@ impl Extras {
             }
             ExtraPage::Downloads => {
                 self.push("Downloaded", Vec::new());
+                self.pages.last_mut().unwrap().role = PageRole::DownloadedFiles;
                 self.task(Task::Downloaded, Purpose::Downloads);
             }
+            ExtraPage::ActiveDownloads => self.show_downloads(None),
             ExtraPage::Tools => {
                 let rows = self.tools_rows();
                 self.push("YouTube", rows);
+                self.pages.last_mut().unwrap().role = PageRole::Tools;
                 self.task(Task::ToolsStatus, Purpose::Tools);
             }
             ExtraPage::Bluetooth => {
@@ -1130,8 +1228,8 @@ impl Extras {
     fn show_playlists(&mut self) {
         let adding = self
             .pages
-            .first()
-            .is_some_and(|p| p.title == "Add to Playlist");
+            .last()
+            .is_some_and(|p| p.role == PageRole::Playlists(true));
         let mut rows = vec![Item::new("New Playlist…", Choice::NewPlaylist)];
         for playlist in self.lists.iter() {
             if adding && playlist.read_only {
@@ -1164,6 +1262,7 @@ impl Extras {
             },
             rows,
         );
+        self.pages.last_mut().unwrap().role = PageRole::Playlists(adding);
     }
     fn playlist_rows(&self, playlist: &Playlist) -> Vec<Item> {
         let playlist = Arc::new(playlist.clone());
@@ -1183,6 +1282,7 @@ impl Extras {
                 }),
                 Choice::PlaylistSong(Arc::clone(&playlist), index),
             );
+            row.visual.thumbnail = true;
             if let Some(track) = track {
                 row.detail = track.artist.clone();
                 row.cover = track.cover.clone();
@@ -1294,6 +1394,10 @@ impl Extras {
                 }
                 self.pages.pop();
                 self.generation = self.generation.wrapping_add(1);
+                self.cancel_browse_jobs();
+                self.status.clear();
+                self.status_job = None;
+                self.status_page = None;
                 if let Some(edit) = self.album_edit.as_mut() {
                     edit.scope = self.pages.last().and_then(|page| {
                         if let PageRole::SongInfo(index) = page.role {
@@ -1488,7 +1592,10 @@ impl Extras {
                     }
                 }
             }
-            if let Some((&id, _)) = self.jobs.iter().next() {
+            let current = self.pages.last().map(|page| page.key);
+            if let Some((&id, _)) = self.job_pages.iter().find(|(id, page)| {
+                Some(**page) == current && !self.download_states.contains_key(id)
+            }) {
                 if let Some((handle, _)) = self.jobs.get(&id) {
                     handle.cancel();
                     self.status = "Cancelling...".into();
@@ -1593,6 +1700,7 @@ impl Extras {
             state.page = page;
             state.error.clear();
             state.busy = true;
+            state.generation = generation;
         } else {
             self.searches.push(SearchState {
                 provider,
@@ -1603,6 +1711,7 @@ impl Extras {
                 page,
                 error: String::new(),
                 busy: true,
+                generation,
             });
         }
         let rows = self.search_rows(provider, metadata);
@@ -1633,6 +1742,16 @@ impl Extras {
     fn choose(&mut self, choice: Choice) {
         match choice {
             Choice::Video(action) => self.video_action(action),
+            Choice::ShowDownload(id) => self.show_downloads(Some(id)),
+            Choice::CancelDownload(id) => {
+                if let Some((handle, Purpose::Download)) = self.jobs.get(&id) {
+                    handle.cancel();
+                    if let Some(state) = self.download_states.get_mut(&id) {
+                        state.request_cancel();
+                    }
+                    self.refresh_download_pages();
+                }
+            }
             Choice::Dismiss => {
                 self.pages.pop();
             }
@@ -1709,6 +1828,8 @@ impl Extras {
                 self.push(&playlist.name, self.playlist_rows(&playlist));
                 let page = self.pages.last_mut().unwrap();
                 page.mini = true;
+                page.role = PageRole::PlaylistSongs;
+                page.playlist_path = Some(playlist.path.clone());
                 page.selected = 1;
             }
             Choice::PlaylistSong(playlist, index) => self.effects.push(Effect::Play {
@@ -1746,6 +1867,8 @@ impl Extras {
                 self.keyboard = Some((Keyboard::new(query), Typing::Search(provider, metadata)));
             }
             Choice::ClearSearch(provider) => {
+                self.generation = self.generation.wrapping_add(1);
+                self.cancel_browse_jobs();
                 self.searches.retain(|s| s.provider != provider);
                 let rows = if provider == Provider::Podcast {
                     self.podcast_home_rows()
@@ -1818,22 +1941,30 @@ impl Extras {
                     }
                 } else {
                     if item.provider == Provider::Archive && !metadata {
-                        self.push(
-                            "Internet Archive",
-                            vec![
-                                visual::header(&item.title),
-                                visual::fact("License", visual::license_label(&item.license)),
-                                visual::fact("Loading…", ""),
-                            ],
-                        );
-                        self.pages.last_mut().unwrap().role = PageRole::ArchiveItem;
-                        self.pages.last_mut().unwrap().selected = 1;
+                        let rows = vec![
+                            visual::header(&item.title),
+                            visual::fact("License", visual::license_label(&item.license)),
+                            visual::fact("Loading…", ""),
+                        ];
+                        if self.pages.last().is_some_and(|page| {
+                            page.role == PageRole::ArchiveItem
+                                && page.resource.as_deref() == Some(item.id.as_str())
+                        }) {
+                            self.replace("Internet Archive", rows);
+                        } else {
+                            self.push("Internet Archive", rows);
+                        }
+                        let page = self.pages.last_mut().unwrap();
+                        page.role = PageRole::ArchiveItem;
+                        page.resource = Some(item.id.clone());
+                        page.selected = 1;
                     }
                     self.task(
-                        Task::Details(item),
+                        Task::Details(item.clone()),
                         Purpose::Details {
                             metadata,
                             generation: self.generation,
+                            item,
                         },
                     );
                 }
@@ -1889,19 +2020,28 @@ impl Extras {
                 self.resolve_media(item, queue, index, video, 0.0);
             }
             Choice::Feed(podcast) => {
-                self.push(
-                    "Podcasts",
-                    vec![
-                        visual::header(&podcast.name),
-                        visual::fact("Loading episodes…", ""),
-                    ],
-                );
+                self.active_feed = None;
+                let feed = podcast.feed.clone();
+                let rows = vec![
+                    visual::header(&podcast.name),
+                    visual::fact("Loading episodes…", ""),
+                ];
+                if self.pages.last().is_some_and(|page| {
+                    page.role == PageRole::PodcastFeed
+                        && page.resource.as_deref() == Some(feed.as_str())
+                }) {
+                    self.replace("Podcasts", rows);
+                } else {
+                    self.push("Podcasts", rows);
+                }
                 self.pages.last_mut().unwrap().role = PageRole::PodcastFeed;
+                self.pages.last_mut().unwrap().resource = Some(feed);
                 self.pages.last_mut().unwrap().selected = 1;
                 self.task(
-                    Task::Feed(podcast),
+                    Task::Feed(podcast.clone()),
                     Purpose::Feed {
                         generation: self.generation,
+                        podcast,
                     },
                 );
             }
@@ -2353,9 +2493,17 @@ impl Extras {
         };
         match keyboard.handle(action) {
             KeyboardEffect::Submit => {
+                if matches!(self.keyboard.as_ref(), Some((keyboard, Typing::NewPlaylist)) if keyboard.query.trim().is_empty())
+                {
+                    self.keyboard.as_mut().unwrap().0.show(self.visual_time);
+                    self.effects
+                        .push(Effect::Notice("Enter a playlist name".into()));
+                    return;
+                }
                 if self.pending_share.is_some()
                     && matches!(self.keyboard.as_ref(),Some((keyboard,Typing::SharingName))if keyboard.query.trim().is_empty())
                 {
+                    self.keyboard.as_mut().unwrap().0.show(self.visual_time);
                     return;
                 }
                 let (mut keyboard, typing) = self.keyboard.take().unwrap();
@@ -2644,6 +2792,13 @@ impl Extras {
                     self.weather_loading = false;
                     self.weather_error.clear();
                     self.weather_results = Some(places);
+                    if !self
+                        .pages
+                        .last()
+                        .is_some_and(|page| page.role == PageRole::WeatherHome)
+                    {
+                        continue;
+                    }
                     self.replace("Weather", self.weather_rows());
                     let page = self.pages.last_mut().unwrap();
                     page.role = PageRole::WeatherHome;
@@ -2656,6 +2811,13 @@ impl Extras {
                     } else if context == "search" {
                         self.weather_loading = false;
                         self.weather_error = message;
+                        if !self
+                            .pages
+                            .last()
+                            .is_some_and(|page| page.role == PageRole::WeatherHome)
+                        {
+                            continue;
+                        }
                         self.replace("Weather", self.weather_rows());
                         self.pages.last_mut().unwrap().role = PageRole::WeatherHome;
                     } else {
@@ -2724,14 +2886,7 @@ impl Extras {
         while let Some(event) = self.playlists.poll() {
             match event {
                 playlists::Event::Listed(lists) => {
-                    self.lists = Arc::new(lists);
-                    if self
-                        .pages
-                        .first()
-                        .is_some_and(|p| p.title == "Playlists" || p.title == "Add to Playlist")
-                    {
-                        self.show_playlists();
-                    }
+                    self.apply_playlist_listing(lists);
                 }
                 playlists::Event::Created(playlist) => {
                     if self
@@ -2823,17 +2978,21 @@ impl Extras {
                     }) {
                         continue;
                     }
-                    self.status = if let Some(total) = total.filter(|n| *n > 0) {
-                        format!(
-                            "{status} - {}%",
-                            (done.saturating_mul(100) / total).min(100)
-                        )
-                    } else {
-                        status
-                    };
+                    self.apply_service_progress(id, done, total, status);
                 }
                 Event::Finished { id, result } => {
                     let purpose = self.jobs.remove(&id).map(|(_, p)| p);
+                    let owner = self.job_pages.remove(&id);
+                    let owns_page =
+                        owner.is_some() && owner == self.pages.last().map(|page| page.key);
+                    if matches!(purpose, Some(Purpose::Download)) {
+                        self.download_finished(id, &result);
+                    }
+                    if self.status_job == Some(id) {
+                        self.status.clear();
+                        self.status_job = None;
+                        self.status_page = None;
+                    }
                     if let Some(Purpose::Video(job)) = purpose.as_ref() {
                         self.video_finished(job.clone(), result);
                         continue;
@@ -2850,9 +3009,6 @@ impl Extras {
                             self.refresh_combined();
                         }
                         continue;
-                    }
-                    if !matches!(purpose, Some(Purpose::ArchiveStatus { .. })) {
-                        self.status.clear();
                     }
                     match result {
                         Err(error) => {
@@ -2875,8 +3031,61 @@ impl Extras {
                             if matches!(purpose, Some(Purpose::ArchiveStatus { .. })) {
                                 continue;
                             }
+                            if let Some(Purpose::Details {
+                                generation,
+                                item,
+                                metadata,
+                            }) = &purpose
+                            {
+                                if !owns_page || *generation != self.generation {
+                                    continue;
+                                }
+                                if item.provider == Provider::Archive {
+                                    let mut problem = visual::fact("Could not open the album", "");
+                                    problem.detail = error;
+                                    self.replace(
+                                        "Internet Archive",
+                                        vec![
+                                            visual::header(&item.title),
+                                            problem,
+                                            Item::new(
+                                                "Try Again",
+                                                Choice::Online(item.clone(), *metadata),
+                                            ),
+                                        ],
+                                    );
+                                    let page = self.pages.last_mut().unwrap();
+                                    page.role = PageRole::ArchiveItem;
+                                    page.resource = Some(item.id.clone());
+                                    continue;
+                                }
+                            }
+                            if let Some(Purpose::Feed {
+                                generation,
+                                podcast,
+                            }) = &purpose
+                            {
+                                if !owns_page || *generation != self.generation {
+                                    continue;
+                                }
+                                let mut problem = visual::fact("Could not load the episodes", "");
+                                problem.detail = error;
+                                self.replace(
+                                    "Podcasts",
+                                    vec![
+                                        visual::header(&podcast.name),
+                                        problem,
+                                        Item::new("Try Again", Choice::Feed(podcast.clone())),
+                                    ],
+                                );
+                                let page = self.pages.last_mut().unwrap();
+                                page.role = PageRole::PodcastFeed;
+                                page.resource = Some(podcast.feed.clone());
+                                continue;
+                            }
                             if matches!(purpose, Some(Purpose::Download)) {
                                 self.refresh_archive_status();
+                                continue;
                             }
                             if matches!(purpose, Some(Purpose::Merge)) {
                                 if self
@@ -2937,7 +3146,7 @@ impl Extras {
                                 ..
                             }) = purpose
                             {
-                                if generation == self.generation {
+                                if generation == self.generation && owns_page {
                                     if let Some(state) = self
                                         .searches
                                         .iter_mut()
@@ -3133,6 +3342,9 @@ impl Extras {
                                 }
 
                                 if matches!(purpose, Some(Purpose::History)) {
+                                    if !owns_page {
+                                        continue;
+                                    }
                                     self.replace(
                                         "Recently Watched",
                                         items
@@ -3146,13 +3358,12 @@ impl Extras {
                                 }
                                 if let Some(Purpose::Search {
                                     provider,
-                                    query,
-                                    page,
                                     metadata,
                                     generation,
+                                    ..
                                 }) = purpose
                                 {
-                                    if generation != self.generation {
+                                    if generation != self.generation || !owns_page {
                                         continue;
                                     }
                                     if matches!(
@@ -3191,7 +3402,7 @@ impl Extras {
                             }
                             Output::Item(item) => {
                                 if let Some(Purpose::Details { generation, .. }) = &purpose {
-                                    if *generation != self.generation {
+                                    if *generation != self.generation || !owns_page {
                                         continue;
                                     }
                                 }
@@ -3236,6 +3447,7 @@ impl Extras {
                                 }
                                 if item.provider == Provider::Archive && !metadata {
                                     self.pages.last_mut().unwrap().role = PageRole::ArchiveItem;
+                                    self.pages.last_mut().unwrap().resource = Some(item.id.clone());
                                     self.pages.last_mut().unwrap().selected =
                                         if self.pages.last().unwrap().rows.len() > 2 {
                                             2
@@ -3246,8 +3458,8 @@ impl Extras {
                                 }
                             }
                             Output::Feed { podcast, episodes } => {
-                                if let Some(Purpose::Feed { generation }) = &purpose {
-                                    if *generation != self.generation {
+                                if let Some(Purpose::Feed { generation, .. }) = &purpose {
+                                    if *generation != self.generation || !owns_page {
                                         continue;
                                     }
                                 }
@@ -3333,6 +3545,14 @@ impl Extras {
                                 }
 
                                 if matches!(purpose, Some(Purpose::Downloads)) {
+                                    if !owns_page
+                                        || !self
+                                            .pages
+                                            .last()
+                                            .is_some_and(|p| p.role == PageRole::DownloadedFiles)
+                                    {
+                                        continue;
+                                    }
                                     let rows = files
                                         .into_iter()
                                         .map(|path| {
@@ -3369,11 +3589,14 @@ impl Extras {
                                         })
                                         .collect();
                                     self.replace("Downloaded", rows);
+                                    self.pages.last_mut().unwrap().role = PageRole::DownloadedFiles;
                                 } else {
-                                    self.effects.push(Effect::Notice(format!(
-                                        "Downloaded {} files",
-                                        files.len()
-                                    )));
+                                    if !matches!(purpose, Some(Purpose::Download)) {
+                                        self.effects.push(Effect::Notice(format!(
+                                            "Downloaded {} files",
+                                            files.len()
+                                        )));
+                                    }
                                     self.effects.push(Effect::Rescan);
                                     self.task(Task::Subscriptions, Purpose::Subscriptions);
                                 }
@@ -3445,10 +3668,11 @@ impl Extras {
                                 if self
                                     .pages
                                     .last()
-                                    .is_some_and(|page| page.title == "YouTube")
+                                    .is_some_and(|page| page.role == PageRole::Tools)
                                 {
                                     let rows = self.tools_rows();
                                     self.replace("YouTube", rows);
+                                    self.pages.last_mut().unwrap().role = PageRole::Tools;
                                 }
                             }
                             Output::ToolsRemoved => {

@@ -7,6 +7,8 @@ pub(super) fn item_height(item: &Item) -> f32 {
         44.0
     } else if item.visual.search_field {
         92.0
+    } else if item.visual.progress_visible || item.visual.progress > 0.0 {
+        136.0
     } else {
         let mut height = 16.0 + crate::render::line_box(28.0).0;
         if !item.detail.is_empty() {
@@ -53,7 +55,7 @@ impl Extras {
         include_status: bool,
     ) -> Option<super::super::Page> {
         let page = self.pages.get_mut(index)?;
-        let status = if include_status {
+        let status = if include_status && self.status_page.is_none_or(|owner| owner == page.key) {
             self.status.as_str()
         } else {
             ""
@@ -553,6 +555,11 @@ impl Extras {
                 row.visual.no_arrow = true;
                 row.visual.thumbnail = true;
             }
+            // Reserve podcast artwork before its asynchronous preview arrives.
+            // The placeholder and the downloaded image must share one layout.
+            if provider == Provider::Podcast {
+                row.visual.thumbnail = true;
+            }
             let mut sub = Vec::new();
             if !item.artist.is_empty() {
                 sub.push(item.artist.clone());
@@ -658,7 +665,7 @@ impl Extras {
                     );
                 }
             }
-            rows.push(row);
+            rows.push(self.archive_download_row(&item.id, format, row));
         }
         let Some((format, files)) =
             ["FLAC", "ALAC", "WAV", "AIFF", "MP3"]
@@ -754,6 +761,7 @@ impl Extras {
                 &episode.title,
                 Choice::Episode(episode.clone(), podcast.clone()),
             );
+            row.visual.thumbnail = true;
             let mut sub = Vec::new();
             if !episode.date.is_empty() {
                 sub.push(podcast_date(
@@ -861,6 +869,7 @@ fn podcast_length(seconds: f64) -> String {
 }
 fn podcast_row(podcast: &Podcast) -> Item {
     let mut row = Item::new(&podcast.name, Choice::Feed(podcast.clone()));
+    row.visual.thumbnail = true;
     let mut sub = vec![podcast.author.clone(), podcast.genre.clone()];
     sub.retain(|s| !s.is_empty());
     if podcast.count > 0 {
@@ -1745,6 +1754,7 @@ impl Extras {
         else {
             return;
         };
+        if self.jobs.values().any(|(_, purpose)| matches!(purpose, Purpose::ArchiveStatus { item: id, generation } if *id == item.id && *generation == self.generation)) { return; }
         self.task(
             Task::ArchiveStatus { item: item.clone() },
             Purpose::ArchiveStatus {

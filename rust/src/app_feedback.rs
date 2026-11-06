@@ -7,6 +7,7 @@ pub(super) struct Feedback {
     sheet_key: Option<usize>,
     sheet_y: Anim,
     toast_text: String,
+    toast_lines: Vec<(String, f32)>,
     toast_key: Option<Instant>,
     toast_alpha: Anim,
     end_track: Option<Track>,
@@ -18,12 +19,93 @@ impl Feedback {
             sheet_key: None,
             sheet_y: Anim::new(1.0),
             toast_text: String::new(),
+            toast_lines: Vec::new(),
             toast_key: None,
             toast_alpha: Anim::new(0.0),
             end_track: None,
         }
     }
 }
+
+/// Toasts stay inside the display. Only a changed message is laid out; drawing
+/// reuses these short lines rather than measuring a potentially long error.
+fn toast_lines(text: &str, width: f32, mut measure: impl FnMut(&str) -> f32) -> Vec<String> {
+    let normalized: String = text
+        .chars()
+        .take(1024)
+        .map(|c| if c.is_whitespace() { ' ' } else { c })
+        .collect();
+    let mut rest = normalized.trim();
+    let mut lines = Vec::new();
+    while !rest.is_empty() && lines.len() < 3 {
+        let mut fit = 0;
+        let mut space = None;
+        for (start, character) in rest.char_indices() {
+            let end = start + character.len_utf8();
+            if measure(&rest[..end]) > width {
+                break;
+            }
+            fit = end;
+            if character == ' ' {
+                space = Some(start);
+            }
+        }
+        if fit == rest.len() {
+            lines.push(rest.to_owned());
+            rest = "";
+        } else if fit == 0 {
+            // A glyph wider than the available display cannot be shown whole.
+            break;
+        } else {
+            let end = space.filter(|&i| i > 0).unwrap_or(fit);
+            lines.push(rest[..end].trim_end().to_owned());
+            rest = rest[end..].trim_start();
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    if !rest.is_empty() || text.chars().nth(1024).is_some() {
+        let last = lines.last_mut().unwrap();
+        while !last.is_empty() && measure(&format!("{last}…")) > width {
+            last.pop();
+        }
+        if measure(&format!("{last}…")) <= width {
+            last.push('…');
+        }
+    }
+    lines
+}
+
+#[cfg(test)]
+mod toast_tests {
+    use super::toast_lines;
+    fn width(text: &str) -> f32 {
+        text.chars()
+            .map(|c| if c.is_ascii() { 1. } else { 2. })
+            .sum()
+    }
+    #[test]
+    fn toast_errors_wrap_inside_the_screen_without_losing_short_message_words() {
+        let message = "Choose a playlist name without path separators or control characters";
+        let lines = toast_lines(message, 26., width);
+        assert_eq!(lines.join(" "), message);
+        assert!(lines.len() > 1 && lines.len() <= 3);
+        assert!(lines.iter().all(|line| width(line) <= 26.));
+        assert_eq!(
+            toast_lines("Enter a playlist name", 26., width),
+            ["Enter a playlist name"]
+        );
+    }
+    #[test]
+    fn toast_long_paths_and_unicode_remain_bounded_and_show_truncation() {
+        let lines = toast_lines(&"長い名前/file".repeat(100), 20., width);
+        assert_eq!(lines.len(), 3);
+        assert!(lines.iter().all(|line| width(line) <= 20.));
+        assert!(lines.last().unwrap().ends_with('…'));
+    }
+}
+
 impl App {
     pub(super) fn visual_feedback_draw(&mut self, r: &mut Renderer) {
         let now = self.visual_time;
@@ -99,6 +181,15 @@ impl App {
             self.feedback.toast_key = toast_key;
             if let Some(toast) = self.toast.as_ref() {
                 self.feedback.toast_text = toast.text.clone();
+                self.feedback.toast_lines = toast_lines(&toast.text, 552.0, |text| {
+                    r.text_width_weighted(text, 26.0, 600)
+                })
+                .into_iter()
+                .map(|text| {
+                    let width = r.text_width_weighted(&text, 26.0, 600);
+                    (text, width)
+                })
+                .collect();
                 self.feedback.toast_alpha.set(
                     1.0,
                     if light { 0.0 } else { 0.2 },
@@ -118,33 +209,37 @@ impl App {
         }
         let a = self.feedback.toast_alpha.value(now) as f32;
         if a > 0.001 {
-            let text = &self.feedback.toast_text;
-            let tw = r.text_width_weighted(text, 26.0, 600);
-            let w = tw + 56.0;
+            let lines = &self.feedback.toast_lines;
+            let tw = lines.iter().map(|(_, width)| *width).fold(0.0, f32::max);
+            let w = (tw + 56.0).min(608.0);
             let x = 320.0 - w * 0.5;
-            let y = 280.0 + (1.0 - a) * 16.0;
+            let line_height = crate::render::line_box(26.0).0;
+            let h = 56.0 + lines.len().saturating_sub(1) as f32 * line_height;
+            let y = 280.0 - (h - 56.0) * 0.5 + (1.0 - a) * 16.0;
             rounded_gradient(
                 r,
                 x,
                 y,
                 w,
-                56.0,
+                h,
                 28.0,
                 &[
                     (0.0, [48.0 / 255.0, 50.0 / 255.0, 54.0 / 255.0, 0.9 * a]),
                     (1.0, [12.0 / 255.0, 13.0 / 255.0, 15.0 / 255.0, 0.9 * a]),
                 ],
             );
-            stroke_rounded(r, x, y, w, 56.0, 28.0, 1.5, [1.0, 1.0, 1.0, 0.18 * a]);
-            r.text_baseline(
-                text,
-                x + 28.0,
-                y + 28.0 + 26.0 * 0.727 * 0.5,
-                26.0,
-                600,
-                [1.0, 1.0, 1.0, a],
-                tw + 1.0,
-            );
+            stroke_rounded(r, x, y, w, h, 28.0, 1.5, [1.0, 1.0, 1.0, 0.18 * a]);
+            for (index, (text, width)) in lines.iter().enumerate() {
+                r.text_baseline(
+                    text,
+                    x + (w - width) * 0.5,
+                    y + 28.0 + 26.0 * 0.727 * 0.5 + index as f32 * line_height,
+                    26.0,
+                    600,
+                    [1.0, 1.0, 1.0, a],
+                    *width + 1.0,
+                );
+            }
         }
     }
 }

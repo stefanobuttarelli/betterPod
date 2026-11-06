@@ -134,7 +134,9 @@ pub fn status(
     data: &Path,
     item: &OnlineItem,
 ) -> Result<BTreeMap<String, (usize, u64)>, String> {
-    let _guard = OPERATION.lock().map_err(|e| e.to_string())?;
+    // Receipts are atomically replaced. Reading their last committed snapshot
+    // must not wait behind a multi-gigabyte album transfer. A file not yet
+    // published is conservatively reported as incomplete.
     context.check()?;
     let root = fs::canonicalize(data).map_err(|e| e.to_string())?;
     let directory = root.join("downloads/Internet Archive");
@@ -227,12 +229,18 @@ pub(super) fn run(
     let cover = if !item.cover.is_empty() {
         let path = dir.join("cover.jpg");
         if !path.exists() {
-            let _ = download(context, &item.cover, &path, None);
+            let artwork = context.progress_segment(0, None, "Preparing album artwork".into());
+            let _ = download(&artwork, &item.cover, &path, None);
         }
         path.is_file().then_some(path)
     } else {
         None
     };
+    let total = files.iter().try_fold(0u64, |sum, file| {
+        let size = number(file, "size").max(0.0) as u64;
+        (size > 0).then(|| sum.saturating_add(size))
+    });
+    let mut base = 0u64;
     let mut out = Vec::with_capacity(files.len());
     for (index, file) in files.iter().enumerate() {
         context.check()?;
@@ -240,6 +248,12 @@ pub(super) fn run(
         if let Some(receipt) = receipts.files.get(&id) {
             if let Some(path) = completed(&root, receipt, context)? {
                 out.push(path);
+                base = base.saturating_add(number(file, "size").max(0.0) as u64);
+                context.progress(
+                    base,
+                    total,
+                    format!("{} of {} tracks ready", index + 1, files.len()),
+                );
                 continue;
             }
         }
@@ -278,8 +292,14 @@ pub(super) fn run(
             receipts.files.insert(id.clone(), receipt);
             save(&receipt_dir, &receipts, context)
         };
+        let segment = context.progress_segment(
+            base,
+            total,
+            format!("Track {} of {}", index + 1, files.len()),
+        );
+        segment.progress(0, None, "Starting download");
         download_tagged_before_commit(
-            context,
+            &segment,
             &url,
             &target,
             None,
@@ -287,6 +307,12 @@ pub(super) fn run(
             Some(&mut before_commit),
         )?;
         out.push(target);
+        base = base.saturating_add(number(file, "size").max(0.0) as u64);
+        context.progress_important(
+            base,
+            total,
+            format!("{} of {} tracks ready", index + 1, files.len()),
+        );
     }
     Ok(out)
 }
@@ -359,6 +385,27 @@ mod tests {
         item.artist = "Synthetic Artist".into();
         item.raw = json!({"groups":{"WAV":[{"name":"01 One.wav","download_url":format!("{url}/one"),"size":444,"_betterpod_track":1,"_betterpod_total":2},{"name":"02 Two.wav","download_url":format!("{url}/two"),"size":444,"_betterpod_track":2,"_betterpod_total":2}]}});
         item
+    }
+    #[test]
+    fn receipt_status_does_not_wait_for_the_album_download_lock() {
+        let data = std::env::temp_dir().join(format!(
+            "betterpod-archive-status-live-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&data).unwrap();
+        let album = item("https://example.invalid/not-requested");
+        let guard = OPERATION.lock().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let source = data.clone();
+        let worker = thread::spawn(move || {
+            tx.send(status(&Context::standalone(), &source, &album))
+                .unwrap();
+        });
+        let result = rx.recv_timeout(Duration::from_millis(500));
+        drop(guard);
+        worker.join().unwrap();
+        assert_eq!(result.unwrap().unwrap()["WAV"], (0, 888));
+        fs::remove_dir_all(data).unwrap();
     }
     #[test]
     fn completed_subset_and_deleted_track_resume_without_duplicate_files() {

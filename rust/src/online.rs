@@ -267,6 +267,7 @@ struct Request {
 }
 pub struct Services {
     tx: Option<mpsc::SyncSender<Request>>,
+    download_tx: Option<mpsc::SyncSender<Request>>,
     events: mpsc::SyncSender<Event>,
     rx: Option<mpsc::Receiver<Event>>,
     workers: Vec<thread::JoinHandle<()>>,
@@ -279,6 +280,13 @@ pub struct Context {
     pub id: u64,
     cancelled: Arc<AtomicBool>,
     events: mpsc::SyncSender<Event>,
+    progress_scope: Option<ProgressScope>,
+}
+#[derive(Clone)]
+struct ProgressScope {
+    base: u64,
+    total: Option<u64>,
+    label: String,
 }
 impl Context {
     /// Interrupt a standalone worker's bounded request or external tool.
@@ -296,13 +304,32 @@ impl Context {
             Ok(())
         }
     }
-    pub fn progress(&self, done: u64, total: Option<u64>, status: impl Into<String>) {
-        let _ = self.events.try_send(Event::Progress {
+    pub(crate) fn progress_segment(&self, base: u64, total: Option<u64>, label: String) -> Self {
+        let mut child = self.clone();
+        child.progress_scope = Some(ProgressScope { base, total, label });
+        child
+    }
+    fn progress_event(&self, done: u64, total: Option<u64>, status: String) -> Event {
+        let (done, total, status) = if let Some(scope) = &self.progress_scope {
+            (
+                scope.base.saturating_add(done),
+                scope.total,
+                format!("{} · {status}", scope.label),
+            )
+        } else {
+            (done, total, status)
+        };
+        Event::Progress {
             id: self.id,
             done,
             total,
-            status: status.into(),
-        });
+            status,
+        }
+    }
+    pub fn progress(&self, done: u64, total: Option<u64>, status: impl Into<String>) {
+        let _ = self
+            .events
+            .try_send(self.progress_event(done, total, status.into()));
     }
     /// A final cumulative report must precede Finished. Only service workers
     /// call this; closing the receiver during shutdown releases the send.
@@ -313,12 +340,7 @@ impl Context {
         status: impl Into<String>,
     ) -> bool {
         self.events
-            .send(Event::Progress {
-                id: self.id,
-                done,
-                total,
-                status: status.into(),
-            })
+            .send(self.progress_event(done, total, status.into()))
             .is_ok()
     }
     pub fn sleep(&self, duration: Duration) -> Result<(), String> {
@@ -369,6 +391,7 @@ impl Context {
             id: 0,
             cancelled: Arc::new(AtomicBool::new(false)),
             events: tx,
+            progress_scope: None,
         }
     }
 }
@@ -424,6 +447,17 @@ pub fn number(value: &Value, key: &str) -> f64 {
 pub fn encode(value: &str) -> String {
     urlencoding::encode(value).into_owned()
 }
+fn background_download_priority() {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        // Thread-local on Linux; interactive service and audio workers retain
+        // their existing priority. Download helper processes inherit this.
+        if libc::getpriority(libc::PRIO_PROCESS, 0) < 10 {
+            libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+        }
+        libc::syscall(libc::SYS_ioprio_set, 1, 0, 3 << 13);
+    }
+}
 impl Services {
     pub fn new(data: PathBuf) -> Result<Self, String> {
         Self::new_inner(data, None)
@@ -438,32 +472,49 @@ impl Services {
     fn new_inner(data: PathBuf, music: Option<PathBuf>) -> Result<Self, String> {
         std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
         let (tx, jobs) = mpsc::sync_channel::<Request>(32);
+        let (download_tx, download_jobs) = mpsc::sync_channel::<Request>(8);
         let (events, rx) = mpsc::sync_channel(64);
         let jobs = Arc::new(Mutex::new(jobs));
-        let mut workers = Vec::with_capacity(2);
-        for n in 0..2 {
-            let jobs = jobs.clone();
+        let download_jobs = Arc::new(Mutex::new(download_jobs));
+        let mut workers = Vec::with_capacity(3);
+        for n in 0..3 {
+            // Long transfers have one bounded lane. Browsing retains both
+            // interactive workers while an album is downloading.
+            let jobs = if n == 2 {
+                download_jobs.clone()
+            } else {
+                jobs.clone()
+            };
             let data = data.clone();
             let music = music.clone();
             let worker = thread::Builder::new()
                 .name(format!("online-{n}"))
-                .spawn(move || loop {
-                    let request = match jobs.lock() {
-                        Ok(r) => match r.recv() {
-                            Ok(job) => job,
+                .spawn(move || {
+                    if n == 2 {
+                        background_download_priority();
+                    }
+                    loop {
+                        let request = match jobs.lock() {
+                            Ok(r) => match r.recv() {
+                                Ok(job) => job,
+                                Err(_) => break,
+                            },
                             Err(_) => break,
-                        },
-                        Err(_) => break,
-                    };
-                    let id = request.context.id;
-                    let result = execute(&data, music.as_deref(), &request.context, request.task);
-                    if request
-                        .context
-                        .events
-                        .send(Event::Finished { id, result })
-                        .is_err()
-                    {
-                        break;
+                        };
+                        let id = request.context.id;
+                        if n == 2 {
+                            request.context.progress(0, None, "Starting download");
+                        }
+                        let result =
+                            execute(&data, music.as_deref(), &request.context, request.task);
+                        if request
+                            .context
+                            .events
+                            .send(Event::Finished { id, result })
+                            .is_err()
+                        {
+                            break;
+                        }
                     }
                 })
                 .map_err(|e| e.to_string())?;
@@ -471,6 +522,7 @@ impl Services {
         }
         Ok(Self {
             tx: Some(tx),
+            download_tx: Some(download_tx),
             events,
             rx: Some(rx),
             workers,
@@ -492,8 +544,14 @@ impl Services {
             id: handle.id,
             cancelled: handle.cancelled.clone(),
             events: self.events.clone(),
+            progress_scope: None,
         };
-        self.tx
+        let sender = if matches!(task, Task::Download(_) | Task::DownloadWithCover { .. }) {
+            &self.download_tx
+        } else {
+            &self.tx
+        };
+        sender
             .as_ref()
             .ok_or("Services stopped")?
             .try_send(Request { task, context })
@@ -518,6 +576,7 @@ impl Services {
     pub fn shutdown(&mut self) {
         self.cancel_all();
         self.tx.take();
+        self.download_tx.take();
         self.rx.take();
         for worker in self.workers.drain(..) {
             if worker.join().is_err() {
@@ -1157,6 +1216,96 @@ fn video_history(data: &std::path::Path) -> Result<Vec<OnlineItem>, String> {
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+    #[test]
+    fn album_progress_segments_keep_one_cumulative_total() {
+        let (tx, rx) = mpsc::sync_channel(4);
+        let context = Context {
+            id: 7,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            events: tx,
+            progress_scope: None,
+        };
+        let track = context.progress_segment(100, Some(300), "Track 2 of 2".into());
+        track.progress(50, Some(200), "Downloading song.flac");
+        let Event::Progress {
+            id,
+            done,
+            total,
+            status,
+        } = rx.recv().unwrap()
+        else {
+            panic!("Expected progress");
+        };
+        assert_eq!((id, done, total), (7, 150, Some(300)));
+        assert!(status.contains("Track 2 of 2"));
+    }
+    #[test]
+    fn queued_transfers_do_not_occupy_interactive_workers() {
+        use std::io::{Read, Write};
+        let data =
+            std::env::temp_dir().join(format!("betterpod-download-lane-{}", std::process::id()));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let release = Arc::new(AtomicBool::new(false));
+        let released = release.clone();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let mut streams = Vec::new();
+            while !released.load(Ordering::Acquire) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(2)))
+                            .unwrap();
+                        let mut bytes = [0; 4096];
+                        let _ = stream.read(&mut bytes).unwrap();
+                        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\n").unwrap();
+                        streams.push(stream);
+                        let _ = ready_tx.send(());
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(2))
+                    }
+                    Err(e) => panic!("{e}"),
+                }
+            }
+            for mut stream in streams {
+                let _ = stream.write_all(b"abcdefgh");
+            }
+        });
+        let mut services = Services::new(data.clone()).unwrap();
+        for n in 0..2 {
+            services
+                .submit(Task::Download(DownloadRequest::File {
+                    url: format!("{url}/{n}"),
+                    name: format!("{n}.bin"),
+                    category: "Fixture".into(),
+                    tags: None,
+                }))
+                .unwrap();
+        }
+        ready_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let fast = services.submit(Task::Downloaded).unwrap();
+        let deadline = Instant::now() + Duration::from_millis(500);
+        let mut observed = false;
+        while Instant::now() < deadline {
+            if matches!(services.poll(), Some(Event::Finished { id, result: Ok(_) }) if id == fast.id)
+            {
+                observed = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+        release.store(true, Ordering::Release);
+        server.join().unwrap();
+        services.shutdown();
+        assert!(
+            observed,
+            "A file transfer prevented an interactive request from running"
+        );
+        std::fs::remove_dir_all(data).unwrap();
+    }
     #[test]
     fn shutdown_joins_workers_even_when_the_event_queue_is_full() {
         let data =

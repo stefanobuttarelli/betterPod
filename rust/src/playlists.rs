@@ -454,8 +454,10 @@ fn clean_name(name: &str) -> Result<String, String> {
     } else if name.to_ascii_lowercase().ends_with(".m3u") {
         name = &name[..name.len() - 4];
     }
-    if name.is_empty()
-        || name.len() > 120
+    if name.is_empty() {
+        return Err("Enter a playlist name".into());
+    }
+    if name.len() > 120
         || name.starts_with('.')
         || name.chars().any(|character| {
             character.is_control()

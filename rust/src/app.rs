@@ -456,6 +456,7 @@ pub struct App {
     search_worker: Option<thread::JoinHandle<()>>,
     search_pending: Option<String>,
     scanning: bool,
+    active_downloads: usize,
     scan_worker: Option<thread::JoinHandle<()>>,
     library_error: Option<String>,
     cover_selected: usize,
@@ -606,6 +607,7 @@ impl App {
             search_worker: None,
             search_pending: None,
             scanning: false,
+            active_downloads: 0,
             scan_worker: None,
             library_error: None,
             cover_selected: 0,
@@ -1102,10 +1104,11 @@ impl App {
             self.notify("The queue is empty");
         }
         if self.screen() != screen {
+            let previous = self.navigation_page();
             if self.screen() == Screen::Extra {
                 self.extras.retain_current_visual();
+                self.extras.leave_browse_context();
             }
-            let previous = self.navigation_page();
             let page = if screen == Screen::Extra {
                 self.extras
                     .visual_page()
@@ -1150,7 +1153,11 @@ impl App {
             return;
         }
         let previous = self.navigation_page();
+        let was_extra = self.screen() == Screen::Extra;
         self.pages.pop();
+        if was_extra && self.screen() != Screen::Extra {
+            self.extras.leave_browse_context();
+        }
         if let Some(current) = self.projected_page() {
             if let Some(last) = self.pages.last_mut() {
                 *last = current;
@@ -2257,6 +2264,9 @@ impl App {
             self.options = None;
             self.preview_focus = false;
             self.feedback = Feedback::new();
+            if self.screen() == Screen::Extra {
+                self.extras.leave_browse_context();
+            }
             self.pages.clear();
             self.pages.push(self.page(Screen::Home));
             self.visual_menu_snap_state(self.visual_time);
@@ -3358,6 +3368,11 @@ impl App {
             }
         }
         let effects = self.extras.tick(dt);
+        let active_downloads = self.extras.active_download_count();
+        if active_downloads != self.active_downloads {
+            self.active_downloads = active_downloads;
+            self.refresh_playback_menus();
+        }
         while let Some(event) = self.extras.poll_cover_search() {
             if let Some(effect) = self.curation.cover_search_event(event) {
                 self.curation_effect(effect);
@@ -3726,13 +3741,15 @@ impl App {
                 || self.pending_music.is_some()
                 || self.idle_play_pending.is_some(),
             self.idle_stopped,
+            self.active_downloads > 0,
         );
         if let Err(error) = self.idle.update(
             self.audio_snapshot.playing
                 || self.audio_snapshot.loading
                 || video_active
                 || self.pending_music.is_some()
-                || self.idle_play_pending.is_some(),
+                || self.idle_play_pending.is_some()
+                || self.active_downloads > 0,
             paused_intent,
         ) {
             if self.last_idle_error.as_deref() != Some(&error) {
@@ -4203,8 +4220,9 @@ fn idle_pause_intent(
     video_paused: Option<bool>,
     handoff_pending: bool,
     stopped: bool,
+    transferring: bool,
 ) -> bool {
-    if handoff_pending {
+    if handoff_pending || transferring {
         false
     } else {
         video_paused.unwrap_or(audio_paused || stopped)
@@ -4215,19 +4233,26 @@ mod idle_intent_tests {
     use super::*;
     #[test]
     fn natural_track_handoff_keeps_guard_grace() {
-        assert!(!idle_pause_intent(false, None, false, false));
-        assert!(!idle_pause_intent(true, None, true, false));
+        assert!(!idle_pause_intent(false, None, false, false, false));
+        assert!(!idle_pause_intent(true, None, true, false, false));
     }
     #[test]
     fn video_pause_is_independent_of_suspended_local_music() {
-        assert!(!idle_pause_intent(true, Some(false), false, false));
-        assert!(idle_pause_intent(true, Some(true), false, false));
-        assert!(!idle_pause_intent(true, Some(true), true, false));
+        assert!(!idle_pause_intent(true, Some(false), false, false, false));
+        assert!(idle_pause_intent(true, Some(true), false, false, false));
+        assert!(!idle_pause_intent(true, Some(true), true, false, false));
     }
     #[test]
     fn explicit_music_pause_and_stop_release_guard() {
-        assert!(idle_pause_intent(true, None, false, false));
-        assert!(idle_pause_intent(false, None, false, true));
+        assert!(idle_pause_intent(true, None, false, false, false));
+        assert!(idle_pause_intent(false, None, false, true, false));
+    }
+    #[test]
+    fn background_transfer_keeps_guard_while_media_is_paused() {
+        assert!(!idle_pause_intent(true, None, false, false, true));
+        assert!(!idle_pause_intent(false, None, false, true, true));
+        assert!(!idle_pause_intent(true, Some(true), false, true, true));
+        assert!(idle_pause_intent(true, None, false, false, false));
     }
 }
 

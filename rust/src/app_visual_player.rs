@@ -1656,7 +1656,7 @@ fn draw_scrollbar(
     dark: bool,
 ) {
     let bw = 12.;
-    let x = x + (w - bw) * 0.5 - 2.;
+    let x = crate::render::scrollbar_track_x(x, w);
     let y0 = y + 6.;
     let y1 = y + h - 6.;
     let border = if dark {
