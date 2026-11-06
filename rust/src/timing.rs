@@ -38,6 +38,7 @@ pub struct FrameSample {
     pub playing: bool,
     pub position: f64,
     pub audio: crate::audio::AudioTelemetry,
+    pub video: crate::video::VideoTelemetry,
 }
 pub struct Metrics {
     pub samples: Vec<FrameSample>,
@@ -62,13 +63,13 @@ impl Metrics {
         let mut file = std::io::BufWriter::new(file);
         writeln!(
             file,
-            "phase,elapsed_s,work_ms,present_ms,completion_gap_ms,playing,position_s,audio_callbacks,audio_interval_ms,audio_max_interval_ms,audio_rate,audio_chunk_frames,pcm_underruns"
+            "phase,elapsed_s,work_ms,present_ms,completion_gap_ms,playing,position_s,audio_callbacks,audio_interval_ms,audio_max_interval_ms,audio_rate,audio_chunk_frames,pcm_underruns,video_playing,video_loading,video_failed,video_position_s,video_frames,video_frame_pts_s,video_underruns,video_generation"
         )
         .map_err(|e| e.to_string())?;
         for s in &self.samples {
             writeln!(
                 file,
-                "{},{:.6},{:.6},{:.6},{:.6},{},{:.6},{},{:.6},{:.6},{},{},{}",
+                "{},{:.6},{:.6},{:.6},{:.6},{},{:.6},{},{:.6},{:.6},{},{},{},{},{},{},{:.6},{},{:.6},{},{}",
                 s.phase,
                 s.elapsed,
                 s.work_ms,
@@ -81,7 +82,8 @@ impl Metrics {
                 s.audio.max_interval_ms,
                 s.audio.rate,
                 s.audio.chunk_frames,
-                s.audio.underruns
+                s.audio.underruns,s.video.playing,s.video.loading,s.video.failed,s.video.position,
+                s.video.frames,s.video.frame_pts,s.video.underruns,s.video.generation
             )
             .map_err(|e| e.to_string())?;
         }

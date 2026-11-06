@@ -254,8 +254,9 @@ fn shadow_text(
     color: Color,
     width: f32,
 ) {
+    let value = super::super::app_visual_menu::ellipsize(r, value, size, weight, width);
     r.text_baseline(
-        value,
+        &value,
         x + 1.,
         base + 2.,
         size,
@@ -263,7 +264,7 @@ fn shadow_text(
         [0., 20. / 255., 50. / 255., 0.45 * color[3]],
         width,
     );
-    r.text_baseline(value, x, base, size, weight, color, width);
+    r.text_baseline(&value, x, base, size, weight, color, width);
 }
 fn center(r: &mut Renderer, value: &str, cx: f32, base: f32, size: f32, weight: u16, color: Color) {
     let width = r.text_width_weighted(value, size, weight);

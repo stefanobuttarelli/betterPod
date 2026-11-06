@@ -110,16 +110,37 @@ fn roots(config: &m::Config) -> Vec<PathBuf> {
     if Path::new("/userdata").is_dir() {
         roots.push("/userdata".into());
     }
-    if let Ok(entries) = fs::read_dir("/media") {
-        for entry in entries.flatten().take(1024) {
-            if !entry.file_name().to_string_lossy().starts_with('.')
-                && entry.file_type().is_ok_and(|m| m.is_dir())
-            {
-                roots.push(entry.path());
-            }
-        }
+    if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
+        roots.extend(media_mounts(&mounts));
     }
     roots
+}
+// A directory under /media can belong to its temporary RAM filesystem.
+// Only offer mounted storage, never an unmounted placeholder directory.
+fn media_mounts(mounts: &str) -> Vec<PathBuf> {
+    mounts
+        .lines()
+        .take(4096)
+        .filter_map(|line| {
+            let fields: Vec<_> = line.split_whitespace().take(4).collect();
+            if fields.len() < 4
+                || matches!(
+                    fields[2],
+                    "tmpfs" | "ramfs" | "devtmpfs" | "overlay" | "squashfs"
+                )
+                || !fields[3].split(',').any(|option| option == "rw")
+            {
+                return None;
+            }
+            let mount = fields[1]
+                .replace("\\040", " ")
+                .replace("\\011", "\t")
+                .replace("\\012", "\n")
+                .replace("\\134", "\\");
+            let path = PathBuf::from(mount);
+            (path.starts_with("/media") && path != Path::new("/media")).then_some(path)
+        })
+        .collect()
 }
 fn cards(config: &m::Config) -> Vec<Card> {
     cards_for_roots(config, roots(config))
@@ -288,6 +309,12 @@ fn create_folder(path: &Path, protected: &[PathBuf]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn media_cards_require_a_writable_persistent_mount() {
+        let mounts = "tmpfs /media tmpfs rw 0 0\n/dev/mmcblk1p1 /media/SD\\040CARD exfat rw,nosuid 0 0\ntmpfs /media/SHARE tmpfs rw 0 0\n/dev/loop0 /media/BOOT squashfs ro 0 0\n/dev/sda1 /media/LOCKED ext4 ro 0 0\n/dev/mmcblk0p2 /userdata ext4 rw 0 0\n";
+        assert_eq!(media_mounts(mounts), vec![PathBuf::from("/media/SD CARD")]);
+        assert!(media_mounts("invalid\n").is_empty());
+    }
     #[test]
     fn destination_probe_distinguishes_owned_and_foreign_data() {
         let root =

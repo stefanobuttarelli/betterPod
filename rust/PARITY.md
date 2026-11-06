@@ -3,7 +3,7 @@
 This local `hello-rust` branch keeps the independent Rust installation and uses
 the Go 1.1 source as the contract for menus, controls, persistence, layout and
 animation. The prior playable prototype is not a completion baseline. No console
-deployment, hardware benchmark, PR, push or release belongs to this pass.
+deployment, hardware benchmark, PR, push or release belonged to this local pass. The later SSH session and its fixes are recorded in [CONSOLE_QA.md](CONSOLE_QA.md).
 
 ## Acceptance
 
@@ -43,7 +43,7 @@ identity or every possible service, error and transition path.
 
 ## Separate acceptance stage
 
-The console run remains deliberately separate. Verify audible continuity,
+The first muted console run is now recorded in `CONSOLE_QA.md`. Further acceptance must verify audible continuity,
 Bluetooth, controls, power behavior and frame-time distribution on the Anbernic
 with the final UI workload. Provider availability, challenge handling and rate
 limits also remain unverified by local fixtures. Broader service/error/motion

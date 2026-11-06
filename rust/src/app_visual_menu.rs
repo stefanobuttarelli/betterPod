@@ -515,6 +515,16 @@ impl MenuVisual {
 }
 
 impl App {
+    pub(super) fn visual_menu_active_page(&self) -> Option<Page> {
+        self.visual_menu
+            .active_view
+            .and_then(|id| self.visual_menu.views.iter().find(|view| view.id == id))
+            .map(|view| view.page.clone())
+    }
+    pub(super) fn visual_menu_remote_state(&self) -> serde_json::Value {
+        serde_json::json!({"active":self.visual_menu.active_view,"left":anim_value(&self.visual_menu.left_panel,self.visual_time),"full":anim_value(&self.visual_menu.full_panel,self.visual_time),
+        "views":self.visual_menu.views.iter().map(|v|serde_json::json!({"id":v.id,"screen":format!("{:?}",v.page.screen),"kind":format!("{:?}",v.page.kind),"depth":v.depth,"enter":anim_value(&v.enter,self.visual_time),"hide":anim_value(&v.hide,self.visual_time),"exiting":v.exiting})).collect::<Vec<_>>()})
+    }
     /// False asks the caller to use the source's fallback action sheet.
     pub(super) fn visual_menu_ask_clear_now_playing(&mut self) -> bool {
         if !self
@@ -777,14 +787,15 @@ impl App {
 
     fn visual_menu_sync(&mut self, now: f64) {
         self.visual_menu.tick(now);
-        let active_page = if self.screen() == Screen::Extra {
-            self.extras
-                .visual_page()
-                .or_else(|| self.pages.last().cloned())
-        } else {
-            self.pages.last().cloned()
-        };
+        let active_page = self.projected_page().or_else(|| self.pages.last().cloned());
         if let Some(page) = active_page.as_ref() {
+            // Shared custom controllers can switch Split/Full without adding
+            // an App stack entry. Keep header/panel metadata consistent.
+            if let Some(last) = self.pages.last_mut() {
+                last.kind = page.kind;
+                last.mini = page.mini;
+                last.title = page.title.clone();
+            }
             if let Some(view) = self
                 .visual_menu
                 .active_view

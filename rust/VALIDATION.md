@@ -1,8 +1,8 @@
 # Local validation — 2026-11-06
 
-Branch: `hello-rust`. Target: a separate RG35XX Plus / Knulli application with the betterPod 1.1 feature set. No console connection, installation, publication or release was performed during these checks.
+Branch: `hello-rust`. Target: a separate RG35XX Plus / Knulli application with the betterPod 1.1 feature set. The local checks below preceded the separate on-console session. Hardware fixes and timing measurements are recorded in [CONSOLE_QA.md](CONSOLE_QA.md). No publication or release was performed.
 
-## Current source-port checks
+## Local source-port checks before console fixes
 
 The local source-port implementation and integration pass is complete. Its finite
 scope, visual differences and deferred acceptance are recorded in
@@ -22,8 +22,7 @@ scope, visual differences and deferred acceptance are recorded in
 Current logs are `build/rust/parity-final-all-build.log`,
 `parity-final-app-check.log`, `parity-final-mac-build.log`,
 `parity-media-check.log`, `listen-aac-roundtrip.log` and
-`visual-parity/final65-compare.log` under the same directory. No current hardware
-performance result is available.
+`visual-parity/final65-compare.log` under the same directory. The subsequent hardware results are recorded separately in `CONSOLE_QA.md`.
 
 ## Historical prototype evidence
 
@@ -66,7 +65,7 @@ The 10,000-track controller fixture prepares immutable navigation rows on a work
 
 ## Hardware acceptance still required
 
-On the Anbernic, compare the stable app with the separate Rust app using the same music, formats, volume and headphones. Measure frame-time percentiles, CPU/RAM and PipeWire error deltas while listening through active navigation, each saver, downloads, Share, screen blanking, natural track changes and pause/resume. Test 60 Hz first; use 50/40/30 only if the lower cadence improves measured consistency and preserves uninterrupted audio.
+The initial muted console comparison covers Cover Flow, the music player, weather and live YouTube. Continue acceptance on the Anbernic with controlled listening and headphones. Measure frame-time percentiles, CPU/RAM and PipeWire error deltas while listening through active navigation, each saver, downloads, Share, screen blanking, natural track changes and pause/resume. Test 60 Hz first; use 50/40/30 only if the lower cadence improves measured consistency and preserves uninterrupted audio.
 
 The real provider implementations still need live service checks for availability, challenge handling and rate limits. Physical Bluetooth controls, brightness and power behavior also require the deferred console session. The independent Rust updater has no published feed; it never consumes the stable Go release manifests.
 

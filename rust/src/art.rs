@@ -14,6 +14,7 @@ struct Pixels {
     path: PathBuf,
     result: Result<image::RgbaImage, String>,
     palette: Option<[[f32; 4]; 6]>,
+    mipmaps: Vec<image::RgbaImage>,
 }
 struct Decoders {
     tx: Option<mpsc::SyncSender<(u64, PathBuf)>>,
@@ -63,6 +64,7 @@ impl Decoders {
                             break;
                         }
                         let palette = result.as_ref().ok().map(colors);
+                        let mipmaps = result.as_ref().ok().map(mipmap_levels).unwrap_or_default();
                         if stop.load(Ordering::Acquire) {
                             break;
                         }
@@ -72,6 +74,7 @@ impl Decoders {
                                 path,
                                 result,
                                 palette,
+                                mipmaps,
                             })
                             .is_err()
                         {
@@ -121,7 +124,8 @@ impl Artwork {
     pub fn new(renderer: &Renderer, _assets: &Path) -> Result<Self, String> {
         let image = raster_default_artwork(512)?;
         let decoders = Decoders::new()?;
-        let placeholder = renderer.upload(image.width(), image.height(), image.as_raw())?;
+        let placeholder =
+            renderer.upload_artwork(image.width(), image.height(), image.as_raw(), &[])?;
         Ok(Self {
             decoders,
             generation: 0,
@@ -170,10 +174,9 @@ impl Artwork {
                 continue;
             }
             self.pending.remove(&result.path);
-            match result
-                .result
-                .and_then(|p| renderer.upload(p.width(), p.height(), p.as_raw()))
-            {
+            match result.result.and_then(|p| {
+                renderer.upload_artwork(p.width(), p.height(), p.as_raw(), &result.mipmaps)
+            }) {
                 Ok(texture) => {
                     if let Some(palette) = result.palette {
                         self.palettes.insert(result.path.clone(), palette);
@@ -411,6 +414,27 @@ fn colors(image: &image::RgbaImage) -> [[f32; 4]; 6] {
             1.,
         ]
     })
+}
+// Driver-generated mipmaps can alias odd-sized images. Prepare their area
+// filtered levels on the bounded decoder workers, never in the UI loop.
+pub(crate) fn mipmap_levels(image: &image::RgbaImage) -> Vec<image::RgbaImage> {
+    if image.width().is_power_of_two() && image.height().is_power_of_two() {
+        return Vec::new();
+    }
+    let mut levels: Vec<image::RgbaImage> = Vec::new();
+    let (mut width, mut height) = (image.width(), image.height());
+    while width > 1 || height > 1 {
+        width = (width / 2).max(1);
+        height = (height / 2).max(1);
+        let previous = levels.last().unwrap_or(image);
+        levels.push(image::imageops::resize(
+            previous,
+            width,
+            height,
+            image::imageops::FilterType::Triangle,
+        ));
+    }
+    levels
 }
 fn decode(path: &Path) -> Result<image::RgbaImage, String> {
     let mut reader = image::ImageReader::open(path)

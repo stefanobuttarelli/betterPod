@@ -2,7 +2,7 @@
 //! presentation clock. Network, probing and decode never run on the UI thread.
 use crate::online::StreamSource;
 use crate::pcm::{PcmOutput, Ring};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -52,6 +52,17 @@ impl Drop for VideoFrame {
         let _ = self.recycle.try_send(std::mem::take(&mut self.pixels));
     }
 }
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VideoTelemetry {
+    pub playing: bool,
+    pub loading: bool,
+    pub failed: bool,
+    pub position: f64,
+    pub frames: u64,
+    pub frame_pts: f64,
+    pub underruns: u64,
+    pub generation: u64,
+}
 pub struct VideoPlayer {
     tx: mpsc::SyncSender<(u64, VideoCommand)>,
     rx: mpsc::Receiver<VideoFrame>,
@@ -63,6 +74,8 @@ pub struct VideoPlayer {
     mute: Arc<AtomicBool>,
     control: Arc<Mutex<()>>,
     desired_pause: Arc<AtomicBool>,
+    shown: Cell<u64>,
+    shown_pts: Cell<f64>,
 }
 impl VideoPlayer {
     pub fn new() -> Result<Self, String> {
@@ -115,6 +128,8 @@ impl VideoPlayer {
             mute,
             control,
             desired_pause,
+            shown: Cell::new(0),
+            shown_pts: Cell::new(0.),
         })
     }
     pub fn command(&self, command: VideoCommand) -> bool {
@@ -178,7 +193,28 @@ impl VideoPlayer {
                 latest = Some(frame);
             }
         }
+        if let Some(frame) = latest.as_ref() {
+            self.shown.set(self.shown.get().wrapping_add(1));
+            self.shown_pts.set(frame.pts);
+        }
         latest
+    }
+    pub fn telemetry(&self) -> VideoTelemetry {
+        let make = |s: &VideoSnapshot| VideoTelemetry {
+            playing: s.playing,
+            loading: s.loading,
+            failed: s.error.is_some(),
+            position: s.position,
+            frames: self.shown.get(),
+            frame_pts: self.shown_pts.get(),
+            underruns: s.underruns,
+            generation: s.generation,
+        };
+        if let Ok(s) = self.shared.try_read() {
+            make(&s)
+        } else {
+            make(&self.cached.borrow())
+        }
     }
     pub fn shutdown(&mut self) {
         self.mute.store(true, Ordering::Release);
@@ -852,6 +888,8 @@ mod tests {
                 mute: Arc::new(AtomicBool::new(false)),
                 control: Arc::new(Mutex::new(())),
                 desired_pause: Arc::new(AtomicBool::new(false)),
+                shown: Cell::new(0),
+                shown_pts: Cell::new(0.),
             },
             commands,
         )

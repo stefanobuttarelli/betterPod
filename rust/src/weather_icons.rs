@@ -14,6 +14,8 @@ use std::{
 };
 use tiny_skia as sk;
 const FRAMES: i16 = 60;
+const LOOP: i16 = -2;
+const COLUMNS: u32 = 8;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Kind {
@@ -94,6 +96,8 @@ struct Key {
 struct Pixels {
     key: Key,
     pixels: Vec<u8>,
+    width: u32,
+    height: u32,
 }
 struct Cache {
     tx: Option<mpsc::SyncSender<Key>>,
@@ -103,6 +107,9 @@ struct Cache {
     pending: HashSet<Key>,
     textures: HashMap<Key, (Texture, Instant)>,
     bytes: usize,
+    loop_draws: u64,
+    loop_waits: u64,
+    last_loop: Option<Key>,
 }
 impl Cache {
     fn new() -> Self {
@@ -117,16 +124,36 @@ impl Cache {
                     if flag.load(Ordering::Acquire) {
                         break;
                     }
-                    let pixels = raster(
-                        key.kind,
-                        key.size as u32,
-                        if key.frame < 0 {
-                            0.3
-                        } else {
-                            key.frame as f64 / FRAMES as f64
-                        },
-                    );
-                    if results.send(Pixels { key, pixels }).is_err() {
+                    let (pixels, width, height) = if key.frame == LOOP {
+                        let Some(pixels) = raster_loop(key.kind, key.size as u32, &flag) else {
+                            break;
+                        };
+                        let side = key.size as u32 * COLUMNS;
+                        (pixels, side, side)
+                    } else {
+                        (
+                            raster(
+                                key.kind,
+                                key.size as u32,
+                                if key.frame < 0 {
+                                    0.3
+                                } else {
+                                    key.frame as f64 / FRAMES as f64
+                                },
+                            ),
+                            key.size as u32,
+                            key.size as u32,
+                        )
+                    };
+                    if results
+                        .send(Pixels {
+                            key,
+                            pixels,
+                            width,
+                            height,
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -140,6 +167,9 @@ impl Cache {
             pending: HashSet::new(),
             textures: HashMap::new(),
             bytes: 0,
+            loop_draws: 0,
+            loop_waits: 0,
+            last_loop: None,
         }
     }
     fn request(&mut self, key: Key) {
@@ -156,11 +186,7 @@ impl Cache {
                 break;
             };
             self.pending.remove(&result.key);
-            if let Ok(texture) = r.upload(
-                result.key.size as u32,
-                result.key.size as u32,
-                &result.pixels,
-            ) {
+            if let Ok(texture) = r.upload(result.width, result.height, &result.pixels) {
                 if let Some((old, _)) = self.textures.insert(result.key, (texture, Instant::now()))
                 {
                     r.delete_texture(old);
@@ -254,6 +280,18 @@ pub fn poll_icons(r: &Renderer) {
         }
     });
 }
+/// Explicit diagnostic snapshot; no JSON work runs during ordinary drawing.
+pub fn icon_cache_diagnostics() -> serde_json::Value {
+    CACHE.with(|cache| {
+        let cache = cache.borrow();
+        cache.as_ref().map_or(serde_json::Value::Null, |c| serde_json::json!({
+            "bytes":c.bytes,"textures":c.textures.len(),"pending":c.pending.len(),
+            "ready_loops":c.textures.keys().filter(|key|key.frame==LOOP).count(),
+            "loop_draws":c.loop_draws,"loop_waits":c.loop_waits,
+            "last":c.last_loop.map(|k|serde_json::json!({"kind":format!("{:?}",k.kind),"size":k.size,"frame":k.frame}))
+        }))
+    })
+}
 /// `phase` is normalized 0..1 for the original 3-second, 60-frame loop.
 /// A negative phase selects the original still phase (0.3).
 pub fn draw_icon(r: &mut Renderer, code: i32, is_day: bool, x: f32, y: f32, size: f32, phase: f64) {
@@ -275,11 +313,39 @@ pub fn draw_icon(r: &mut Renderer, code: i32, is_day: bool, x: f32, y: f32, size
         c.poll(r);
         let still = Key { frame: -1, ..key };
         c.request(still);
-        if key.frame >= 0 {
-            c.request(key);
+        // Publish the entire loop atomically. Requesting only the current
+        // frame made a cache miss jump back to the still pose mid-animation.
+        // Native animated icons are at most 256px: their 8x8 atlas fits a
+        // 2048px GLES2 texture and the existing 32 MiB cache budget.
+        let animated = key.frame >= 0 && key.size <= 256;
+        let atlas = Key { frame: LOOP, ..key };
+        if animated {
+            c.last_loop = Some(key);
+            c.request(atlas);
         }
-        if let Some(t) = c.texture(key).or_else(|| c.texture(still)) {
-            r.image_uv(t, [x, y, size, size], [0., 0., 1., 1.], 1.);
+        if let Some(t) = animated.then(|| c.texture(atlas)).flatten() {
+            c.loop_draws += 1;
+            let col = key.frame as u32 % COLUMNS;
+            let row = key.frame as u32 / COLUMNS;
+            let n = COLUMNS as f32;
+            r.image_uv(
+                t,
+                [x, y, size, size],
+                [
+                    col as f32 / n,
+                    row as f32 / n,
+                    (col + 1) as f32 / n,
+                    (row + 1) as f32 / n,
+                ],
+                1.,
+            );
+        } else {
+            if animated {
+                c.loop_waits += 1;
+            }
+            if let Some(t) = c.texture(still) {
+                r.image_uv(t, [x, y, size, size], [0., 0., 1., 1.], 1.);
+            }
         }
     });
 }
@@ -945,9 +1011,105 @@ fn raster(kind: Kind, size: u32, phase: f64) -> Vec<u8> {
     }
     pixels
 }
+fn raster_loop(kind: Kind, size: u32, stop: &AtomicBool) -> Option<Vec<u8>> {
+    let side = size * COLUMNS;
+    let mut atlas = vec![0; side as usize * side as usize * 4];
+    for frame in 0..FRAMES {
+        if stop.load(Ordering::Acquire) {
+            return None;
+        }
+        let pixels = raster(kind, size, frame as f64 / FRAMES as f64);
+        let x = frame as u32 % COLUMNS * size;
+        let y = frame as u32 / COLUMNS * size;
+        for row in 0..size {
+            let from = row as usize * size as usize * 4;
+            let to = ((y + row) as usize * side as usize + x as usize) * 4;
+            atlas[to..to + size as usize * 4]
+                .copy_from_slice(&pixels[from..from + size as usize * 4]);
+        }
+    }
+    Some(atlas)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires SDL/GLES and original fonts; run with Xvfb"]
+    fn complete_rain_loops_draw_every_phase_without_still_fallback() {
+        let assets =
+            std::path::PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").unwrap());
+        let sdl = sdl2::init().unwrap();
+        let video = sdl.video().unwrap();
+        video
+            .gl_attr()
+            .set_context_profile(sdl2::video::GLProfile::GLES);
+        video.gl_attr().set_context_version(2, 0);
+        let window = video
+            .window("Rain loop", 640, 480)
+            .opengl()
+            .hidden()
+            .build()
+            .unwrap();
+        let _context = window.gl_create_context().unwrap();
+        let mut renderer = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+        warm_icons(&[168, 76, 256]);
+        let deadline = Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            renderer.begin([1.; 4]);
+            draw_icon(&mut renderer, 61, true, 0., 0., 168., 0.);
+            draw_icon(&mut renderer, 61, true, 168., 0., 256., 0.);
+            renderer.finish();
+            let ready = CACHE.with(|c| {
+                let c = c.borrow();
+                let c = c.as_ref().unwrap();
+                [168, 256].iter().all(|&size| {
+                    c.textures.contains_key(&Key {
+                        kind: Kind::Rain,
+                        size,
+                        frame: LOOP,
+                    })
+                })
+            });
+            if ready {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "both complete loops must become ready"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        for frame in 0..FRAMES {
+            renderer.begin([1.; 4]);
+            let phase = (frame as f64 + 0.25) / FRAMES as f64;
+            draw_icon(&mut renderer, 61, true, 0., 0., 168., phase);
+            draw_icon(&mut renderer, 61, true, 168., 0., 256., phase);
+            renderer.finish();
+            let image = renderer.capture_rgba();
+            for (size, left) in [(168, 0), (256, 168)] {
+                let reference = raster(Kind::Rain, size, frame as f64 / FRAMES as f64);
+                let mut error = 0_u64;
+                for y in 0..size {
+                    for x in 0..size {
+                        let p = &reference[((y * size + x) * 4) as usize..];
+                        let actual = image.get_pixel(left + x, y);
+                        for ch in 0..3 {
+                            let expected =
+                                (p[ch] as u32 * p[3] as u32 + 255 * (255 - p[3] as u32) + 127)
+                                    / 255;
+                            error += actual[ch].abs_diff(expected as u8) as u64;
+                        }
+                    }
+                }
+                assert!(
+                    (error as f64) / ((size * size * 3) as f64) < 2.,
+                    "wrong rain phase {frame} at {size}px: {error}"
+                );
+            }
+        }
+        assert_eq!(renderer.diagnostics()["gl_errors"], serde_json::json!([]));
+        close_icons(&renderer);
+    }
     #[test]
     fn all_three_native_forecast_sizes_are_prewarmed() {
         warm_icons(&[168, 76, 256]);

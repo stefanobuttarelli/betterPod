@@ -34,6 +34,8 @@ use app_feedback::Feedback;
 mod app_compositor;
 #[path = "app_keyboard.rs"]
 mod app_keyboard;
+#[path = "app_remote_qa.rs"]
+mod app_remote_qa;
 #[path = "app_stream_control.rs"]
 mod app_stream_control;
 use app_keyboard::{Keyboard, KeyboardEffect};
@@ -1103,8 +1105,15 @@ impl App {
             if self.screen() == Screen::Extra {
                 self.extras.retain_current_visual();
             }
-            let previous = self.pages.last().cloned();
-            self.pages.push(self.page(screen));
+            let previous = self.navigation_page();
+            let page = if screen == Screen::Extra {
+                self.extras
+                    .visual_page()
+                    .unwrap_or_else(|| self.page(screen))
+            } else {
+                self.page(screen)
+            };
+            self.pages.push(page);
             if !previous.as_ref().is_some_and(|p| {
                 matches!(p.screen, Screen::NowPlaying | Screen::CoverFlow)
                     && matches!(screen, Screen::NowPlaying | Screen::CoverFlow)
@@ -1121,6 +1130,38 @@ impl App {
             self.keyboard = Some(Keyboard::new(self.search_query.clone()));
             self.start_search();
         }
+    }
+    /// The controller's actual page owns its panel kind, not the App wrapper.
+    fn projected_page(&mut self) -> Option<Page> {
+        match self.screen() {
+            Screen::Extra => self.extras.visual_page(),
+            Screen::Files => Some(self.files.visual_page()),
+            Screen::Curation => self.curation.visual_page(),
+            Screen::Maintenance => self.maintenance.as_mut().and_then(|m| m.visual_page()),
+            _ => self.pages.last().cloned(),
+        }
+    }
+    fn navigation_page(&mut self) -> Option<Page> {
+        self.projected_page()
+            .or_else(|| {
+                self.visual_menu_active_page()
+                    .filter(|p| p.screen == self.screen())
+            })
+            .or_else(|| self.pages.last().cloned())
+    }
+    /// Every exit must retarget both panels and retire the outgoing view.
+    fn pop_navigation_page(&mut self) {
+        if self.pages.len() <= 1 {
+            return;
+        }
+        let previous = self.navigation_page();
+        self.pages.pop();
+        if let Some(current) = self.projected_page() {
+            if let Some(last) = self.pages.last_mut() {
+                *last = current;
+            }
+        }
+        self.visual_menu_navigation(previous, false);
     }
     fn refresh_page(&mut self) {
         let screen = self.screen();
@@ -2701,8 +2742,7 @@ impl App {
         match effect {
             FilesEffect::Exit => {
                 if self.screen() == Screen::Files && self.pages.len() > 1 {
-                    let previous = self.pages.pop();
-                    self.visual_menu_navigation(previous, false);
+                    self.pop_navigation_page();
                 }
             }
             FilesEffect::Notice(message) => self.notify(message),
@@ -2758,6 +2798,11 @@ impl App {
     pub fn audio_telemetry(&self) -> crate::audio::AudioTelemetry {
         self.audio.telemetry()
     }
+    pub fn video_telemetry(&self) -> betterpod_rust::video::VideoTelemetry {
+        self.video
+            .as_ref()
+            .map_or_else(Default::default, |v| v.telemetry())
+    }
     pub fn install_maintenance(&mut self, mut controller: MaintenanceController) {
         let visible = controller.has_visible_transfer();
         controller.set_beta(self.settings.beta_updates);
@@ -2773,7 +2818,7 @@ impl App {
         match effect {
             MaintenanceEffect::Exit => {
                 if self.screen() == Screen::Maintenance && self.pages.len() > 1 {
-                    self.pages.pop();
+                    self.pop_navigation_page();
                 }
             }
             MaintenanceEffect::UpdateAvailable(available) => {
@@ -2795,10 +2840,7 @@ impl App {
     fn curation_effect(&mut self, effect: CurationEffect) {
         match effect {
             CurationEffect::Close => {
-                self.curation.close();
-                if self.screen() == Screen::Curation && self.pages.len() > 1 {
-                    self.pages.pop();
-                }
+                self.close_curation_page();
             }
             CurationEffect::StartCoverSearch(albums) => {
                 match self.extras.start_missing_covers(albums) {
@@ -3339,7 +3381,7 @@ impl App {
                 ExtraEffect::Exit => {
                     self.stop_inline_preview();
                     if self.screen() == Screen::Extra && self.pages.len() > 1 {
-                        self.pages.pop();
+                        self.pop_navigation_page();
                     }
                 }
                 ExtraEffect::PreviewOpening { item, queue, index } => {
@@ -3384,13 +3426,13 @@ impl App {
                 }
                 ExtraEffect::MergeApplied => {
                     if self.screen() == Screen::Extra && self.pages.len() > 1 {
-                        self.pages.pop();
+                        self.pop_navigation_page();
                     }
                     self.close_curation_page();
                 }
                 ExtraEffect::MergeFailed(error) => {
                     if self.screen() == Screen::Extra && self.pages.len() > 1 {
-                        self.pages.pop();
+                        self.pop_navigation_page();
                     }
                     self.notify(error);
                 }
@@ -3750,6 +3792,8 @@ impl App {
             Screen::Visualizer => "visualizer",
             Screen::Game => "game",
             Screen::Albums => "albums",
+            Screen::Video => "video",
+            Screen::Extra => "services",
             _ => "home",
         };
     }
@@ -4004,10 +4048,10 @@ impl App {
         }
     }
     fn close_curation_page(&mut self) {
-        self.curation.close();
         if self.screen() == Screen::Curation && self.pages.len() > 1 {
-            self.pages.pop();
+            self.pop_navigation_page();
         }
+        self.curation.close();
     }
     fn configure_saver(&mut self, visualizer: bool) {
         self.saver.set_style(if visualizer {

@@ -4,7 +4,8 @@ use crate::{render::Renderer, storage};
 #[path = "weather_icons.rs"]
 mod reference_icons;
 pub use reference_icons::{
-    close_icons, draw_icon as draw_reference_icon, poll_icons, sky, warm_icons,
+    close_icons, draw_icon as draw_reference_icon, icon_cache_diagnostics, poll_icons, sky,
+    warm_icons,
 };
 use serde::{Deserialize, Serialize};
 use std::{

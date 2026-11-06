@@ -1,5 +1,6 @@
 mod app;
 mod app_maintenance;
+mod remote_qa;
 pub use betterpod_rust::files;
 pub use betterpod_rust::{
     art, audio, bluetooth, games, input, library, pcm, platform, playlists, puzzles, render,
@@ -77,8 +78,26 @@ fn run() -> Result<(), String> {
     {
         builder.fullscreen_desktop();
     }
-    let window = builder.build().map_err(|e| e.to_string())?;
-    let context = window.gl_create_context()?;
+    let requested_samples = std::env::var("BETTERPOD_RUST_MSAA")
+        .ok()
+        .and_then(|s| s.parse::<u8>().ok())
+        .filter(|n| matches!(n, 0 | 2 | 4))
+        .unwrap_or(4);
+    let mut create_context = |samples: u8| -> Result<_, String> {
+        attr.set_multisample_buffers(u8::from(samples > 0));
+        attr.set_multisample_samples(samples);
+        let window = builder.build().map_err(|e| e.to_string())?;
+        let context = window.gl_create_context()?;
+        Ok((window, context))
+    };
+    let (window, context) = match create_context(requested_samples) {
+        Ok(pair) => pair,
+        Err(error) if requested_samples > 0 => {
+            eprintln!("MSAA {requested_samples} unavailable ({error}); using ordinary framebuffer");
+            create_context(0)?
+        }
+        Err(error) => return Err(error),
+    };
     // SDL's macOS display-link can wait indefinitely when a test window is
     // occluded or the display sleeps. Keep local Mac pacing on our own clock.
     let request_vsync =
@@ -92,6 +111,14 @@ fn run() -> Result<(), String> {
     if !request_vsync {
         video.gl_set_swap_interval(interval)?;
     }
+    let display_hz = window
+        .display_index()
+        .ok()
+        .and_then(|index| video.current_display_mode(index).ok())
+        .map_or(0, |mode| mode.refresh_rate);
+    // At the display rate, swap already owns the deadline. A second timer
+    // can miss the next vblank and lock motion to every other refresh.
+    let swap_paces_frames = vsync && display_hz > 0 && target >= display_hz as f64 - 1.;
     let (width, height) = window.drawable_size();
     let mut renderer = render::Renderer::new(
         &video,
@@ -100,8 +127,8 @@ fn run() -> Result<(), String> {
         height as i32,
     )?;
     eprintln!(
-        "Renderer: {} / swap interval accepted: {vsync} / nominal target: {target}",
-        renderer.backend
+        "Renderer: {} / swap interval accepted: {vsync} / nominal target: {target} / display: {display_hz} Hz / swap pacing: {swap_paces_frames} / MSAA: {} samples / artwork anisotropy: {}x",
+        renderer.backend, renderer.samples, renderer.art_anisotropy
     );
     let mut input = input::Input::new(&sdl)?;
     let installation = env_path("BETTERPOD_RUST_INSTALLATION", cwd.parent().unwrap_or(&cwd));
@@ -133,7 +160,7 @@ fn run() -> Result<(), String> {
     let mut previous = started;
     let mut last_present = started;
     let mut clock = timing::FrameClock::new(target);
-    let mut metrics = if benchmark {
+    let mut metrics = if benchmark || std::env::var_os("BETTERPOD_RUST_METRICS").is_some() {
         Some(timing::Metrics::new())
     } else {
         None
@@ -141,6 +168,8 @@ fn run() -> Result<(), String> {
     let mut frame_count = 0u64;
     let mut black_shown = false;
     let mut pending_transfer: Option<(PathBuf, std::sync::Arc<library::Library>, bool)> = None;
+    let mut remote_qa = remote_qa::RemoteQa::from_env()?;
+    let trace_input = std::env::var_os("BETTERPOD_RUST_QA_TRACE_INPUT").is_some();
     loop {
         maintenance::validate_private_data(&bootstrap, &data, &protected)?;
         let recovered = maintenance::recover_transferred_clients(&maintenance::Config {
@@ -176,7 +205,13 @@ fn run() -> Result<(), String> {
             let frame = Instant::now();
             let dt = frame.duration_since(previous).as_secs_f32().min(0.1);
             previous = frame;
+            if let Some(qa) = remote_qa.as_mut() {
+                qa.before_frame(&mut app);
+            }
             for action in input.poll() {
+                if trace_input {
+                    eprintln!("QA input {action:?}");
+                }
                 app.handle(action);
                 if !app.running {
                     break;
@@ -200,6 +235,11 @@ fn run() -> Result<(), String> {
                     window.gl_swap_window();
                     black_shown = true;
                 }
+                if let Some(qa) = remote_qa.as_mut() {
+                    renderer.begin(render::BLACK);
+                    renderer.finish();
+                    qa.after_frame(&mut app, &renderer);
+                }
                 std::thread::sleep(Duration::from_millis(100));
                 clock.reset();
                 continue;
@@ -207,6 +247,9 @@ fn run() -> Result<(), String> {
             black_shown = false;
             app.draw(&mut renderer, elapsed);
             renderer.finish();
+            if let Some(qa) = remote_qa.as_mut() {
+                qa.after_frame(&mut app, &renderer);
+            }
             if !app.running {
                 if let Some(path) = &screenshot {
                     renderer.screenshot(path)?;
@@ -227,10 +270,13 @@ fn run() -> Result<(), String> {
                     playing: snap.playing,
                     position: snap.position,
                     audio: app.audio_telemetry(),
+                    video: app.video_telemetry(),
                 });
             }
             last_present = completed;
-            clock.wait(completed);
+            if !swap_paces_frames {
+                clock.wait(completed);
+            }
         }
         let maintenance_dark = app.dark();
         let maintenance_library = app.maintenance_library();

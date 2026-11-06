@@ -763,3 +763,130 @@ fn inline_preview_remote_pause_unplug_and_restore_use_real_decoder() {
     assert_eq!(app.video_title, "Direct QA movie");
     app.shutdown(&renderer).unwrap();
 }
+
+/// Regression for actual navigation (the static capture harness deliberately
+/// snaps endpoints and therefore cannot catch a missing panel transition).
+#[test]
+#[ignore = "requires SDL/GLES; exercised by check-app.sh"]
+fn custom_menu_entries_and_back_restore_visible_panels() {
+    let music = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_MUSIC").expect("QA music"));
+    let assets = PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").expect("QA assets"));
+    let out = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_OUTPUT").expect("QA output"));
+    let data = out.join(format!(
+        "navigation-private-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&data).unwrap();
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let _audio = sdl.audio().unwrap();
+    video
+        .gl_attr()
+        .set_context_profile(sdl2::video::GLProfile::GLES);
+    video.gl_attr().set_context_version(2, 0);
+    let window = video
+        .window("Custom menu navigation regression", 640, 480)
+        .opengl()
+        .build()
+        .unwrap();
+    let _context = window.gl_create_context().unwrap();
+    let mut r = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+    let mut app = App::new(music.clone(), data.clone(), assets, None, &r).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while app.scanning && Instant::now() < deadline {
+        app.tick(1. / 60., &r);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!app.scanning);
+    app.settings.sharing_name = "QA".into();
+    app.extras.set_sharing_name("QA".into());
+    app.apply_setting(SettingValue::YouTube(true));
+    app.install_maintenance(
+        MaintenanceController::new(
+            crate::maintenance::Config {
+                bootstrap: data.clone(),
+                music: music.clone(),
+                data: data.clone(),
+                protected: vec![],
+            },
+            crate::updater::Config {
+                installation: out.join("no-installation"),
+                current_version: "0.1.0".into(),
+                feed: None,
+                beta_feed: None,
+                allow_beta: false,
+            },
+        )
+        .unwrap(),
+    );
+    fn visible(app: &mut App, r: &mut Renderer, w: &sdl2::video::Window, label: &str) {
+        settle(app, r, w);
+        let rgba = r.capture_rgba();
+        let count = rgba
+            .pixels()
+            .filter(|p| p[0] < 245 || p[1] < 245 || p[2] < 245)
+            .count();
+        assert!(
+            count > 1000,
+            "blank page at {label}: {}",
+            app.remote_qa_state()
+        );
+        let page = app.navigation_page().unwrap();
+        if page.split() {
+            assert!(
+                app.visual_menu_remote_state()["left"]
+                    .as_f64()
+                    .unwrap()
+                    .abs()
+                    < 0.001,
+                "hidden split panel at {label}"
+            );
+        }
+    }
+    for path in [
+        vec!["Podcasts"],
+        vec!["Videos"],
+        vec!["Music", "Playlists"],
+        vec!["Music", "Receive"],
+        vec!["Settings", "YouTube"],
+        vec!["Apps", "Weather"],
+        vec!["Settings", "Database"],
+        vec!["Settings", "Library", "Missing Info"],
+        vec!["Settings", "Library", "Missing Covers"],
+    ] {
+        app.handle(Action::BackHeld);
+        settle(&mut app, &mut r, &window);
+        for label in &path {
+            select(&mut app, label);
+            settle(&mut app, &mut r, &window);
+        }
+        visible(&mut app, &mut r, &window, &format!("open {path:?}"));
+        if app.keyboard.is_some() || app.extras.is_typing() {
+            app.handle(Action::BackHeld);
+            settle(&mut app, &mut r, &window);
+        }
+        app.handle(Action::Back);
+        visible(&mut app, &mut r, &window, &format!("back {path:?}"));
+        assert!(
+            app.visual_menu_remote_state()["views"]
+                .as_array()
+                .unwrap()
+                .len()
+                <= app.pages.len() + 1,
+            "retained exited menu at {path:?}"
+        );
+    }
+    app.handle(Action::BackHeld);
+    settle(&mut app, &mut r, &window);
+    // Repeated short Back must work without the long-Back reset previously
+    // needed to recover the invisible parent.
+    for _ in 0..12 {
+        select(&mut app, "Podcasts");
+        app.handle(Action::Back);
+        visible(&mut app, &mut r, &window, "rapid podcast back");
+    }
+    app.shutdown(&r).unwrap();
+}

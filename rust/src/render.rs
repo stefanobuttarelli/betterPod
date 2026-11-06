@@ -1,6 +1,7 @@
 //! GPU composition. Rust prepares small vertex batches; the GPU rasterizes
 //! gradients, text and perspective covers. No full-frame CPU pixel buffer.
 use glow::HasContext;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 #[cfg(test)]
@@ -71,6 +72,7 @@ pub struct Renderer {
     atlas: FontAtlas,
     vertices: Vec<f32>,
     batches: Vec<Batch>,
+    retired: RefCell<Vec<Texture>>,
     clip: Clip,
     position: u32,
     uv: u32,
@@ -82,6 +84,9 @@ pub struct Renderer {
     transforms: Vec<([[f32; 3]; 3], f32, Clip)>,
     clips: Vec<Clip>,
     pub backend: String,
+    pub samples: i32,
+    pub art_anisotropy: f32,
+    art_npot: bool,
 }
 
 impl Renderer {
@@ -103,12 +108,12 @@ impl Renderer {
         let vert = if desktop {
             "in vec3 a_position; in vec2 a_uv; in vec4 a_color; out vec2 v_uv; out vec4 v_color; void main(){gl_Position=vec4(a_position.xy*a_position.z,0.0,a_position.z);v_uv=a_uv;v_color=a_color;}"
         } else {
-            "attribute vec3 a_position; attribute vec2 a_uv; attribute vec4 a_color; varying vec2 v_uv; varying vec4 v_color; void main(){gl_Position=vec4(a_position.xy*a_position.z,0.0,a_position.z);v_uv=a_uv;v_color=a_color;}"
+            "attribute vec3 a_position; attribute vec2 a_uv; attribute vec4 a_color; varying highp vec2 v_uv; varying vec4 v_color; void main(){gl_Position=vec4(a_position.xy*a_position.z,0.0,a_position.z);v_uv=a_uv;v_color=a_color;}"
         };
         let frag = if desktop {
             "uniform sampler2D u_texture; uniform vec2 u_viewport; uniform int u_clip_count; uniform vec3 u_clip_edges[8]; in vec2 v_uv; in vec4 v_color; out vec4 out_color; void main(){vec3 p=vec3(gl_FragCoord.x*640.0/u_viewport.x,480.0-gl_FragCoord.y*480.0/u_viewport.y,1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}out_color=texture(u_texture,v_uv)*v_color;}"
         } else {
-            "uniform sampler2D u_texture; uniform vec2 u_viewport; uniform int u_clip_count; uniform vec3 u_clip_edges[8]; varying vec2 v_uv; varying vec4 v_color; void main(){vec3 p=vec3(gl_FragCoord.x*640.0/u_viewport.x,480.0-gl_FragCoord.y*480.0/u_viewport.y,1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}gl_FragColor=texture2D(u_texture,v_uv)*v_color;}"
+            "uniform sampler2D u_texture; uniform vec2 u_viewport; uniform int u_clip_count; uniform vec3 u_clip_edges[8]; varying highp vec2 v_uv; varying vec4 v_color; void main(){vec3 p=vec3(gl_FragCoord.x*640.0/u_viewport.x,480.0-gl_FragCoord.y*480.0/u_viewport.y,1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}gl_FragColor=texture2D(u_texture,v_uv)*v_color;}"
         };
         let program = unsafe { gl.create_program()? };
         for (kind, source) in [(glow::VERTEX_SHADER, vert), (glow::FRAGMENT_SHADER, frag)] {
@@ -208,6 +213,21 @@ impl Renderer {
             gl.disable(glow::DEPTH_TEST);
             gl.enable(glow::SCISSOR_TEST);
         }
+        let samples = unsafe { gl.get_parameter_i32(glow::SAMPLES) };
+        let art_npot = !gl.version().is_embedded
+            || gl.version().major >= 3
+            || gl.supported_extensions().contains("GL_OES_texture_npot");
+        let art_anisotropy = if gl
+            .supported_extensions()
+            .contains("GL_EXT_texture_filter_anisotropic")
+        {
+            unsafe {
+                gl.get_parameter_f32(glow::MAX_TEXTURE_MAX_ANISOTROPY_EXT)
+                    .clamp(1., 4.)
+            }
+        } else {
+            1.
+        };
         let mut out = Self {
             gl,
             program,
@@ -230,6 +250,7 @@ impl Renderer {
             },
             vertices: Vec::with_capacity(65536),
             batches: Vec::with_capacity(512),
+            retired: RefCell::new(Vec::new()),
             clip: Clip::full(),
             position,
             uv,
@@ -241,6 +262,9 @@ impl Renderer {
             transforms: Vec::with_capacity(12),
             clips: Vec::with_capacity(12),
             backend,
+            samples,
+            art_anisotropy,
+            art_npot,
         };
         for size in [16, 18, 20, 22, 24, 26, 28, 32, 36] {
             for c in (32..=255).filter_map(char::from_u32) {
@@ -255,6 +279,54 @@ impl Renderer {
 
     pub fn upload(&self, width: u32, height: u32, pixels: &[u8]) -> Result<Texture, String> {
         upload(&self.gl, width, height, pixels)
+    }
+    /// Static album art only. Mipmaps prevent shimmer inside a shrinking or
+    /// tilted cover; MSAA handles its outer polygon edge separately.
+    pub fn upload_artwork(
+        &self,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+        mipmaps: &[image::RgbaImage],
+    ) -> Result<Texture, String> {
+        let texture = self.upload(width, height, pixels)?;
+        // Preserve rectangular artwork too; older GLES2 drivers may require
+        // power-of-two dimensions, so retain their ordinary linear fallback.
+        if self.art_npot || width.is_power_of_two() && height.is_power_of_two() {
+            unsafe {
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
+                if mipmaps.is_empty() {
+                    self.gl.generate_mipmap(glow::TEXTURE_2D);
+                } else {
+                    for (index, image) in mipmaps.iter().enumerate() {
+                        self.gl.tex_image_2d(
+                            glow::TEXTURE_2D,
+                            index as i32 + 1,
+                            glow::RGBA as i32,
+                            image.width() as i32,
+                            image.height() as i32,
+                            0,
+                            glow::RGBA,
+                            glow::UNSIGNED_BYTE,
+                            glow::PixelUnpackData::Slice(Some(image.as_raw())),
+                        );
+                    }
+                }
+                self.gl.tex_parameter_i32(
+                    glow::TEXTURE_2D,
+                    glow::TEXTURE_MIN_FILTER,
+                    glow::LINEAR_MIPMAP_LINEAR as i32,
+                );
+                if self.art_anisotropy > 1. {
+                    self.gl.tex_parameter_f32(
+                        glow::TEXTURE_2D,
+                        glow::TEXTURE_MAX_ANISOTROPY_EXT,
+                        self.art_anisotropy,
+                    );
+                }
+            }
+        }
+        Ok(texture)
     }
     pub fn set_texture_nearest(&self, texture: Texture) {
         unsafe {
@@ -272,6 +344,12 @@ impl Renderer {
         }
     }
     pub fn delete_texture(&self, texture: Texture) {
+        // Images are batched on the CPU until finish(). Cache eviction during
+        // composition must not delete a texture referenced by an earlier image.
+        if self.batches.iter().any(|batch| batch.texture == texture.id) {
+            self.retired.borrow_mut().push(texture);
+            return;
+        }
         unsafe {
             self.gl.delete_texture(texture.id);
         }
@@ -299,6 +377,9 @@ impl Renderer {
     pub fn begin(&mut self, bg: Color) {
         self.vertices.clear();
         self.batches.clear();
+        for texture in self.retired.get_mut().drain(..) {
+            unsafe { self.gl.delete_texture(texture.id) };
+        }
         self.transform = identity();
         self.opacity = 1.0;
         self.transforms.clear();
@@ -1031,6 +1112,10 @@ impl Renderer {
         }
     }
     pub fn screenshot(&self, path: &Path) -> Result<(), String> {
+        self.capture_rgba().save(path).map_err(|e| e.to_string())
+    }
+    /// Only used by explicit screenshots and opt-in remote diagnostics.
+    pub fn capture_rgba(&self) -> image::RgbaImage {
         let mut pixels = vec![0u8; self.width as usize * self.height as usize * 4];
         unsafe {
             self.gl.read_pixels(
@@ -1044,10 +1129,21 @@ impl Renderer {
             );
         }
         let image = image::RgbaImage::from_raw(self.width as u32, self.height as u32, pixels)
-            .ok_or("Invalid screenshot size")?;
+            .expect("Framebuffer dimensions");
         image::imageops::flip_vertical(&image)
-            .save(path)
-            .map_err(|e| e.to_string())
+    }
+    pub fn diagnostics(&self) -> serde_json::Value {
+        let mut errors = Vec::new();
+        unsafe {
+            for _ in 0..8 {
+                let e = self.gl.get_error();
+                if e == glow::NO_ERROR {
+                    break;
+                }
+                errors.push(e);
+            }
+        }
+        serde_json::json!({"vertices":self.vertices.len()/9,"batches":self.batches.len(),"transforms":self.transforms.len(),"clips":self.clips.len(),"gl_errors":errors})
     }
 }
 
@@ -1084,6 +1180,9 @@ fn upload(gl: &glow::Context, width: u32, height: u32, pixels: &[u8]) -> Result<
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
+            for texture in self.retired.get_mut().drain(..) {
+                self.gl.delete_texture(texture.id);
+            }
             self.gl.delete_texture(self.white.id);
             self.gl.delete_texture(self.atlas.texture.id);
             self.gl.delete_buffer(self.buffer);

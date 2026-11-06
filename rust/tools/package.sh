@@ -15,6 +15,7 @@ done
 cp rust/README.md "$PKG/betterpod-rust/README.md"
 cp rust/VALIDATION.md "$PKG/betterpod-rust/VALIDATION.md"
 cp rust/PARITY.md "$PKG/betterpod-rust/PARITY.md"
+cp rust/CONSOLE_QA.md "$PKG/betterpod-rust/CONSOLE_QA.md"
 cp rust/THIRD_PARTY_NOTICES.txt "$PKG/betterpod-rust/"
 printf '{"application":"betterpod-rust"}\n' > "$PKG/betterpod-rust/.rust-app.json"
 cat > "$PKG/betterpod-rust/port.json" <<'JSON'

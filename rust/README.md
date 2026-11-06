@@ -6,8 +6,8 @@ This branch contains an experimental Rust port of the betterPod 1.1 feature set.
 The source-faithful UI and behavior implementation pass is complete locally;
 its finite checks and deferred hardware acceptance are recorded in
 [PARITY.md](PARITY.md). Historical
-prototype results do not validate this expanded workload. Hardware audio and
-frame-time measurements are a separate acceptance stage. The original app and
+prototype results do not validate this expanded workload. The first on-console UI/audio-counter comparison is recorded in
+[CONSOLE_QA.md](CONSOLE_QA.md); Bluetooth listening and endurance remain separate acceptance work. The original app and
 its release artifacts remain available. No Rust build is pushed, released or
 installed automatically.
 
@@ -66,9 +66,12 @@ All options use the `BETTERPOD_RUST_` prefix. They do not override the stable ap
 | `BETTERPOD_RUST_ASSETS_DIR` | Fonts and artwork assets. |
 | `BETTERPOD_RUST_IDLE_FILE` | App-owned Knulli battery-saver pause marker; launcher cleans it on exit. |
 | `BETTERPOD_RUST_FPS` | Motion target, default 60; 30 provides a comparison. |
-| `BETTERPOD_RUST_VSYNC` | Override swap synchronization: `0` off, `1` on. |
+| `BETTERPOD_RUST_VSYNC` | Override swap synchronization: `0` off, `1` on. At the reported display rate, swap owns pacing without a second timer. |
+| `BETTERPOD_RUST_MSAA` | GPU edge antialiasing: `4` (default), `2` or `0`. Unsupported multisampling retries an ordinary framebuffer. |
 | `BETTERPOD_RUST_BENCHMARK=1` | Run the scripted benchmark workload. |
-| `BETTERPOD_RUST_METRICS` | Benchmark CSV output path. |
+| `BETTERPOD_RUST_METRICS` | Opt-in in-memory frame/audio/video metrics, written to CSV at exit; works with ordinary navigation too. |
+| `BETTERPOD_RUST_QA_DIR` | Explicit local diagnostic Unix socket and PNG directory. Use `/tmp/…` on Knulli; exFAT cannot host a Unix socket. Disabled by default. |
+| `BETTERPOD_RUST_QA_TRACE_INPUT` | Opt-in physical input logging; leave unset during timing runs. |
 | `BETTERPOD_RUST_EXIT_AFTER_SECONDS` | Bounded local smoke/benchmark duration. |
 | `BETTERPOD_RUST_SCREENSHOT` | PNG output before a bounded run exits. |
 | `BETTERPOD_RUST_SWAP_AB=0` | Use SDL's face-button labels instead of Anbernic's mapping. |
@@ -160,3 +163,27 @@ There is no automatic migration or replacement of the stable installation. The l
 Database moves include `settings.json`, `playback.json`, `games.json`, `podcasts.json`, `video-history.json`, `curation.json`, private playlists/downloads, saved `videos/` and `chosen-covers/`. `artwork/` is a disposable cache; chosen covers and logical grouping are persistent user choices. All workers and the state writer stop before switching roots; constructing a fresh app reconnects clients to the selected roots. Explicit music transfer, deletion or tag-edit commands are the operations that can change shared music, and must be tested on copied fixtures first.
 
 No branch publication, pull request, stable migration or release is performed by these local build/test tools. The source port and local UI/actor checks do not establish every live-service outcome or physical performance. The separate Anbernic acceptance session must prioritize listening and verify frame timing, controls and Bluetooth with the completed UI workload.
+
+Weather animation loops are prepared completely on a worker and published as
+one texture atlas, so a missing phase cannot reset the icon to its still pose.
+The original 20 fps sprite sequence remains unchanged.
+
+Static cover art uses mipmaps and bounded anisotropic filtering for cleaner
+perspective images. Odd-sized mip levels are prepared on the artwork workers;
+video frames and glyph atlases do not generate mipmaps. The 40-cover cache
+remains bounded; mipmaps add up to about one third to its GPU storage.
+
+## SSH diagnostics
+
+Only an explicit `BETTERPOD_RUST_QA_DIR=/tmp/bp-qa` enables the private
+`control.sock` (mode 0600). It accepts a JSON line such as
+`{"action":"b","frames":30,"capture":"back"}` and returns the projected menu,
+panel positions, playback state and optional screenshot path. Actions enter the
+ordinary controller handler. `frames` is bounded to 120; omit `action` for an
+observation. PNG encoding and socket/file I/O run on a worker. Captures perform
+GPU readback, so take them outside measured intervals. No listener is created
+in an ordinary launch. `tools/console-ui.py` optionally drives Linux input and
+`fbgrab` for comparison with the Go app; it requires an explicit device/socket.
+
+Metrics distinguish swap completion from video frames delivered to the UI.
+They do not establish LCD scanout, audible quality or Bluetooth continuity.
