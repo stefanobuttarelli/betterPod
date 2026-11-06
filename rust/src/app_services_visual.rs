@@ -286,6 +286,60 @@ pub(super) fn bytes_label(value: u64) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn paired_and_discovered_bluetooth_rows_keep_their_device_pictures() {
+        let root = std::env::temp_dir().join(format!("betterpod-bt-icons-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("music")).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        let mut extras = Extras::new(root.join("music"), root.join("data")).unwrap();
+        extras.bt_state.powered = true;
+        for (index, name, icon, paired) in [
+            (0, "WH-1000XM6", "audio-headset", true),
+            (1, "AirPods Pro", "audio-headphones", true),
+            (2, "JBL Flip", "audio-card", false),
+            (3, "Controller", "input-gaming", false),
+            (4, "Laptop", "computer", false),
+        ] {
+            extras
+                .bt_state
+                .devices
+                .push(betterpod_rust::bluetooth::Device {
+                    address: format!("00:11:22:33:44:{index:02}"),
+                    name: name.into(),
+                    icon: icon.into(),
+                    paired,
+                    connected: index == 0,
+                    battery: (index == 0).then_some(80),
+                });
+        }
+        let rows = extras.bluetooth_rows();
+        for (name, expected) in [
+            ("WH-1000XM6", "bt_headphones"),
+            ("AirPods Pro", "bt_earbuds"),
+            ("JBL Flip", "bt_speaker"),
+            ("Controller", "bt_gamepad"),
+            ("Laptop", "bt_other"),
+        ] {
+            let row = rows.iter().find(|row| row.title == name).unwrap();
+            assert_eq!(row.visual.icon, expected, "{name}");
+        }
+        assert_eq!(
+            rows.iter()
+                .find(|row| row.title == "WH-1000XM6")
+                .unwrap()
+                .detail,
+            "Connected · Battery 80%"
+        );
+        assert!(rows
+            .iter()
+            .find(|row| row.title == "JBL Flip")
+            .unwrap()
+            .detail
+            .starts_with("New"));
+        drop(extras);
+        let _ = std::fs::remove_dir_all(root);
+    }
+    #[test]
     fn first_share_requires_explicit_nonempty_name_before_network_or_sender_setup() {
         let root =
             std::env::temp_dir().join(format!("betterpod-share-name-{}", std::process::id()));

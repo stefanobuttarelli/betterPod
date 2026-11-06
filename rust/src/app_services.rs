@@ -2551,7 +2551,8 @@ impl Extras {
             if let Some(battery) = device.battery {
                 row.detail.push_str(&format!(" · Battery {battery}%"));
             }
-            row.visual.icon = "bt_headphones".into();
+            row.visual.icon =
+                betterpod_rust::preview_icons::bluetooth_device_icon_name(device).into();
             rows.push(row);
         }
         let mut find = Item::new("Find New Devices", Choice::BtScan);
@@ -2567,7 +2568,8 @@ impl Extras {
         for device in self.bt_state.devices.iter().filter(|device| !device.paired) {
             let mut row = Item::new(&device.name, Choice::BtDevice(device.address.clone()));
             row.detail = "New · press [A] to pair and connect".into();
-            row.visual.icon = "bt_headphones".into();
+            row.visual.icon =
+                betterpod_rust::preview_icons::bluetooth_device_icon_name(device).into();
             rows.push(row);
         }
         rows

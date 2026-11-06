@@ -104,7 +104,10 @@ impl VisualAssets {
                 );
             }
         }
-        for icon in crate::preview_icons::generate(assets)? {
+        for icon in crate::preview_icons::generate(assets)?
+            .into_iter()
+            .chain(crate::preview_icons::generate_bluetooth()?)
+        {
             textures.insert(
                 icon.name.into(),
                 renderer.upload(icon.width, icon.height, &icon.pixels)?,

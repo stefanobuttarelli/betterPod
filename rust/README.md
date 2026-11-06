@@ -173,6 +173,10 @@ perspective images. Odd-sized mip levels are prepared on the artwork workers;
 video frames and glyph atlases do not generate mipmaps. The 40-cover cache
 remains bounded; mipmaps add up to about one third to its GPU storage.
 
+Bluetooth device rows include the five source device pictures, generated at
+twice their display size and classified by name/BlueZ icon. The local follow-up
+and pending hardware checks are recorded in [BLUETOOTH_QA.md](BLUETOOTH_QA.md).
+
 ## SSH diagnostics
 
 Only an explicit `BETTERPOD_RUST_QA_DIR=/tmp/bp-qa` enables the private

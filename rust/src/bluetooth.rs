@@ -217,21 +217,46 @@ fn device_sink<'a>(listing: &'a str, address: &str) -> Option<&'a str> {
 /// Both detection and routing stay on this worker, with a bounded overall wait.
 fn route_sink(
     address: &str,
-    mut run: impl FnMut(&[&str], Duration) -> Result<String, String>,
+    run: impl FnMut(&[&str], Duration) -> Result<String, String>,
 ) -> Result<(), String> {
-    let deadline = Instant::now() + Duration::from_secs(8);
+    let started = Instant::now();
+    route_sink_with_timing(address, run, || started.elapsed(), thread::sleep)
+}
+fn route_sink_with_timing(
+    address: &str,
+    mut run: impl FnMut(&[&str], Duration) -> Result<String, String>,
+    mut elapsed: impl FnMut() -> Duration,
+    mut sleep: impl FnMut(Duration),
+) -> Result<(), String> {
+    let budget = Duration::from_secs(8);
     for attempt in 0..16 {
-        let listing = run(&["list", "short", "sinks"], Duration::from_secs(1))?;
-        if let Some(sink) = device_sink(&listing, address) {
-            run(&["set-default-sink", sink], Duration::from_secs(2))?;
-            return Ok(());
-        }
-        if attempt == 15 || Instant::now() >= deadline {
+        let remaining = budget.saturating_sub(elapsed());
+        if remaining.is_zero() {
             break;
         }
-        thread::sleep(
-            Duration::from_millis(500).min(deadline.saturating_duration_since(Instant::now())),
-        );
+        // A slow or temporarily unavailable Pulse server is a failed probe,
+        // not a reason to abandon the remaining output-discovery budget.
+        if let Ok(listing) = run(
+            &["list", "short", "sinks"],
+            Duration::from_secs(1).min(remaining),
+        ) {
+            if let Some(sink) = device_sink(&listing, address) {
+                let remaining = budget.saturating_sub(elapsed());
+                if remaining.is_zero() {
+                    break;
+                }
+                return run(
+                    &["set-default-sink", sink],
+                    Duration::from_secs(2).min(remaining),
+                )
+                .map(|_| ());
+            }
+        }
+        let remaining = budget.saturating_sub(elapsed());
+        if attempt == 15 || remaining.is_zero() {
+            break;
+        }
+        sleep(Duration::from_millis(500).min(remaining));
     }
     Err(format!(
         "No audio output for {address}; keeping the current output"
@@ -305,6 +330,76 @@ fn run_output(executable: &str, args: &[&str], timeout: Duration) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    #[test]
+    fn routing_retries_a_failed_probe_before_selecting_the_matching_sink() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let mut calls = Vec::new();
+        route_sink_with_timing(
+            "58:18:62:28:8E:DA",
+            |args, _| {
+                calls.push(args.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+                match calls.len() {
+                    1 => Err("Pulse server temporarily unavailable".into()),
+                    2 => Ok("13 bluez_output.58_18_62_28_8E_DA.a2dp-sink pipewire\n".into()),
+                    3 => Ok(String::new()),
+                    _ => panic!("routing continued after selecting the output"),
+                }
+            },
+            || elapsed.get(),
+            |delay| elapsed.set(elapsed.get() + delay),
+        )
+        .unwrap();
+        assert_eq!(calls[0], vec!["list", "short", "sinks"]);
+        assert_eq!(calls[1], calls[0]);
+        assert_eq!(
+            calls[2],
+            vec![
+                "set-default-sink",
+                "bluez_output.58_18_62_28_8E_DA.a2dp-sink"
+            ]
+        );
+        assert_eq!(elapsed.get(), Duration::from_millis(500));
+    }
+    #[test]
+    fn repeated_probe_timeouts_exhaust_the_budget_without_reporting_success() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let mut timeouts = Vec::new();
+        let error = route_sink_with_timing(
+            "58:18:62:28:8E:DA",
+            |args, timeout| {
+                assert_eq!(args, ["list", "short", "sinks"]);
+                assert!(!timeout.is_zero());
+                timeouts.push(timeout);
+                elapsed.set(elapsed.get() + timeout);
+                Err("Pulse request timed out".into())
+            },
+            || elapsed.get(),
+            |delay| elapsed.set(elapsed.get() + delay),
+        )
+        .unwrap_err();
+        assert!(error.contains("No audio output"));
+        assert_eq!(elapsed.get(), Duration::from_secs(8));
+        assert!(timeouts.len() > 1 && timeouts.len() <= 16);
+        assert_eq!(timeouts.last(), Some(&Duration::from_millis(500)));
+    }
+    #[test]
+    fn unrelated_sinks_exhaust_the_attempt_limit_without_changing_the_output() {
+        let elapsed = Cell::new(Duration::ZERO);
+        let mut probes = 0;
+        assert!(route_sink_with_timing(
+            "58:18:62:28:8E:DA",
+            |args, _| {
+                assert_eq!(args, ["list", "short", "sinks"]);
+                probes += 1;
+                Ok("12 alsa_output.codec pipewire\n13 bluez_output.00_00_00_00_00_00.a2dp-sink pipewire\n".into())
+            },
+            || elapsed.get(),
+            |delay| elapsed.set(elapsed.get() + delay),
+        ).is_err());
+        assert_eq!(probes, 16);
+        assert!(elapsed.get() < Duration::from_secs(8));
+    }
     #[test]
     fn connect_routes_only_matching_bluetooth_sink_with_structured_arguments() {
         let listing = "12 alsa_output.platform.codec pipewire
