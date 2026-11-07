@@ -135,6 +135,10 @@ completion, failure or cancellation. Each new request opens its own job page;
 waiting jobs show their position. **B keeps a waiting job queued**; **Cancel**
 removes only that job. Downloads lists running and waiting jobs in execution
 order. Selecting the same unfinished request reopens it without duplicating it.
+Press **Y** in Downloads to remove the selected entry or clear the entire list.
+Running and queued entries offer **Cancel and Remove**; clearing the list asks
+for confirmation and cancels remaining jobs. Saved files stay in the library.
+When the visible list is empty, Downloads disappears from Home.
 
 Resolved video metadata is reused for extraction, with bounded private cache
 files and a compact UI projection. Memory failures distinguish the tools

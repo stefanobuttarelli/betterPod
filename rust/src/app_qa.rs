@@ -1063,5 +1063,48 @@ fn playlist_full_page_draws_its_reserved_mini_player() {
     );
     app.handle(Action::Back);
     assert_eq!(app.navigation_page().unwrap().title, "Downloads");
+    app.handle(Action::Options);
+    capture(
+        &mut app,
+        &mut r,
+        &window,
+        &out,
+        "rust-download-history-options",
+    );
+    assert!(app
+        .extras
+        .visual_options()
+        .unwrap()
+        .rows
+        .iter()
+        .any(|row| row.label == "Remove from List"));
+    app.handle(Action::Down);
+    app.handle(Action::Select);
+    capture(
+        &mut app,
+        &mut r,
+        &window,
+        &out,
+        "rust-download-history-clear-confirmation",
+    );
+    app.handle(Action::Select);
+    capture(
+        &mut app,
+        &mut r,
+        &window,
+        &out,
+        "rust-download-history-empty",
+    );
+    assert_eq!(app.extras.active_download_count(), 0);
+    assert!(!app.extras.has_downloads());
+    let cached_home = app
+        .pages
+        .iter()
+        .find(|page| page.screen == Screen::Home)
+        .unwrap();
+    assert!(
+        !cached_home.rows.iter().any(|row| row.label == "Downloads"),
+        "Clearing failed history must refresh cached Home even when active count stays zero"
+    );
     app.shutdown(&r).unwrap();
 }

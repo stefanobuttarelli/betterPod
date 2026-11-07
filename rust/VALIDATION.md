@@ -2,6 +2,23 @@
 
 Branch: `hello-rust`. Target: a separate RG35XX Plus / Knulli application with the betterPod 1.1 feature set. The local checks below preceded the separate on-console session. Hardware fixes and timing measurements are recorded in [CONSOLE_QA.md](CONSOLE_QA.md). No publication or release was performed.
 
+## Rust download history cleanup — 2026-11-07
+
+Y in Downloads opens the existing action sheet with Remove from List and Clear
+Download List. Active/queued jobs offer Cancel and Remove; clearing all jobs
+requires confirmation. Downloaded files are preserved. Removed pending work
+retains cancellation ownership until its callback, without restoring its row
+or showing a completion notice. Home refreshes when visible history becomes
+empty, including when the active count remains zero.
+
+Rust checks pass: 277 library, 109 application and 6 proxy tests (392 total),
+plus the six existing SDL/GLES route checks. The final targeted history run
+passes all eleven download UI cases and the actual menu/confirmation/empty-Home
+route. Captures were inspected. Two existing process fixture PID checks failed
+in the initial concurrent run; the standalone full run passes. Logs remain in
+`build/rust/download-history-checks/`. The local AArch64 build verifies glibc
+2.28. This change is Rust-only and has not been deployed to the console.
+
 ## Local download queue follow-up — 2026-11-07
 
 This follow-up is local only and supersedes the installed candidate below.

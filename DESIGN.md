@@ -147,6 +147,12 @@ unrelated global loading messages and fake progress percentages.
   jobs exist. Its standard list clearly distinguishes active, completed,
   cancelled and failed jobs. Selecting one returns to that job's progress and
   outcome; it does not start another transfer.
+- Y on the Downloads list opens the existing action sheet with Remove from
+  List and Clear Download List. Removing active/queued work is labelled Cancel
+  and Remove; clearing the entire list confirms cancellation of remaining work.
+  Saved media is preserved. An empty visible list removes Downloads from Home,
+  including when only failed/completed records were cleared. Late callbacks
+  must not restore removed history or release a stopping worker's idle guard.
 - Try Again must retain completed valid tracks and request the missing work.
   Do not present duplicate downloads as a faithful retry. Do not overwrite
   existing or externally changed files to achieve that behavior.

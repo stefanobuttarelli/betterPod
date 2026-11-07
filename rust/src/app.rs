@@ -468,6 +468,7 @@ pub struct App {
     search_pending: Option<String>,
     scanning: bool,
     active_downloads: usize,
+    download_menu_state: (usize, bool),
     scan_worker: Option<thread::JoinHandle<()>>,
     library_error: Option<String>,
     cover_selected: usize,
@@ -623,6 +624,7 @@ impl App {
             search_pending: None,
             scanning: false,
             active_downloads: 0,
+            download_menu_state: (0, false),
             scan_worker: None,
             library_error: None,
             cover_selected: 0,
@@ -3409,9 +3411,16 @@ impl App {
         }
         let effects = self.extras.tick(dt);
         self.poll_pending_album_read();
-        let active_downloads = self.extras.active_download_count();
-        if active_downloads != self.active_downloads {
+        let active_downloads = self.extras.pending_download_count();
+        let download_menu_state = (
+            self.extras.active_download_count(),
+            self.extras.has_downloads(),
+        );
+        if active_downloads != self.active_downloads
+            || download_menu_state != self.download_menu_state
+        {
             self.active_downloads = active_downloads;
+            self.download_menu_state = download_menu_state;
             self.refresh_playback_menus();
         }
         while let Some(event) = self.extras.poll_cover_search() {

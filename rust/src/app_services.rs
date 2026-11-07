@@ -168,6 +168,9 @@ enum Choice {
     Download(DownloadRequest),
     ShowDownload(u64),
     CancelDownload(u64),
+    RemoveDownload(u64),
+    ClearDownloads,
+    ConfirmClearDownloads,
     Media(String, String, bool),
     Feed(Podcast),
     Subscribe(Podcast),
@@ -977,7 +980,7 @@ impl Extras {
             if let Some((&id, _)) = self
                 .download_states
                 .iter()
-                .find(|(_, old)| old.active && old.key == state.key)
+                .find(|(_, old)| old.active && !old.dismissed && old.key == state.key)
             {
                 self.show_download(id);
                 return;
@@ -1485,6 +1488,9 @@ impl Extras {
             return;
         }
         if action == Action::Options {
+            if self.show_download_history_options() {
+                return;
+            }
             if let Some(page) = self.pages.last() {
                 if let Some(row) = page.rows.get(page.selected) {
                     if !row.options.is_empty() {
@@ -2063,6 +2069,23 @@ impl Extras {
             }
             Choice::Dismiss => {
                 self.pages.pop();
+            }
+            Choice::RemoveDownload(id) => self.remove_download_history(&[id]),
+            Choice::ClearDownloads => {
+                self.push_confirmation(
+                    if self.active_download_count() > 0 {
+                        "Clear list and cancel all? Files stay"
+                    } else {
+                        "Clear list? Saved files stay"
+                    },
+                    "",
+                    "Clear List",
+                    Choice::ConfirmClearDownloads,
+                );
+            }
+            Choice::ConfirmClearDownloads => {
+                let ids: Vec<_> = self.download_states.keys().copied().collect();
+                self.remove_download_history(&ids);
             }
             Choice::ConfirmTask(task, title) => self.push_confirmation(
                 title,

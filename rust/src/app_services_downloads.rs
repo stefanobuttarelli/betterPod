@@ -1,6 +1,8 @@
 //! Downloads outlive the page that started them. Their state never doubles as
 //! the foreground browser's loading state.
 use super::*;
+#[path = "app_services_download_history.rs"]
+mod history;
 
 #[derive(Clone)]
 pub(super) struct DownloadState {
@@ -21,6 +23,7 @@ pub(super) struct DownloadState {
     pub(super) status: String,
     pub(super) active: bool,
     pub(super) started: bool,
+    pub(super) dismissed: bool,
     completed: Option<usize>,
     error: Option<String>,
 }
@@ -146,6 +149,7 @@ impl DownloadState {
             status: "Queued".into(),
             active: true,
             started: false,
+            dismissed: false,
             completed: None,
             error: None,
         })
@@ -304,7 +308,7 @@ impl Extras {
             return;
         }
         if let Some(state) = self.download_states.get_mut(&id) {
-            if !state.active {
+            if !state.active || state.dismissed {
                 return;
             }
             state.started = true;
@@ -405,17 +409,17 @@ impl Extras {
     pub(in crate::app) fn active_download_count(&self) -> usize {
         self.download_states
             .values()
-            .filter(|state| state.active)
+            .filter(|state| state.active && !state.dismissed)
             .count()
     }
     pub(in crate::app) fn has_downloads(&self) -> bool {
-        !self.download_states.is_empty()
+        self.download_states.values().any(|state| !state.dismissed)
     }
     pub(super) fn download_rows(&self) -> Vec<Item> {
         let mut rows: Vec<_> = self
             .download_states
             .iter()
-            .filter(|(_, s)| s.active)
+            .filter(|(_, s)| s.active && !s.dismissed)
             .map(|(&id, state)| {
                 let mut row = state.row(id);
                 if let Some(position) = self.download_queue_position(id) {
@@ -429,7 +433,7 @@ impl Extras {
             .download_states
             .iter()
             .rev()
-            .filter(|(_, s)| !s.active)
+            .filter(|(_, s)| !s.active && !s.dismissed)
             .take(8)
             .map(|(&id, state)| state.row(id))
             .collect();
@@ -438,14 +442,14 @@ impl Extras {
             rows.extend(finished);
         }
         if rows.is_empty() {
-            rows.push(visual::fact("No active downloads", ""));
+            rows.push(visual::fact("No downloads", ""));
         }
         rows
     }
     fn download_queue_position(&self, id: u64) -> Option<usize> {
         self.download_states
             .get(&id)
-            .filter(|state| state.queued())?;
+            .filter(|state| state.queued() && !state.dismissed)?;
         Some(
             1 + self
                 .download_states
@@ -492,6 +496,9 @@ impl Extras {
         let Some(state) = self.download_states.get(&id) else {
             return;
         };
+        if state.dismissed {
+            return;
+        }
         let title = state.source.clone();
         if self
             .pages
@@ -714,7 +721,7 @@ impl Extras {
             .download_states
             .iter()
             .rev()
-            .filter(|(_, s)| !s.active)
+            .filter(|(_, s)| !s.active && !s.dismissed)
             .skip(8)
             .map(|(&id, _)| id)
             .collect();
@@ -724,6 +731,9 @@ impl Extras {
         let download_rows = self.download_rows();
         let mut updates = std::collections::BTreeMap::new();
         for (&id, state) in &self.download_states {
+            if state.dismissed {
+                continue;
+            }
             if let Some(item) = &state.archive {
                 let key = (item.clone(), state.format.clone());
                 if state.active
@@ -740,6 +750,14 @@ impl Extras {
                 page.rows = download_rows.clone();
                 page.visual_rows = None;
                 page.selected = page.selected.min(page.rows.len().saturating_sub(1));
+                if page
+                    .rows
+                    .get(page.selected)
+                    .is_some_and(|row| row.visual.header)
+                {
+                    page.selected = (page.selected + 1).min(page.rows.len().saturating_sub(1));
+                }
+                Self::reveal(page, self.viewport_height);
             } else if page.role == PageRole::ArchiveItem {
                 for row in &mut page.rows {
                     let Choice::Download(DownloadRequest::Archive { item, format }) = &row.choice
@@ -768,11 +786,16 @@ impl Extras {
             .iter()
             .rev()
             .find(|(_, state)| {
-                state.archive.as_deref() == Some(item) && state.format == format && state.active
+                !state.dismissed
+                    && state.archive.as_deref() == Some(item)
+                    && state.format == format
+                    && state.active
             })
             .or_else(|| {
                 self.download_states.iter().rev().find(|(_, state)| {
-                    state.archive.as_deref() == Some(item) && state.format == format
+                    !state.dismissed
+                        && state.archive.as_deref() == Some(item)
+                        && state.format == format
                 })
             })
             .map(|(&id, state)| (id, state))
@@ -784,6 +807,18 @@ impl Extras {
         row
     }
     pub(super) fn download_finished(&mut self, id: u64, result: &Result<Output, String>) {
+        if self
+            .download_states
+            .get(&id)
+            .is_some_and(|state| state.dismissed)
+        {
+            let state = self.download_states.remove(&id).unwrap();
+            if state.rescan_partial && result.is_err() {
+                self.effects.push(Effect::Rescan);
+            }
+            self.refresh_download_pages();
+            return;
+        }
         if let Some(state) = self.download_states.get_mut(&id) {
             let notify = state.active || result.is_ok();
             state.active = false;
@@ -1345,5 +1380,127 @@ mod tests {
             .error
             .as_ref()
             .is_some_and(|error| error.contains("Cancelled"))));
+    }
+    fn history_state(title: &str) -> DownloadState {
+        let mut state = DownloadState::from_task(&Task::Download(DownloadRequest::YouTube {
+            url: format!("https://example.invalid/{title}"),
+            video: false,
+            split_chapters: false,
+        }))
+        .unwrap();
+        state.title = title.into();
+        state.active = false;
+        state.error = Some("Fixture failure".into());
+        state
+    }
+    #[test]
+    fn y_removes_one_history_entry_and_keeps_saved_files_and_selection() {
+        let mut fixture = Fixture::new("remove-history");
+        let saved = fixture.root.join("saved.m4a");
+        std::fs::write(&saved, b"keep downloaded audio").unwrap();
+        let extras = &mut fixture.extras;
+        extras
+            .download_states
+            .insert(10, history_state("Failed album"));
+        let mut complete = history_state("Saved album");
+        complete.error = None;
+        complete.completed = Some(1);
+        extras.download_states.insert(9, complete);
+        extras.show_downloads(None);
+        extras.handle(Action::Options);
+        assert!(extras.pages.last().unwrap().role == PageRole::Sheet);
+        assert_eq!(
+            extras.pages.last().unwrap().rows[0].title,
+            "Remove from List"
+        );
+        extras.handle(Action::Select);
+        assert!(!extras.download_states.contains_key(&10));
+        let page = extras.pages.last().unwrap();
+        assert!(page.role == PageRole::ActiveDownloads);
+        assert!(matches!(
+            page.rows[page.selected].choice,
+            Choice::ShowDownload(9)
+        ));
+        extras.handle(Action::Options);
+        extras.handle(Action::Select);
+        assert!(!extras.has_downloads());
+        extras.handle(Action::Options);
+        assert!(extras.pages.last().unwrap().role == PageRole::ActiveDownloads);
+        assert_eq!(std::fs::read(saved).unwrap(), b"keep downloaded audio");
+    }
+    #[test]
+    fn clear_list_confirms_cancels_owned_work_and_does_not_resurrect_late_results() {
+        let mut fixture = Fixture::new("clear-history");
+        let extras = &mut fixture.extras;
+        let first = extras.services.submit(Task::Downloaded).unwrap();
+        let queued = extras.services.submit(Task::Downloaded).unwrap();
+        for (handle, started) in [(&first, true), (&queued, false)] {
+            let mut state = history_state("Pending album");
+            state.active = true;
+            state.started = started;
+            state.error = None;
+            extras.download_states.insert(handle.id, state);
+            extras
+                .jobs
+                .insert(handle.id, (handle.clone(), Purpose::Download));
+        }
+        extras
+            .download_states
+            .insert(100, history_state("Failed album"));
+        extras.show_downloads(None);
+        extras.handle(Action::Options);
+        assert_eq!(
+            extras.pages.last().unwrap().rows[0].title,
+            "Cancel and Remove"
+        );
+        extras.handle(Action::Down);
+        extras.handle(Action::Select);
+        assert!(extras.pages.last().unwrap().title.contains("Files stay"));
+        extras.handle(Action::Back);
+        assert!(!first.is_cancelled() && !queued.is_cancelled());
+        assert!(extras.has_downloads());
+        extras.handle(Action::Options);
+        extras.handle(Action::Down);
+        extras.handle(Action::Select);
+        extras.handle(Action::Select);
+        assert!(first.is_cancelled() && queued.is_cancelled());
+        assert!(!extras.has_downloads());
+        assert_eq!(extras.active_download_count(), 0);
+        assert_eq!(
+            extras.pending_download_count(),
+            2,
+            "Stopping workers retain idle protection"
+        );
+        assert!(extras.download_queue_position(queued.id).is_none());
+        extras.show_download(first.id);
+        assert!(extras.pages.last().unwrap().role == PageRole::ActiveDownloads);
+        for id in 101..120 {
+            extras
+                .download_states
+                .insert(id, history_state("Other history"));
+        }
+        extras.refresh_download_pages();
+        assert!(
+            extras.download_states[&queued.id].dismissed,
+            "History pruning must retain a stopping queued job"
+        );
+        extras.apply_service_progress(first.id, 10, Some(20), "Late progress".into());
+        assert_ne!(extras.download_states[&first.id].status, "Late progress");
+        extras.effects.clear();
+        extras.jobs.remove(&first.id);
+        extras.download_finished(first.id, &Err("Stopped after one track: Cancelled".into()));
+        assert!(extras
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Rescan)));
+        assert!(!extras
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Notice(_))));
+        assert!(!extras.download_states.contains_key(&first.id));
+        extras.jobs.remove(&queued.id);
+        extras.download_finished(queued.id, &Ok(Output::Files(vec![])));
+        assert!(!extras.download_states.contains_key(&queued.id));
+        assert_eq!(extras.pending_download_count(), 0);
     }
 }
