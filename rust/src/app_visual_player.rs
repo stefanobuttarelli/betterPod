@@ -63,6 +63,10 @@ pub(super) struct PlayerVisual {
     phase_epoch: Option<f64>,
     previous_screen: Option<Screen>,
     flow_context: bool,
+    /// The Cover Flow screen being left is Now Playing's own track card
+    /// (START there): coming back to Now Playing is not a song started from
+    /// Cover Flow, so the flow scene stays off.
+    leaving_np_card: bool,
     covers: BTreeMap<usize, CoverVisual>,
     flow_fade: Anim,
     flow_alpha: f64,
@@ -110,6 +114,7 @@ impl PlayerVisual {
             phase_epoch: None,
             previous_screen: None,
             flow_context: false,
+            leaving_np_card: false,
             covers: BTreeMap::new(),
             flow_fade: Anim::new(0.),
             flow_alpha: 0.,
@@ -188,6 +193,7 @@ impl App {
             }
             if self.cover_from_np {
                 self.cover_from_np = false;
+                self.player_visual.leaving_np_card = true;
                 self.cover_card = None;
                 self.pop_navigation_page();
                 return true;
@@ -213,6 +219,7 @@ impl App {
                 self.cover_card = None;
                 if self.cover_from_np {
                     self.cover_from_np = false;
+                    self.player_visual.leaving_np_card = true;
                     self.pop_navigation_page();
                 } else {
                     self.player_visual.flow_context = false;
@@ -246,6 +253,7 @@ impl App {
                                 // Standalone NP card: return to the existing view,
                                 // rather than stack another player on its card.
                                 self.cover_from_np = false;
+                                self.player_visual.leaving_np_card = true;
                                 self.cover_card = None;
                                 self.pop_navigation_page();
                                 self.song(index);
@@ -407,8 +415,12 @@ impl App {
         if screen == Screen::NowPlaying
             && previous == Some(Screen::CoverFlow)
             && !self.cover_from_np
+            && !pv.leaving_np_card
         {
             pv.flow_context = true;
+        }
+        if screen != Screen::CoverFlow {
+            pv.leaving_np_card = false;
         }
         if !matches!(screen, Screen::NowPlaying | Screen::CoverFlow) {
             pv.flow_context = false;
@@ -1365,6 +1377,12 @@ fn draw_options(
             ]
         };
         rounded_gradient(r, bx, top, 272., h, 12., &stops);
+        if !selected {
+            // Go's 1 px outline on the unselected button (ij_npextra.go:
+            // sheetBorder at 35 %), 2 px on the doubled panel
+            let border = if dark { rgb(0x15, 0x17, 0x1a) } else { rgb(0x3e, 0x42, 0x49) };
+            r.stroke_rounded(bx, top, 272., h, 12., 2., opacity(border, 0.35));
+        }
         let texture = if selected {
             assets.get(&format!("{icon}__white"))
         } else if dark {
