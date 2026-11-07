@@ -4,6 +4,7 @@ betterPod is an iPod-style music player for Anbernic handhelds running Knulli on
 
 ## Rules
 
+- **Design is a contract.** Read and follow [DESIGN.md](DESIGN.md) before UI or interaction changes. The console Rust port must preserve the existing Go/iPod design and flows; a backend rewrite does not authorize a redesign. Compare actual reference screens, including asynchronous loading and cancellation states.
 - **English everywhere:** code, comments, README, changelog and commits. Use short, plain sentences.
 - **Audio first, then fluidity.** Music must not crackle. Avoid steady work in frame loops; measure before adding it.
 - **One version.** `BETTERPOD_VERSION` in `src/ij_update.go` names the app and package. `APP_VERSION` aliases it for the classic interface.

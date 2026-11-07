@@ -1,6 +1,8 @@
 # build output
 /build/
 /dist/
+/mac/build/
+/rust/target/
 *.o
 # the binary is built into the package by tools/build.sh
 port/betterpod/betterpod

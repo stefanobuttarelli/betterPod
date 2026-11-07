@@ -1,0 +1,87 @@
+# betterPod Rust, the separate Knulli app (rust/).
+#
+# Every push that touches it builds the console package and keeps it as an
+# artifact. When rust/Cargo.toml has a version with no release yet and
+# rust/CHANGELOG.md has its section, that build is published: a pre-release
+# "betterPod Rust X.Y.Z" (tag rust-vX.Y.Z) with betterpod-rust-X.Y.Z.zip, and
+# latest-rust.json uploaded to the rolling pre-release "rust-latest": the
+# manifest the app's own Software Update reads (updater::DEFAULT_FEED).
+# Neither is ever "Latest": that stays on the Go app's releases.
+name: Rust app
+on:
+  push:
+    branches: [main, codex/rust-player-mac-library]
+    paths: [rust/**, port/betterpod/**, DESIGN.md, src/puzzles/**, src/words/**, .github/workflows/rust.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: |
+          docker build -t betterpod-build:1 -f tools/Dockerfile tools
+          docker build -t betterpod-rust-build:1 -f rust/tools/Dockerfile .
+      - name: Tests
+        run: rust/tools/build.sh test
+      - name: Build for Knulli (AArch64, glibc 2.28)
+        run: rust/tools/build.sh knulli
+      - name: Package
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" build
+          rust/tools/package.sh
+          ls -l dist/betterpod-rust-experimental.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: betterpod-rust
+          path: dist/betterpod-rust-experimental.zip
+      - name: Publish a new version
+        # pushes only: a version in rust/Cargo.toml with no release yet is
+        # published, with its section of rust/CHANGELOG.md as the notes
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -n 1)
+          tag=rust-v$version
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "$tag is already published"; exit 0
+          fi
+          notes=$(awk -v v="## v$version" '$0 == v || index($0, v " ") == 1 {f=1; next} /^## v/ {f=0} f' rust/CHANGELOG.md)
+          [ -n "$notes" ] || { echo "No '## v$version' section in rust/CHANGELOG.md: not published"; exit 0; }
+          zip=betterpod-rust-$version.zip
+          cp dist/betterpod-rust-experimental.zip "$zip"
+          python3 - "$version" "$zip" "$notes" "$GITHUB_REPOSITORY" "$tag" <<'PY'
+          import hashlib, json, sys
+          version, zip_name, notes, repo, tag = sys.argv[1:]
+          data = open(zip_name, 'rb').read()
+          manifest = {
+              "application": "betterpod-rust",
+              "version": version,
+              "arch": "aarch64-linux",
+              "url": f"https://github.com/{repo}/releases/download/{tag}/{zip_name}",
+              "size": len(data),
+              "sha256": hashlib.sha256(data).hexdigest(),
+              "notes": notes,
+          }
+          open('latest-rust.json', 'w').write(json.dumps(manifest, indent=2) + '\n')
+          PY
+          cat latest-rust.json
+          install="**Install** (once): extract \`$zip\` into \`/userdata/roms/ports\`. It adds \`betterPod Rust.sh\` and \`betterpod-rust/\` beside betterPod, which stays as it is. Update the games list and start **betterPod Rust** from Ports. Later versions come through its own Settings → Software Update."
+          printf '%s\n\n%s\n' "$notes" "$install" > notes.md
+          gh release create "$tag" "$zip" --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "betterPod Rust $version" --notes-file notes.md
+          # the channel: one rolling pre-release holding the manifest
+          if ! gh release view rust-latest > /dev/null 2>&1; then
+            gh release create rust-latest --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "betterPod Rust: update channel" \
+              --notes "The manifest betterPod Rust's Software Update reads. It always points to the newest betterPod Rust release."
+          fi
+          gh release upload rust-latest latest-rust.json --clobber

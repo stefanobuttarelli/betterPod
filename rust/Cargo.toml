@@ -1,0 +1,51 @@
+[package]
+name = "betterpod-rust"
+version = "0.2.1"
+edition = "2021"
+publish = false
+
+[dependencies]
+ttf-parser = "0.25.1"
+tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
+flate2 = "1"
+sdl2 = { version = "0.38", features = ["mixer"] }
+glow = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+semver = "1"
+lofty = "0.25"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+jpeg-decoder = { version = "=0.3.2", default-features = false }
+fontdue = "0.9"
+libc = "0.2"
+ureq = { version = "3", features = ["json"] }
+quick-xml = { version = "0.38", features = ["escape-html"] }
+sha2 = "0.10"
+base64 = "0.22"
+urlencoding = "2"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+magic-wormhole = "0.8.1"
+async-std = "1"
+futures-lite = "2"
+symphonia = { version = "0.5", features = ["all"] }
+encoding_rs = "0.8"
+regex = "=1.13.1"
+unicode-normalization = "=0.1.25"
+unicode-general-category = "=1.1.0"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+spake2 = "=0.4.0"
+chacha20poly1305 = "=0.10.1"
+hkdf = "=0.12.4"
+rand = "=0.8.8"
+
+[build-dependencies]
+cc = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+sdl2 = { version = "0.38", features = ["mixer", "use_mac_framework"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
