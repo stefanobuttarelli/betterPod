@@ -1,19 +1,17 @@
 # betterPod Rust, the separate Knulli app (rust/).
 #
 # Every push that touches it builds the console package and keeps it as an
-# artifact. Publishing a release tagged rust-vX.Y.Z (the version in
-# rust/Cargo.toml; a pre-release, its text the notes) builds it again from
-# that tag, attaches betterpod-rust-X.Y.Z.zip, and uploads latest-rust.json
-# to the rolling pre-release "rust-latest": the manifest the app's own
-# Software Update reads (updater::DEFAULT_FEED). Neither is ever "Latest":
-# that stays on the Go app's releases.
+# artifact. When rust/Cargo.toml has a version with no release yet and
+# rust/CHANGELOG.md has its section, that build is published: a pre-release
+# "betterPod Rust X.Y.Z" (tag rust-vX.Y.Z) with betterpod-rust-X.Y.Z.zip, and
+# latest-rust.json uploaded to the rolling pre-release "rust-latest": the
+# manifest the app's own Software Update reads (updater::DEFAULT_FEED).
+# Neither is ever "Latest": that stays on the Go app's releases.
 name: Rust app
 on:
   push:
     branches: [main, codex/rust-player-mac-library]
     paths: [rust/**, port/betterpod/**, DESIGN.md, src/puzzles/**, src/words/**, .github/workflows/rust.yml]
-  release:
-    types: [published]
   workflow_dispatch:
 permissions:
   contents: write
@@ -22,7 +20,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'rust-v')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -44,22 +41,25 @@ jobs:
         with:
           name: betterpod-rust
           path: dist/betterpod-rust-experimental.zip
-      - name: Publish
-        if: github.event_name == 'release' 
+      - name: Publish a new version
+        # pushes only: a version in rust/Cargo.toml with no release yet is
+        # published, with its section of rust/CHANGELOG.md as the notes
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          tag=${{ github.event.release.tag_name }}
-          version=${tag#rust-v}
-          cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -n 1)
-          [ "$version" = "$cargo_version" ] || { echo "Tag $tag but rust/Cargo.toml says $cargo_version" >&2; exit 1; }
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -n 1)
+          tag=rust-v$version
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "$tag is already published"; exit 0
+          fi
+          notes=$(awk -v v="## v$version" '$0 == v || index($0, v " ") == 1 {f=1; next} /^## v/ {f=0} f' rust/CHANGELOG.md)
+          [ -n "$notes" ] || { echo "No '## v$version' section in rust/CHANGELOG.md: not published"; exit 0; }
           zip=betterpod-rust-$version.zip
           cp dist/betterpod-rust-experimental.zip "$zip"
-          notes=$(gh release view "$tag" --json body --jq .body)
-          [ -n "$notes" ] || notes="betterPod Rust $version"
           python3 - "$version" "$zip" "$notes" "$GITHUB_REPOSITORY" "$tag" <<'PY'
-          import hashlib, json, os, sys
+          import hashlib, json, sys
           version, zip_name, notes, repo, tag = sys.argv[1:]
           data = open(zip_name, 'rb').read()
           manifest = {
@@ -74,7 +74,10 @@ jobs:
           open('latest-rust.json', 'w').write(json.dumps(manifest, indent=2) + '\n')
           PY
           cat latest-rust.json
-          gh release upload "$tag" "$zip" --clobber
+          install="**Install** (once): extract \`$zip\` into \`/userdata/roms/ports\`. It adds \`betterPod Rust.sh\` and \`betterpod-rust/\` beside betterPod, which stays as it is. Update the games list and start **betterPod Rust** from Ports. Later versions come through its own Settings → Software Update."
+          printf '%s\n\n%s\n' "$notes" "$install" > notes.md
+          gh release create "$tag" "$zip" --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "betterPod Rust $version" --notes-file notes.md
           # the channel: one rolling pre-release holding the manifest
           if ! gh release view rust-latest > /dev/null 2>&1; then
             gh release create rust-latest --prerelease --latest=false --target "$GITHUB_SHA" \
