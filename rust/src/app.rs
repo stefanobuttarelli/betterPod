@@ -3098,6 +3098,31 @@ impl App {
         });
     }
     fn show_options(&mut self) {
+        // Y on the main menu's Settings: Quit betterPod at once, without
+        // going to the end of Settings (as the Go app does)
+        if self.screen() == Screen::Home
+            && self
+                .pages
+                .last()
+                .and_then(|p| p.rows.get(p.selected))
+                .is_some_and(|r| matches!(r.intent, Intent::Open(Screen::Settings)))
+        {
+            self.options = Some(Page {
+                screen: Screen::Home,
+                kind: ViewKind::Full,
+                mini: false,
+                title: "Settings".into(),
+                rows: Arc::new(vec![
+                    Row::new("Quit betterPod", Intent::Quit),
+                    Row::new("Cancel", Intent::CloseOptions),
+                ]),
+                selected: 0,
+                scroll: 0.0,
+                target_scroll: 0.0,
+                enter: 0.0,
+            });
+            return;
+        }
         let album = match self.screen() {
             Screen::Albums | Screen::Artist(_) => self
                 .pages
