@@ -1,8 +1,8 @@
 {
-  "version": "1.1-beta.8",
-  "path": "release/betterpod-v1.1-beta.8-knulli.zip",
-  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.1-beta.8-knulli.zip",
-  "sha256": "fcf05e7384afb09f989c9ae25d0fa867bdf207ff8a810de0354fc662cd4760dd",
-  "size": 16526123,
-  "notes": "- On Knulli, playback prevents the system battery saver from muting or suspending the console after idle time.\n- Music, Listen and videos stay protected through loading, buffering and track changes.\n- Pausing or stopping playback restores normal automatic idle behavior. The playback guard is cleaned up when betterPod exits or crashes."
+  "version": "1.2-beta.1",
+  "path": "release/betterpod-v1.2-beta.1-knulli.zip",
+  "url": "https://raw.githubusercontent.com/stefanobuttarelli/betterPod/main/release/betterpod-v1.2-beta.1-knulli.zip",
+  "sha256": "c1449b71f93dad044159a040ad18627282b101b0a1c324e9653e0a131abb33a4",
+  "size": 16509012,
+  "notes": "- Quit from the main menu: Y (or A held) on Settings, then Quit betterPod."
 }

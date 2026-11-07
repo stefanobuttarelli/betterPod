@@ -67,7 +67,7 @@ import (
 // manifest; betterPodBuildDate is the earliest date certificates are
 // checked at.
 const (
-	BETTERPOD_VERSION  = "1.1"
+	BETTERPOD_VERSION  = "1.2-beta.1"
 	betterPodBuildDate = "2026-11-05"
 	// The installation: <ports>/betterPod.sh and <ports>/betterpod/betterpod.
 	appDir    = "betterpod"

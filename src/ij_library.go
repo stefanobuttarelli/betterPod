@@ -15,7 +15,10 @@ func (ui *IpodUI) homeView() *View {
 			{Label: "Cover Flow", Preview: PrevMusic, OnSelect: ui.openCoverFlow},
 			{Label: "Music", Preview: PrevMusic, OnSelect: func() { ui.showView(ui.musicView(), "") }},
 			{Label: "Apps", Preview: PrevGames, OnSelect: func() { ui.showView(ui.gamesView(), "") }},
-			{Label: "Settings", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.settingsView(), "") }},
+			{Label: "Settings", Preview: PrevSettings, OnSelect: func() { ui.showView(ui.settingsView(), "") },
+				// Y (or A held) on Settings: Quit betterPod at once, without
+				// going to the end of Settings
+				LongPress: []SheetOption{{Label: "Quit betterPod", OnSelect: ui.quitNow}}},
 		}
 		if podsInMenu { // under Music (Settings → Podcasts turns it off)
 			items = append(items[:2], append([]Item{{Label: "Podcasts", Preview: PrevMusic,
@@ -520,8 +523,12 @@ func (ui *IpodUI) refreshBuilt() {
 func (ui *IpodUI) quitView() *View {
 	return &View{ID: "quit", Title: "Quit betterPod", Kind: KindSplit, Items: []Item{{
 		Label: "Quit Now", NoArrow: true, Preview: PrevSettings,
-		OnSelect: func() {
-			logMsg("Quit from Settings")
-			ui.app.Running = false
-		}}}}
+		OnSelect: ui.quitNow}}}
+}
+
+// quitNow quits betterPod (Settings → Quit betterPod, or Y on the main
+// menu's Settings).
+func (ui *IpodUI) quitNow() {
+	logMsg("Quit from Settings")
+	ui.app.Running = false
 }

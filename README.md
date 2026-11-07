@@ -191,7 +191,7 @@ Send songs and albums from a Mac to a betterPod, as one betterPod shares with an
 | Library | Music folder, songs/albums/artists, formats found and unsupported files, disk space, last scan, **Rescan now**, **Missing Covers** (each album's search results with thumbnails, search by hand, or all automatically), **Browse Files** (see and delete files and folders), **Scanned Folders** (every folder of the last scan with its song count, and the skipped ones with why) |
 | Database | Folder for the library, artwork, settings, statistics and game saves |
 | Screensaver | Start Now, its style, dimming the screen, and after how long it starts |
-| Quit betterPod | Quit Now: the music stops and the system's menu comes back |
+| Quit betterPod | Quit Now: the music stops and the system's menu comes back. Quicker: Y (or A held) on Settings in the main menu, then Quit betterPod |
 
 A setting with a few choices shows them in the right column; one with more opens a page, summed up in the right column.
 

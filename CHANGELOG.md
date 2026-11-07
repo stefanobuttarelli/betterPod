@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2-beta.1 (2026-11-07)
+
+### Added
+- **Quit from the main menu.** Y (or A held) on Settings opens a sheet with **Quit betterPod**, so there is no need to go to the end of Settings. Cancel or B leaves it.
+
 ## v1.1 (2026-11-05)
 
 betterPod 1.1 is the stable release of the eight 1.1 betas, dedicated to Knulli on Anbernic H700 handhelds.
