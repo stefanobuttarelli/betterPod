@@ -454,7 +454,12 @@ impl MenuVisual {
                 .iter()
                 .rev()
                 .find(|view| {
-                    !view.exiting
+                    // Never the outgoing view itself: a controller's pages
+                    // (Weather's forecast and its search) share one screen
+                    // and depth, and reusing it marked the page coming back
+                    // as exiting: it slid away and left a blank screen.
+                    view.id != previous_id
+                        && !view.exiting
                         && view.depth == current_depth
                         && view.page.screen == current.screen
                 })
