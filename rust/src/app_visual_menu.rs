@@ -1505,16 +1505,15 @@ impl App {
             right -= 40.0;
         }
         if self.now_track.is_some() && self.screen() != Screen::Quiz {
-            if let Some(icon) = self.visual_assets.get(if self.audio_snapshot.playing {
-                "play"
-            } else {
+            // Pause only when paused: a song chosen a moment ago is still
+            // loading (not `playing` yet) and showed the pause icon for a
+            // frame or two before play.
+            let name = if self.audio_snapshot.paused {
                 "pause"
-            }) {
-                let name = if self.audio_snapshot.playing {
-                    "play"
-                } else {
-                    "pause"
-                };
+            } else {
+                "play"
+            };
+            if let Some(icon) = self.visual_assets.get(name) {
                 right = put_icon(
                     r,
                     icon,

@@ -119,10 +119,15 @@ impl Renderer {
         } else {
             "attribute vec3 a_position; attribute vec2 a_uv; attribute vec4 a_color; varying highp vec2 v_uv; varying vec4 v_color; void main(){gl_Position=vec4(a_position.xy*a_position.z,0.0,a_position.z);v_uv=a_uv;v_color=a_color;}"
         };
+        // The clip planes are tested in 640x480 units. Under GLES's
+        // mediump (fp16 on Mali), gl_FragCoord.x*640.0 overflows past
+        // x=102 and every fragment of a projective clip was discarded
+        // (the NP card's rows vanished while it flipped): the position and
+        // the planes are highp, and the scale is taken before the multiply.
         let frag = if desktop {
-            "uniform sampler2D u_texture; uniform vec2 u_viewport; uniform int u_clip_count; uniform vec3 u_clip_edges[8]; in vec2 v_uv; in vec4 v_color; out vec4 out_color; void main(){vec3 p=vec3(gl_FragCoord.x*640.0/u_viewport.x,480.0-gl_FragCoord.y*480.0/u_viewport.y,1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}out_color=texture(u_texture,v_uv)*v_color;}"
+            "uniform sampler2D u_texture; uniform vec2 u_viewport; uniform int u_clip_count; uniform vec3 u_clip_edges[8]; in vec2 v_uv; in vec4 v_color; out vec4 out_color; void main(){vec3 p=vec3(gl_FragCoord.x*(640.0/u_viewport.x),480.0-gl_FragCoord.y*(480.0/u_viewport.y),1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}out_color=texture(u_texture,v_uv)*v_color;}"
         } else {
-            "uniform sampler2D u_texture; uniform vec2 u_viewport; uniform int u_clip_count; uniform vec3 u_clip_edges[8]; varying highp vec2 v_uv; varying vec4 v_color; void main(){vec3 p=vec3(gl_FragCoord.x*640.0/u_viewport.x,480.0-gl_FragCoord.y*480.0/u_viewport.y,1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}gl_FragColor=texture2D(u_texture,v_uv)*v_color;}"
+            "uniform sampler2D u_texture; uniform highp vec2 u_viewport; uniform int u_clip_count; uniform highp vec3 u_clip_edges[8]; varying highp vec2 v_uv; varying vec4 v_color; void main(){highp vec3 p=vec3(gl_FragCoord.x*(640.0/u_viewport.x),480.0-gl_FragCoord.y*(480.0/u_viewport.y),1.0);for(int i=0;i<8;i++){if(i<u_clip_count&&dot(p,u_clip_edges[i])<0.0)discard;}gl_FragColor=texture2D(u_texture,v_uv)*v_color;}"
         };
         let program = unsafe { gl.create_program()? };
         for (kind, source) in [(glow::VERTEX_SHADER, vert), (glow::FRAGMENT_SHADER, frag)] {
