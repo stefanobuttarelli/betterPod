@@ -4,8 +4,9 @@
 # artifact. When rust/Cargo.toml has a version with no release yet and
 # rust/CHANGELOG.md has its section, that build is published: a pre-release
 # "betterPod Rust X.Y.Z" (tag rust-vX.Y.Z) with betterpod-rust-X.Y.Z.zip, and
-# latest-rust.json uploaded to the rolling pre-release "rust-latest": the
-# manifest the app's own Software Update reads (updater::DEFAULT_FEED).
+# latest-rust.json uploaded to the rolling pre-release "rust-latest" (or
+# "rust-beta" for a version like 0.3.0-beta.1): the manifests the app's own
+# Software Update reads (updater::DEFAULT_FEED / DEFAULT_BETA_FEED).
 # Neither is ever "Latest": that stays on the Go app's releases.
 name: Rust app
 on:
@@ -69,7 +70,8 @@ jobs:
               "url": f"https://github.com/{repo}/releases/download/{tag}/{zip_name}",
               "size": len(data),
               "sha256": hashlib.sha256(data).hexdigest(),
-              "notes": notes,
+              # plain text, as the update screen shows it
+              "notes": notes.replace("**", "").replace("`", "").strip(),
           }
           open('latest-rust.json', 'w').write(json.dumps(manifest, indent=2) + '\n')
           PY
@@ -78,10 +80,16 @@ jobs:
           printf '%s\n\n%s\n' "$notes" "$install" > notes.md
           gh release create "$tag" "$zip" --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "betterPod Rust $version" --notes-file notes.md
-          # the channel: one rolling pre-release holding the manifest
-          if ! gh release view rust-latest > /dev/null 2>&1; then
-            gh release create rust-latest --prerelease --latest=false --target "$GITHUB_SHA" \
-              --title "betterPod Rust: update channel" \
-              --notes "The manifest betterPod Rust's Software Update reads. It always points to the newest betterPod Rust release."
+          # the channel: a rolling pre-release holding the manifest. Betas
+          # (0.3.0-beta.1) go to rust-beta, read with Beta Versions on;
+          # the others to rust-latest.
+          case "$version" in
+            *-*) channel=rust-beta; what="the newest betterPod Rust beta (with Beta Versions on)" ;;
+            *) channel=rust-latest; what="the newest betterPod Rust release" ;;
+          esac
+          if ! gh release view "$channel" > /dev/null 2>&1; then
+            gh release create "$channel" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "betterPod Rust: update channel ($channel)" \
+              --notes "The manifest betterPod Rust's Software Update reads. It always points to $what."
           fi
-          gh release upload rust-latest latest-rust.json --clobber
+          gh release upload "$channel" latest-rust.json --clobber

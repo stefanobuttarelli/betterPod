@@ -162,7 +162,11 @@ fn run() -> Result<(), String> {
             cfg!(all(target_os = "linux", target_arch = "aarch64"))
                 .then(|| updater::DEFAULT_FEED.to_string())
         }),
-        beta_feed: std::env::var("BETTERPOD_RUST_BETA_UPDATE_FEED").ok(),
+        // the beta channel ("rust-beta"), read when Beta Versions is on
+        beta_feed: std::env::var("BETTERPOD_RUST_BETA_UPDATE_FEED").ok().or_else(|| {
+            cfg!(all(target_os = "linux", target_arch = "aarch64"))
+                .then(|| updater::DEFAULT_BETA_FEED.to_string())
+        }),
         allow_beta: false,
     };
     if updater::recover_installation_if_needed(&update_config)? {

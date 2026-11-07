@@ -152,7 +152,7 @@ impl App {
                     r.arrow = false;
                     r
                 },
-                summary("Version", "1.1", ""),
+                summary("Version", env!("CARGO_PKG_VERSION"), ""),
             ],
             Some(Intent::QuitColumn) => {
                 let mut r = Row::new("Quit Now", Intent::Quit);

@@ -5,6 +5,9 @@ The separate Rust app for Knulli. A version here whose number is in `Cargo.toml`
 ## v0.2.2 (2026-11-07)
 
 - Weather: going back from a forecast left a blank white screen (the search page slid away instead of coming back). Now the search comes back as it should.
+- Software Update and About show the Rust version (they said 1.1, the Go app's).
+- Beta Versions works: it also reads the Rust beta channel and offers the newer version.
+- The update notes are plain text.
 
 ## v0.2.1 (2026-11-07)
 

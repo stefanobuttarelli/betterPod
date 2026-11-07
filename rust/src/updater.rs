@@ -34,6 +34,10 @@ pub struct Config {
 /// rolling "rust-latest" release (GitHub redirects it to its storage).
 pub const DEFAULT_FEED: &str =
     "https://github.com/stefanobuttarelli/betterPod/releases/download/rust-latest/latest-rust.json";
+/// The newest Rust beta (a version like 0.3.0-beta.1), on the rolling
+/// "rust-beta" release; read only with Beta Versions on.
+pub const DEFAULT_BETA_FEED: &str =
+    "https://github.com/stefanobuttarelli/betterPod/releases/download/rust-beta/latest-rust.json";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub application: String,

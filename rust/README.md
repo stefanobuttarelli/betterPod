@@ -22,9 +22,9 @@ betterPod Rust is published as a separate app beside betterPod (Knulli only).
 2. Extract it into `/userdata/roms/ports`. It adds `betterPod Rust.sh` and `betterpod-rust/` and leaves betterPod alone.
 3. Update the games list and start **betterPod Rust** from Ports.
 
-After that, new versions come through its own **Settings → Software Update**. It reads `latest-rust.json` from the rolling `rust-latest` release (`updater::DEFAULT_FEED`; an empty `BETTERPOD_RUST_UPDATE_FEED` turns it off).
+After that, new versions come through its own **Settings → Software Update**, which shows the Rust version. It reads `latest-rust.json` from the rolling `rust-latest` release (`updater::DEFAULT_FEED`). With **Beta Versions** on it also reads the one on `rust-beta` (`DEFAULT_BETA_FEED`), for versions like `0.3.0-beta.1`, and offers the newer. An empty `BETTERPOD_RUST_UPDATE_FEED` / `BETTERPOD_RUST_BETA_UPDATE_FEED` turns a channel off. After installing, the app closes; start it again from Ports.
 
-To publish a version, raise `version` in `rust/Cargo.toml` (and `Cargo.lock`), add its `## vX.Y.Z` section to `rust/CHANGELOG.md`, and push. `.github/workflows/rust.yml` tests and builds it, publishes the pre-release `rust-vX.Y.Z` with `betterpod-rust-X.Y.Z.zip`, and points `rust-latest` at it. A push without a new version only keeps the package as an artifact.
+A version with a `-` (`0.3.0-beta.1`) is a beta: it goes to `rust-beta` only. To publish a version, raise `version` in `rust/Cargo.toml` (and `Cargo.lock`), add its `## vX.Y.Z` section to `rust/CHANGELOG.md`, and push. `.github/workflows/rust.yml` tests and builds it, publishes the pre-release `rust-vX.Y.Z` with `betterpod-rust-X.Y.Z.zip`, and points `rust-latest` at it. A push without a new version only keeps the package as an artifact.
 
 ## Isolation
 

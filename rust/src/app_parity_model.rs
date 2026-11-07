@@ -573,7 +573,10 @@ fn on_off(value: bool) -> &'static str {
 impl App {
     pub(super) fn reference_about_rows(&self) -> Vec<Row> {
         [
-            ("betterPod 1.1", "betterpod.xyz · r/betterPod"),
+            (
+                concat!("betterPod Rust ", env!("CARGO_PKG_VERSION")),
+                "betterpod.xyz · r/betterPod",
+            ),
             ("Knulli", "Anbernic handhelds with the Allwinner H700"),
             ("Interface: iPod.js", "Tanner Villarete · MIT"),
             ("Original audio engine", "Danilo Fragoso · MIT"),
