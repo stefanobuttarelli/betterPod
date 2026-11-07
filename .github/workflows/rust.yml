@@ -1,9 +1,10 @@
 # betterPod Rust, the separate Knulli app (rust/).
 #
 # Every push that touches it builds the console package and keeps it as an
-# artifact. A tag rust-vX.Y.Z (the version in rust/Cargo.toml) publishes it:
-# a pre-release "betterPod Rust X.Y.Z" with the zip, and the rolling
-# pre-release "rust-latest" with latest-rust.json, the manifest the app's own
+# artifact. Publishing a release tagged rust-vX.Y.Z (the version in
+# rust/Cargo.toml; a pre-release, its text the notes) builds it again from
+# that tag, attaches betterpod-rust-X.Y.Z.zip, and uploads latest-rust.json
+# to the rolling pre-release "rust-latest": the manifest the app's own
 # Software Update reads (updater::DEFAULT_FEED). Neither is ever "Latest":
 # that stays on the Go app's releases.
 name: Rust app
@@ -11,7 +12,8 @@ on:
   push:
     branches: [main, codex/rust-player-mac-library]
     paths: [rust/**, port/betterpod/**, DESIGN.md, src/puzzles/**, src/words/**, .github/workflows/rust.yml]
-    tags: ['rust-v*']
+  release:
+    types: [published]
   workflow_dispatch:
 permissions:
   contents: write
@@ -20,6 +22,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'rust-v')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -42,19 +45,18 @@ jobs:
           name: betterpod-rust
           path: dist/betterpod-rust-experimental.zip
       - name: Publish
-        if: startsWith(github.ref, 'refs/tags/rust-v')
+        if: github.event_name == 'release' 
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          tag=${GITHUB_REF_NAME}
+          tag=${{ github.event.release.tag_name }}
           version=${tag#rust-v}
           cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -n 1)
           [ "$version" = "$cargo_version" ] || { echo "Tag $tag but rust/Cargo.toml says $cargo_version" >&2; exit 1; }
           zip=betterpod-rust-$version.zip
           cp dist/betterpod-rust-experimental.zip "$zip"
-          git fetch --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
-          notes=$(git tag -l --format='%(contents)' "$tag")
+          notes=$(gh release view "$tag" --json body --jq .body)
           [ -n "$notes" ] || notes="betterPod Rust $version"
           python3 - "$version" "$zip" "$notes" "$GITHUB_REPOSITORY" "$tag" <<'PY'
           import hashlib, json, os, sys
@@ -72,9 +74,7 @@ jobs:
           open('latest-rust.json', 'w').write(json.dumps(manifest, indent=2) + '\n')
           PY
           cat latest-rust.json
-          install="Extract the zip into /userdata/roms/ports (it adds 'betterPod Rust.sh' and betterpod-rust/ beside betterPod), then update the games list. Later versions come through its own Settings > Software Update."
-          gh release create "$tag" "$zip" --prerelease --latest=false \
-            --title "betterPod Rust $version" --notes "$(printf '%s\n\n%s\n' "$notes" "$install")"
+          gh release upload "$tag" "$zip" --clobber
           # the channel: one rolling pre-release holding the manifest
           if ! gh release view rust-latest > /dev/null 2>&1; then
             gh release create rust-latest --prerelease --latest=false --target "$GITHUB_SHA" \

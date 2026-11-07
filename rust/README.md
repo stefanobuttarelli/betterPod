@@ -25,10 +25,10 @@ betterPod Rust is published as a separate app beside betterPod (Knulli only).
 After that, new versions come through its own **Settings → Software Update**. It reads `latest-rust.json` from the rolling `rust-latest` release (`updater::DEFAULT_FEED`; an empty `BETTERPOD_RUST_UPDATE_FEED` turns it off).
 
 To publish a version, the maintainer:
-1. raises `version` in `rust/Cargo.toml` (and `Cargo.lock`);
-2. pushes an annotated tag `rust-vX.Y.Z` whose message is the release notes.
+1. raises `version` in `rust/Cargo.toml` (and `Cargo.lock`) and pushes;
+2. publishes a GitHub pre-release tagged `rust-vX.Y.Z` on that commit, with the notes as its text.
 
-`.github/workflows/rust.yml` then tests, builds, packages and publishes it. Every other push only keeps the package as an artifact.
+`.github/workflows/rust.yml` then builds it from the tag, attaches `betterpod-rust-X.Y.Z.zip` and points `rust-latest` at it. Every other push only keeps the package as an artifact.
 
 ## Isolation
 
