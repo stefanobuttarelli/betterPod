@@ -155,7 +155,13 @@ fn run() -> Result<(), String> {
     let update_config = updater::Config {
         installation,
         current_version: env!("CARGO_PKG_VERSION").into(),
-        feed: std::env::var("BETTERPOD_RUST_UPDATE_FEED").ok(),
+        // The published Rust channel (GitHub release "rust-latest", made by
+        // .github/workflows/rust.yml) on the console build only (its
+        // packages are AArch64 Linux); an empty variable turns it off.
+        feed: std::env::var("BETTERPOD_RUST_UPDATE_FEED").ok().or_else(|| {
+            cfg!(all(target_os = "linux", target_arch = "aarch64"))
+                .then(|| updater::DEFAULT_FEED.to_string())
+        }),
         beta_feed: std::env::var("BETTERPOD_RUST_BETA_UPDATE_FEED").ok(),
         allow_beta: false,
     };

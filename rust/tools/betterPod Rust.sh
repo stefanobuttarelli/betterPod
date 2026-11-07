@@ -1,5 +1,5 @@
 #!/bin/bash
-# Separate local experiment. Does not replace betterPod or its personal data.
+# betterPod Rust: a separate app. Does not replace betterPod or its personal data.
 LAUNCHER_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GAMEDIR=${BETTERPOD_RUST_DIR:-$LAUNCHER_DIR/betterpod-rust}
 STABLE_DIR="$LAUNCHER_DIR/betterpod"

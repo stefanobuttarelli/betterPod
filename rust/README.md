@@ -10,8 +10,25 @@ prototype results do not validate this expanded workload. The first on-console U
 [CONSOLE_QA.md](CONSOLE_QA.md). The subsequent Sony Bluetooth session, its
 YouTube memory failure and the corrective verification are recorded in
 [BLUETOOTH_QA.md](BLUETOOTH_QA.md). The original app and
-its release artifacts remain available. No Rust build is pushed, released or
-installed automatically.
+its release artifacts remain available. Rust builds are published as a
+separate app (see Install and update); the Go app's releases and updates are
+unchanged.
+
+## Install and update
+
+betterPod Rust is published as a separate app beside betterPod (Knulli only).
+
+1. Download `betterpod-rust-<version>.zip` from the newest "betterPod Rust" pre-release on GitHub.
+2. Extract it into `/userdata/roms/ports`. It adds `betterPod Rust.sh` and `betterpod-rust/` and leaves betterPod alone.
+3. Update the games list and start **betterPod Rust** from Ports.
+
+After that, new versions come through its own **Settings → Software Update**. It reads `latest-rust.json` from the rolling `rust-latest` release (`updater::DEFAULT_FEED`; an empty `BETTERPOD_RUST_UPDATE_FEED` turns it off).
+
+To publish a version, the maintainer:
+1. raises `version` in `rust/Cargo.toml` (and `Cargo.lock`);
+2. pushes an annotated tag `rust-vX.Y.Z` whose message is the release notes.
+
+`.github/workflows/rust.yml` then tests, builds, packages and publishes it. Every other push only keeps the package as an artifact.
 
 ## Isolation
 

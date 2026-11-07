@@ -1,5 +1,6 @@
 #!/bin/sh
-# Prepare a second Ports app, never a stable release/update package.
+# The second Ports app, betterPod Rust: the zip installed by hand the
+# first time, and the update package of its own channel (rust.yml).
 set -eu
 cd "$(dirname "$0")/../.."
 [ -x build/rust/betterpod-rust.knulli ] || { echo "Build first: rust/tools/build.sh knulli" >&2; exit 1; }
@@ -35,10 +36,10 @@ cat > "$PKG/betterpod-rust/port.json" <<'JSON'
   "items": ["betterPod Rust.sh", "betterpod-rust"],
   "items_opt": ["betterpod-rust/conf"],
   "attr": {
-    "title": "betterPod Rust (local experiment)",
+    "title": "betterPod Rust",
     "porter": ["betterPod"],
     "desc": "Independent Rust rewrite experiment. Separate data and launcher; audio first, measured UI cadence.",
-    "inst": "Extract into /userdata/roms/ports. Keep the existing betterPod app. This experiment does not provide automatic updates.",
+    "inst": "Extract into /userdata/roms/ports. It sits beside the existing betterPod app; later versions come through its own Software Update.",
     "genres": ["other"], "image": {}, "rtr": true, "exp": true,
     "runtime": null, "reqs": [], "arch": ["aarch64"]
   }

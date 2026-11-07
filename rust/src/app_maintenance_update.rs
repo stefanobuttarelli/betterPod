@@ -233,7 +233,7 @@ impl UpdateView {
             }
             State::Checking => status = "Checking for updates…".into(),
             State::LocalBuild => {
-                detail = "Local experiment: no published Rust update channel".into()
+                detail = "No Rust update channel (BETTERPOD_RUST_UPDATE_FEED is empty)".into()
             }
             State::UpToDate => {
                 detail = "betterPod is up to date".into();

@@ -1,5 +1,5 @@
 //! Independent update channel. No production betterPod/Go manifest is accepted.
-//! The local experiment has no feed by default. All network/ZIP/filesystem work
+//! Its feed is the "rust-latest" release (DEFAULT_FEED). All network/ZIP/filesystem work
 //! runs on one worker; archives are verified before the install tree changes.
 use crate::storage::{atomic_write, create_dir_all_synced, sync_directory};
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,10 @@ pub struct Config {
     pub beta_feed: Option<String>,
     pub allow_beta: bool,
 }
+/// The manifest of the latest published Rust build: an asset of the
+/// rolling "rust-latest" release (GitHub redirects it to its storage).
+pub const DEFAULT_FEED: &str =
+    "https://github.com/stefanobuttarelli/betterPod/releases/download/rust-latest/latest-rust.json";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
     pub application: String,
@@ -599,6 +603,14 @@ fn allowed(path: &Path) -> bool {
             || name == "THIRD_PARTY_LICENSES.md"
             || name == "port.json"
             || name == ".rust-app.json"
+            // the documents and notices the package carries (package.sh)
+            || name == "THIRD_PARTY_NOTICES.txt"
+            || name == "DESIGN.md"
+            || name == "WIFI_LIBRARY.md"
+            || name == "VALIDATION.md"
+            || name == "PARITY.md"
+            || name == "CONSOLE_QA.md"
+            || name == "BLUETOOTH_QA.md"
             || name.starts_with("LICENSE"))
 }
 fn safe_parent(root: &Path, path: &Path) -> Result<PathBuf, String> {
@@ -1493,6 +1505,34 @@ mod tests {
         let invalid = f.root.join("update-check.json");
         f.ctx(|ctx| assert!(check_if_due(&config, &invalid, true, ctx).is_err()));
         f.preserved();
+    }
+    #[test]
+    fn published_package_files_are_all_allowed() {
+        // everything rust/tools/package.sh puts in the zip (the published
+        // update package), and nothing outside the app
+        for name in [
+            "betterPod Rust.sh",
+            "betterpod-rust/betterpod-rust",
+            "betterpod-rust/README.md",
+            "betterpod-rust/WIFI_LIBRARY.md",
+            "betterpod-rust/VALIDATION.md",
+            "betterpod-rust/PARITY.md",
+            "betterpod-rust/CONSOLE_QA.md",
+            "betterpod-rust/BLUETOOTH_QA.md",
+            "betterpod-rust/THIRD_PARTY_NOTICES.txt",
+            "betterpod-rust/THIRD_PARTY_LICENSES.md",
+            "betterpod-rust/LICENSE.MiyooPod",
+            "betterpod-rust/DESIGN.md",
+            "betterpod-rust/.rust-app.json",
+            "betterpod-rust/port.json",
+            "betterpod-rust/assets/ui_font.ttf",
+            "betterpod-rust/libs/libSDL2_mixer-2.0.so.0",
+        ] {
+            assert!(allowed(Path::new(name)), "{name} should be allowed");
+        }
+        for name in ["betterpod-rust/conf/settings.json", "betterpod-rust/x/DESIGN.md", "betterpod/betterpod"] {
+            assert!(!allowed(Path::new(name)), "{name} should be refused");
+        }
     }
     #[test]
     fn codec_replacement_is_blocked_and_startup_does_not_touch_foreign_installations() {
