@@ -282,6 +282,10 @@ fn capture_static_scenes() -> Result<(), String> {
                     let page = app.extras.visual_videos_fixture(other)?;
                     app.pages.push(page);
                 }
+                other if other.starts_with("youtube-") => {
+                    let page = app.extras.visual_youtube_fixture(other)?;
+                    app.pages.push(page);
+                }
                 other if other.starts_with("video-") => {
                     app.visual_video_fixture(other, &renderer)?;
                 }

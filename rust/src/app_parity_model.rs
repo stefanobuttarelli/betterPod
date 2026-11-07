@@ -248,9 +248,13 @@ impl App {
             rows.push(videos);
         }
         let downloads = self.extras.active_download_count();
-        if downloads > 0 {
+        if self.extras.has_downloads() {
             let mut row = Row::new("Downloads", Intent::Extra(ExtraPage::ActiveDownloads));
-            row.visual.value = downloads.to_string();
+            row.visual.value = if downloads > 0 {
+                downloads.to_string()
+            } else {
+                "Recent".into()
+            };
             row.visual.preview = PreviewKind::None;
             rows.push(row);
         }
@@ -288,6 +292,7 @@ impl App {
             Row::new("Albums", Intent::Open(Screen::Albums)),
             Row::new("Search", Intent::Open(Screen::SearchHub)),
             Row::new("Receive", Intent::Extra(ExtraPage::Receive)),
+            Row::new("Wi-Fi Library", Intent::Open(Screen::WifiLibrary)),
         ];
         if self.reference_mini_visible() {
             for (name, screen) in [
@@ -344,6 +349,7 @@ impl App {
             ),
             setting("Turn it Apple", on_off(self.settings.apple), Intent::Apple),
             setting("Library", "", Intent::Open(Screen::Library)),
+            setting("Wi-Fi Library", "", Intent::Open(Screen::WifiLibrary)),
             setting(
                 "Database",
                 self.database_label(),

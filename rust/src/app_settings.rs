@@ -192,6 +192,10 @@ impl App {
                 summary("Albums", self.library.albums.len().to_string(), ""),
                 summary("Artists", self.library.artists.len().to_string(), ""),
             ],
+            Some(Intent::Open(Screen::WifiLibrary)) => vec![
+                summary("Edit from your Mac", "", "Connect with the code shown on betterPod"),
+                summary("Local Wi-Fi only", "", "The Mac and betterPod must use the same network"),
+            ],
             Some(Intent::Open(Screen::Screensaver)) => vec![
                 summary(
                     "Starts",

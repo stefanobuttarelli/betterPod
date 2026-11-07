@@ -169,7 +169,7 @@ impl App {
                         &mut self.art,
                     );
                 } else {
-                    sheet(r, page, self.dark(), y);
+                    sheet(r, page, self.dark(), y, self.album_read_busy_row(page), now);
                 }
             }
             if active.is_none() && !self.feedback.sheet_y.running(now) {
@@ -300,7 +300,14 @@ fn card(r: &mut Renderer, x: f32, y: f32, w: f32, h: f32, dark: bool) {
     stroke_rounded(r, x, y, w, h, 22.0, 1.5, edge);
     r.rect(x + 22.0, y + 2.0, w - 44.0, 1.0, hi);
 }
-fn sheet(r: &mut Renderer, page: &Page, dark: bool, hidden: f32) {
+fn sheet(
+    r: &mut Renderer,
+    page: &Page,
+    dark: bool,
+    hidden: f32,
+    busy_row: Option<usize>,
+    now: f64,
+) {
     let cancel = page.rows.last().is_some_and(|row| row.label == "Cancel");
     let n = page.rows.len().saturating_sub(usize::from(cancel));
     let title = if page.title == "Options" {
@@ -387,7 +394,14 @@ fn sheet(r: &mut Renderer, page: &Page, dark: bool, hidden: f32) {
             color = WHITE;
         }
         let weight = if i == n { 700 } else { 600 };
-        let label = app_visual_menu::ellipsize(r, &row.label, 30.0, weight, 544.0);
+        let busy = row.visual.busy || busy_row == Some(i);
+        let label = app_visual_menu::ellipsize(
+            r,
+            &row.label,
+            30.0,
+            weight,
+            if busy { 512.0 } else { 544.0 },
+        );
         let tw = r.text_width_weighted(&label, 30.0, weight);
         let mark = if row.visual.queue_mark.is_empty() {
             row.visual.icon.as_str()
@@ -408,6 +422,9 @@ fn sheet(r: &mut Renderer, page: &Page, dark: bool, hidden: f32) {
             color,
             544.0,
         );
+        if busy {
+            app_visual_menu::draw_spinner_in(r, 584.0, yy + 32.0, 12.0, now, color);
+        }
         if i + 1 < n && i != page.selected && i + 1 != page.selected {
             r.rect(48.0, yy + 63.0, 544.0, 1.0, sep);
         }

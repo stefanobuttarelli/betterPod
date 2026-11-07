@@ -35,3 +35,5 @@ pub mod video;
 pub mod video_catalog;
 pub mod visual_assets;
 pub mod weather;
+pub mod wifi_library;
+mod worker_task;

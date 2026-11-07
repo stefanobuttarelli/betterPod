@@ -175,6 +175,8 @@ fn controller_routes_and_real_screens() {
     app.handle(Action::Start);
     capture(&mut app, &mut r, &window, &out, "07-visualizer-clock");
     app.handle(Action::Back);
+    settle(&mut app, &mut r, &window);
+    assert!(!app.auto_saver, "Wait for the screensaver exit animation");
     app.handle(Action::BackHeld);
     select(&mut app, "Settings");
     select(&mut app, "Library");
@@ -211,6 +213,31 @@ fn controller_routes_and_real_screens() {
     assert!(!app.held);
     capture(&mut app, &mut r, &window, &out, "13-mosaic");
     app.handle(Action::Back);
+    settle(&mut app, &mut r, &window);
+    assert!(!app.auto_saver, "Wait for the screensaver exit animation");
+    app.handle(Action::BackHeld);
+    select(&mut app, "Music");
+    select(&mut app, "Wi-Fi Library");
+    assert_eq!(app.screen(), Screen::WifiLibrary);
+    assert!(
+        !app.wifi_library.active(),
+        "Opening the page must not open a listener"
+    );
+    assert!(app
+        .pages
+        .last()
+        .unwrap()
+        .rows
+        .iter()
+        .any(|row| matches!(row.intent, Intent::StartWifiLibrary)));
+    capture(&mut app, &mut r, &window, &out, "14-wifi-library-offline");
+    app.handle(Action::Back);
+    assert_eq!(app.screen(), Screen::Music);
+    app.handle(Action::BackHeld);
+    select(&mut app, "Settings");
+    select(&mut app, "Wi-Fi Library");
+    assert_eq!(app.screen(), Screen::WifiLibrary);
+    assert!(!app.wifi_library.active());
     app.shutdown(&r).unwrap();
 }
 
@@ -1014,9 +1041,27 @@ fn playlist_full_page_draws_its_reserved_mini_player() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(app.extras.active_download_count(), 0);
-    assert!(!app
+    let recent = app
         .reference_home_rows()
-        .iter()
-        .any(|row| row.label == "Downloads"));
+        .into_iter()
+        .find(|row| row.label == "Downloads")
+        .expect("Recent jobs must remain reachable from Home");
+    assert_eq!(recent.visual.value, "Recent");
+    app.execute(recent.intent);
+    let page = app.navigation_page().unwrap();
+    assert_eq!(page.title, "Downloads");
+    assert!(page.rows.iter().any(|row| row.label == "Recent downloads"));
+    app.handle(Action::Select);
+    assert_eq!(app.extras.title(), "Download");
+    assert!(app.extras.has_custom_visual());
+    capture(
+        &mut app,
+        &mut r,
+        &window,
+        &out,
+        "rust-reopened-download-failure",
+    );
+    app.handle(Action::Back);
+    assert_eq!(app.navigation_page().unwrap().title, "Downloads");
     app.shutdown(&r).unwrap();
 }

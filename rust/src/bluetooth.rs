@@ -1,7 +1,8 @@
 //! BlueZ commands run on one bounded worker, never on the rendering thread.
+pub use crate::worker_task::{WorkerHandle, WorkerReply};
+use crate::{online::Context, worker_task::WorkerRequest};
 use serde::{Deserialize, Serialize};
-use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -34,40 +35,89 @@ pub enum Request {
     Forget(String),
 }
 pub struct Bluetooth {
-    tx: mpsc::SyncSender<Request>,
-    rx: mpsc::Receiver<Result<State, String>>,
+    tx: mpsc::SyncSender<WorkerRequest<Request>>,
+    rx: mpsc::Receiver<WorkerReply<Result<State, String>>>,
 }
 impl Bluetooth {
     pub fn new() -> Self {
-        let (tx, commands) = mpsc::sync_channel(8);
+        let (tx, commands) = mpsc::sync_channel::<WorkerRequest<Request>>(8);
         let (results, rx) = mpsc::sync_channel(8);
         thread::Builder::new()
             .name("bluetooth".into())
             .spawn(move || {
                 let mut cached = State::default();
                 while let Ok(request) = commands.recv() {
-                    let outcome = if matches!(request, Request::Header) {
+                    if request
+                        .handle
+                        .as_ref()
+                        .is_some_and(WorkerHandle::is_cancelled)
+                    {
+                        continue;
+                    }
+                    let context = request
+                        .handle
+                        .as_ref()
+                        .map_or_else(Context::standalone, |handle| handle.context.clone());
+                    let outcome = if matches!(request.value, Request::Header) {
                         cached.audio_connected = read_default_sink();
                         let mut sample = cached.clone();
                         sample.header_only = true;
                         Ok(sample)
                     } else {
-                        execute(request).and_then(|_| refresh())
+                        execute(request.value, &context).and_then(|_| {
+                            context.check()?;
+                            refresh(&context)
+                        })
                     };
+                    if context.check().is_err() {
+                        continue;
+                    }
                     if let Ok(state) = &outcome {
                         cached = state.clone();
                     }
-                    let _ = results.try_send(outcome);
+                    if let Some(handle) = request.handle.as_ref() {
+                        if results
+                            .send(WorkerReply::owned(handle, outcome, true))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    } else {
+                        let _ = results.try_send(WorkerReply::background(outcome));
+                    }
                 }
             })
             .expect("Bluetooth worker");
         Self { tx, rx }
     }
     pub fn request(&self, request: Request) -> bool {
-        self.tx.try_send(request).is_ok()
+        self.tx
+            .try_send(WorkerRequest {
+                value: request,
+                handle: None,
+            })
+            .is_ok()
+    }
+    pub fn start(&self, request: Request) -> Option<WorkerHandle> {
+        let handle = WorkerHandle::new();
+        self.tx
+            .try_send(WorkerRequest {
+                value: request,
+                handle: Some(handle.clone()),
+            })
+            .ok()?;
+        Some(handle)
     }
     pub fn poll(&self) -> Option<Result<State, String>> {
-        self.rx.try_recv().ok()
+        self.poll_owned().map(|reply| reply.value)
+    }
+    pub fn poll_owned(&self) -> Option<WorkerReply<Result<State, String>>> {
+        while let Ok(reply) = self.rx.try_recv() {
+            if !reply.is_cancelled() {
+                return Some(reply);
+            }
+        }
+        None
     }
 }
 impl Default for Bluetooth {
@@ -75,54 +125,81 @@ impl Default for Bluetooth {
         Self::new()
     }
 }
-fn execute(request: Request) -> Result<(), String> {
+fn execute(request: Request, context: &Context) -> Result<(), String> {
+    context.check()?;
     match request {
         Request::Header => Ok(()),
         Request::Refresh => Ok(()),
-        Request::Power(on) => command(
+        Request::Power(on) => command_owned(
+            context,
             &["power", if on { "on" } else { "off" }],
             Duration::from_secs(8),
         )
         .map(|_| ()),
-        Request::Scan => {
-            command(&["--timeout", "12", "scan", "on"], Duration::from_secs(16)).map(|_| ())
-        }
+        Request::Scan => command_owned(
+            context,
+            &["--timeout", "12", "scan", "on"],
+            Duration::from_secs(16),
+        )
+        .map(|_| ()),
         Request::Connect(address) => {
-            validate(&address)?;
-            let info = command(&["info", &address], Duration::from_secs(5)).unwrap_or_default();
-            if !info.contains("Paired: yes") {
-                command(
-                    &["--timeout", "20", "pair", &address],
-                    Duration::from_secs(24),
-                )?;
-            }
-            command(&["trust", &address], Duration::from_secs(5))?;
-            command(&["connect", &address], Duration::from_secs(18))?;
+            connect_commands(&address, context, |args, timeout| {
+                command_owned(context, args, timeout)
+            })?;
             let executable =
                 std::env::var("BETTERPOD_RUST_PACTL").unwrap_or_else(|_| "pactl".into());
-            if let Err(error) = route_sink(&address, |args, timeout| {
-                run_output(&executable, args, timeout)
-            }) {
+            let started = Instant::now();
+            let routed = route_sink_with_timing(
+                &address,
+                |args, timeout| run_output_owned(context, &executable, args, timeout),
+                || started.elapsed(),
+                |duration| {
+                    let _ = context.sleep(duration);
+                },
+            );
+            context.check()?;
+            if let Err(error) = routed {
                 eprintln!("Bluetooth audio routing: {error}");
             }
             Ok(())
         }
         Request::Disconnect(address) => {
             validate(&address)?;
-            command(&["disconnect", &address], Duration::from_secs(12)).map(|_| ())
+            command_owned(context, &["disconnect", &address], Duration::from_secs(12)).map(|_| ())
         }
         Request::Forget(address) => {
             validate(&address)?;
-            command(&["remove", &address], Duration::from_secs(8)).map(|_| ())
+            command_owned(context, &["remove", &address], Duration::from_secs(8)).map(|_| ())
         }
     }
 }
-fn refresh() -> Result<State, String> {
-    let controller = command(&["show"], Duration::from_secs(5))?;
-    let listing = command(&["devices"], Duration::from_secs(5))?;
+fn connect_commands(
+    address: &str,
+    context: &Context,
+    mut run: impl FnMut(&[&str], Duration) -> Result<String, String>,
+) -> Result<(), String> {
+    context.check()?;
+    validate(address)?;
+    let info = run(&["info", address], Duration::from_secs(5)).unwrap_or_default();
+    context.check()?;
+    if !info.contains("Paired: yes") {
+        run(
+            &["--timeout", "20", "pair", address],
+            Duration::from_secs(24),
+        )?;
+        context.check()?;
+    }
+    run(&["trust", address], Duration::from_secs(5))?;
+    context.check()?;
+    run(&["connect", address], Duration::from_secs(18))?;
+    context.check()
+}
+fn refresh(context: &Context) -> Result<State, String> {
+    let controller = command_owned(context, &["show"], Duration::from_secs(5))?;
+    let listing = command_owned(context, &["devices"], Duration::from_secs(5))?;
     let mut state = State {
         header_only: false,
-        audio_connected: read_default_sink(),
+        audio_connected: read_default_sink_owned(context),
         powered: controller.contains("Powered: yes"),
         devices: Vec::new(),
     };
@@ -136,7 +213,9 @@ fn refresh() -> Result<State, String> {
         if validate(address).is_err() {
             continue;
         }
-        let info = command(&["info", address], Duration::from_secs(4)).unwrap_or_default();
+        let info =
+            command_owned(context, &["info", address], Duration::from_secs(4)).unwrap_or_default();
+        context.check()?;
         state.devices.push(Device {
             address: address.to_owned(),
             name: name.trim().to_owned(),
@@ -191,13 +270,21 @@ fn sink_is_bluetooth(value: &str) -> bool {
     value.starts_with("bluez_output.") || value.starts_with("bluez_sink.")
 }
 fn read_default_sink() -> Option<bool> {
+    read_default_sink_owned(&Context::standalone())
+}
+fn read_default_sink_owned(context: &Context) -> Option<bool> {
     let executable = std::env::var("BETTERPOD_RUST_PACTL").unwrap_or_else(|_| "pactl".into());
-    if let Ok(output) = run_output(&executable, &["get-default-sink"], Duration::from_secs(3)) {
+    if let Ok(output) = run_output_owned(
+        context,
+        &executable,
+        &["get-default-sink"],
+        Duration::from_secs(3),
+    ) {
         if !output.trim().is_empty() {
             return Some(sink_is_bluetooth(&output));
         }
     }
-    run_output(&executable, &["info"], Duration::from_secs(3))
+    run_output_owned(context, &executable, &["info"], Duration::from_secs(3))
         .ok()?
         .lines()
         .find_map(|line| {
@@ -262,18 +349,23 @@ fn route_sink_with_timing(
         "No audio output for {address}; keeping the current output"
     ))
 }
-fn command(args: &[&str], timeout: Duration) -> Result<String, String> {
+fn command_owned(context: &Context, args: &[&str], timeout: Duration) -> Result<String, String> {
     let executable =
         std::env::var("BETTERPOD_RUST_BLUETOOTHCTL").unwrap_or_else(|_| "bluetoothctl".into());
-    run_output(&executable, args, timeout)
+    run_output_owned(context, &executable, args, timeout)
 }
 fn run_output(executable: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
+    run_output_owned(&Context::standalone(), executable, args, timeout)
+}
+fn run_output_owned(
+    context: &Context,
+    executable: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
+    context.check()?;
     let mut process = Command::new(executable);
-    process
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(Stdio::null());
+    process.args(args);
     #[cfg(target_os = "linux")]
     if std::path::Path::new("/var/run/pulse/native").exists() {
         if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
@@ -283,47 +375,13 @@ fn run_output(executable: &str, args: &[&str], timeout: Duration) -> Result<Stri
             process.env("PULSE_SERVER", "unix:/var/run/pulse/native");
         }
     }
-    let mut child = process
-        .spawn()
-        .map_err(|e| format!("Bluetooth unavailable: {e}"))?;
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let out = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = stdout.take(1024 * 1024).read_to_end(&mut bytes);
-        bytes
-    });
-    let err = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = stderr.take(1024 * 1024).read_to_end(&mut bytes);
-        bytes
-    });
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(30)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = out.join();
-                let _ = err.join();
-                return Err("Bluetooth did not respond in time".into());
-            }
-        }
-    };
-    let output = String::from_utf8_lossy(&out.join().unwrap_or_default()).into_owned();
-    let error = String::from_utf8_lossy(&err.join().unwrap_or_default()).into_owned();
-    if !status.success() || output.contains("Failed to ") {
-        return Err(if error.trim().is_empty() {
-            output
-                .lines()
-                .find(|l| l.contains("Failed"))
-                .unwrap_or("Bluetooth command failed")
-                .to_owned()
-        } else {
-            error.trim().to_owned()
-        });
+    let output = crate::downloads::run_command(context, &mut process, timeout)?;
+    if output.contains("Failed to ") {
+        return Err(output
+            .lines()
+            .find(|line| line.contains("Failed"))
+            .unwrap_or("Bluetooth command failed")
+            .to_owned());
     }
     Ok(output)
 }
@@ -331,6 +389,44 @@ fn run_output(executable: &str, args: &[&str], timeout: Duration) -> Result<Stri
 mod tests {
     use super::*;
     use std::cell::Cell;
+    #[test]
+    fn cancelled_pairing_cannot_run_trust_connect_or_audio_routing() {
+        let context = Context::standalone();
+        let mut calls = Vec::new();
+        let result = connect_commands("58:18:62:28:8E:DA", &context, |args, _| {
+            calls.push(args.join(" "));
+            if args.contains(&"pair") {
+                context.cancel();
+            }
+            Ok(String::new())
+        });
+        assert_eq!(result, Err("Cancelled".into()));
+        assert_eq!(calls.len(), 2);
+        assert!(!calls
+            .iter()
+            .any(|call| call.starts_with("trust") || call.starts_with("connect")));
+    }
+    #[test]
+    fn cancelled_owned_command_never_launches_a_physical_program() {
+        let context = Context::standalone();
+        context.cancel();
+        assert_eq!(
+            run_output_owned(
+                &context,
+                "/a/program/that/must/not/start",
+                &["power", "off"],
+                Duration::from_secs(1)
+            ),
+            Err("Cancelled".into())
+        );
+        let handle = WorkerHandle::new();
+        let reply = WorkerReply::owned(&handle, Ok::<_, String>(State::default()), true);
+        handle.cancel();
+        assert!(
+            reply.is_cancelled(),
+            "A queued completion must become stale when its owner is cancelled"
+        );
+    }
     #[test]
     fn routing_retries_a_failed_probe_before_selecting_the_matching_sink() {
         let elapsed = Cell::new(Duration::ZERO);

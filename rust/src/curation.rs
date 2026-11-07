@@ -15,6 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
+use unicode_normalization::UnicodeNormalization;
 const MAX_MANIFEST: u64 = 64 * 1024 * 1024;
 const MAX_COVER: usize = 8 * 1024 * 1024;
 static WRITER: Mutex<()> = Mutex::new(());
@@ -471,6 +472,126 @@ pub fn unmerge(
         }
     }
     save(data, &manifest)
+}
+
+/// Physical edits from the paired Mac must not remain hidden behind older
+/// private album grouping or chosen-cover overrides. Unrelated choices stay.
+pub(crate) fn reconcile_remote_tags(
+    data: &Path,
+    path: &Path,
+    edit: &metadata::TagEdit,
+    artwork_changed: bool,
+) -> Result<(), String> {
+    reconcile_remote_album(data, path, edit, artwork_changed, false)
+}
+
+/// The client never chooses an arbitrary private group. Identical confirmed
+/// album names and album artists derive the same identity across source folders.
+pub(crate) fn remote_album_group(album: &str, artist: &str) -> Result<String, String> {
+    fn normalized(value: &str) -> String {
+        value
+            .nfkc()
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+    let album = normalized(album);
+    let artist = normalized(artist);
+    if album.is_empty()
+        || album.len() > 1024
+        || artist.len() > 1024
+        || album.contains('\0')
+        || artist.contains('\0')
+    {
+        return Err(
+            "Choose a nonempty album and names shorter than 1025 bytes before joining tracks"
+                .into(),
+        );
+    }
+    Ok(format!(
+        "remote-album:{:x}",
+        Sha256::digest(format!("{album}\0{artist}").as_bytes())
+    ))
+}
+
+/// One manifest transaction reconciles physical tags and optional joining. A
+/// failed manifest write is reported separately from a successful audio edit.
+pub(crate) fn reconcile_remote_album(
+    data: &Path,
+    path: &Path,
+    edit: &metadata::TagEdit,
+    artwork_changed: bool,
+    join_album: bool,
+) -> Result<(), String> {
+    let group = if join_album {
+        Some(remote_album_group(
+            edit.album
+                .as_deref()
+                .ok_or("Joining tracks requires an album field")?,
+            edit.album_artist
+                .as_deref()
+                .ok_or("Joining tracks requires an album artist field")?,
+        )?)
+    } else {
+        None
+    };
+    let _lock = WRITER.lock().map_err(|e| e.to_string())?;
+    let mut manifest = read(data);
+    if group.is_none() && !manifest.tracks.contains_key(path) {
+        return Ok(());
+    }
+    let entry = manifest.tracks.entry(path.to_path_buf()).or_default();
+    if edit.album.is_some() || edit.album_artist.is_some() {
+        entry.album = None;
+        entry.artist = None;
+        entry.group.clear();
+        entry.prior = None;
+        entry.added = false;
+        // Joining changes membership only. An existing private disc assignment
+        // remains until the client explicitly edits the physical disc field.
+        if !join_album {
+            entry.disc = None;
+        }
+    }
+    if edit.disc.is_some() {
+        entry.disc = None;
+    }
+    if artwork_changed {
+        entry.cover = None;
+    }
+    if let Some(group) = group {
+        entry.group = group;
+    }
+    save(data, &manifest)
+}
+
+/// Load once for a response page, rather than rereading a potentially large
+/// manifest for every newly edited track in that page.
+pub(crate) struct RemoteAlbumDisplay(Manifest);
+impl RemoteAlbumDisplay {
+    pub(crate) fn load(data: &Path) -> Self {
+        Self(read(data))
+    }
+    pub(crate) fn apply(&self, track: &mut Track) {
+        let Some(entry) = self.0.tracks.get(&track.path) else {
+            return;
+        };
+        if let Some(album) = &entry.album {
+            track.album.clone_from(album);
+        }
+        if let Some(artist) = &entry.artist {
+            track.album_artist.clone_from(artist);
+        }
+        if !entry.group.is_empty() {
+            track.album_group.clone_from(&entry.group);
+        }
+        if let Some(disc) = entry.disc {
+            track.disc = disc;
+        }
+        track.added_album = entry.added;
+    }
 }
 /// Original ij_albummerge.go: only a numbered position collision moves songs
 /// to the next disc; unnumbered songs keep their own disc.

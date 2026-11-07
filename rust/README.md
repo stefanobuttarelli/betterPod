@@ -102,6 +102,46 @@ Headset media play/pause/next/previous keys are read by a separate Linux worker 
 
 Before suspending EmulationStation, the Knulli launcher uses the Rust executable to park only its verified audio streams on the stable internal output. It restores their mute/routing policy and process state on exit. This prevents a frozen frontend client from blocking Bluetooth reconnection; firmware audio/graphics libraries stay unchanged.
 
+## YouTube search
+
+Open **Music → Search → YouTube**. On the search field, press Right to focus
+the round options button, then A to open **Search Settings**. Choose **Videos**
+or **Playlists & Albums**. Changing the kind keeps the query and searches again;
+B returns from Settings to the results. **Showing: …** is a nonselectable
+header. Videos also finds albums published as one long video; Playlists &
+Albums finds collections with one video per song.
+
+A playlist opens its available tracks, queued **Listen** and **Watch the
+Videos** actions, and **Download as Album**. Album downloads save each song to
+its own numbered file in a common album folder, with the album artist and
+track total. Cancelling keeps tracks that have already finished. Playlists
+are bounded to 500 videos. **Videos → Search YouTube** remains a video search.
+
+Opening a result shows a small loader on the selected row immediately. While
+that foreground request runs, navigation waits; B cancels it and returns
+control to the same selection. Audio and system controls remain available.
+The same interaction applies to service searches and album-information reads.
+
+Download opens the current job's progress page. **B goes back while the
+download continues**; **Cancel** stops it. **Downloads** remains available on
+Home while active or recent jobs exist, and selecting a job reopens its
+progress or outcome. Finished files remain available after cancellation.
+The cover uses an automatic square preview without an extra crop dialog.
+
+The job button is selected blue, including **Cancel**, to make its A-button
+action clear. Downloads from Internet Archive, YouTube and podcasts share a
+bounded queue: one runs at a time, and the next starts automatically after
+completion, failure or cancellation. Each new request opens its own job page;
+waiting jobs show their position. **B keeps a waiting job queued**; **Cancel**
+removes only that job. Downloads lists running and waiting jobs in execution
+order. Selecting the same unfinished request reopens it without duplicating it.
+
+Resolved video metadata is reused for extraction, with bounded private cache
+files and a compact UI projection. Memory failures distinguish the tools
+preflight, process-group limit, audio reserve and JavaScript heap in the log.
+Audio formats, buffers and memory protections remain unchanged. These changes
+reduce redundant work; device acceptance is still required.
+
 ## Rewrite coverage
 
 A rewrite is complete only when behavior and data handling have been checked against the stable app. Keep the following as a verification checklist rather than declaring completion from a rendering demo:
@@ -137,9 +177,16 @@ rust/tools/check-video.sh
 rust/tools/check-games.sh
 rust/tools/check-puzzles.sh
 rust/tools/check-weather.sh
+rust/tools/check-youtube-design.sh
 ```
 
 Filesystem/update tests use temporary synthetic fixtures and loopback HTTP only. Video tests generate A/V and silent clips and use dummy audio. These checks do not replace listening or physical Bluetooth tests on the console.
+
+The targeted YouTube design check renders nine fixed Go/Rust states twice at
+640 × 480, including the search gear, settings, video/playlist actions, pressed
+row loader and download progress/error/queued views. It runs offline and writes paired
+captures under `build/rust/youtube-design-checks/`. Follow the repository's
+[design contract](../DESIGN.md) when changing those flows.
 
 ## Rust service implementation and verification
 
@@ -151,7 +198,7 @@ The interactive service routes use bounded workers. Network requests, RSS parsin
 | Online sources | Internet Archive, YouTube/playlist search, iTunes podcast directory, MusicBrainz, iTunes, Deezer and Wikipedia metadata; real provider APIs and cancellable yt-dlp resolution. | UI routes and worker implementations exist. Unit tests and local HTTP fixtures do not establish live-provider availability, search quality or rate-limit behavior. |
 | Listen | Inline loading/play/pause/retry rows, immediate preservation of the user's music, private temporary current/next downloads, AAC/M4A SIDX parts grouped at whole fragments around 20 seconds then 180 seconds, whole-file fallback, and music restoration on leaving, Download or final EOF. | Real loopback tests cover current/next bounds, reuse, retry, EOF and joined cancellation. An offline FFmpeg test generated AAC, fetched its actual HTTP byte ranges and verified that concatenating the compressed packets from all remuxed parts exactly reproduces the original packets. Decoder cadence, audible transitions and live YouTube behavior still need their separate checks. |
 | Downloads and podcasts | Length/identity-checked resumable HTTP, source-codec YouTube extraction, chapter splitting, private subscription/download records, actual-container sniffing, selected episode/whole-feed download deletion. | Local HTTP tests exercise resume and reject HTML pretending to be audio; a mislabelled podcast response keeps the correct container. Whole-feed download deletion preserves its subscription; unsubscribe is separate. Concurrent feed download/deletion is refused. |
-| Covers and album information | Worker-cached previews, square cover anchors for YouTube, manual tag editing, conservative track matching, persistent chosen covers, logical merges and separation, Missing Info/Missing Covers lists. | Synthetic crop/cache tests and controller tests pass. Logical operations write `curation.json` and `chosen-covers/`, preserving source audio/tag bytes. Cache invalidation includes the manifest content digest to handle coarse exFAT timestamps. Explicit tag editing is a separate operation that does modify the selected music file. |
+| Covers and album information | Worker-cached previews, automatic square YouTube covers, manual tag editing, conservative track matching, persistent chosen covers, logical merges and separation, Missing Info/Missing Covers lists. | Synthetic artwork/cache tests and controller tests pass. Logical operations write `curation.json` and `chosen-covers/`, preserving source audio/tag bytes. Cache invalidation includes the manifest content digest to handle coarse exFAT timestamps. Explicit tag editing is a separate operation that does modify the selected music file. |
 | Share | Eight-digit betterPod codes, `betterpod.xyz/share`, SPAKE2, encrypted transit records, directory ZIP offers, manifest/receiver information and SHA-256 acknowledgement. | Actual synthetic transfers passed Rust↔Rust and both directions against the exact vendored stable Go fork, including a `000` nameplate. Debug and optimized Rust peers were tested through loopback-only rendezvous/relay services, with no public service or user music involved. Physical Mac/console UI interaction, public relay/NAT behavior and H700 resource use remain separate checks. |
 | Screensavers | Cover Flip mosaic, album track cards, clock/song overlays, Bars, Waves, Tunnel, Stars and Spectrogram, eight palettes and cover-derived colours. | A fixed 1024-sample Hann FFT supplies 40 logarithmic bands; tone placement, invalid samples, silence decay and selection behavior have focused tests. GPU geometry replaces the old CPU framebuffer effects. Physical display cadence and audio under each effect still need measurement. |
 | File and library tools | Worker file browsing, explicit confirmed deletion, cached library statistics, disk capacity and recorded scanned/skipped-folder reasons. | Source deletion is limited to selected music/private-download roots, protects application data, preflights directory contents, refuses symlinks and uses pinned directory handles. Unit fixtures verify confirmation, containment and private-download handling; real SDL/GLES controller navigation also passes. |
@@ -159,6 +206,12 @@ The interactive service routes use bounded workers. Network requests, RSS parsin
 Synthetic AAC, ALAC, MP3, FLAC and Ogg files were generated locally for metadata roundtrips. Independent FFmpeg/ffprobe checks found identical decoded-audio SHA-256 values before/after editing and preserved unrelated comment, composer and copyright fields plus track/disc totals. AAC and ALAC in the same `.m4a` container are distinguished by codec, rather than assigning a lossless badge from the filename.
 
 The inline tests live with `library`, `storage`, `playlists`, `podcasts`, `downloads`, `listen`, `metadata`, `share`, `saver`, `curation` and `files`; the two metadata codec fixture tests are ignored by default and require `BETTERPOD_METADATA_FIXTURES` to point to generated media. The ignored `listen::qa::native_sidx_parts_preserve_every_compressed_aac_packet_exactly_once` test generates its own media and requires local FFmpeg. Session evidence includes `build/rust-library-tests/fixtures/independent-audio-check.json`, `build/rust-share-local/interop-debug-proof.json`, `build/rust-share-local/interop-proof.json` and `build/rust/listen-aac-roundtrip.log`. These are generated local verification artifacts, not release assets. They do not replace complete application/controller and hardware testing.
+
+## Wi-Fi library editing
+
+Open **Music → Wi-Fi Library** (also available in Settings), then choose **Start Connection**. In the Mac companion app's **betterPod** tab, find the device and enter its eight-digit code. The Mac can browse the library and preview edits to individual tracks or a selection before saving metadata and covers back to betterPod. Discovery and the encrypted connection stay on the local network; no public relay or online account is used. The connection starts only on request and stops on exit or library transfers. The current playback file is protected, including while paused.
+
+See [WIFI_LIBRARY.md](WIFI_LIBRARY.md) for the protocol, local checks and remaining hardware verification. This feature does not install a build on the console, publish a release or change the classic Go application.
 
 ## Local data and migration boundaries
 

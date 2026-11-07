@@ -37,6 +37,7 @@ cp -R "$FRAMEWORKS/SDL2.framework" "$FRAMEWORKS/SDL2_mixer.framework" "$APP/Cont
 cp -R port/betterpod/assets "$APP/Contents/Resources/"
 cp LICENSE port/betterpod/THIRD_PARTY_LICENSES.md "$APP/Contents/Resources/"
 cp rust/README.md "$APP/Contents/Resources/README.md"
+cp rust/WIFI_LIBRARY.md "$APP/Contents/Resources/WIFI_LIBRARY.md"
 cp rust/VALIDATION.md "$APP/Contents/Resources/VALIDATION.md"
 cp rust/PARITY.md "$APP/Contents/Resources/PARITY.md"
 cp rust/THIRD_PARTY_NOTICES.txt "$APP/Contents/Resources/"
@@ -62,6 +63,7 @@ cat > "$APP/Contents/Info.plist" <<'XML'
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSLocalNetworkUsageDescription</key><string>Connect to the Mac companion on the same Wi-Fi network to edit this player's music library.</string>
 </dict></plist>
 XML
 codesign --force --deep --sign - "$APP"

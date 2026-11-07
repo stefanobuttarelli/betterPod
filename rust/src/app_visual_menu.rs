@@ -46,6 +46,9 @@ pub(crate) struct RowVisual {
     pub progress_visible: bool,
     pub preview: PreviewKind,
     pub search_field: bool,
+    pub search_gear: bool,
+    pub search_gear_focused: bool,
+    pub busy: bool,
     pub placeholder: String,
     pub typing: bool,
 }
@@ -1338,7 +1341,12 @@ impl App {
             if y >= bottom {
                 break;
             }
-            let row = &page.rows[i];
+            let busy_row = self.album_read_row_busy(page, i).then(|| {
+                let mut row = page.rows[i].clone();
+                row.visual.busy = true;
+                row
+            });
+            let row = busy_row.as_ref().unwrap_or(&page.rows[i]);
             let row_height = tops[i + 1] - tops[i];
             let selected = i == page.selected && (!column || self.preview_focus);
             let inactive = page.screen == Screen::Settings && self.preview_focus && !column;
@@ -2307,6 +2315,7 @@ pub(super) fn is_menu(screen: Screen) -> bool {
             | Screen::GameClocks
             | Screen::GameHistory
             | Screen::Library
+            | Screen::WifiLibrary
             | Screen::Screensaver
             | Screen::SearchHub
             | Screen::YouTubeSettings
@@ -2388,7 +2397,7 @@ fn draw_row(
     playing: bool,
 ) {
     if row.visual.search_field {
-        draw_search_field(r, row, x, y, width, selected, th.bg[0] < 0.5);
+        draw_search_field(r, row, x, y, width, selected, th.bg[0] < 0.5, now);
         return;
     }
     if row.visual.header {
@@ -2481,9 +2490,10 @@ fn draw_row(
         }
         text_left = 104.0;
     }
-    let arrow = selected && row.arrow && !row.visual.no_arrow;
+    let arrow = selected && row.arrow && !row.visual.no_arrow && !row.visual.busy;
+    let accessory = arrow || row.visual.busy;
     let checked = row.visual.checked;
-    let mut right = width - if arrow { 48.0 } else { 0.0 } - if checked { 44.0 } else { 0.0 };
+    let mut right = width - if accessory { 48.0 } else { 0.0 } - if checked { 44.0 } else { 0.0 };
     let label_width = r.text_width_weighted(&row.label, 28.0, 700);
     let mut value_width = 0.0;
     if !row.visual.value.is_empty() {
@@ -2518,7 +2528,8 @@ fn draw_row(
     if !queue_mark.is_empty() {
         text_left += 56.0;
     }
-    let pad_right = if arrow || !row.visual.value.is_empty() || checked || duration_width > 0.0 {
+    let pad_right = if accessory || !row.visual.value.is_empty() || checked || duration_width > 0.0
+    {
         0.0
     } else {
         32.0
@@ -2585,7 +2596,7 @@ fn draw_row(
             text_width,
         );
     }
-    let mut rx = width - if arrow { 48.0 } else { 32.0 };
+    let mut rx = width - if accessory { 48.0 } else { 32.0 };
     if checked {
         rx -= 28.0;
         if let Some(check) = assets.get(if selected || th.bg[0] < 0.5 {
@@ -2632,7 +2643,9 @@ fn draw_row(
             r.rect(mx + 10.0, cy - 9.0, 5.2, 18.0, color);
         }
     }
-    if arrow {
+    if row.visual.busy {
+        draw_spinner_in(r, x + width - 24., y + height * 0.5, 12., now, color);
+    } else if arrow {
         if let Some(arrow) = assets.get("arrow_right") {
             r.image(
                 arrow,
@@ -2666,6 +2679,7 @@ fn draw_search_field(
     width: f32,
     selected: bool,
     dark: bool,
+    now: f64,
 ) {
     use super::app_feedback::{rounded_gradient, stroke_rounded};
     let (top, bottom, line, field, edge, text, dim) = if dark {
@@ -2692,9 +2706,13 @@ fn draw_search_field(
     r.gradient(x, y, width, 92.0, top, bottom);
     r.rect(x, y + 91.0, width, 1.0, line);
     let left = x + 16.0;
-    let right = x + width - 16.0;
+    let right = x + width - 16.0 - if row.visual.search_gear { 76.0 } else { 0.0 };
     let cy = y + 46.0;
-    if selected {
+    let gear_selected = selected && row.visual.search_gear_focused;
+    if row.visual.search_gear {
+        draw_search_gear(r, right + 46.0, cy, 30.0, gear_selected, dark);
+    }
+    if selected && !gear_selected {
         rounded_gradient(
             r,
             left - 5.0,
@@ -2722,6 +2740,10 @@ fn draw_search_field(
     super::app_keyboard::draw_magnifier(r, left + 20.0, cy, 26.0, dim);
     let mut text_x = left + 60.0;
     let mut text_right = right - 24.0;
+    if row.visual.busy {
+        draw_spinner_in(r, text_right, cy, 12., now, dim);
+        text_right -= 36.;
+    }
     if !row.visual.value.is_empty() {
         let tw = r.text_width_weighted(&row.visual.value, 24.0, 500);
         r.text_baseline(
@@ -2788,6 +2810,128 @@ fn draw_search_field(
         text,
         text_right - text_x,
     );
+}
+
+// The search field's own round button from ij_views.go. Its field-height
+// geometry, glossy stops and eight-tooth glyph share the Go reference.
+fn draw_search_gear(r: &mut Renderer, cx: f32, cy: f32, radius: f32, selected: bool, dark: bool) {
+    use super::app_feedback::{rounded_gradient, stroke_rounded};
+    let (mut top, mut bottom, edge, mut glyph) = if dark {
+        (
+            rgb(74, 78, 86),
+            rgb(44, 47, 53),
+            rgb(20, 21, 24),
+            rgb(220, 222, 226),
+        )
+    } else {
+        (
+            rgb(253, 253, 254),
+            rgb(217, 222, 229),
+            rgb(154, 163, 174),
+            rgb(96, 104, 116),
+        )
+    };
+    if selected {
+        rounded_gradient(
+            r,
+            cx - radius - 5.,
+            cy - radius - 5.,
+            radius * 2. + 10.,
+            radius * 2. + 10.,
+            radius + 5.,
+            &[
+                (0., [90. / 255., 170. / 255., 1., 0.9]),
+                (1., [40. / 255., 120. / 255., 220. / 255., 0.9]),
+            ],
+        );
+        top = rgb(108, 184, 255);
+        bottom = rgb(31, 116, 216);
+        glyph = WHITE;
+    }
+    rounded_gradient(
+        r,
+        cx - radius,
+        cy - radius,
+        radius * 2.,
+        radius * 2.,
+        radius,
+        &[(0., top), (1., bottom)],
+    );
+    rounded_gradient(
+        r,
+        cx - radius + 3.,
+        cy - radius + 3.,
+        radius * 2. - 6.,
+        radius - 3.,
+        radius - 3.,
+        &[(0., [1., 1., 1., 0.45]), (1., [1., 1., 1., 0.05])],
+    );
+    if !selected {
+        stroke_rounded(
+            r,
+            cx - radius,
+            cy - radius,
+            radius * 2.,
+            radius * 2.,
+            radius,
+            1.5,
+            edge,
+        );
+    }
+    let outer = radius * 0.62;
+    let inner = outer * 0.32;
+    for i in 0..32 {
+        let point = |index: usize, hole: bool| {
+            let angle = (index as f32 + 0.5) / 32. * std::f32::consts::TAU;
+            let tooth = if (index % 32 / 2) % 2 == 1 { 0.74 } else { 1. };
+            let distance = if hole { inner } else { outer * tooth };
+            [cx + distance * angle.cos(), cy + distance * angle.sin()]
+        };
+        let a = point(i, false);
+        let b = point(i + 1, false);
+        let c = point(i + 1, true);
+        let d = point(i, true);
+        r.triangle([a, b, c], glyph);
+        r.triangle([a, c, d], glyph);
+    }
+}
+
+fn row_spinner_step(now: f64) -> usize {
+    ((now.rem_euclid(0.833_333_333) / 0.833_333_333 * 12.) as usize).min(11)
+}
+
+// ij_loading.go drawSpinnerIn: twelve fading rounded spokes, 0.833s per turn.
+// Only busy rows call this; idle row projection and geometry stay unchanged.
+pub(super) fn draw_spinner_in(
+    r: &mut Renderer,
+    cx: f32,
+    cy: f32,
+    size_css: f32,
+    now: f64,
+    color: Color,
+) {
+    let step = row_spinner_step(now);
+    let scale = size_css * 2. / 2400.;
+    let stroke = 200. * scale;
+    for (i, alpha) in [
+        1., 0.917, 0.833, 0.75, 0.667, 0.583, 0.5, 0.417, 0.333, 0.25, 0.167, 0.083,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let angle = (-(i as f32) * 30. + step as f32 * 30.).to_radians();
+        let (c, s) = (angle.cos(), angle.sin());
+        r.push_projective([[c, -s, cx], [s, c, cy], [0., 0., 1.]], 1.);
+        r.rounded_rect(
+            -stroke / 2.,
+            -1100. * scale - stroke / 2.,
+            stroke,
+            500. * scale + stroke,
+            stroke / 2.,
+            [color[0], color[1], color[2], color[3] * alpha],
+        );
+        r.pop_transform();
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3477,5 +3621,27 @@ impl App {
     pub(super) fn visual_menu_outgoing_screen(&self) -> Option<Screen> {
         self.visual_menu_outgoing_page()
             .map(|(page, _, _)| page.screen)
+    }
+}
+
+#[cfg(test)]
+mod async_row_visual_tests {
+    use super::*;
+    #[test]
+    fn busy_spinner_uses_go_period_without_changing_row_geometry() {
+        assert_eq!(row_spinner_step(0.), 0);
+        assert_eq!(row_spinner_step(0.07), 1);
+        assert_eq!(row_spinner_step(0.5), 7);
+        assert_eq!(row_spinner_step(0.833_333_333), 0);
+        let mut row = Row::new("An album", Intent::Noop);
+        let height = row_height(&row);
+        row.visual.busy = true;
+        assert_eq!(row_height(&row), height);
+        row.visual.search_field = true;
+        let search_height = row_height(&row);
+        row.visual.search_gear = true;
+        row.visual.search_gear_focused = true;
+        assert_eq!(row_height(&row), search_height);
+        assert_eq!(search_height, 92.);
     }
 }

@@ -33,8 +33,7 @@ impl Provider {
     pub fn name(self) -> &'static str {
         match self {
             Self::Archive => "Internet Archive",
-            Self::YouTube => "YouTube",
-            Self::YouTubePlaylists => "YouTube Playlists",
+            Self::YouTube | Self::YouTubePlaylists => "YouTube",
             Self::Podcast => "Podcasts",
             Self::MusicBrainz => "MusicBrainz",
             Self::Itunes => "iTunes",
@@ -109,6 +108,10 @@ pub enum Task {
         request: DownloadRequest,
         cover: PathBuf,
         crop: downloads::SquareCrop,
+    },
+    DownloadWithAutomaticCover {
+        request: DownloadRequest,
+        url: String,
     },
     CacheArtwork {
         url: String,
@@ -502,8 +505,14 @@ impl Services {
                             Err(_) => break,
                         };
                         let id = request.context.id;
-                        if n == 2 {
-                            request.context.progress(0, None, "Starting download");
+                        if n == 2 && request.context.check().is_ok() {
+                            // Queue state must not stay stale when progress is busy.
+                            if !request
+                                .context
+                                .progress_important(0, None, "Starting download")
+                            {
+                                break;
+                            }
                         }
                         let result =
                             execute(&data, music.as_deref(), &request.context, request.task);
@@ -546,7 +555,12 @@ impl Services {
             events: self.events.clone(),
             progress_scope: None,
         };
-        let sender = if matches!(task, Task::Download(_) | Task::DownloadWithCover { .. }) {
+        let sender = if matches!(
+            task,
+            Task::Download(_)
+                | Task::DownloadWithCover { .. }
+                | Task::DownloadWithAutomaticCover { .. }
+        ) {
             &self.download_tx
         } else {
             &self.tx
@@ -701,6 +715,18 @@ fn execute(
         } => Ok(Output::Files(downloads::run_with_cover(
             context, data, request, &cover, crop,
         )?)),
+        Task::DownloadWithAutomaticCover { request, url } => {
+            context.progress(0, None, "Getting cover artwork");
+            let cover = cache_artwork(data, context, &url)?;
+            context.check()?;
+            Ok(Output::Files(downloads::run_with_cover(
+                context,
+                data,
+                request,
+                &cover,
+                downloads::SquareCrop::Center,
+            )?))
+        }
         Task::CacheArtwork { url } => Ok(Output::Files(vec![cache_artwork(data, context, &url)?])),
         Task::Unmerge { paths } => {
             curation::unmerge(data, music, &paths, context)?;
@@ -884,13 +910,22 @@ pub fn search(
     match provider {
         Provider::Archive => archive_search(context, query, page),
         Provider::YouTube | Provider::YouTubePlaylists => {
+            const PAGE: usize = 25;
+            const MAX_PAGES: u32 = 8;
+            if page > MAX_PAGES {
+                return Ok((Vec::new(), 0));
+            }
+            let page = page.max(1);
+            let end = page as usize * PAGE + 1;
             let target = if provider == Provider::YouTubePlaylists {
                 format!(
                     "https://www.youtube.com/results?search_query={}&sp=EgIQAw%3D%3D",
                     encode(query)
                 )
             } else {
-                format!("ytsearch{}:{query}", page.min(8) * 25)
+                // ytsearch is explicitly videos-only. Playlist searches must
+                // retain YouTube's playlist filter in the results URL.
+                format!("ytsearch{end}:{query}")
             };
             let value = downloads::yt_json(
                 context,
@@ -898,7 +933,7 @@ pub fn search(
                 &[
                     "--flat-playlist",
                     "--playlist-end",
-                    &(page.min(8) * 25).to_string(),
+                    &end.to_string(),
                     &target,
                 ],
             )?;
@@ -906,13 +941,33 @@ pub fn search(
                 .as_array()
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
+            context.check()?;
+            let offset = (page as usize - 1) * PAGE;
+            let valid_item = |entry: &Value| {
+                if !youtube_available_entry(entry) {
+                    return None;
+                }
+                let item = youtube_item(entry.clone(), provider);
+                (!item.id.is_empty()
+                    && (provider != Provider::YouTubePlaylists || item.kind == "playlist"))
+                    .then_some(item)
+            };
+            let earlier = entries.iter().take(offset).filter_map(valid_item).count();
             let items = entries
                 .iter()
-                .skip((page.saturating_sub(1) * 25) as usize)
-                .take(25)
-                .map(|v| youtube_item(v.clone(), provider))
+                .skip(offset)
+                .take(PAGE)
+                .filter_map(valid_item)
                 .collect::<Vec<_>>();
-            let total = items.len() + (page as usize * 25);
+            // A lookahead result means one more page may exist. Do not leave
+            // a permanent More row after a short final result page.
+            let total = if items.is_empty() {
+                0
+            } else {
+                earlier
+                    + items.len()
+                    + usize::from(entries.len() > offset + PAGE && page < MAX_PAGES)
+            };
             Ok((items, total))
         }
         Provider::Podcast => {
@@ -948,17 +1003,19 @@ pub fn details(
     match item.provider {
         Provider::Archive => archive_details(context, &item.id),
         Provider::YouTube | Provider::YouTubePlaylists => {
-            let raw = downloads::yt_json(
-                context,
-                data,
-                &[
-                    "--no-playlist",
-                    "--no-check-formats",
-                    "--extractor-args",
-                    "youtube:skip=hls",
-                    &item.url,
-                ],
-            )?;
+            if item.kind == "playlist" || youtube_playlist_url(&item.url) {
+                let mut raw = downloads::yt_json(
+                    context,
+                    data,
+                    &["--flat-playlist", "--playlist-end", "501", &item.url],
+                )?;
+                context.check()?;
+                let entries = youtube_playlist_entries(&raw)?;
+                raw["playlist_count"] = json!(entries.len());
+                raw["entries"] = json!(entries);
+                return Ok(youtube_item(raw, item.provider));
+            }
+            let raw = downloads::youtube_video_info(context, data, &item.url)?;
             Ok(youtube_item(raw, item.provider))
         }
         Provider::Podcast => Ok(item),
@@ -981,7 +1038,13 @@ pub fn youtube_item(raw: Value, provider: Provider) -> OnlineItem {
     if item.url.is_empty() {
         item.url = text(&raw, "url");
     }
-    item.kind = if text(&raw, "_type") == "playlist" || text(&raw, "ie_key") == "YoutubeTab" {
+    item.kind = if text(&raw, "_type") == "playlist"
+        || matches!(
+            text(&raw, "ie_key").as_str(),
+            "YoutubeTab" | "YoutubePlaylist"
+        )
+        || youtube_playlist_url(&item.url)
+    {
         "playlist"
     } else {
         "video"
@@ -1000,15 +1063,124 @@ pub fn youtube_item(raw: Value, provider: Provider) -> OnlineItem {
             item.cover = text(thumb, "url");
         }
     }
-    item.count = number(&raw, "playlist_count") as usize;
+    item.count = ["playlist_count", "entry_count", "n_entries"]
+        .into_iter()
+        .map(|key| number(&raw, key) as usize)
+        .find(|count| *count > 0)
+        .unwrap_or_else(|| raw["entries"].as_array().map_or(0, Vec::len));
     item.seconds = number(&raw, "duration");
     item.year = text(&raw, "release_year");
     if item.year.is_empty() {
         item.year = text(&raw, "upload_date").chars().take(4).collect();
     }
-    item.raw = raw;
+    item.raw = youtube_ui_projection(raw);
     item
 }
+
+pub(crate) fn youtube_ui_projection(mut raw: Value) -> Value {
+    if let Some(object) = raw.as_object_mut() {
+        if object
+            .get("thumbnail")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            if let Some(thumbnail) = object
+                .get("thumbnails")
+                .and_then(Value::as_array)
+                .and_then(|v| v.last())
+                .and_then(|v| v.get("url"))
+                .cloned()
+            {
+                object.insert("thumbnail".into(), thumbnail);
+            }
+        }
+        object.retain(|key, _| {
+            key.starts_with('_')
+                || matches!(
+                    key.as_str(),
+                    "id" | "title"
+                        | "artist"
+                        | "album"
+                        | "channel"
+                        | "uploader"
+                        | "webpage_url"
+                        | "url"
+                        | "thumbnail"
+                        | "duration"
+                        | "width"
+                        | "height"
+                        | "fps"
+                        | "release_year"
+                        | "upload_date"
+                        | "playlist_count"
+                        | "entry_count"
+                        | "n_entries"
+                        | "availability"
+                        | "ie_key"
+                        | "chapters"
+                        | "entries"
+                        | "position"
+                        | "at"
+                        | "local_path"
+                )
+        });
+        if let Some(entries) = object.get_mut("entries").and_then(Value::as_array_mut) {
+            for entry in entries {
+                *entry = youtube_ui_projection(std::mem::take(entry));
+            }
+        }
+    }
+    raw
+}
+
+pub(crate) fn youtube_playlist_url(url: &str) -> bool {
+    url.contains("list=") && !url.contains("v=") && !url.contains("youtu.be/")
+}
+
+fn youtube_available_entry(entry: &Value) -> bool {
+    !entry.is_null()
+        && !text(entry, "id").is_empty()
+        && !matches!(
+            text(entry, "availability").as_str(),
+            "private" | "needs_auth" | "subscriber_only" | "premium_only"
+        )
+        && !matches!(
+            text(entry, "title").as_str(),
+            "[Deleted video]" | "[Private video]"
+        )
+}
+
+/// Keep an album's original valid video order while refusing unbounded or nested
+/// playlists. Opening one does not resolve every video's streaming formats.
+pub(crate) fn youtube_playlist_entries(raw: &Value) -> Result<Vec<Value>, String> {
+    let entries = raw["entries"]
+        .as_array()
+        .ok_or("The playlist has no track list")?;
+    if entries.len() > 500
+        || ["playlist_count", "entry_count", "n_entries"]
+            .into_iter()
+            .any(|key| number(raw, key) > 500.0)
+    {
+        return Err("This playlist has more than 500 videos. Choose a smaller playlist".into());
+    }
+    let entries = entries
+        .iter()
+        .filter(|entry| youtube_available_entry(entry))
+        .filter(|entry| youtube_item((*entry).clone(), Provider::YouTube).kind != "playlist")
+        .cloned()
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return Err("This playlist has no available videos".into());
+    }
+    Ok(entries)
+}
+
+#[cfg(test)]
+#[path = "online_automatic_cover_tests.rs"]
+mod automatic_cover_tests;
+#[cfg(test)]
+#[path = "online_youtube_tests.rs"]
+mod youtube_tests;
 fn archive_search(
     context: &Context,
     query: &str,

@@ -674,6 +674,10 @@ impl Controller {
     pub fn has_visible_transfer(&self) -> bool {
         self.move_visible()
     }
+
+    pub fn has_active_library_transfer(&self) -> bool {
+        self.active_move.as_ref().is_some_and(|job| !job.view.finished())
+    }
     /// Stop live mutations before the Store's final flush. A verified switch
     /// queued after the last frame must still be finalized by main, even Quit.
     pub fn quiesce_for_shutdown(&mut self) -> Option<Request> {

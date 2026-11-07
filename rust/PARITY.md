@@ -1,5 +1,8 @@
 # Go 1.1 source port — local verification
 
+The binding visual and interaction contract is [DESIGN.md](../DESIGN.md).
+Use its Go references and required screen comparisons for every UI change.
+
 This local `hello-rust` branch keeps the independent Rust installation and uses
 the Go 1.1 source as the contract for menus, controls, persistence, layout and
 animation. The prior playable prototype is not a completion baseline. No console

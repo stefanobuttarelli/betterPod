@@ -400,6 +400,9 @@ impl Curation {
     pub fn has_options(&self) -> bool {
         self.sheet.is_some()
     }
+    pub fn dismiss_options(&mut self) {
+        self.sheet = None;
+    }
     pub fn search_changed(&mut self, query: &str) {
         self.merge_query = query.into();
         self.queue(Mode::MergeQuery {
@@ -453,7 +456,7 @@ impl Curation {
                 Action::Down | Action::Right => *selected = (*selected + 1).min(labels.len() - 1),
                 Action::Back => self.sheet = None,
                 Action::Select => {
-                    let (_, _, selected, choice) = self.sheet.take().unwrap();
+                    let (_, _, selected, choice) = self.sheet.as_ref().unwrap().clone();
                     if selected == 0 {
                         match choice {
                             RowAction::Merge {
@@ -469,9 +472,14 @@ impl Curation {
                                     artist,
                                 }))
                             }
-                            RowAction::Search => self.search_changed(""),
-                            _ => {}
+                            RowAction::Search => {
+                                self.sheet = None;
+                                self.search_changed("");
+                            }
+                            _ => self.sheet = None,
                         }
+                    } else {
+                        self.sheet = None;
                     }
                 }
                 _ => {}
@@ -552,7 +560,14 @@ impl Curation {
                             self.enter_auto(None);
                             return None;
                         }
-                        let task = task.lock().ok()?.take()?;
+                        let task = {
+                            let mut queued = task.lock().ok()?;
+                            if matches!(queued.as_ref(), Some(Task::FindMissingCovers { .. })) {
+                                queued.take()?
+                            } else {
+                                queued.as_ref()?.clone()
+                            }
+                        };
                         if let Task::FindMissingCovers { albums } = task {
                             self.enter_auto(Some(albums));
                             return None;

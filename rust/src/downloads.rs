@@ -25,6 +25,10 @@ use std::{
 mod archive;
 #[path = "downloads_process.rs"]
 mod process;
+#[path = "downloads_youtube_info.rs"]
+mod youtube_info;
+#[path = "downloads_youtube_receipts.rs"]
+mod youtube_receipts;
 pub use archive::status as archive_status;
 pub use process::run_command;
 #[derive(Clone, Debug)]
@@ -792,6 +796,32 @@ pub fn yt_json(context: &Context, data: &Path, args: &[&str]) -> Result<Value, S
         .ok_or_else(|| "yt-dlp returned no metadata".to_string())
         .and_then(|line| serde_json::from_str(line).map_err(|e| e.to_string()))
 }
+
+pub(crate) fn youtube_video_info(
+    context: &Context,
+    data: &Path,
+    url: &str,
+) -> Result<Value, String> {
+    if let Some((info, _)) = youtube_info::load(context, data, url)? {
+        return Ok(info);
+    }
+    let info = yt_json(
+        context,
+        data,
+        &[
+            "--no-playlist",
+            "--no-check-formats",
+            "--extractor-args",
+            "youtube:skip=hls",
+            url,
+        ],
+    )?;
+    if let Err(error) = youtube_info::store(context, data, url, &info) {
+        context.check()?;
+        eprintln!("[YouTube] metadata cache unavailable: {error}");
+    }
+    Ok(info)
+}
 fn youtube_download(
     context: &Context,
     data: &Path,
@@ -801,11 +831,142 @@ fn youtube_download(
     cover: Option<&Path>,
 ) -> Result<Vec<PathBuf>, String> {
     validate_http(url)?;
-    let info = yt_json(
-        context,
-        data,
-        &["--no-playlist", "--extractor-args", "youtube:skip=hls", url],
-    )?;
+    if crate::online::youtube_playlist_url(url) {
+        if video {
+            return Err("Open the playlist and choose an individual video to download".into());
+        }
+        let parent = yt_json(
+            context,
+            data,
+            &["--flat-playlist", "--playlist-end", "501", url],
+        )?;
+        let entries = crate::online::youtube_playlist_entries(&parent)?;
+        let parent = crate::online::youtube_item(parent, crate::online::Provider::YouTubePlaylists);
+        let album = if parent.title.trim().is_empty() {
+            "YouTube album"
+        } else {
+            parent.title.trim().trim_start_matches("Album - ")
+        };
+        let artist = if parent.artist.trim().is_empty() {
+            "Various Artists"
+        } else {
+            parent.artist.trim()
+        };
+        let directory = private_dir(data, &["downloads", "YouTube", artist, album])?;
+        let mut receipts = youtube_receipts::Album::open(data, &directory)?;
+        let playlist = if parent.id.is_empty() {
+            url
+        } else {
+            &parent.id
+        };
+        let mut completed = Vec::new();
+        let total = entries.len();
+        for (index, entry) in entries.into_iter().enumerate() {
+            context.check()?;
+            let item = crate::online::youtube_item(entry, crate::online::Provider::YouTube);
+            let receipt = youtube_receipts::key(playlist, index + 1, &item.id);
+            if let Some(path) = receipts.completed(&receipt, total, context)? {
+                completed.push(path);
+                context.progress(0, None, format!("{} of {total} tracks ready", index + 1));
+                continue;
+            }
+            let scope =
+                context.progress_segment(0, None, format!("Track {} of {total}", index + 1));
+            scope.progress(0, None, "Downloading album");
+            let identity = YoutubeAlbum {
+                directory: &directory,
+                album,
+                artist,
+                track: index + 1,
+                total,
+            };
+            let mut remember = |stage: &Path, target: &Path| {
+                receipts.remember(&receipt, total, stage, target, &scope)
+            };
+            match youtube_download_single(
+                &scope,
+                data,
+                &item.url,
+                false,
+                false,
+                cover,
+                Some(&identity),
+                Some(&mut remember),
+            ) {
+                Ok(paths) => completed.extend(paths),
+                Err(error) => {
+                    return Err(format!(
+                        "Stopped after {} of {total} album tracks: {error}",
+                        completed.len()
+                    ))
+                }
+            }
+        }
+        let bytes = completed
+            .iter()
+            .filter_map(|path| fs::metadata(path).ok())
+            .map(|meta| meta.len())
+            .sum();
+        context.progress(
+            bytes,
+            Some(bytes),
+            format!("Downloaded {total} album tracks"),
+        );
+        return Ok(completed);
+    }
+    youtube_download_single(context, data, url, video, split, cover, None, None)
+}
+
+struct YoutubeAlbum<'a> {
+    directory: &'a Path,
+    album: &'a str,
+    artist: &'a str,
+    track: usize,
+    total: usize,
+}
+
+struct YoutubeStage(PathBuf);
+impl Drop for YoutubeStage {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+fn youtube_stage(context: &Context, data: &Path) -> Result<YoutubeStage, String> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let parent = private_dir(data, &["tmp", "youtube", &context.id.to_string()])?;
+    for _ in 0..32 {
+        let path = parent.join(format!(
+            "part-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(YoutubeStage(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Err("Cannot create a private YouTube staging folder".into())
+}
+
+fn youtube_download_single(
+    context: &Context,
+    data: &Path,
+    url: &str,
+    video: bool,
+    split: bool,
+    cover: Option<&Path>,
+    album: Option<&YoutubeAlbum<'_>>,
+    mut before_commit: Option<&mut dyn FnMut(&Path, &Path) -> Result<(), String>>,
+) -> Result<Vec<PathBuf>, String> {
+    validate_http(url)?;
+    let info = youtube_video_info(context, data, url)?;
+    if info["entries"].is_array() || text(&info, "_type") == "playlist" {
+        return Err(
+            "Open the playlist and choose its album download or an individual video".into(),
+        );
+    }
     let title = text(&info, "title");
     let artist = text(&info, "artist");
     let artist = if artist.is_empty() {
@@ -818,12 +979,75 @@ fn youtube_download(
             return Ok(vec![saved]);
         }
     }
-    let dir = if video {
+    let dir = if let Some(album) = album {
+        album.directory.to_path_buf()
+    } else if video {
         private_dir(data, &["videos"])?
     } else {
         private_dir(data, &["downloads", "YouTube", &artist, &title])?
     };
-    let stage = private_dir(data, &["tmp", "youtube", &context.id.to_string()])?;
+    let chapter_values = info["chapters"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let chapter_total = chapter_values.len();
+    let chapter_source = format!(
+        "chapters:{}",
+        if text(&info, "id").is_empty() {
+            url.to_string()
+        } else {
+            text(&info, "id")
+        }
+    );
+    let chapters = if split && !video {
+        chapter_values
+            .iter()
+            .enumerate()
+            .filter_map(|(index, chapter)| {
+                let start = number(chapter, "start_time");
+                let end = number(chapter, "end_time");
+                if end <= start {
+                    return None;
+                }
+                let title = text(chapter, "title");
+                let key = youtube_receipts::key(
+                    &chapter_source,
+                    index + 1,
+                    &format!("{}:{}:{title}", start.to_bits(), end.to_bits()),
+                );
+                Some((index, start, end, title, key))
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if split && !video && chapter_total > 0 && chapters.is_empty() {
+        return Err("This video has no valid chapters to split".into());
+    }
+    let mut chapter_receipts = if !chapters.is_empty() {
+        Some(youtube_receipts::Album::open(data, &dir)?)
+    } else {
+        None
+    };
+    let mut completed_chapters = std::collections::BTreeMap::new();
+    if let Some(receipts) = chapter_receipts.as_ref() {
+        for (index, _, _, _, key) in &chapters {
+            if let Some(path) = receipts.completed(key, chapter_total, context)? {
+                completed_chapters.insert(*index, path);
+            }
+        }
+        if completed_chapters.len() == chapters.len() {
+            return Ok(completed_chapters.into_values().collect());
+        }
+    }
+    let staging = youtube_stage(context, data)?;
+    let stage = &staging.0;
+    let info_path = stage.join("info.json");
+    crate::storage::atomic_write_with(&info_path, |file| {
+        serde_json::to_writer(file, &info).map_err(std::io::Error::other)
+    })
+    .map_err(|e| e.to_string())?;
+    let info = crate::online::youtube_ui_projection(info);
     let _tools = tools_guard(context)?;
     let mut command = yt_command(data);
     command
@@ -859,8 +1083,34 @@ fn youtube_download(
             "best",
         ]);
     }
-    command.arg(url);
-    process::run_ytdlp(context, &mut command, Duration::from_secs(7200))?;
+    command.arg("--load-info-json").arg(&info_path);
+    if let Err(error) = process::run_ytdlp(context, &mut command, Duration::from_secs(7200)) {
+        context.check()?;
+        if !youtube_info::stale_error(&error) {
+            return Err(error);
+        }
+        youtube_info::invalidate(data, url)?;
+        eprintln!("[YouTube] cached media URLs expired; retrying the original video once");
+        let args = command
+            .get_args()
+            .map(|v| v.to_os_string())
+            .collect::<Vec<_>>();
+        let mut retry = yt_command(data);
+        let mut skip = false;
+        for arg in args {
+            if skip {
+                skip = false;
+                continue;
+            }
+            if arg == "--load-info-json" {
+                skip = true;
+                continue;
+            }
+            retry.arg(arg);
+        }
+        retry.arg(url);
+        process::run_ytdlp(context, &mut retry, Duration::from_secs(7200))?;
+    }
     let source = fs::read_dir(&stage)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
@@ -873,21 +1123,23 @@ fn youtube_download(
         })
         .ok_or("YouTube produced no media file")?;
     let mut out = Vec::new();
-    let chapters = info["chapters"]
-        .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    if split && !video && !chapters.is_empty() {
-        for (index, chapter) in chapters.iter().enumerate() {
+    if !chapters.is_empty() {
+        for (index, start, end, title, key) in &chapters {
             context.check()?;
-            let start = number(chapter, "start_time");
-            let end = number(chapter, "end_time");
-            if end <= start {
+            if let Some(path) = completed_chapters.remove(index) {
+                out.push(path);
+                context.progress(
+                    0,
+                    None,
+                    format!("{} of {chapter_total} chapters ready", index + 1),
+                );
                 continue;
             }
-            let title = text(chapter, "title");
             let extension = source.extension().unwrap_or_default().to_string_lossy();
-            let target = free_file(&dir, &format!("{:02} {}.{extension}", index + 1, title));
+            let target = youtube_receipts::free_file(
+                &dir,
+                &format!("{:02} {}.{extension}", index + 1, title),
+            )?;
             let prepared = stage.join(format!("chapter-{index}.{extension}"));
             let mut ffmpeg = Command::new(ffmpeg_path(data));
             ffmpeg
@@ -907,35 +1159,54 @@ fn youtube_download(
                 context,
                 &prepared,
                 &TagEdit {
-                    title: Some(title),
+                    title: Some(title.clone()),
                     artist: Some(artist.clone()),
                     album: Some(text(&info, "title")),
                     track: Some((index + 1) as u32),
-                    track_total: Some(chapters.len() as u32),
+                    track_total: Some(chapter_total as u32),
                     cover: cover.map(Path::to_path_buf),
                     ..Default::default()
                 },
             )?;
-            commit_media(context, &prepared, &target)?;
+            if let Some(receipts) = chapter_receipts.as_mut() {
+                receipts.remember(key, chapter_total, &prepared, &target, context)?;
+            }
+            youtube_receipts::commit(context, &prepared, &target)?;
             out.push(target);
         }
     } else {
         let extension = source.extension().unwrap_or_default().to_string_lossy();
-        let target = free_file(&dir, &format!("{title}.{extension}"));
+        let name = album.map_or_else(
+            || format!("{title}.{extension}"),
+            |album| format!("{:02} {title}.{extension}", album.track),
+        );
+        let target = youtube_receipts::free_file(&dir, &name)?;
         if !video {
             tag_download(
                 context,
                 &source,
                 &TagEdit {
                     title: Some(title),
-                    artist: Some(artist),
-                    album: Some(text(&info, "album")),
+                    artist: Some(if artist.is_empty() {
+                        album.map_or_else(String::new, |album| album.artist.to_string())
+                    } else {
+                        artist
+                    }),
+                    album: Some(
+                        album.map_or_else(|| text(&info, "album"), |album| album.album.to_string()),
+                    ),
+                    album_artist: album.map(|album| album.artist.to_string()),
+                    track: album.map(|album| album.track as u32),
+                    track_total: album.map(|album| album.total as u32),
                     cover: cover.map(Path::to_path_buf),
                     ..Default::default()
                 },
             )?;
         }
-        commit_media(context, &source, &target)?;
+        if let Some(remember) = before_commit.as_mut() {
+            remember(&source, &target)?;
+        }
+        youtube_receipts::commit(context, &source, &target)?;
         out.push(target);
     }
     if video {
@@ -943,9 +1214,12 @@ fn youtube_download(
             crate::video_catalog::publish_saved(context, data, &info, url, path)?;
         }
     }
-    let _ = fs::remove_dir_all(stage);
     Ok(out)
 }
+
+#[cfg(test)]
+#[path = "downloads_youtube_tests.rs"]
+mod youtube_tests;
 fn commit_media(context: &Context, prepared: &Path, target: &Path) -> Result<(), String> {
     context.check()?;
     File::open(prepared)

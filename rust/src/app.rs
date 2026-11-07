@@ -5,7 +5,10 @@ mod app_curation;
 mod app_files;
 #[path = "app_settings.rs"]
 mod app_settings;
+#[path = "app_wifi_library.rs"]
+mod app_wifi_library;
 use app_files::{Effect as FilesEffect, Files, Mode as FilesMode};
+use app_wifi_library::WifiLibrary;
 #[cfg(test)]
 #[path = "app_qa.rs"]
 mod qa;
@@ -49,6 +52,8 @@ use crate::app_maintenance::{
     Controller as MaintenanceController, Effect as MaintenanceEffect, Mode as MaintenanceMode,
     Request as MaintenanceRequest,
 };
+#[path = "app_album_read.rs"]
+mod app_album_read;
 use crate::art::Artwork;
 use crate::audio::{AudioCommand, AudioEngine, AudioSnapshot};
 use crate::games::{GameCommand, GameEffect, GameKind, Games};
@@ -58,6 +63,7 @@ use crate::platform::{IdleGuard, Platform, SystemVolume};
 use crate::render::Texture;
 use crate::render::{Color, Renderer};
 use crate::storage::{Playback, Settings, Store};
+use app_album_read::PendingAlbumRead;
 use app_quiz::{Effect as QuizEffect, Quiz};
 use app_services::{Effect as ExtraEffect, ExtraPage, Extras};
 use betterpod_rust::online::StreamSource;
@@ -106,6 +112,7 @@ pub(crate) enum Screen {
     Maintenance,
     Files,
     Library,
+    WifiLibrary,
     Screensaver,
     SearchHub,
     YouTubeSettings,
@@ -196,6 +203,8 @@ pub(crate) enum Intent {
     SoftwareUpdate,
     SharingSettings,
     SharingName,
+    StartWifiLibrary,
+    StopWifiLibrary,
     YouTubeSettings,
     ToggleBeta,
     QuizNewGame,
@@ -424,6 +433,8 @@ pub struct App {
     art: Artwork,
     store: Store,
     extras: Extras,
+    pending_album_read: Option<PendingAlbumRead>,
+    wifi_library: WifiLibrary,
     settings: Settings,
     library: Arc<Library>,
     by_path: HashMap<PathBuf, usize>,
@@ -550,6 +561,8 @@ impl App {
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
         let extras = Extras::new(music.clone(), data.clone())?;
+        let wifi_library =
+            WifiLibrary::new(music.clone(), data.clone(), settings.sharing_name.clone());
         let audio = AudioEngine::new()?;
         let _ = audio.command(AudioCommand::Volume(settings.volume));
         let mut platform = Platform::new();
@@ -575,6 +588,8 @@ impl App {
             art: Artwork::new(renderer, &assets)?,
             store,
             extras,
+            pending_album_read: None,
+            wifi_library,
             settings,
             library: Arc::new(Library::default()),
             by_path: HashMap::new(),
@@ -734,6 +749,12 @@ impl App {
         });
     }
     fn send(&mut self, command: AudioCommand) {
+        if matches!(&command, AudioCommand::Stop) {
+            self.wifi_library.audio_stopped();
+        }
+        if let AudioCommand::Play { path, .. } = &command {
+            self.wifi_library_sync(Some(path));
+        }
         match &command {
             AudioCommand::Play { .. } | AudioCommand::Resume => {
                 self.idle_stopped = false;
@@ -814,6 +835,7 @@ impl App {
         }
         let retired_index = std::mem::replace(&mut self.by_path, by_path);
         self.library_generation = self.library_generation.wrapping_add(1);
+        self.wifi_library_refresh_snapshot();
         if let Some(saved) = self.restore.take() {
             self.queue_original = saved.original_queue.map(|order| {
                 Arc::new(
@@ -973,6 +995,10 @@ impl App {
                 rows = self.reference_library_rows();
                 "Library".into()
             }
+            Screen::WifiLibrary => {
+                rows = self.wifi_library_rows();
+                "Wi-Fi Library".into()
+            }
             Screen::SearchHub => {
                 rows = self.reference_search_rows();
                 "Search".into()
@@ -1089,6 +1115,9 @@ impl App {
         }
     }
     fn open(&mut self, screen: Screen) {
+        if self.pending_album_read.is_some() && self.screen() != screen {
+            self.cancel_pending_album_read();
+        }
         if screen == Screen::Visualizer {
             self.configure_saver(true);
         }
@@ -1558,6 +1587,8 @@ impl App {
                 }
             }
             Intent::Noop => {}
+            Intent::StartWifiLibrary => self.wifi_library_start(),
+            Intent::StopWifiLibrary => self.wifi_library_stop(),
             Intent::Quit => {
                 self.user_quit = true;
                 self.running = false;
@@ -1720,11 +1751,9 @@ impl App {
             }
             Intent::SeparateSong(track) => {
                 if let Some(t) = self.library.tracks.get(track) {
-                    self.extras
-                        .curation_task(betterpod_rust::online::Task::Unmerge {
-                            paths: vec![t.path.clone()],
-                        });
-                    self.open(Screen::Extra);
+                    self.begin_service_write(betterpod_rust::online::Task::Unmerge {
+                        paths: vec![t.path.clone()],
+                    });
                 }
             }
             Intent::Unmerge(album) => {
@@ -1734,9 +1763,7 @@ impl App {
                         .iter()
                         .map(|&i| self.library.tracks[i].path.clone())
                         .collect();
-                    self.extras
-                        .curation_task(betterpod_rust::online::Task::Unmerge { paths });
-                    self.open(Screen::Extra);
+                    self.begin_service_write(betterpod_rust::online::Task::Unmerge { paths });
                 }
             }
             Intent::Maintenance(mode) => {
@@ -1979,9 +2006,7 @@ impl App {
                         disc: (track.disc > 0).then_some(track.disc),
                         ..Default::default()
                     };
-                    self.extras
-                        .edit_album(vec![track.path.clone()], track.title.clone(), edit);
-                    self.open(Screen::Extra);
+                    self.begin_album_read(vec![track.path.clone()], track.title.clone(), edit);
                 }
             }
             Intent::VideoRestart => self.visual_video_restart(),
@@ -2016,7 +2041,6 @@ impl App {
                         });
                 }
                 self.open(Screen::Extra);
-                self.notify("Choose a cover or follow download progress");
             }
             Intent::Extra(page) => {
                 self.extras.open(page);
@@ -2050,8 +2074,7 @@ impl App {
                         year: (track.year > 0).then_some(track.year),
                         ..Default::default()
                     };
-                    self.extras.edit_album(paths, track.album.clone(), edit);
-                    self.open(Screen::Extra);
+                    self.begin_album_read(paths, track.album.clone(), edit);
                 }
             }
             Intent::CloseOptions => {}
@@ -2161,6 +2184,9 @@ impl App {
             self.settings.hold_brightness = level as u8;
             let _ = self.platform.set_brightness(level);
             self.save_settings();
+            return;
+        }
+        if !self.held && !self.screen_off && self.handle_pending_album_read(action) {
             return;
         }
         if !self.held && !self.screen_off && self.visual_menu_confirm_handle(action) {
@@ -2548,7 +2574,17 @@ impl App {
                         .as_ref()
                         .and_then(|p| p.rows.get(p.selected))
                         .map(|r| r.intent.clone());
-                    self.options = None;
+                    if !matches!(
+                        intent,
+                        Some(
+                            Intent::AlbumInfo(_)
+                                | Intent::SongInfo(_)
+                                | Intent::SeparateSong(_)
+                                | Intent::Unmerge(_)
+                        )
+                    ) {
+                        self.options = None;
+                    }
                     if let Some(intent) = intent {
                         self.execute(intent);
                     }
@@ -2835,8 +2871,12 @@ impl App {
                 }
             }
             MaintenanceEffect::Notice(message) => self.notify(message),
-            MaintenanceEffect::PauseMusic => self.pause_media(),
+            MaintenanceEffect::PauseMusic => {
+                self.wifi_library_stop();
+                self.pause_media();
+            }
             MaintenanceEffect::Run(request) => {
+                self.wifi_library_stop();
                 self.maintenance_request = Some(request);
                 self.running = false;
             }
@@ -2857,8 +2897,7 @@ impl App {
             CurationEffect::OpenAlbum(index) => self.open(Screen::Album(index)),
             CurationEffect::AlbumOptions(index) => self.show_album_options(index),
             CurationEffect::EditInfo { paths, title, edit } => {
-                self.extras.edit_album(paths, title, edit);
-                self.open(Screen::Extra);
+                self.begin_album_read(paths, title, edit);
             }
             CurationEffect::SearchCovers {
                 paths,
@@ -2883,8 +2922,7 @@ impl App {
                 self.keyboard = Some(Keyboard::new(query));
             }
             CurationEffect::Task(task) => {
-                self.extras.curation_task(task);
-                self.open(Screen::Extra);
+                self.begin_service_write(task);
             }
         }
     }
@@ -3289,6 +3327,8 @@ impl App {
         }
         let was_playing = self.audio_snapshot.playing;
         self.audio_snapshot = self.audio.snapshot();
+        self.wifi_library_sync(None);
+        self.wifi_library_tick();
         if was_playing && !self.audio_snapshot.playing {
             self.paused_at = self.visual_time;
         }
@@ -3368,6 +3408,7 @@ impl App {
             }
         }
         let effects = self.extras.tick(dt);
+        self.poll_pending_album_read();
         let active_downloads = self.extras.active_download_count();
         if active_downloads != self.active_downloads {
             self.active_downloads = active_downloads;
@@ -3741,7 +3782,7 @@ impl App {
                 || self.pending_music.is_some()
                 || self.idle_play_pending.is_some(),
             self.idle_stopped,
-            self.active_downloads > 0,
+            self.active_downloads > 0 || self.wifi_library.active(),
         );
         if let Err(error) = self.idle.update(
             self.audio_snapshot.playing
@@ -3749,7 +3790,8 @@ impl App {
                 || video_active
                 || self.pending_music.is_some()
                 || self.idle_play_pending.is_some()
-                || self.active_downloads > 0,
+                || self.active_downloads > 0
+                || self.wifi_library.active(),
             paused_intent,
         ) {
             if self.last_idle_error.as_deref() != Some(&error) {
@@ -4160,6 +4202,7 @@ impl App {
             return Ok(());
         }
         self.closed = true;
+        self.wifi_library.shutdown();
         self.leave_saver();
         self.scan.take();
         self.search_result.take();

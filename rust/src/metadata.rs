@@ -286,21 +286,37 @@ fn wiki_fields(source: &str) -> std::collections::HashMap<String, String> {
 }
 
 pub fn write_tags(path: &Path, edit: &TagEdit) -> Result<(), String> {
-    write_tags_impl(path, edit, None)
+    write_tags_impl(path, edit, None, false)
+}
+/// The LAN transaction holds the ordinary tag-writer lock from its conflict
+/// check through publication, so an on-console edit cannot be overwritten.
+pub(crate) struct RemoteTagWriter {
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+pub(crate) fn lock_remote_tags() -> Result<RemoteTagWriter, String> {
+    Ok(RemoteTagWriter { _guard: TAG_WRITE_LOCK.lock().map_err(|e| e.to_string())? })
+}
+impl RemoteTagWriter {
+    pub(crate) fn write(&self, path: &Path, edit: &TagEdit, remove_cover: bool) -> Result<(), String> {
+        write_tags_unlocked(path, edit, None, remove_cover)
+    }
 }
 pub fn write_tags_cancellable(
     path: &Path,
     edit: &TagEdit,
     context: &Context,
 ) -> Result<(), String> {
-    write_tags_impl(path, edit, Some(context))
+    write_tags_impl(path, edit, Some(context), false)
 }
 fn check(context: Option<&Context>) -> Result<(), String> {
     context.map_or(Ok(()), Context::check)
 }
 static TAG_WRITE_LOCK: Mutex<()> = Mutex::new(());
-fn write_tags_impl(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Result<(), String> {
+fn write_tags_impl(path: &Path, edit: &TagEdit, context: Option<&Context>, remove_cover: bool) -> Result<(), String> {
     let _write_lock = TAG_WRITE_LOCK.lock().map_err(|e| e.to_string())?;
+    write_tags_unlocked(path, edit, context, remove_cover)
+}
+fn write_tags_unlocked(path: &Path, edit: &TagEdit, context: Option<&Context>, remove_cover: bool) -> Result<(), String> {
     check(context)?;
     let extension = path
         .extension()
@@ -308,7 +324,7 @@ fn write_tags_impl(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Re
         .unwrap_or("")
         .to_lowercase();
     if matches!(extension.as_str(), "m4a" | "m4b") {
-        return write_m4a(path, edit, context);
+        return write_m4a(path, edit, context, remove_cover);
     }
     if !matches!(extension.as_str(), "mp3" | "flac" | "ogg" | "oga" | "opus") {
         return Err(format!("Tag writes are not supported for .{extension}"));
@@ -327,6 +343,7 @@ fn write_tags_impl(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Re
             file.insert_tag(Tag::new(kind));
         }
         let tag = file.primary_tag_mut().ok_or("No editable tag")?;
+        if remove_cover { while !tag.pictures().is_empty() { tag.remove_picture(0); } }
         for (key, value) in [
             (ItemKey::TrackTitle, &edit.title),
             (ItemKey::TrackArtist, &edit.artist),
@@ -375,8 +392,9 @@ fn write_tags_impl(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Re
                 return Err("Cover is too large".into());
             }
             let mut reader = std::io::Cursor::new(bytes);
-            let picture =
+            let mut picture =
                 lofty::picture::Picture::from_reader(&mut reader).map_err(|e| e.to_string())?;
+            picture.set_pic_type(lofty::picture::PictureType::CoverFront);
             tag.remove_picture_type(lofty::picture::PictureType::CoverFront);
             tag.push_picture(picture);
         }
@@ -524,7 +542,7 @@ fn edit_child(
     }
     Ok(out)
 }
-fn edit_meta(body: &[u8], edit: &TagEdit) -> Result<Vec<u8>, String> {
+fn edit_meta(body: &[u8], edit: &TagEdit, remove_cover: bool) -> Result<Vec<u8>, String> {
     let mut body = body.to_vec();
     if body.is_empty() {
         body = vec![0; 4];
@@ -560,14 +578,15 @@ fn edit_meta(body: &[u8], edit: &TagEdit) -> Result<Vec<u8>, String> {
         out.extend(make_box(*b"hdlr", &h)?);
     }
     out.extend(edit_child(&body[4..], *b"ilst", |body| {
-        edit_items(body, edit)
+        edit_items(body, edit, remove_cover)
     })?);
     Ok(out)
 }
-fn edit_items(body: &[u8], edit: &TagEdit) -> Result<Vec<u8>, String> {
+fn edit_items(body: &[u8], edit: &TagEdit, remove_cover: bool) -> Result<Vec<u8>, String> {
     let list = boxes(&mut std::io::Cursor::new(body), 0, body.len() as u64)?;
     let mut drop = std::collections::HashSet::new();
     let mut added = Vec::new();
+    if remove_cover { drop.insert(*b"covr"); }
     for (key, value) in [
         ([0xa9, b'n', b'a', b'm'], &edit.title),
         ([0xa9, b'A', b'R', b'T'], &edit.artist),
@@ -656,7 +675,7 @@ fn edit_items(body: &[u8], edit: &TagEdit) -> Result<Vec<u8>, String> {
     out.extend(added);
     Ok(out)
 }
-fn write_m4a(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Result<(), String> {
+fn write_m4a(path: &Path, edit: &TagEdit, context: Option<&Context>, remove_cover: bool) -> Result<(), String> {
     let mut source = File::open(path).map_err(|e| e.to_string())?;
     let length = source.metadata().map_err(|e| e.to_string())?.len();
     let top = boxes(&mut source, 0, length)?;
@@ -686,7 +705,7 @@ fn write_m4a(path: &Path, edit: &TagEdit, context: Option<&Context>) -> Result<(
         return Err("Unsupported M4A movie layout".into());
     }
     let body = edit_child(&body, *b"udta", |udta| {
-        edit_child(udta, *b"meta", |meta| edit_meta(meta, edit))
+        edit_child(udta, *b"meta", |meta| edit_meta(meta, edit, remove_cover))
     })?;
     if body.len() > 16 * 1024 * 1024 - 8 {
         return Err("Edited M4A metadata is too large".into());
@@ -798,7 +817,7 @@ pub fn read_album_tags(
     }
     Ok(tags)
 }
-fn read_tag_fields(path: &Path) -> Result<TagEdit, String> {
+pub(crate) fn read_tag_fields(path: &Path) -> Result<TagEdit, String> {
     let file = lofty::probe::Probe::open(path)
         .map_err(|e| e.to_string())?
         .guess_file_type()

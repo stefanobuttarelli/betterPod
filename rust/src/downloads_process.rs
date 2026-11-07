@@ -27,11 +27,12 @@ const RESOLVER_MEMORY: MemoryBudget = MemoryBudget {
     reserve: 96 * MIB,
     preflight: 160 * MIB,
 };
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct MemoryUsage {
     total: u64,
     available: u64,
     group_rss: u64,
+    app_rss: u64,
 }
 
 pub fn run_command(
@@ -85,10 +86,21 @@ fn run(
     mut probe: impl FnMut(Option<u32>) -> Result<MemoryUsage, String>,
 ) -> Result<String, String> {
     context.check()?;
+    let operation = operation_name(command);
     if let Some(budget) = budget {
-        if probe(None)?.available < budget.preflight {
+        let memory = probe(None)?;
+        if memory.available < budget.preflight {
+            eprintln!(
+                "{}",
+                memory_diagnostic("preflight", operation, memory, budget, None)
+            );
             return Err(MEMORY_ERROR.into());
         }
+        eprintln!(
+            "[YouTube] {operation} starting: app={} MiB available={} MiB",
+            memory.app_rss / MIB,
+            memory.available / MIB
+        );
     }
     command
         .process_group(0)
@@ -110,6 +122,8 @@ fn run(
     let mut err = Capture::new(MIB as usize);
     let started = Instant::now();
     let mut last_probe = started - Duration::from_secs(1);
+    let mut peak_group = 0;
+    let mut last_memory = MemoryUsage::default();
     let status = loop {
         context.check()?;
         if started.elapsed() >= timeout {
@@ -118,11 +132,25 @@ fn run(
         if let Some(budget) = budget {
             if last_probe.elapsed() >= Duration::from_millis(100) {
                 let memory = probe(Some(group.child.id()))?;
-                if memory.group_rss > budget.group_rss || memory.available < budget.reserve {
+                peak_group = peak_group.max(memory.group_rss);
+                last_memory = memory;
+                let reason = if memory.group_rss > budget.group_rss {
+                    Some("process-group-rss")
+                } else if memory.available < budget.reserve {
+                    Some("audio-reserve")
+                } else {
+                    None
+                };
+                if let Some(reason) = reason {
                     eprintln!(
-                        "[YouTube] resolver memory limit: group={} MiB available={} MiB",
-                        memory.group_rss / MIB,
-                        memory.available / MIB
+                        "{}",
+                        memory_diagnostic(
+                            reason,
+                            operation,
+                            memory,
+                            budget,
+                            Some(group.child.id())
+                        )
                     );
                     return Err(MEMORY_ERROR.into());
                 }
@@ -152,6 +180,21 @@ fn run(
         thread::sleep(POLL);
     }
     let errors = err.text();
+    if let Some(budget) = budget {
+        eprintln!("[YouTube] {operation} finished: status={status} elapsed={} ms peak-group={} MiB app={} MiB available={} MiB", started.elapsed().as_millis(), peak_group / MIB, last_memory.app_rss / MIB, last_memory.available / MIB);
+        if v8_heap_failure(&errors) {
+            eprintln!(
+                "{}",
+                memory_diagnostic(
+                    "javascript-heap",
+                    operation,
+                    last_memory,
+                    budget,
+                    Some(group.child.id())
+                )
+            );
+        }
+    }
     if !status.success() {
         return Err(command_error(&errors, budget.is_some()));
     }
@@ -159,14 +202,8 @@ fn run(
 }
 
 fn command_error(errors: &str, resolver: bool) -> String {
-    if resolver {
-        let lower = errors.to_ascii_lowercase();
-        if lower.contains("heap out of memory")
-            || lower.contains("reached heap limit")
-            || lower.contains("javascript out of memory")
-        {
-            return MEMORY_ERROR.into();
-        }
+    if resolver && v8_heap_failure(errors) {
+        return MEMORY_ERROR.into();
     }
     errors
         .lines()
@@ -174,6 +211,38 @@ fn command_error(errors: &str, resolver: bool) -> String {
         .find(|s| !s.trim().is_empty())
         .unwrap_or("External tool failed")
         .to_string()
+}
+
+fn operation_name(command: &Command) -> &'static str {
+    if command
+        .get_args()
+        .any(|arg| arg == "-J" || arg == "--dump-single-json")
+    {
+        "metadata"
+    } else if command.get_args().any(|arg| arg == "--load-info-json") {
+        "cached-media"
+    } else {
+        "media"
+    }
+}
+
+fn v8_heap_failure(errors: &str) -> bool {
+    let lower = errors.to_ascii_lowercase();
+    lower.contains("heap out of memory")
+        || lower.contains("reached heap limit")
+        || lower.contains("javascript out of memory")
+}
+
+fn memory_diagnostic(
+    reason: &str,
+    operation: &str,
+    memory: MemoryUsage,
+    budget: MemoryBudget,
+    group: Option<u32>,
+) -> String {
+    format!("[YouTube] memory stop: reason={reason} operation={operation} group-id={} app={} MiB group={} MiB available={} MiB preflight={} MiB reserve={} MiB group-limit={} MiB deno-flags={DENO_HEAP_FLAGS}",
+        group.map_or_else(|| "not-started".into(), |id| id.to_string()), memory.app_rss / MIB, memory.group_rss / MIB, memory.available / MIB,
+        budget.preflight / MIB, budget.reserve / MIB, budget.group_rss / MIB)
 }
 
 struct ProcessGroup {
@@ -295,6 +364,11 @@ fn memory_usage(group: Option<u32>) -> Result<MemoryUsage, String> {
         total: value("MemTotal:").ok_or("Unable to check free memory for YouTube")?,
         available: value("MemAvailable:").ok_or("Unable to check free memory for YouTube")?,
         group_rss: 0,
+        app_rss: fs::read_to_string("/proc/self/stat")
+            .ok()
+            .and_then(|stat| resident_pages(&stat))
+            .unwrap_or(0)
+            .saturating_mul(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }.max(0) as u64),
     };
     if let Some(group) = group {
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
@@ -319,11 +393,20 @@ fn memory_usage(group: Option<u32>) -> Result<MemoryUsage, String> {
 
 fn group_resident_pages(stat: &str, group: u32) -> Option<u64> {
     // comm may contain spaces and parentheses; numeric fields start after its final ')'.
-    let fields: Vec<_> = stat.rsplit_once(')')?.1.split_whitespace().collect();
-    if fields.first()? == &"Z" || fields.get(2)?.parse::<u32>().ok()? != group {
+    let mut fields = stat.rsplit_once(')')?.1.split_whitespace();
+    if fields.next()? == "Z" || fields.nth(1)?.parse::<u32>().ok()? != group {
         return None;
     }
-    fields.get(21)?.parse().ok()
+    fields.nth(18)?.parse().ok()
+}
+
+fn resident_pages(stat: &str) -> Option<u64> {
+    stat.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(21)?
+        .parse()
+        .ok()
 }
 
 #[cfg(test)]
@@ -370,6 +453,7 @@ mod tests {
             total: 1024 * MIB,
             available: 512 * MIB,
             group_rss: 0,
+            app_rss: 128 * MIB,
         })
     }
     fn is_running(pid: u32) -> bool {
@@ -588,6 +672,34 @@ mod tests {
             run_command(&Context::standalone(), &mut command, Duration::from_secs(2)).unwrap(),
             DENO_HEAP_FLAGS
         );
+    }
+
+    #[test]
+    fn memory_diagnostics_distinguish_all_guards_without_logging_media_urls() {
+        let usage = MemoryUsage {
+            total: 1024 * MIB,
+            available: 95 * MIB,
+            group_rss: 225 * MIB,
+            app_rss: 183 * MIB,
+        };
+        for reason in [
+            "preflight",
+            "process-group-rss",
+            "audio-reserve",
+            "javascript-heap",
+        ] {
+            let log = memory_diagnostic(reason, "metadata", usage, RESOLVER_MEMORY, Some(42));
+            assert!(log.contains(&format!("reason={reason}")));
+            assert!(log.contains("app=183 MiB group=225 MiB available=95 MiB"));
+            assert!(log.contains("preflight=160 MiB reserve=96 MiB group-limit=224 MiB"));
+            assert!(!log.contains("http"));
+        }
+        let mut command = Command::new("yt-dlp");
+        command.args(["-J", "https://www.youtube.com/watch?v=first000001"]);
+        assert_eq!(operation_name(&command), "metadata");
+        let mut command = Command::new("yt-dlp");
+        command.args(["--load-info-json", "/private/info.json"]);
+        assert_eq!(operation_name(&command), "cached-media");
     }
 
     #[test]

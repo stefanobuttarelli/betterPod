@@ -1,5 +1,7 @@
 //! Open-Meteo weather with a single bounded worker. Cached forecasts remain
 //! available offline; no HTTP request, JSON parse or write runs while drawing.
+use crate::worker_task::WorkerRequest;
+pub use crate::worker_task::{WorkerHandle, WorkerReply};
 use crate::{render::Renderer, storage};
 #[path = "weather_icons.rs"]
 mod reference_icons;
@@ -147,8 +149,8 @@ pub enum WeatherEvent {
     Error { context: String, message: String },
 }
 pub struct Weather {
-    tx: Option<mpsc::SyncSender<WeatherCommand>>,
-    rx: mpsc::Receiver<WeatherEvent>,
+    tx: Option<mpsc::SyncSender<WorkerRequest<WeatherCommand>>>,
+    rx: mpsc::Receiver<WorkerReply<WeatherEvent>>,
     latest: WeatherSnapshot,
     stop: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
@@ -172,16 +174,38 @@ impl Weather {
         })
     }
     pub fn command(&self, command: WeatherCommand) -> bool {
+        self.tx.as_ref().is_some_and(|tx| {
+            tx.try_send(WorkerRequest {
+                value: command,
+                handle: None,
+            })
+            .is_ok()
+        })
+    }
+    pub fn start(&self, command: WeatherCommand) -> Option<WorkerHandle> {
+        let handle = WorkerHandle::new();
         self.tx
-            .as_ref()
-            .is_some_and(|tx| tx.try_send(command).is_ok())
+            .as_ref()?
+            .try_send(WorkerRequest {
+                value: command,
+                handle: Some(handle.clone()),
+            })
+            .ok()?;
+        Some(handle)
     }
     pub fn poll(&mut self) -> Option<WeatherEvent> {
-        let event = self.rx.try_recv().ok()?;
-        if let WeatherEvent::State(state) = &event {
-            self.latest = state.clone();
+        self.poll_owned().map(|reply| reply.value)
+    }
+    pub fn poll_owned(&mut self) -> Option<WorkerReply<WeatherEvent>> {
+        while let Ok(reply) = self.rx.try_recv() {
+            if let WeatherEvent::State(state) = &reply.value {
+                self.latest = state.clone();
+            }
+            if !reply.is_cancelled() {
+                return Some(reply);
+            }
         }
-        Some(event)
+        None
     }
     /// Barrier for database switches/resets. Cancels queued work, drains the
     /// bounded event channel, and joins so no old cache write can race mutation.
@@ -212,8 +236,8 @@ fn now() -> u64 {
 }
 fn worker(
     data: PathBuf,
-    commands: mpsc::Receiver<WeatherCommand>,
-    events: mpsc::SyncSender<WeatherEvent>,
+    commands: mpsc::Receiver<WorkerRequest<WeatherCommand>>,
+    events: mpsc::SyncSender<WorkerReply<WeatherEvent>>,
     stop: Arc<AtomicBool>,
 ) {
     let path = data.join("weather.json");
@@ -230,15 +254,37 @@ fn worker(
             place.forecast = None;
         }
     }
-    if events.send(WeatherEvent::State(state.clone())).is_err() {
+    if events
+        .send(WorkerReply::background(WeatherEvent::State(state.clone())))
+        .is_err()
+    {
         return;
     }
     while !stop.load(Ordering::Acquire) {
-        let command = match commands.recv_timeout(Duration::from_millis(200)) {
+        let request = match commands.recv_timeout(Duration::from_millis(200)) {
             Ok(c) => c,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(_) => return,
         };
+        if request
+            .handle
+            .as_ref()
+            .is_some_and(WorkerHandle::is_cancelled)
+        {
+            continue;
+        }
+        let request_stop = RequestStop {
+            global: &stop,
+            handle: request.handle.as_ref(),
+        };
+        let events = RequestEvents {
+            sender: &events,
+            handle: request.handle.as_ref(),
+        };
+        let original = request.handle.as_ref().map(|_| state.clone());
+        let owned_add =
+            request.handle.is_some() && matches!(&request.value, WeatherCommand::Add(_));
+        let command = request.value;
         let mut changed = false;
         let mut refresh = None;
         let result = match command {
@@ -247,7 +293,7 @@ fn worker(
                 if query.len() < 2 || query.len() > 200 {
                     Err(("search".into(), "Enter between 2 and 200 characters".into()))
                 } else {
-                    match search(&query, &stop) {
+                    match search(&query, &request_stop) {
                         Ok(places) => {
                             if events
                                 .send(WeatherEvent::SearchResults { query, places })
@@ -303,10 +349,17 @@ fn worker(
                 Ok(())
             }
         };
-        if stop.load(Ordering::Acquire) {
-            return;
+        if request_stop.cancelled() {
+            if let Some(original) = original {
+                state = original;
+            }
+            if stop.load(Ordering::Acquire) {
+                return;
+            } else {
+                continue;
+            }
         }
-        if changed {
+        if changed && !owned_add {
             if let Err(e) = save(&path, &state) {
                 let _ = events.send(WeatherEvent::Error {
                     context: "save".into(),
@@ -330,7 +383,7 @@ fn worker(
             if stop.load(Ordering::Acquire) {
                 return;
             }
-            match fetch(&state.places[index], &stop) {
+            match fetch(&state.places[index], &request_stop) {
                 Ok(forecast) => {
                     state.places[index].forecast = Some(forecast);
                     changed = true;
@@ -343,8 +396,15 @@ fn worker(
                 }
             }
         }
-        if stop.load(Ordering::Acquire) {
-            return;
+        if request_stop.cancelled() {
+            if let Some(original) = original {
+                state = original;
+            }
+            if stop.load(Ordering::Acquire) {
+                return;
+            } else {
+                continue;
+            }
         }
         if changed {
             if let Err(message) = save(&path, &state) {
@@ -357,13 +417,64 @@ fn worker(
                 return;
             }
         }
+        if let Some(handle) = request.handle.as_ref() {
+            if events
+                .sender
+                .send(WorkerReply::owned(
+                    handle,
+                    WeatherEvent::State(state.clone()),
+                    true,
+                ))
+                .is_err()
+            {
+                return;
+            }
+        }
+    }
+}
+
+trait Cancelled {
+    fn cancelled(&self) -> bool;
+}
+impl Cancelled for AtomicBool {
+    fn cancelled(&self) -> bool {
+        self.load(Ordering::Acquire)
+    }
+}
+struct RequestStop<'a> {
+    global: &'a AtomicBool,
+    handle: Option<&'a WorkerHandle>,
+}
+impl Cancelled for RequestStop<'_> {
+    fn cancelled(&self) -> bool {
+        self.global.load(Ordering::Acquire) || self.handle.is_some_and(WorkerHandle::is_cancelled)
+    }
+}
+struct RequestEvents<'a> {
+    sender: &'a mpsc::SyncSender<WorkerReply<WeatherEvent>>,
+    handle: Option<&'a WorkerHandle>,
+}
+impl RequestEvents<'_> {
+    fn send(&self, value: WeatherEvent) -> Result<(), ()> {
+        if self.handle.is_some_and(WorkerHandle::is_cancelled) {
+            return Ok(());
+        }
+        let reply = if let Some(handle) = self.handle {
+            WorkerReply::owned(handle, value, false)
+        } else {
+            WorkerReply::background(value)
+        };
+        self.sender.send(reply).map_err(|_| ())
     }
 }
 fn save(path: &std::path::Path, state: &WeatherSnapshot) -> Result<(), String> {
     storage::atomic_write(path, &serde_json::to_vec(state).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())
 }
-fn get_json<T: for<'de> Deserialize<'de>>(url: &str, stop: &AtomicBool) -> Result<T, String> {
+fn get_json<T: for<'de> Deserialize<'de>>(url: &str, stop: &impl Cancelled) -> Result<T, String> {
+    if stop.cancelled() {
+        return Err("Cancelled".into());
+    }
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(20)))
         .timeout_connect(Some(Duration::from_secs(8)))
@@ -379,7 +490,7 @@ fn get_json<T: for<'de> Deserialize<'de>>(url: &str, stop: &AtomicBool) -> Resul
     let mut data = Vec::new();
     let mut buffer = [0; 16384];
     loop {
-        if stop.load(Ordering::Acquire) {
+        if stop.cancelled() {
             return Err("Cancelled".into());
         }
         let n = reader.read(&mut buffer).map_err(|e| e.to_string())?;
@@ -414,7 +525,7 @@ fn base(variable: &str, default: &str) -> String {
         .trim_end_matches('/')
         .into()
 }
-fn search(query: &str, stop: &AtomicBool) -> Result<Vec<Place>, String> {
+fn search(query: &str, stop: &impl Cancelled) -> Result<Vec<Place>, String> {
     let url = format!(
         "{}/v1/search?name={}&count=20&language=en&format=json",
         base(
@@ -439,7 +550,7 @@ fn search(query: &str, stop: &AtomicBool) -> Result<Vec<Place>, String> {
         .take(20)
         .collect())
 }
-fn fetch(place: &Place, stop: &AtomicBool) -> Result<Forecast, String> {
+fn fetch(place: &Place, stop: &impl Cancelled) -> Result<Forecast, String> {
     let url=format!("{}/v1/forecast?latitude={:.5}&longitude={:.5}&timezone=auto&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset&forecast_days=10",base("BETTERPOD_RUST_METEO_API","https://api.open-meteo.com"),place.lat,place.lon);
     let mut forecast: Forecast = get_json(&url, stop)?;
     if forecast.days() == 0 {
@@ -742,6 +853,72 @@ mod worker_tests {
             );
             thread::sleep(Duration::from_millis(2));
         }
+    }
+    #[test]
+    fn cancelled_owned_weather_request_never_writes_and_has_no_completion() {
+        let data = dir();
+        let (tx, commands) = mpsc::sync_channel(2);
+        let (events, replies) = mpsc::sync_channel(4);
+        let handle = WorkerHandle::new();
+        handle.cancel();
+        assert!(tx
+            .send(WorkerRequest {
+                value: WeatherCommand::Units(true),
+                handle: Some(handle)
+            })
+            .is_ok());
+        drop(tx);
+        worker(
+            data.clone(),
+            commands,
+            events,
+            Arc::new(AtomicBool::new(false)),
+        );
+        let replies = replies.try_iter().collect::<Vec<_>>();
+        assert_eq!(replies.len(), 1);
+        assert!(
+            replies[0].id.is_none(),
+            "Only the passive startup snapshot may be emitted"
+        );
+        assert!(!data.join("weather.json").exists());
+        fs::remove_dir_all(data).unwrap();
+    }
+    #[test]
+    fn owned_weather_completion_is_distinct_from_passive_startup_and_can_be_cancelled_after_queueing(
+    ) {
+        let data = dir();
+        let mut weather = Weather::new(data.clone()).unwrap();
+        let handle = weather.start(WeatherCommand::Units(true)).unwrap();
+        let until = Instant::now() + Duration::from_secs(3);
+        let mut passive = false;
+        loop {
+            if let Some(reply) = weather.poll_owned() {
+                if reply.id.is_none() {
+                    passive = true;
+                }
+                if reply.id == Some(handle.id) && reply.finished {
+                    assert!(passive);
+                    assert!(
+                        matches!(reply.value, WeatherEvent::State(ref state) if state.fahrenheit)
+                    );
+                    let stale = WorkerReply::owned(
+                        &handle,
+                        WeatherEvent::Error {
+                            context: "search".into(),
+                            message: "Old search".into(),
+                        },
+                        true,
+                    );
+                    handle.cancel();
+                    assert!(stale.is_cancelled());
+                    break;
+                }
+            }
+            assert!(Instant::now() < until);
+            thread::sleep(Duration::from_millis(2));
+        }
+        weather.shutdown();
+        fs::remove_dir_all(data).unwrap();
     }
     #[test]
     fn units_are_persisted_on_the_worker_and_restored_offline() {
