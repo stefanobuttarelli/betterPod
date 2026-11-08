@@ -752,6 +752,81 @@ fn remove_work(work: &Path) -> Result<(), String> {
     remove_tree(work).map_err(|e| e.to_string())?;
     sync_directory(work.parent().ok_or("Missing staging parent")?).map_err(|e| e.to_string())
 }
+/// Clears the staging folder without letting it block updates. Some cards
+/// keep a folder that cannot be emptied ("Directory not empty"), for example
+/// an entry the file system cannot list or delete. Such a folder is renamed
+/// out of the way, logged, and removed again on a later update.
+fn clear_work(work: &Path) -> Result<(), String> {
+    clear_work_with(work, remove_work)
+}
+fn clear_work_with(
+    work: &Path,
+    remove: impl Fn(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let error = match remove(work) {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+    let left: Vec<String> = walk_names(work, 20);
+    eprintln!(
+        "[Update] could not remove {}: {error}; left: {}",
+        work.display(),
+        left.join(", ")
+    );
+    let parent = work.parent().ok_or("Missing staging parent")?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let aside = parent.join(format!(".rust-update-old-{stamp}"));
+    match fs::rename(work, &aside) {
+        Ok(()) => {
+            let _ = sync_directory(parent);
+            eprintln!("[Update] moved it to {}", aside.display());
+            Ok(())
+        }
+        Err(rename) => Err(format!("{error} (and it could not be moved: {rename})")),
+    }
+}
+/// Up to `limit` paths still inside a folder, for the log.
+fn walk_names(path: &Path, limit: usize) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            names.push(format!("{} (unreadable)", dir.display()));
+            continue;
+        };
+        for entry in entries {
+            if names.len() >= limit {
+                return names;
+            }
+            match entry {
+                Ok(entry) => {
+                    let p = entry.path();
+                    names.push(p.strip_prefix(path).unwrap_or(&p).display().to_string());
+                    if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                        pending.push(p);
+                    }
+                }
+                Err(e) => names.push(format!("(unlistable entry: {e})")),
+            }
+        }
+    }
+    names
+}
+/// Removes folders an earlier update had to move aside; errors are ignored.
+fn remove_old_work(app: &Path) {
+    let Ok(entries) = fs::read_dir(app) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(".rust-update-old-") {
+            if let Err(e) = remove_work(&entry.path()) {
+                eprintln!("[Update] {} still cannot be removed: {e}", entry.path().display());
+            }
+        }
+    }
+}
 /// remove_dir_all for the console's card: on exFAT, deleting entries while
 /// reading the directory skips some of them, and the final rmdir failed with
 /// "Directory not empty (os error 39)": the staging folder then stayed and
@@ -835,7 +910,7 @@ fn recover(root: &Path, work: &Path) -> Result<(), String> {
             }
         }
     }
-    remove_work(work)
+    clear_work(work)
 }
 /// Startup recovery before creating Store/SDL clients. Returns true only
 /// when an incomplete transaction was rolled back; the caller should restart
@@ -891,9 +966,10 @@ fn apply_archive(
         }
         recover(&root, &work)?;
         if work.exists() {
-            remove_work(&work)?;
+            clear_work(&work)?;
         }
     }
+    remove_old_work(&root.join(APP));
     create_dir_all_synced(&work).map_err(|e| e.to_string())?;
     let payload = work.join("payload");
     create_dir_all_synced(&payload).map_err(|e| e.to_string())?;
@@ -1060,7 +1136,10 @@ fn apply_archive(
             Err(recovery) => Err(format!("{error}; rollback needs recovery: {recovery}")),
         };
     }
-    remove_work(&work).map_err(|e| format!("Update installed; staging cleanup failed: {e}"))?;
+    // The update is in place: a leftover staging folder must not report a failure.
+    if let Err(e) = clear_work(&work) {
+        eprintln!("[Update] installed; staging cleanup failed: {e}");
+    }
     Ok(())
 }
 
@@ -1535,6 +1614,24 @@ mod tests {
         remove_work(&work).unwrap();
         assert!(!work.exists());
         remove_tree(&work).unwrap(); // gone already: fine
+        let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_staging_folder_that_cannot_be_emptied_is_moved_aside() {
+        let root = std::env::temp_dir().join(format!("rust-stuck-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let work = root.join(".rust-update");
+        fs::create_dir_all(work.join("backup")).unwrap();
+        fs::write(work.join("backup/stuck"), b"x").unwrap();
+        // the card refuses, as on the console
+        clear_work_with(&work, |_| Err("Directory not empty (os error 39)".into())).unwrap();
+        assert!(!work.exists());
+        let aside: Vec<_> = fs::read_dir(&root).unwrap().flatten().collect();
+        assert_eq!(aside.len(), 1);
+        assert!(aside[0].file_name().to_string_lossy().starts_with(".rust-update-old-"));
+        // a later update clears it when the card allows
+        remove_old_work(&root);
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
         let _ = fs::remove_dir_all(&root);
     }
     #[test]

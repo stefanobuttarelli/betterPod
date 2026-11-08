@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.8 (2026-11-08)
+
+- Software Update no longer stops on "Directory not empty (os error 39)". When the card keeps a staging folder (`betterpod-rust/.rust-update`) that cannot be emptied, the update moves it aside, logs what was left inside, and goes on. A later update removes the old folder when the card allows it. A cleanup problem after the new files are in place is no longer reported as a failed update.
+
 ## v0.2.7 (2026-11-08)
 
 - YouTube videos open again where they stopped with "Not enough free memory to open YouTube". The app refused or stopped yt-dlp and Deno on fixed memory limits, and a 64 MB cap on Deno was too small for YouTube's check. Those limits are gone, as in betterPod. If RAM really runs out, the kernel now stops yt-dlp and Deno first, so the app and its music keep going. The log still records how much memory they used.
