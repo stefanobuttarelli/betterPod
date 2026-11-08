@@ -39,6 +39,11 @@ struct VolumeState {
     wanted: AtomicU32,
     pending: AtomicBool,
     stop: AtomicBool,
+    /// Counts volume changes made outside the app (Knulli's volume keys),
+    /// so the UI can show them as it shows its own.
+    external: AtomicU32,
+    /// The `pactl subscribe` child, killed on shutdown.
+    subscriber: std::sync::Mutex<Option<std::process::Child>>,
 }
 
 /// All PipeWire subprocesses run on this worker, never on the drawing loop
@@ -57,8 +62,11 @@ impl SystemVolume {
             wanted: AtomicU32::new(1.0f32.to_bits()),
             pending: AtomicBool::new(false),
             stop: AtomicBool::new(false),
+            external: AtomicU32::new(0),
+            subscriber: std::sync::Mutex::new(None),
         });
         let (wake, receiver) = mpsc::sync_channel(1);
+        let wake_events = wake.clone();
         let shared = Arc::clone(&state);
         let worker = thread::Builder::new()
             .name("system-volume".into())
@@ -68,6 +76,10 @@ impl SystemVolume {
                 };
                 shared.current.store(value.to_bits(), Ordering::Release);
                 shared.available.store(true, Ordering::Release);
+                // Knulli owns the volume keys: follow PipeWire's sink events
+                // (as the Go app's `pactl subscribe`) instead of waiting for
+                // the 2-second poll, so a key press shows at once.
+                spawn_subscriber(&shared, wake_events.clone());
                 while !shared.stop.load(Ordering::Acquire) {
                     let _ = receiver.recv_timeout(Duration::from_secs(2));
                     if shared.stop.load(Ordering::Acquire) {
@@ -83,13 +95,19 @@ impl SystemVolume {
                     } else {
                         let before = shared.current.load(Ordering::Acquire);
                         if let Some(value) = read_system_volume() {
-                            if !shared.pending.load(Ordering::Acquire) {
-                                let _ = shared.current.compare_exchange(
-                                    before,
-                                    value.to_bits(),
-                                    Ordering::AcqRel,
-                                    Ordering::Acquire,
-                                );
+                            if !shared.pending.load(Ordering::Acquire)
+                                && value.to_bits() != before
+                                && shared
+                                    .current
+                                    .compare_exchange(
+                                        before,
+                                        value.to_bits(),
+                                        Ordering::AcqRel,
+                                        Ordering::Acquire,
+                                    )
+                                    .is_ok()
+                            {
+                                shared.external.fetch_add(1, Ordering::AcqRel);
                             }
                         }
                     }
@@ -125,8 +143,19 @@ impl SystemVolume {
         }
     }
 
+    /// How many outside volume changes were seen so far.
+    pub fn external_changes(&self) -> u32 {
+        self.state.external.load(Ordering::Acquire)
+    }
+
     pub fn shutdown(&mut self) {
         self.state.stop.store(true, Ordering::Release);
+        if let Ok(mut child) = self.state.subscriber.lock() {
+            if let Some(mut child) = child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
         let _ = self.wake.try_send(());
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
@@ -185,6 +214,50 @@ fn pactl_output(arguments: &[&str]) -> Option<String> {
         .read_to_string(&mut output)
         .ok()?;
     Some(output)
+}
+
+/// `pactl subscribe` in a thread of its own: each sink or server change
+/// wakes the volume worker, which reads the volume again.
+fn spawn_subscriber(state: &Arc<VolumeState>, wake: mpsc::SyncSender<()>) {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    let mut command = Command::new("pactl");
+    command
+        .arg("subscribe")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    if Path::new("/etc/idlewatcher").exists() {
+        if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
+            command.env("XDG_RUNTIME_DIR", "/var/run");
+        }
+        if std::env::var_os("PULSE_SERVER").is_none() {
+            command.env("PULSE_SERVER", "unix:/var/run/pulse/native");
+        }
+    }
+    let Ok(mut child) = command.spawn() else {
+        return; // the 2-second poll still follows the volume
+    };
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        return;
+    };
+    if let Ok(mut slot) = state.subscriber.lock() {
+        *slot = Some(child);
+    }
+    let shared = Arc::clone(state);
+    let _ = thread::Builder::new()
+        .name("volume-events".into())
+        .spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let Ok(line) = line else { break };
+                if shared.stop.load(Ordering::Acquire) {
+                    break;
+                }
+                if line.contains("'change' on sink") || line.contains("'change' on server") {
+                    let _ = wake.try_send(());
+                }
+            }
+        });
 }
 
 fn read_system_volume() -> Option<f32> {

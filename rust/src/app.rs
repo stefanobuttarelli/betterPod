@@ -425,6 +425,8 @@ pub struct App {
     audio: AudioEngine,
     volume: SystemVolume,
     used_system_volume: bool,
+    /// The outside volume changes already shown (platform::SystemVolume).
+    volume_external_seen: u32,
     platform: Platform,
     idle: IdleGuard,
     idle_stopped: bool,
@@ -581,6 +583,7 @@ impl App {
             audio,
             volume: SystemVolume::new(),
             used_system_volume: false,
+            volume_external_seen: 0,
             platform,
             idle: IdleGuard::new(),
             idle_stopped: true,
@@ -3387,6 +3390,23 @@ impl App {
             if !self.used_system_volume {
                 self.send(AudioCommand::Volume(1.0));
                 self.used_system_volume = true;
+                self.volume_external_seen = self.volume.external_changes();
+            }
+            // Knulli's volume keys: show the change as the app's own keys do
+            // (the header's bar, Now Playing's volume row, the saver)
+            let external = self.volume.external_changes();
+            if external != self.volume_external_seen {
+                self.volume_external_seen = external;
+                if (value - self.settings.volume).abs() > 0.001 {
+                    self.visual_player_volume_changed(self.visual_time);
+                    self.saver.volume_changed(self.visual_time);
+                    if self.screen() != Screen::NowPlaying {
+                        self.visual_menu_volume_changed(self.visual_time);
+                    }
+                    if self.screen() == Screen::Video {
+                        self.visual_video_volume_changed(self.visual_time);
+                    }
+                }
             }
             self.settings.volume = value;
         }

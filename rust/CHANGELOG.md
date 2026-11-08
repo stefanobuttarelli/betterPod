@@ -2,6 +2,11 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.3 (2026-11-08)
+
+- The console's volume keys show in the app at once: the volume bar in the header, Now Playing's volume row, the screensaver. The app follows PipeWire's events (as betterPod does) instead of reading the volume every 2 seconds without showing it.
+- The battery icon shows the console's battery. With a Bluetooth headset connected, the headset's battery could be shown instead (97 % on the console, a quarter empty in the app).
+
 ## v0.2.2 (2026-11-07)
 
 - Weather: going back from a forecast left a blank white screen (the search page slid away instead of coming back). Now the search comes back as it should.

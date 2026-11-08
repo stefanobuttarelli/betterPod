@@ -86,6 +86,18 @@ fn read_status(sys: &Path, wireless: &Path) -> Status {
         for entry in entries.flatten() {
             let p = entry.path();
             if trim(p.join("type")) == "Battery" {
+                // A connected Bluetooth headset or controller is a Battery
+                // too ("scope" Device, e.g. hid-…-battery): only the
+                // console's own counts (axp2202-battery on the H700), as in
+                // the Go app. The headset's level showed as the console's.
+                if trim(p.join("scope")) == "Device" {
+                    continue;
+                }
+                if state.battery.is_some()
+                    && !entry.file_name().to_string_lossy().starts_with("axp")
+                {
+                    continue;
+                }
                 state.battery = trim(p.join("capacity"))
                     .parse::<u8>()
                     .ok()
@@ -173,5 +185,32 @@ mod tests {
         );
         assert_eq!(wireless_dbm("wlan0: 0000 70. 80. 0.", "wlan0"), Some(-60.0));
         assert_eq!(wireless_dbm("wlan1: 0000 70. -50. 0.", "wlan0"), None);
+    }
+    #[test]
+    fn a_headset_battery_is_not_the_consoles() {
+        let root = std::env::temp_dir().join(format!("bp-status-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let supply = root.join("class/power_supply");
+        // the headset first, as directory order may put it
+        for (name, kind, capacity, scope) in [
+            ("hid-00:11:22-battery", "Battery", "60", Some("Device")),
+            ("axp2202-battery", "Battery", "97", None),
+            ("axp2202-usb", "USB", "", None),
+        ] {
+            let d = supply.join(name);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("type"), kind).unwrap();
+            if !capacity.is_empty() {
+                fs::write(d.join("capacity"), capacity).unwrap();
+                fs::write(d.join("status"), "Discharging").unwrap();
+            }
+            if let Some(scope) = scope {
+                fs::write(d.join("scope"), scope).unwrap();
+            }
+        }
+        let state = read_status(&root, &root.join("no-wireless"));
+        assert_eq!(state.battery, Some(97));
+        assert!(!state.charging);
+        let _ = fs::remove_dir_all(&root);
     }
 }
