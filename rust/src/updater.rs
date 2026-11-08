@@ -749,8 +749,46 @@ fn persist_unlink(path: &Path) -> Result<(), String> {
     sync_directory(path.parent().ok_or("Missing unlink parent")?).map_err(|e| e.to_string())
 }
 fn remove_work(work: &Path) -> Result<(), String> {
-    fs::remove_dir_all(work).map_err(|e| e.to_string())?;
+    remove_tree(work).map_err(|e| e.to_string())?;
     sync_directory(work.parent().ok_or("Missing staging parent")?).map_err(|e| e.to_string())
+}
+/// remove_dir_all for the console's card: on exFAT, deleting entries while
+/// reading the directory skips some of them, and the final rmdir failed with
+/// "Directory not empty (os error 39)": the staging folder then stayed and
+/// every later update stopped there. Each pass lists a folder completely
+/// before deleting anything, and a folder is read again until it is empty.
+fn remove_tree(path: &Path) -> std::io::Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return fs::remove_file(path);
+    }
+    let mut last = None;
+    for _ in 0..5 {
+        let entries: Vec<PathBuf> = fs::read_dir(path)?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .collect();
+        for entry in &entries {
+            match fs::symlink_metadata(entry) {
+                Ok(m) if m.is_dir() && !m.file_type().is_symlink() => remove_tree(entry)?,
+                Ok(_) => match fs::remove_file(entry) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+                    _ => {}
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+            }
+        }
+        match fs::remove_dir(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("Folder could not be removed")))
 }
 fn write_journal(work: &Path, journal: &Journal) -> Result<(), String> {
     atomic_write(
@@ -1480,6 +1518,24 @@ mod tests {
         );
         server.join().unwrap();
         f.preserved();
+    }
+    #[test]
+    fn a_left_staging_folder_is_removed_whole() {
+        let root = std::env::temp_dir().join(format!("rust-remove-tree-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let work = root.join(".rust-update");
+        for dir in ["payload/betterpod-rust/assets/ipod", "backup/betterpod-rust/libs"] {
+            fs::create_dir_all(work.join(dir)).unwrap();
+        }
+        for i in 0..200 {
+            fs::write(work.join(format!("payload/betterpod-rust/assets/ipod/{i}.png")), b"x").unwrap();
+        }
+        fs::write(work.join("backup/betterpod-rust/libs/lib.so"), b"x").unwrap();
+        fs::write(work.join("journal.json"), b"{}").unwrap();
+        remove_work(&work).unwrap();
+        assert!(!work.exists());
+        remove_tree(&work).unwrap(); // gone already: fine
+        let _ = fs::remove_dir_all(&root);
     }
     #[test]
     fn a_504_is_tried_again_and_a_404_is_not() {

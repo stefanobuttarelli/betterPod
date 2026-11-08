@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.6 (2026-11-08)
+
+- Software Update installs again after an earlier update: it stopped with "Directory not empty (os error 39)". The folder an update is prepared in (`betterpod-rust/.rust-update`) could not be removed on the console's card, stayed behind, and the next update stopped on it. It is now removed reliably, also when an earlier version left it.
+
 ## v0.2.5 (2026-11-08)
 
 - Check for Updates no longer says "Update worker is busy" while the check made at start-up is still trying GitHub again: it waits for that check's answer.
