@@ -80,12 +80,33 @@ impl Drop for Watcher {
 fn trim(path: impl AsRef<Path>) -> String {
     fs::read_to_string(path).unwrap_or_default().trim().into()
 }
+/// The console's battery level now (screens drawn outside the app's loop,
+/// such as the update runner).
+pub fn current_battery() -> Option<u8> {
+    read_status(Path::new("/sys"), Path::new("/proc/net/wireless")).battery
+}
 fn read_status(sys: &Path, wireless: &Path) -> Status {
     let mut state = Status::default();
-    if let Ok(entries) = fs::read_dir(sys.join("class/power_supply")) {
+    // The console's own battery first, by the names the Go app reads
+    // (axp2202-battery on the H700); only without one, any battery that
+    // isn't a device's (a Bluetooth headset or controller).
+    let supply = sys.join("class/power_supply");
+    let named = ["battery", "BAT0", "axp22-battery", "axp2202-battery"]
+        .iter()
+        .map(|name| supply.join(name))
+        .find(|p| trim(p.join("capacity")).parse::<u8>().is_ok());
+    if let Some(p) = &named {
+        state.battery = trim(p.join("capacity")).parse::<u8>().ok().map(|v| v.min(100));
+        state.charging = trim(p.join("status")) == "Charging";
+        state.external_power |= matches!(trim(p.join("status")).as_str(), "Charging" | "Full");
+    }
+    if let Ok(entries) = fs::read_dir(&supply) {
         for entry in entries.flatten() {
             let p = entry.path();
             if trim(p.join("type")) == "Battery" {
+                if named.is_some() {
+                    continue;
+                }
                 // A connected Bluetooth headset or controller is a Battery
                 // too ("scope" Device, e.g. hid-…-battery): only the
                 // console's own counts (axp2202-battery on the H700), as in
@@ -211,6 +232,26 @@ mod tests {
         let state = read_status(&root, &root.join("no-wireless"));
         assert_eq!(state.battery, Some(97));
         assert!(!state.charging);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_battery_paths_the_go_app_reads_come_first() {
+        let root = std::env::temp_dir().join(format!("bp-status-go-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let supply = root.join("class/power_supply");
+        // another battery with a type, and the console's without one
+        let other = supply.join("aaa-battery");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("type"), "Battery").unwrap();
+        fs::write(other.join("capacity"), "40").unwrap();
+        let console = supply.join("battery");
+        fs::create_dir_all(&console).unwrap();
+        fs::write(console.join("capacity"), "97\n").unwrap();
+        fs::write(console.join("status"), "Charging\n").unwrap();
+        let state = read_status(&root, &root.join("no-wireless"));
+        assert_eq!(state.battery, Some(97));
+        assert!(state.charging);
         let _ = fs::remove_dir_all(&root);
     }
 }
