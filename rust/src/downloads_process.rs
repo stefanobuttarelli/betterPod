@@ -1,4 +1,5 @@
-//! Bounded external tools. Resolver children must never compete with audio for all RAM.
+//! Bounded external tools. YouTube resolver children are the first processes
+//! the kernel stops if RAM really runs out, so betterPod and its audio keep going.
 use crate::online::Context;
 use std::{
     fs,
@@ -11,25 +12,9 @@ use std::{
 
 const MIB: u64 = 1024 * 1024;
 const MEMORY_ERROR: &str = "Not enough free memory to open YouTube";
-// Supported by the bundled Deno 2.9.8 / V8 15.0.245.2 runtime. yt-dlp passes
-// DENO_V8_FLAGS through to Deno; an address-space rlimit would break V8's reservations.
-const DENO_HEAP_FLAGS: &str = "--max-old-space-size=64,--max-semi-space-size=4";
 const POLL: Duration = Duration::from_millis(25);
-
-#[derive(Clone, Copy)]
-struct MemoryBudget {
-    group_rss: u64,
-    reserve: u64,
-    preflight: u64,
-}
-const RESOLVER_MEMORY: MemoryBudget = MemoryBudget {
-    group_rss: 224 * MIB,
-    reserve: 96 * MIB,
-    preflight: 160 * MIB,
-};
 #[derive(Clone, Copy, Default)]
 struct MemoryUsage {
-    total: u64,
     available: u64,
     group_rss: u64,
     app_rss: u64,
@@ -44,7 +29,7 @@ pub fn run_command(
         context,
         command,
         timeout,
-        None,
+        false,
         64 * MIB as usize,
         memory_usage,
     )
@@ -55,52 +40,44 @@ pub(super) fn run_ytdlp(
     command: &mut Command,
     timeout: Duration,
 ) -> Result<String, String> {
-    // Desktop development is unaffected. The supported H700 console has 1 GiB.
-    let constrained = cfg!(all(target_os = "linux", target_arch = "aarch64"))
-        || (cfg!(target_os = "linux")
-            && memory_usage(None).is_ok_and(|m| m.total <= 2 * 1024 * MIB));
-    configure_runtime(command, constrained);
-    run(
-        context,
-        command,
-        timeout,
-        constrained.then_some(RESOLVER_MEMORY),
-        16 * MIB as usize,
-        memory_usage,
-    )
-}
-
-fn configure_runtime(command: &mut Command, constrained: bool) {
-    if constrained {
-        // Own these flags rather than appending an inherited, incompatible heap limit.
-        command.env("DENO_V8_FLAGS", DENO_HEAP_FLAGS);
-    }
+    // No memory limits ahead of time: they refused videos that open fine on
+    // the console (the Go app has none). The kernel stops these first instead.
+    run(context, command, timeout, true, 16 * MIB as usize, memory_usage)
 }
 
 fn run(
     context: &Context,
     command: &mut Command,
     timeout: Duration,
-    budget: Option<MemoryBudget>,
+    resolver: bool,
     output_limit: usize,
     mut probe: impl FnMut(Option<u32>) -> Result<MemoryUsage, String>,
 ) -> Result<String, String> {
     context.check()?;
     let operation = operation_name(command);
-    if let Some(budget) = budget {
-        let memory = probe(None)?;
-        if memory.available < budget.preflight {
+    let mut last_memory = MemoryUsage::default();
+    if resolver {
+        if let Ok(memory) = probe(None) {
             eprintln!(
-                "{}",
-                memory_diagnostic("preflight", operation, memory, budget, None)
+                "[YouTube] {operation} starting: app={} MiB available={} MiB",
+                memory.app_rss / MIB,
+                memory.available / MIB
             );
-            return Err(MEMORY_ERROR.into());
+            last_memory = memory;
         }
-        eprintln!(
-            "[YouTube] {operation} starting: app={} MiB available={} MiB",
-            memory.app_rss / MIB,
-            memory.available / MIB
-        );
+        // The children (yt-dlp, Deno) inherit this score. Raising it needs no
+        // privilege; the write is async-signal-safe between fork and exec.
+        unsafe {
+            command.pre_exec(|| {
+                let path = b"/proc/self/oom_score_adj\0";
+                let fd = libc::open(path.as_ptr().cast(), libc::O_WRONLY);
+                if fd >= 0 {
+                    libc::write(fd, b"1000".as_ptr().cast(), 4);
+                    libc::close(fd);
+                }
+                Ok(())
+            });
+        }
     }
     command
         .process_group(0)
@@ -123,39 +100,18 @@ fn run(
     let started = Instant::now();
     let mut last_probe = started - Duration::from_secs(1);
     let mut peak_group = 0;
-    let mut last_memory = MemoryUsage::default();
     let status = loop {
         context.check()?;
         if started.elapsed() >= timeout {
             return Err("Command timed out".into());
         }
-        if let Some(budget) = budget {
-            if last_probe.elapsed() >= Duration::from_millis(100) {
-                let memory = probe(Some(group.child.id()))?;
+        // Measured for the log only; nothing is stopped for memory here.
+        if resolver && last_probe.elapsed() >= Duration::from_millis(500) {
+            if let Ok(memory) = probe(Some(group.child.id())) {
                 peak_group = peak_group.max(memory.group_rss);
                 last_memory = memory;
-                let reason = if memory.group_rss > budget.group_rss {
-                    Some("process-group-rss")
-                } else if memory.available < budget.reserve {
-                    Some("audio-reserve")
-                } else {
-                    None
-                };
-                if let Some(reason) = reason {
-                    eprintln!(
-                        "{}",
-                        memory_diagnostic(
-                            reason,
-                            operation,
-                            memory,
-                            budget,
-                            Some(group.child.id())
-                        )
-                    );
-                    return Err(MEMORY_ERROR.into());
-                }
-                last_probe = Instant::now();
             }
+            last_probe = Instant::now();
         }
         out.drain(&mut stdout, Some(context))?;
         err.drain(&mut stderr, None)?;
@@ -180,23 +136,15 @@ fn run(
         thread::sleep(POLL);
     }
     let errors = err.text();
-    if let Some(budget) = budget {
+    if resolver {
         eprintln!("[YouTube] {operation} finished: status={status} elapsed={} ms peak-group={} MiB app={} MiB available={} MiB", started.elapsed().as_millis(), peak_group / MIB, last_memory.app_rss / MIB, last_memory.available / MIB);
-        if v8_heap_failure(&errors) {
-            eprintln!(
-                "{}",
-                memory_diagnostic(
-                    "javascript-heap",
-                    operation,
-                    last_memory,
-                    budget,
-                    Some(group.child.id())
-                )
-            );
-        }
     }
     if !status.success() {
-        return Err(command_error(&errors, budget.is_some()));
+        // SIGKILL from the kernel: RAM really ran out and the tool was stopped first.
+        if resolver && std::os::unix::process::ExitStatusExt::signal(&status) == Some(libc::SIGKILL) {
+            return Err(MEMORY_ERROR.into());
+        }
+        return Err(command_error(&errors, resolver));
     }
     Ok(out.text())
 }
@@ -231,18 +179,6 @@ fn v8_heap_failure(errors: &str) -> bool {
     lower.contains("heap out of memory")
         || lower.contains("reached heap limit")
         || lower.contains("javascript out of memory")
-}
-
-fn memory_diagnostic(
-    reason: &str,
-    operation: &str,
-    memory: MemoryUsage,
-    budget: MemoryBudget,
-    group: Option<u32>,
-) -> String {
-    format!("[YouTube] memory stop: reason={reason} operation={operation} group-id={} app={} MiB group={} MiB available={} MiB preflight={} MiB reserve={} MiB group-limit={} MiB deno-flags={DENO_HEAP_FLAGS}",
-        group.map_or_else(|| "not-started".into(), |id| id.to_string()), memory.app_rss / MIB, memory.group_rss / MIB, memory.available / MIB,
-        budget.preflight / MIB, budget.reserve / MIB, budget.group_rss / MIB)
 }
 
 struct ProcessGroup {
@@ -361,7 +297,6 @@ fn memory_usage(group: Option<u32>) -> Result<MemoryUsage, String> {
         })
     };
     let mut usage = MemoryUsage {
-        total: value("MemTotal:").ok_or("Unable to check free memory for YouTube")?,
         available: value("MemAvailable:").ok_or("Unable to check free memory for YouTube")?,
         group_rss: 0,
         app_rss: fs::read_to_string("/proc/self/stat")
@@ -450,7 +385,6 @@ mod tests {
     }
     fn ample(_: Option<u32>) -> Result<MemoryUsage, String> {
         Ok(MemoryUsage {
-            total: 1024 * MIB,
             available: 512 * MIB,
             group_rss: 0,
             app_rss: 128 * MIB,
@@ -571,79 +505,6 @@ mod tests {
     }
 
     #[test]
-    fn preflight_refuses_before_starting_child() {
-        let fixture = Fixture::new();
-        let mut command = fixture.command("echo started > \"$1\"");
-        let result = run(
-            &Context::standalone(),
-            &mut command,
-            Duration::from_secs(2),
-            Some(RESOLVER_MEMORY),
-            1024,
-            |group| {
-                assert!(group.is_none());
-                let mut memory = ample(None)?;
-                memory.available = RESOLVER_MEMORY.preflight - 1;
-                Ok(memory)
-            },
-        );
-        assert_eq!(result, Err(MEMORY_ERROR.into()));
-        assert!(!fixture.0.join("pid").exists());
-    }
-
-    #[test]
-    fn group_rss_and_free_memory_reserve_each_stop_child() {
-        for rss_limit in [true, false] {
-            let fixture = Fixture::new();
-            let mut pid = None;
-            let result = run(
-                &Context::standalone(),
-                &mut fixture.command("trap '' TERM; sleep 60 & wait"),
-                Duration::from_secs(2),
-                Some(RESOLVER_MEMORY),
-                1024,
-                |group| {
-                    let mut memory = ample(group)?;
-                    if let Some(group) = group {
-                        pid = Some(group);
-                        if rss_limit {
-                            memory.group_rss = RESOLVER_MEMORY.group_rss + 1;
-                        } else {
-                            memory.available = RESOLVER_MEMORY.reserve - 1;
-                        }
-                    }
-                    Ok(memory)
-                },
-            );
-            assert_eq!(result, Err(MEMORY_ERROR.into()));
-            assert_stopped(pid.unwrap());
-        }
-    }
-
-    #[test]
-    fn runtime_probe_failure_still_cleans_up_started_process() {
-        let fixture = Fixture::new();
-        let mut pid = None;
-        let result = run(
-            &Context::standalone(),
-            &mut fixture.command("sleep 60 & wait"),
-            Duration::from_secs(2),
-            Some(RESOLVER_MEMORY),
-            1024,
-            |group| {
-                if let Some(group) = group {
-                    pid = Some(group);
-                    Err("Unable to check YouTube memory use".into())
-                } else {
-                    ample(None)
-                }
-            },
-        );
-        assert_eq!(result, Err("Unable to check YouTube memory use".into()));
-        assert_stopped(pid.unwrap());
-    }
-
-    #[test]
     fn v8_heap_failure_has_concise_resource_error() {
         let fixture = Fixture::new();
         assert_eq!(
@@ -654,7 +515,7 @@ mod tests {
                      echo 'raw V8 stack trace' >&2; exit 1"
                 ),
                 Duration::from_secs(2),
-                Some(RESOLVER_MEMORY),
+                true,
                 1024,
                 ample
             ),
@@ -663,37 +524,42 @@ mod tests {
     }
 
     #[test]
-    fn supported_deno_flags_reach_child_without_conflicting_inherited_limit() {
+    fn low_memory_no_longer_refuses_and_children_are_stopped_first() {
         let fixture = Fixture::new();
-        let mut command = fixture.command("printf '%s' \"$DENO_V8_FLAGS\"");
-        command.env("DENO_V8_FLAGS", "--max-heap-size=9999");
-        configure_runtime(&mut command, true);
+        let result = run(
+            &Context::standalone(),
+            &mut fixture.command("cat /proc/self/oom_score_adj"),
+            Duration::from_secs(2),
+            true,
+            1024,
+            |group| {
+                let mut memory = ample(group)?;
+                memory.available = 10 * MIB;
+                memory.group_rss = 900 * MIB;
+                Ok(memory)
+            },
+        );
+        assert_eq!(result.unwrap().trim(), "1000");
+    }
+
+    #[test]
+    fn a_resolver_killed_by_the_kernel_reports_memory() {
+        let fixture = Fixture::new();
         assert_eq!(
-            run_command(&Context::standalone(), &mut command, Duration::from_secs(2)).unwrap(),
-            DENO_HEAP_FLAGS
+            run(
+                &Context::standalone(),
+                &mut fixture.command("kill -KILL $$"),
+                Duration::from_secs(2),
+                true,
+                1024,
+                ample
+            ),
+            Err(MEMORY_ERROR.into())
         );
     }
 
     #[test]
-    fn memory_diagnostics_distinguish_all_guards_without_logging_media_urls() {
-        let usage = MemoryUsage {
-            total: 1024 * MIB,
-            available: 95 * MIB,
-            group_rss: 225 * MIB,
-            app_rss: 183 * MIB,
-        };
-        for reason in [
-            "preflight",
-            "process-group-rss",
-            "audio-reserve",
-            "javascript-heap",
-        ] {
-            let log = memory_diagnostic(reason, "metadata", usage, RESOLVER_MEMORY, Some(42));
-            assert!(log.contains(&format!("reason={reason}")));
-            assert!(log.contains("app=183 MiB group=225 MiB available=95 MiB"));
-            assert!(log.contains("preflight=160 MiB reserve=96 MiB group-limit=224 MiB"));
-            assert!(!log.contains("http"));
-        }
+    fn operation_names_do_not_log_media_urls() {
         let mut command = Command::new("yt-dlp");
         command.args(["-J", "https://www.youtube.com/watch?v=first000001"]);
         assert_eq!(operation_name(&command), "metadata");
@@ -710,7 +576,7 @@ mod tests {
                 &Context::standalone(),
                 &mut fixture.command("printf '1234567890'"),
                 Duration::from_secs(2),
-                None,
+                false,
                 8,
                 ample
             ),
