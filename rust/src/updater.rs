@@ -287,15 +287,45 @@ fn version(text: &str) -> Result<semver::Version, String> {
 fn newer(candidate: &str, current: &str) -> Result<bool, String> {
     Ok(version(candidate)?.cmp_precedence(&version(current)?) == std::cmp::Ordering::Greater)
 }
+/// GitHub's release downloads sometimes answer 500/502/503/504 or drop
+/// the connection for a few seconds: a GET is tried four times, 2, 5 and
+/// 10 seconds apart, before the error is shown. 4xx answers are final.
+fn get_with_retry(
+    url: &str,
+    timeout: Duration,
+    ctx: &Context<'_>,
+) -> Result<ureq::http::Response<ureq::Body>, String> {
+    let waits = [2u64, 5, 10];
+    let mut attempt = 0;
+    loop {
+        ctx.check()?;
+        let result = ureq::get(url)
+            .config()
+            .timeout_global(Some(timeout))
+            .build()
+            .call();
+        let error = match result {
+            Ok(response) => return Ok(response),
+            Err(ureq::Error::StatusCode(code)) if code < 500 => {
+                return Err(format!("http status: {code}"))
+            }
+            Err(error) => error.to_string(),
+        };
+        let Some(&wait) = waits.get(attempt) else {
+            return Err(error);
+        };
+        eprintln!("Rust update: {error}; trying again in {wait} s");
+        attempt += 1;
+        for _ in 0..wait * 10 {
+            ctx.check()?;
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
 fn fetch_manifest(feed: &str, ctx: &Context<'_>) -> Result<Manifest, String> {
     validate_url(feed)?;
     ctx.check()?;
-    let response = ureq::get(feed)
-        .config()
-        .timeout_global(Some(Duration::from_secs(20)))
-        .build()
-        .call()
-        .map_err(|e| e.to_string())?;
+    let response = get_with_retry(feed, Duration::from_secs(20), ctx)?;
     let bytes = read_limited(response.into_body().into_reader(), 128 * 1024, ctx)?;
     let manifest: Manifest =
         serde_json::from_slice(&bytes).map_err(|e| format!("Invalid Rust update manifest: {e}"))?;
@@ -470,7 +500,9 @@ fn check_if_due(
             Ok(())
         }
         Err(error) => {
-            cached.retry_after = time.saturating_add(3600);
+            // an hour from now: a check that tried again (get_with_retry)
+            // ends later than it started
+            cached.retry_after = now().max(time).saturating_add(3600);
             atomic_write(
                 state_path,
                 &serde_json::to_vec(&cached).map_err(|e| e.to_string())?,
@@ -501,12 +533,7 @@ fn download_apply(config: &Config, manifest: Manifest, ctx: &Context<'_>) -> Res
     let root = install_root(config)?;
     let work = root.join(APP).join(".rust-download");
     ensure_regular_or_absent(&work)?;
-    let response = ureq::get(&manifest.url)
-        .config()
-        .timeout_global(Some(Duration::from_secs(120)))
-        .build()
-        .call()
-        .map_err(|e| e.to_string())?;
+    let response = get_with_retry(&manifest.url, Duration::from_secs(120), ctx)?;
     let mut reader = response.into_body().into_reader();
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -1437,6 +1464,70 @@ mod tests {
         assert!(
             matches!(rx.try_recv().unwrap(),Event::Status(Status::Available(Manifest{application,..}))if application==APP)
         );
+        server.join().unwrap();
+        f.preserved();
+    }
+    #[test]
+    fn a_504_is_tried_again_and_a_404_is_not() {
+        use std::net::TcpListener;
+        let f = Fixture::new();
+        let (_, m) = f.archive(None);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let body = serde_json::to_vec(&m).unwrap();
+        // GitHub's flaky answer first, then the manifest
+        let server = std::thread::spawn(move || {
+            for status in ["504 Gateway Timeout", "200 OK"] {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut req = [0; 4096];
+                let _ = stream.read(&mut req);
+                let content: &[u8] = if status.starts_with("200") { &body } else { b"" };
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    content.len()
+                )
+                .unwrap();
+                stream.write_all(content).unwrap();
+            }
+        });
+        let mut config = f.config.clone();
+        config.feed = Some(format!("http://{address}/manifest.json"));
+        let (tx, rx) = mpsc::sync_channel(8);
+        let stop = AtomicBool::new(false);
+        let ctx = Context {
+            stop: &stop,
+            events: &tx,
+        };
+        check(&config, &ctx).unwrap();
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            Event::Status(Status::Available(_))
+        ));
+        server.join().unwrap();
+        // a 404 is final: no second request
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut req = [0; 4096];
+            let _ = stream.read(&mut req);
+            write!(
+                stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        let started = std::time::Instant::now();
+        let error = get_with_retry(
+            &format!("http://{address}/missing.json"),
+            Duration::from_secs(5),
+            &ctx,
+        )
+        .err()
+        .unwrap();
+        assert!(error.contains("404"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(2));
         server.join().unwrap();
         f.preserved();
     }
