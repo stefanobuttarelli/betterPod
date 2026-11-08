@@ -8,7 +8,24 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufWriter, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+/// The running scan's progress, for the Library screen: music files found
+/// while walking the folders, then songs read (one scan at a time).
+pub static SCAN_FOUND: AtomicUsize = AtomicUsize::new(0);
+pub static SCAN_READ: AtomicUsize = AtomicUsize::new(0);
+
+/// "1,204 of 3,310 songs" while songs are read, "812 songs found" before.
+pub fn scan_progress_text() -> String {
+    let found = SCAN_FOUND.load(Ordering::Relaxed);
+    let read = SCAN_READ.load(Ordering::Relaxed);
+    if read > 0 {
+        format!("{} of {} songs", read.min(found), found)
+    } else {
+        format!("{found} songs found")
+    }
+}
 
 use crate::storage::{atomic_write, atomic_write_with};
 
@@ -209,6 +226,8 @@ impl Library {
         import_cache: Option<&Path>,
     ) -> Result<Self, String> {
         let started = Instant::now();
+        SCAN_FOUND.store(0, Ordering::Relaxed);
+        SCAN_READ.store(0, Ordering::Relaxed);
         let music = fs::canonicalize(music)
             .map_err(|e| format!("Open music folder {}: {e}", music.display()))?;
         if !music.is_dir() {
@@ -238,6 +257,7 @@ impl Library {
         let artwork_dir = data.join("artwork");
         let mut tracks = Vec::with_capacity(inventory.music.len());
         for file in &inventory.music {
+            SCAN_READ.fetch_add(1, Ordering::Relaxed);
             let mut track = imported
                 .as_ref()
                 .filter(|cache| file.modified() <= cache.modified)
@@ -506,6 +526,7 @@ fn inventory(root: &Path, data: &Path) -> Result<(Inventory, HashMap<PathBuf, Pa
                 folders[folder_index].tracks += 1;
                 counts.audio_bytes = counts.audio_bytes.saturating_add(metadata.len());
                 music.push(Fingerprint::from_metadata(path, &metadata));
+                SCAN_FOUND.fetch_add(1, Ordering::Relaxed);
                 if music.len() > MAX_TRACKS {
                     return Err(format!("Library exceeds {MAX_TRACKS} tracks"));
                 }

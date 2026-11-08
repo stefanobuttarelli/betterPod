@@ -5,6 +5,7 @@ The separate Rust app for Knulli. A version here whose number is in `Cargo.toml`
 ## v0.2.3 (2026-11-08)
 
 - The console's volume keys show in the app at once: the volume bar in the header, Now Playing's volume row, the screensaver. The app follows PipeWire's events (as betterPod does) instead of reading the volume every 2 seconds without showing it.
+- The library scan counts live on Settings → Library: the songs found, then "N of M songs" as they are read. It showed 0 (or the previous count) until the end.
 - The battery icon shows the console's battery. With a Bluetooth headset connected, the headset's battery could be shown instead (97 % on the console, a quarter empty in the app).
 
 ## v0.2.2 (2026-11-07)

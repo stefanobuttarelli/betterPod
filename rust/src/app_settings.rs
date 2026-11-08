@@ -188,7 +188,11 @@ impl App {
                 ),
             ],
             Some(Intent::Open(Screen::Library)) => vec![
-                summary("Songs", self.library.tracks.len().to_string(), ""),
+                if self.scanning {
+                    summary("Scanning…", crate::library::scan_progress_text(), "")
+                } else {
+                    summary("Songs", self.library.tracks.len().to_string(), "")
+                },
                 summary("Albums", self.library.albums.len().to_string(), ""),
                 summary("Artists", self.library.artists.len().to_string(), ""),
             ],

@@ -427,6 +427,8 @@ pub struct App {
     used_system_volume: bool,
     /// The outside volume changes already shown (platform::SystemVolume).
     volume_external_seen: u32,
+    /// When the scan's live count was last refreshed on screen.
+    scan_progress_shown: f64,
     platform: Platform,
     idle: IdleGuard,
     idle_stopped: bool,
@@ -584,6 +586,7 @@ impl App {
             volume: SystemVolume::new(),
             used_system_volume: false,
             volume_external_seen: 0,
+            scan_progress_shown: 0.0,
             platform,
             idle: IdleGuard::new(),
             idle_stopped: true,
@@ -3440,6 +3443,14 @@ impl App {
                 let depth = self.files.navigation_depth();
                 self.visual_menu_external_navigation(previous, current, depth, forward, started);
             }
+        }
+        // the scan's live count on Settings → Library (and its column)
+        if self.scanning
+            && matches!(self.screen(), Screen::Library | Screen::Settings)
+            && self.visual_time - self.scan_progress_shown >= 0.25
+        {
+            self.scan_progress_shown = self.visual_time;
+            self.refresh_page();
         }
         let revision = self.files.library_revision();
         if revision != self.library_info_revision {

@@ -450,10 +450,8 @@ impl App {
     pub(super) fn reference_library_rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
         if self.scanning {
-            rows.push(fact(
-                "Scanning…",
-                format!("{} songs", self.library.tracks.len()),
-            ));
+            // live, as the Go app's scan screen: found, then read
+            rows.push(fact("Scanning…", crate::library::scan_progress_text()));
         } else {
             rows.push(Row::new("Rescan now", Intent::Rescan));
             let missing = self
