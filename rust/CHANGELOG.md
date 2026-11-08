@@ -2,6 +2,11 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.5 (2026-11-08)
+
+- Check for Updates no longer says "Update worker is busy" while the check made at start-up is still trying GitHub again: it waits for that check's answer.
+- When GitHub keeps failing, the message says so ("GitHub is not answering (504). Try again in a minute").
+
 ## v0.2.4 (2026-11-08)
 
 - Software Update tries again when GitHub answers with a temporary error (500 to 504, as "http status: 504") or the connection drops: four tries, a few seconds apart, before it reports a failure.

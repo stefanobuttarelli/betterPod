@@ -203,6 +203,13 @@ impl Updater {
             .as_ref()
             .is_some_and(|tx| tx.try_send(command).is_ok())
     }
+    /// The worker is running (its queue may be full: a check or an install
+    /// is already on its way, and its answer will come).
+    pub fn alive(&self) -> bool {
+        self.tx.is_some()
+            && !self.stop.load(Ordering::Acquire)
+            && self.worker.as_ref().is_some_and(|w| !w.is_finished())
+    }
     pub fn poll(&mut self) -> Option<Event> {
         self.rx.try_recv().ok()
     }
@@ -312,6 +319,13 @@ fn get_with_retry(
             Err(error) => error.to_string(),
         };
         let Some(&wait) = waits.get(attempt) else {
+            if error.starts_with("http status: 5") {
+                // GitHub's own trouble, not the console's
+                return Err(format!(
+                    "GitHub is not answering ({}). Try again in a minute",
+                    error.trim_start_matches("http status: ")
+                ));
+            }
             return Err(error);
         };
         eprintln!("Rust update: {error}; trying again in {wait} s");

@@ -632,10 +632,12 @@ impl Controller {
         self.check_updates();
     }
     fn check_updates(&mut self) {
-        if self.updater.command(u::Command::Check) {
+        if self.updater.command(u::Command::Check) || self.updater.alive() {
+            // queued, or a check already under way (the start-up check, or
+            // one trying GitHub again after a 5xx): its answer comes
             self.update_view.checking();
         } else {
-            self.update_view.fail("Update worker is busy".into());
+            self.update_view.fail("Software Update stopped; reopen betterPod Rust".into());
         }
     }
     /// Called only after the old App is joined and PrepareTransferredClients
