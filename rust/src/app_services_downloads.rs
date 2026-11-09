@@ -166,18 +166,37 @@ impl DownloadState {
         if self.completed.is_some() {
             return 1.0;
         }
-        if let Some(total) = self.total.filter(|total| *total > 0) {
-            return (self.done as f64 / total as f64).clamp(0.0, 1.0);
+        // Archive reports cumulative album bytes. YouTube playlist totals
+        // describe only the current file and must also include track position.
+        if self.source != "YouTube" {
+            if let Some(total) = self.total.filter(|n| *n > 0) {
+                return (self.done as f64 / total as f64).clamp(0., 1.);
+            }
         }
         // A bounded playlist may not know its byte total. Show the completed
         // tracks rather than pretending a current file is the whole album.
         let words = self.status.split_whitespace().take(4).collect::<Vec<_>>();
+        if let [index, "of", total, "tracks"] = words.as_slice() {
+            if let (Ok(index), Ok(total)) = (index.parse::<u64>(), total.parse::<u64>()) {
+                if total > 0 {
+                    return (index as f64 / total as f64).clamp(0., 1.);
+                }
+            }
+        }
         if let ["Track", index, "of", total] = words.as_slice() {
             if let (Ok(index), Ok(total)) = (index.parse::<u64>(), total.parse::<u64>()) {
                 if total > 0 {
-                    return (index.saturating_sub(1) as f64 / total as f64).clamp(0.0, 1.0);
+                    let current = self
+                        .total
+                        .filter(|n| *n > 0)
+                        .map_or(0., |n| (self.done as f64 / n as f64).clamp(0., 1.));
+                    return ((index.saturating_sub(1) as f64 + current) / total as f64)
+                        .clamp(0.0, 1.0);
                 }
             }
+        }
+        if let Some(total) = self.total.filter(|total| *total > 0) {
+            return (self.done as f64 / total as f64).clamp(0.0, 1.0);
         }
         0.0
     }
@@ -330,7 +349,10 @@ impl Extras {
                 state.sampled = Some((self.visual_time, done));
             }
             state.done = done;
-            if total.is_some() {
+            let new_youtube_track = state.source == "YouTube"
+                && status.starts_with("Track ")
+                && state.status.split('·').next() != status.split('·').next();
+            if total.is_some() || new_youtube_track {
                 state.total = total;
             }
             state.status = status;
@@ -607,6 +629,9 @@ impl Extras {
             state.status.clone()
         };
         center(r, &status, 192.0, 26.0, 600, fg);
+        if state.active && queue_position.is_none() {
+            super::super::app_visual_menu::draw_spinner_in(r, 320., 174., 10., now, sub);
+        }
         let detail = if let Some(position) = queue_position {
             if position == 1 {
                 "Starting next".into()
@@ -624,10 +649,15 @@ impl Extras {
         } else if let Some(error) = &state.error {
             error.clone()
         } else {
-            state
-                .total
-                .filter(|total| *total > 0)
-                .map_or_else(String::new, |total| {
+            state.total.filter(|total| *total > 0).map_or_else(
+                || {
+                    if state.done > 0 {
+                        format!("{} received", download_bytes(state.done))
+                    } else {
+                        String::new()
+                    }
+                },
+                |total| {
                     let mut text = format!(
                         "{} of {} · {}",
                         download_bytes(state.done),
@@ -638,7 +668,8 @@ impl Extras {
                         text.push_str(&format!(" · {}/s", download_bytes(state.speed as u64)));
                     }
                     text
-                })
+                },
+            )
         };
         center(r, &detail, 228.0, 24.0, 500, sub);
         let fraction = state.progress_fraction();
@@ -660,7 +691,13 @@ impl Extras {
             dark,
         );
         let mut percentage = queue_position.map_or_else(
-            || format!("{}%", (state.shown * 100.0 + 0.5) as u32),
+            || {
+                if state.active && state.total.is_none() && fraction == 0. {
+                    "Working…".into()
+                } else {
+                    format!("{}%", (state.shown * 100.0 + 0.5) as u32)
+                }
+            },
             |position| format!("Queue position {position}"),
         );
         if state.active && state.speed > 0.0 {
@@ -715,6 +752,7 @@ impl Extras {
         true
     }
     pub(super) fn refresh_download_pages(&mut self) {
+        self.rebuild_video_pages();
         // Finished records are bounded. Active transfers are bounded by the
         // dedicated service queue and must not be evicted.
         let completed: Vec<_> = self
@@ -807,6 +845,11 @@ impl Extras {
         row
     }
     pub(super) fn download_finished(&mut self, id: u64, result: &Result<Output, String>) {
+        // Published files must enter the library even if their job was removed
+        // while its final callback was in flight.
+        if matches!(result, Ok(Output::Files(_))) {
+            self.effects.push(Effect::Rescan);
+        }
         if self
             .download_states
             .get(&id)
@@ -871,7 +914,7 @@ fn download_bytes(bytes: u64) -> String {
 }
 
 // The original drawJobButton geometry and gradients, shared by the Go-style jobs.
-fn draw_job_button(
+pub(in crate::app) fn draw_job_button(
     r: &mut Renderer,
     label: &str,
     primary: bool,
@@ -974,6 +1017,20 @@ mod tests {
         state.status = "Track 2 of 4 · Downloading".into();
         state.started = true;
         assert_eq!(state.progress_fraction(), 0.25);
+        state.done = 50;
+        state.total = Some(100);
+        assert_eq!(
+            state.progress_fraction(),
+            0.375,
+            "Album progress includes the current file"
+        );
+        let mut archive = state.clone();
+        archive.source = "Internet Archive".into();
+        assert_eq!(
+            archive.progress_fraction(),
+            0.5,
+            "Archive bytes already describe the complete album"
+        );
         let handle = extras.services.submit(Task::Downloaded).unwrap();
         extras
             .jobs

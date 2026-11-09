@@ -305,7 +305,7 @@ fn run() -> Result<(), String> {
                 eprintln!("Metrics snapshot before shutdown: {error}");
             }
         }
-        let shutdown = app.shutdown(&renderer);
+        let shutdown = app.shutdown_animated(&mut renderer, &window);
         let user_quit = app.user_quit;
         let request = app.maintenance_request.take();
         // Drop joins every remaining client and Store even if a peripheral

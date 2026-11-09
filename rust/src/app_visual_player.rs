@@ -7,6 +7,9 @@ use std::collections::BTreeMap;
 #[path = "player_visual.rs"]
 mod geometry;
 use geometry::{now_playing_pose, Pose};
+#[cfg(test)]
+#[path = "app_player_regression_qa.rs"]
+mod regression_qa;
 
 struct PoseAnim {
     from: Pose,
@@ -105,6 +108,7 @@ pub(super) struct PlayerVisual {
     card_since: f64,
     card_move_at: Option<f64>,
     card_marquee_since: f64,
+    idle_followed: bool,
 }
 impl PlayerVisual {
     pub(super) fn new() -> Self {
@@ -153,6 +157,7 @@ impl PlayerVisual {
             card_since: 0.,
             card_move_at: None,
             card_marquee_since: 0.,
+            idle_followed: false,
         }
     }
 }
@@ -285,18 +290,22 @@ impl App {
             return true;
         }
         match action {
-            Action::Up | Action::Down | Action::Left | Action::Right => {
+            Action::Left | Action::Right => {
+                self.np_mode = (self.np_mode + if action == Action::Right { 1 } else { 2 }) % 3;
+                self.player_visual.volume_until = -1.;
+                self.player_visual.options_at = self.visual_time;
+                true
+            }
+            Action::Up | Action::Down => {
                 if self.np_mode == 2 {
-                    // Options use ordinary left/up and right/down, rather
-                    // than the inverted volume wheel's up/down mapping.
-                    if matches!(action, Action::Left | Action::Up) {
+                    if action == Action::Up {
                         self.np_option = self.np_option.saturating_sub(1);
                     } else {
                         self.np_option = (self.np_option + 1).min(1);
                     }
                     self.player_visual.options_at = self.visual_time;
                 } else if self.np_mode == 1 {
-                    let positive = matches!(action, Action::Up | Action::Right);
+                    let positive = action == Action::Up;
                     let position = self.np_seek.map_or(self.audio_snapshot.position, |s| s.0);
                     let next = position + if positive { 1. } else { -1. };
                     let duration = self
@@ -307,7 +316,7 @@ impl App {
                         self.np_seek = Some((next, Instant::now() + Duration::from_millis(300)));
                     }
                 } else {
-                    let positive = matches!(action, Action::Up | Action::Right);
+                    let positive = action == Action::Up;
                     let target = (self.settings.volume + if positive { 0.04 } else { -0.04 })
                         .clamp(0.01, 1.);
                     self.set_volume(target - self.settings.volume);
@@ -400,7 +409,51 @@ impl App {
                 .filter(|s| matches!(s, Screen::NowPlaying | Screen::CoverFlow))
         };
         let screen = outgoing.unwrap_or(actual_screen);
-        let playing = self.audio_snapshot.playing && !self.audio_snapshot.paused;
+        let playing = self.music_visually_playing();
+        if self.last_activity.elapsed() < Duration::from_secs(10) {
+            self.player_visual.idle_followed = false;
+        }
+        let mut flow_album_changed = false;
+        // A playing flow follows the queue, including changes made in Cover Flip.
+        // Idle browsing returns to that album once, without reopening its card.
+        if (screen == Screen::NowPlaying
+            && (self.player_visual.flow_context
+                || self.player_visual.previous_screen == Some(Screen::CoverFlow))
+            && (self.player_visual.current.as_ref().map(|t| &t.path)
+                != self.now_track.as_ref().map(|t| &t.path)
+                || self.player_visual.previous_screen != Some(Screen::NowPlaying)))
+            || (screen == Screen::CoverFlow
+                && self.cover_card.is_none()
+                && playing
+                && (!self.player_visual.idle_followed
+                    || self.player_visual.current.as_ref().map(|t| &t.path)
+                        != self.now_track.as_ref().map(|t| &t.path))
+                && self.last_activity.elapsed() >= Duration::from_secs(10))
+        {
+            self.player_visual.idle_followed = true;
+            if let Some(index) = self.current_index() {
+                if let Some(album) = self
+                    .library
+                    .albums
+                    .iter()
+                    .position(|a| a.track_indices.contains(&index))
+                {
+                    flow_album_changed = self.cover_selected != album;
+                    self.cover_selected = album;
+                    if screen == Screen::NowPlaying {
+                        self.player_visual.card_album = Some(album);
+                        self.player_visual.card_selected = self.library.albums[album]
+                            .track_indices
+                            .iter()
+                            .position(|&i| i == index)
+                            .unwrap_or(0);
+                        if self.cover_card.is_some() {
+                            self.cover_card = Some(self.player_visual.card_selected);
+                        }
+                    }
+                }
+            }
+        }
         let pv = &mut self.player_visual;
         pv.time = now;
         pv.phase = pv.phase_epoch.map_or_else(
@@ -429,7 +482,10 @@ impl App {
         let was_visible =
             previous.is_some_and(|s| matches!(s, Screen::NowPlaying | Screen::CoverFlow));
         let tilt = if playing && !pv.saver_untilt { 1. } else { 0. };
-        if !was_visible || previous.is_none() {
+        if !was_visible
+            || previous.is_none()
+            || (screen == Screen::NowPlaying && previous == Some(Screen::CoverFlow))
+        {
             pv.tilt.snap(tilt)
         } else {
             pv.tilt.set(tilt, 0.7, Ease::InOut, 0., now)
@@ -488,18 +544,23 @@ impl App {
                     .covers
                     .entry(i)
                     .or_insert_with(|| CoverVisual::new(target));
-                c.pose.set(target, duration, now);
-                c.pose.sample(now);
-                // Once the shared flip has finished, tilt keeps following the
-                // same cover without restarting a half-second pose tween.
-                if i == active
+                // Entry owns one flip. Steady pause/resume uses only the tilt
+                // tween; a second pose tween would jump when it hands back.
+                if !(i == active
                     && flow_playing
-                    && !c.pose.progress.running(now)
-                    && !pv.flow_np.running(now)
+                    && previous == Some(Screen::NowPlaying)
+                    && !flow_album_changed)
                 {
+                    c.pose.set(target, duration, now);
+                }
+                c.pose.sample(now);
+                // Compose tilt with the entry flip, including pause/resume
+                // during that flip. There is no discontinuous handoff.
+                if i == active && flow_playing {
                     let mut p = now_playing_pose(pv.tilt_value);
                     p.angle -= 360.;
-                    c.pose.value = p;
+                    c.pose.to = p;
+                    c.pose.sample(now);
                 }
                 let hidden = i != active && (flow_playing || self.cover_from_np);
                 c.opacity
@@ -507,8 +568,9 @@ impl App {
                 c.alpha = c.opacity.value(now);
             }
         }
-        let path = self.now_track.as_ref().map(|t| &t.path);
-        if pv.current.as_ref().map(|t| &t.path) != path {
+        if pv.current.as_ref().map(|t| (&t.path, &t.cover))
+            != self.now_track.as_ref().map(|t| (&t.path, &t.cover))
+        {
             if pv.current.is_some() && now - pv.last_draw < 0.2 {
                 pv.old = pv.current.take();
                 pv.change.snap(0.);
@@ -673,11 +735,19 @@ impl App {
                 );
             }
         }
-        // Preserve the original left-to-right, three requests per frame policy.
+        // Keep the three-request budget, but load the visible center first.
         let first = active.saturating_sub(15);
         let end = (active + 16).min(self.library.albums.len());
         let mut asked = 0;
-        for i in first..end {
+        let prioritized = std::iter::once(active).chain((1..=15).flat_map(|d| {
+            [
+                active.checked_sub(d),
+                active.checked_add(d).filter(|i| *i < end),
+            ]
+            .into_iter()
+            .flatten()
+        }));
+        for i in prioritized.filter(|i| *i >= first && *i < end) {
             if asked >= 3 {
                 break;
             }

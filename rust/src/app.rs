@@ -115,6 +115,7 @@ pub(crate) enum Screen {
     WifiLibrary,
     Screensaver,
     SearchHub,
+    Lossless,
     YouTubeSettings,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,6 +299,7 @@ struct SavedPlayback {
 }
 struct ScannedLibrary {
     library: Library,
+    cover_signatures: betterpod_rust::art::CoverSignatures,
     by_path: HashMap<PathBuf, usize>,
     songs: Arc<Vec<Row>>,
     albums: Arc<Vec<Row>>,
@@ -307,6 +309,9 @@ struct ScannedLibrary {
 }
 impl ScannedLibrary {
     fn new(library: Library) -> Self {
+        let cover_signatures = betterpod_rust::art::cover_signatures(
+            library.tracks.iter().filter_map(|t| t.cover.as_ref()),
+        );
         let songs = Arc::new(
             library
                 .tracks
@@ -394,6 +399,7 @@ impl ScannedLibrary {
             .collect();
         Self {
             library,
+            cover_signatures,
             by_path,
             songs,
             albums,
@@ -756,6 +762,12 @@ impl App {
             until: Instant::now() + Duration::from_millis(1600),
         });
     }
+    fn music_visually_playing(&self) -> bool {
+        !self.idle_stopped
+            && (self.idle_play_pending.is_some()
+                || self.audio_snapshot.playing
+                || (self.audio_snapshot.loading && !self.audio_snapshot.paused))
+    }
     fn send(&mut self, command: AudioCommand) {
         if matches!(&command, AudioCommand::Stop) {
             self.wifi_library.audio_stopped();
@@ -776,7 +788,7 @@ impl App {
                 self.idle_stopped = true;
                 self.idle_play_pending = None;
             }
-            AudioCommand::Pause => self.idle_play_pending = None,
+            AudioCommand::Pause | AudioCommand::TogglePause => self.idle_play_pending = None,
             _ => {}
         }
         if !self.audio.command(command.clone()) {
@@ -815,6 +827,7 @@ impl App {
     fn install_library(&mut self, scanned: ScannedLibrary, renderer: &Renderer) {
         let ScannedLibrary {
             library,
+            cover_signatures,
             by_path,
             songs,
             albums,
@@ -831,7 +844,7 @@ impl App {
         );
         let previous = Arc::clone(&self.library);
         let pages = std::mem::take(&mut self.pages);
-        self.art.invalidate(renderer);
+        self.art.reconcile(cover_signatures, renderer);
         self.library = Arc::new(library);
         self.curation.set_library(Arc::clone(&self.library));
         self.extras.set_library_snapshot(Arc::clone(&self.library));
@@ -872,9 +885,22 @@ impl App {
                 self.restored = self.now_track.is_some();
             }
         }
-        self.cover_selected = self
-            .cover_selected
-            .min(self.library.albums.len().saturating_sub(1));
+        self.cover_selected = previous
+            .albums
+            .get(self.cover_selected)
+            .and_then(|album| album.track_indices.first())
+            .and_then(|&index| previous.tracks.get(index))
+            .and_then(|track| self.by_path.get(&track.path))
+            .and_then(|index| {
+                self.library
+                    .albums
+                    .iter()
+                    .position(|a| a.track_indices.contains(index))
+            })
+            .unwrap_or_else(|| {
+                self.cover_selected
+                    .min(self.library.albums.len().saturating_sub(1))
+            });
         self.cover_position = self.cover_selected as f32;
         if let Some(track) = self.now_track.as_ref() {
             if let Some(&i) = self.by_path.get(&track.path) {
@@ -1010,6 +1036,22 @@ impl App {
             Screen::SearchHub => {
                 rows = self.reference_search_rows();
                 "Search".into()
+            }
+            Screen::Lossless => {
+                rows = self
+                    .library
+                    .albums
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, album)| {
+                        album
+                            .track_indices
+                            .iter()
+                            .any(|&i| self.library.tracks[i].lossless)
+                    })
+                    .map(|(i, _)| self.views_albums[i].clone())
+                    .collect();
+                "Lossless".into()
             }
             Screen::Search => {
                 if self.search_rows.is_empty() {
@@ -1610,6 +1652,7 @@ impl App {
             Intent::SharingName => {
                 self.keyboard_context = KeyboardContext::Sharing;
                 self.keyboard = Some(Keyboard::new(self.settings.sharing_name.clone()));
+                self.keyboard.as_mut().unwrap().search = false;
                 self.refresh_setting_preview();
             }
             Intent::ToggleBeta => {
@@ -2198,6 +2241,9 @@ impl App {
             return;
         }
         if !self.held && !self.screen_off && self.visual_menu_confirm_handle(action) {
+            return;
+        }
+        if !self.held && !self.auto_saver && !self.screen_off && self.wifi_library_handle(action) {
             return;
         }
         if !self.held && !self.auto_saver && !self.screen_off && self.visual_player_handle(action) {
@@ -3369,9 +3415,10 @@ impl App {
             self.refresh_playback_menus();
         }
         if self.idle_play_pending.is_some_and(|start| {
-            self.audio_snapshot.playing
-                || self.audio_snapshot.loading
-                || self.audio_snapshot.error.is_some()
+            (self.now_track.as_ref().map(|t| &t.path) == self.audio_snapshot.path.as_ref()
+                && (self.audio_snapshot.playing
+                    || self.audio_snapshot.loading
+                    || self.audio_snapshot.error.is_some()))
                 || start.elapsed() > Duration::from_secs(2)
         }) {
             self.idle_play_pending = None;
@@ -3889,7 +3936,7 @@ impl App {
             self.save_games();
         }
         if self.settings.screensaver_seconds > 0
-            && self.audio_snapshot.playing
+            && (self.audio_snapshot.playing || self.held)
             && self.quiz.is_none()
             && !self.screen_off
             && !self.extras.prevents_screensaver()
@@ -3897,7 +3944,7 @@ impl App {
                 > Duration::from_secs(self.settings.screensaver_seconds as u64)
             && self.screen() != Screen::Visualizer
         {
-            if !self.held && !self.video_open && !self.auto_saver {
+            if !self.video_open && !self.auto_saver {
                 self.enter_saver();
             }
         }
@@ -4145,6 +4192,9 @@ impl App {
                     let previous = self.pages.pop();
                     self.visual_menu_navigation(previous, false);
                 }
+                if self.music_visually_playing() && self.now_track.is_some() {
+                    self.open(Screen::NowPlaying);
+                }
             }
             SaverAction::OpenAlbum(index) => {
                 self.leave_saver();
@@ -4160,7 +4210,7 @@ impl App {
         }
     }
     fn leave_saver(&mut self) {
-        self.visual_player_end_saver(self.audio_snapshot.playing);
+        self.visual_player_end_saver(self.music_visually_playing());
         self.auto_saver = false;
         if let Some(level) = self.saver_brightness.take() {
             let _ = self.platform.set_brightness(level);
@@ -4253,6 +4303,92 @@ impl App {
             }
         }
     }
+    /// Keep presenting the source activity indicator while owned workers flush
+    /// and join. SDL and every GPU resource stay on the main thread.
+    pub fn shutdown_animated(
+        &mut self,
+        renderer: &mut Renderer,
+        window: &sdl2::video::Window,
+    ) -> Result<(), String> {
+        if self.closed {
+            return Ok(());
+        }
+        if self.screen_off {
+            let _ = self.platform.set_screen_off(false);
+            self.screen_off = false;
+        }
+        self.save_games();
+        self.save_playback();
+        self.save_settings();
+        self.remember_video();
+        self.scan.take();
+        self.search_result.take();
+        let Self {
+            maintenance,
+            wifi_library,
+            search_worker,
+            scan_worker,
+            video,
+            audio,
+            extras,
+            files,
+            curation,
+            volume,
+            status_watcher,
+            store,
+            ..
+        } = self;
+        let started = Instant::now();
+        let request = thread::scope(|scope| {
+            let worker = scope.spawn(move || {
+                let request = maintenance.as_mut().and_then(|m| m.quiesce_for_shutdown());
+                wifi_library.shutdown();
+                if let Some(worker) = search_worker.take() {
+                    let _ = worker.join();
+                }
+                if let Some(worker) = scan_worker.take() {
+                    let _ = worker.join();
+                }
+                if let Some(video) = video.as_mut() {
+                    video.shutdown();
+                }
+                audio.shutdown();
+                extras.shutdown();
+                files.shutdown();
+                curation.shutdown();
+                volume.shutdown();
+                status_watcher.close();
+                (request, store.flush())
+            });
+            loop {
+                renderer.begin(crate::render::BLACK);
+                app_visual_menu::draw_spinner_in(
+                    renderer,
+                    320.,
+                    224.,
+                    24.,
+                    started.elapsed().as_secs_f64(),
+                    WHITE,
+                );
+                renderer.centered("Shutting down…", 80., 280., 480., 26, WHITE);
+                renderer.finish();
+                window.gl_swap_window();
+                if worker.is_finished() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(16));
+            }
+            worker
+                .join()
+                .map_err(|_| "Shutdown worker failed".to_string())
+        })?;
+        if self.maintenance_request.is_none() {
+            self.maintenance_request = request.0;
+        }
+        self.closed = true;
+        self.finish_shutdown(renderer)?;
+        request.1
+    }
     pub fn shutdown(&mut self, renderer: &Renderer) -> Result<(), String> {
         if let Some(request) = self
             .maintenance
@@ -4284,20 +4420,24 @@ impl App {
         if let Some(video) = self.video.as_mut() {
             video.shutdown();
         }
-        if let Some(texture) = self.video_texture.take() {
-            renderer.delete_texture(texture);
-        }
         self.audio.shutdown();
         self.extras.shutdown();
-        betterpod_rust::weather::close_icons(renderer);
         self.files.shutdown();
         self.curation.shutdown();
         self.volume.shutdown();
+        self.status_watcher.close();
+        self.finish_shutdown(renderer)
+    }
+    fn finish_shutdown(&mut self, renderer: &Renderer) -> Result<(), String> {
+        self.leave_saver();
+        if let Some(texture) = self.video_texture.take() {
+            renderer.delete_texture(texture);
+        }
+        betterpod_rust::weather::close_icons(renderer);
         self.idle.close();
         self.saver.close(renderer);
         self.art.close(renderer);
         self.visual_assets.close(renderer);
-        self.status_watcher.close();
         if self.screen_off {
             let _ = self.platform.set_screen_off(false);
             self.screen_off = false;
@@ -4313,7 +4453,16 @@ fn time_label(seconds: f64) -> String {
     } else {
         0
     };
-    format!("{}:{:02}", seconds / 60, seconds % 60)
+    if seconds >= 3600 {
+        format!(
+            "{}:{:02}:{:02}",
+            seconds / 3600,
+            seconds / 60 % 60,
+            seconds % 60
+        )
+    } else {
+        format!("{}:{:02}", seconds / 60, seconds % 60)
+    }
 }
 fn local_clock() -> String {
     let mut now: libc::time_t = unsafe { libc::time(std::ptr::null_mut()) };
@@ -4339,6 +4488,13 @@ fn idle_pause_intent(
 #[cfg(test)]
 mod idle_intent_tests {
     use super::*;
+    #[test]
+    fn long_media_durations_include_hours() {
+        assert_eq!(time_label(3599.), "59:59");
+        assert_eq!(time_label(3600.), "1:00:00");
+        assert_eq!(time_label(7384.), "2:03:04");
+        assert_eq!(time_label(f64::NAN), "0:00");
+    }
     #[test]
     fn natural_track_handoff_keeps_guard_grace() {
         assert!(!idle_pause_intent(false, None, false, false, false));

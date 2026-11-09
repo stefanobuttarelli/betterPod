@@ -719,7 +719,7 @@ impl App {
                 &[
                     "Opening the video",
                     &format!(
-                        "Starting yt-dlp · {} s",
+                        "Connecting to YouTube · {} s",
                         (now - self.video_visual.opening_at).max(0.) as u64
                     ),
                 ],

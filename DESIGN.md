@@ -84,6 +84,16 @@ the code; they are finite evidence, not permission to assume untested parity.
   selection, scroll, query, recent searches and cancellation ownership.
 - Contextual actions use the existing bottom sheet over a dimmed screen,
   with its separate Cancel card. Settings pages are not action sheets.
+- **Requested console updates:** Left/Right in Now Playing cycles the time,
+  scrubber and shuffle/repeat controls. Sharing-name entry uses Enter. Menu
+  scrollbars appear during navigation and fade shortly afterward. Hold notices
+  are centered. Music → Search includes Lossless albums with the wave icon.
+- Cover Flip exits to Now Playing while music is active, otherwise to the
+  previous screen. Hold permits the automatic screensaver. After ten seconds
+  without input, Cover Flow follows the playing album.
+- Wi-Fi Library uses a dedicated console page with a large pairing code,
+  connection status, Mac instructions and one Start/Stop button. Retain the
+  console header, typography, theme and glossy blue button.
 
 ## Artwork and YouTube detail actions
 
@@ -99,6 +109,9 @@ the code; they are finite evidence, not permission to assume untested parity.
   Download must not force a crop-choice step. Keep an automatic square-cover
   preview in the existing artwork treatment; do not introduce another crop UI
   or mandatory confirmation in its place.
+- Cover is actionable before a YouTube download and for existing library
+  albums. An optional source search selects replacement art; it must preserve
+  aspect ratio and must not add a mandatory step to downloading.
 
 ## Async foreground actions
 
@@ -143,14 +156,14 @@ unrelated global loading messages and fake progress percentages.
 - **B leaves the job view and the download continues in the background.**
   The view must say so in its normal hint area. Only Cancel stops that job.
   This is distinct from B cancelling a foreground loader.
-- Downloads stays reachable from the established menu while active or recent
+- Downloads stays reachable from Music and Videos while active or recent
   jobs exist. Its standard list clearly distinguishes active, completed,
   cancelled and failed jobs. Selecting one returns to that job's progress and
   outcome; it does not start another transfer.
 - Y on the Downloads list opens the existing action sheet with Remove from
   List and Clear Download List. Removing active/queued work is labelled Cancel
   and Remove; clearing the entire list confirms cancellation of remaining work.
-  Saved media is preserved. An empty visible list removes Downloads from Home,
+  Saved media is preserved. An empty visible list removes those Downloads rows,
   including when only failed/completed records were cleared. Late callbacks
   must not restore removed history or release a stopping worker's idle guard.
 - Try Again must retain completed valid tracks and request the missing work.

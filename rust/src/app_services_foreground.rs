@@ -312,6 +312,7 @@ impl Extras {
                 | Purpose::ToolAction
                 | Purpose::Combined { .. }
                 | Purpose::CoverContext { .. }
+                | Purpose::YouTubeCover { .. }
         )
     }
     pub(super) fn claim_foreground(&mut self, id: u64, owner: u64, purpose: Purpose) {

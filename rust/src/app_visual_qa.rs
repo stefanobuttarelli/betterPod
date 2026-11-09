@@ -191,6 +191,7 @@ fn capture_static_scenes() -> Result<(), String> {
     app.queue = Arc::new(app.library.tracks.iter().map(|t| t.path.clone()).collect());
     app.queue_index = 0;
     app.now_track = app.library.tracks.first().cloned();
+    app.idle_stopped = false;
     app.restored = false;
     eprintln!(
         "TEXT_WIDTH automatic={}",

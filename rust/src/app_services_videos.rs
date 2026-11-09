@@ -107,6 +107,12 @@ impl Extras {
                 Choice::Page(ExtraPage::SavedVideos),
             ));
         }
+        if self.has_downloads() {
+            rows.push(Item::new(
+                "Downloads",
+                Choice::Page(ExtraPage::ActiveDownloads),
+            ));
+        }
         if self.videos.ffmpeg_busy {
             rows.push(visual::fact(
                 "Downloading ffmpeg…",
@@ -465,7 +471,7 @@ impl Extras {
             _ => {}
         }
     }
-    fn rebuild_video_pages(&mut self) {
+    pub(super) fn rebuild_video_pages(&mut self) {
         for index in 0..self.pages.len() {
             let rows = match self.pages[index].role {
                 PageRole::VideoHome => self.video_home_rows(),

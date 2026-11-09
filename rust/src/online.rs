@@ -134,6 +134,10 @@ pub enum Task {
         paths: Vec<PathBuf>,
         cover: PathBuf,
     },
+    SetYouTubeCover {
+        paths: Vec<PathBuf>,
+        url: String,
+    },
     ResetChosenCover {
         paths: Vec<PathBuf>,
     },
@@ -290,6 +294,7 @@ struct ProgressScope {
     base: u64,
     total: Option<u64>,
     label: String,
+    file_total: bool,
 }
 impl Context {
     /// Interrupt a standalone worker's bounded request or external tool.
@@ -309,14 +314,24 @@ impl Context {
     }
     pub(crate) fn progress_segment(&self, base: u64, total: Option<u64>, label: String) -> Self {
         let mut child = self.clone();
-        child.progress_scope = Some(ProgressScope { base, total, label });
+        child.progress_scope = Some(ProgressScope {
+            base,
+            total,
+            label,
+            file_total: false,
+        });
+        child
+    }
+    pub(crate) fn progress_file(&self, label: String) -> Self {
+        let mut child = self.progress_segment(0, None, label);
+        child.progress_scope.as_mut().unwrap().file_total = true;
         child
     }
     fn progress_event(&self, done: u64, total: Option<u64>, status: String) -> Event {
         let (done, total, status) = if let Some(scope) = &self.progress_scope {
             (
                 scope.base.saturating_add(done),
-                scope.total,
+                scope.total.or(total.filter(|_| scope.file_total)),
                 format!("{} · {status}", scope.label),
             )
         } else {
@@ -751,6 +766,20 @@ fn execute(
             })
         }
         Task::SetCoverFile { paths, cover } => {
+            curation::set_cover_file(data, music, &paths, &cover, context)?;
+            Ok(Output::CurationApplied {
+                matched: paths.len(),
+                total: paths.len(),
+            })
+        }
+        Task::SetYouTubeCover { paths, url } => {
+            let cover = cache_artwork(data, context, &url)?;
+            let cover = downloads::prepare_square_cover(
+                context,
+                data,
+                &cover,
+                downloads::SquareCrop::Center,
+            )?;
             curation::set_cover_file(data, music, &paths, &cover, context)?;
             Ok(Output::CurationApplied {
                 matched: paths.len(),
@@ -1388,6 +1417,34 @@ fn video_history(data: &std::path::Path) -> Result<Vec<OnlineItem>, String> {
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+    #[test]
+    fn youtube_process_reports_stderr_bytes_and_keeps_playlist_file_totals() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let context = Context {
+            id: 91,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            events: tx,
+            progress_scope: None,
+        };
+        let track = context.progress_file("Track 2 of 4".into());
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", "printf 'BP_PROGRESS|524288.0|NA|1048576.0\\n' >&2"]);
+        downloads::run_command(&track, &mut command, Duration::from_secs(3)).unwrap();
+        match rx.recv_timeout(Duration::from_secs(1)).unwrap() {
+            Event::Progress {
+                id,
+                done,
+                total,
+                status,
+            } => {
+                assert_eq!(id, 91);
+                assert_eq!(done, 524288);
+                assert_eq!(total, Some(1048576));
+                assert!(status.starts_with("Track 2 of 4"));
+            }
+            _ => panic!("Expected progress from the child process stderr"),
+        }
+    }
     #[test]
     fn album_progress_segments_keep_one_cumulative_total() {
         let (tx, rx) = mpsc::sync_channel(4);

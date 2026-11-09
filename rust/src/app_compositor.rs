@@ -70,6 +70,7 @@ impl App {
         muted: Color,
     ) {
         match screen {
+            Screen::WifiLibrary => self.wifi_library_draw(renderer, elapsed),
             Screen::CoverFlow => self.visual_player_draw_coverflow(renderer),
             Screen::NowPlaying => self.visual_player_draw_now_playing(renderer),
             Screen::Visualizer => {

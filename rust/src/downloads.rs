@@ -76,7 +76,7 @@ pub fn run_with_cover(
         _ => Err("Square cover selection is only available for YouTube audio".into()),
     }
 }
-fn prepare_square_cover(
+pub(crate) fn prepare_square_cover(
     context: &Context,
     data: &Path,
     cover: &Path,
@@ -870,8 +870,7 @@ fn youtube_download(
                 context.progress(0, None, format!("{} of {total} tracks ready", index + 1));
                 continue;
             }
-            let scope =
-                context.progress_segment(0, None, format!("Track {} of {total}", index + 1));
+            let scope = context.progress_file(format!("Track {} of {total}", index + 1));
             scope.progress(0, None, "Downloading album");
             let identity = YoutubeAlbum {
                 directory: &directory,
@@ -1054,8 +1053,9 @@ fn youtube_download_single(
         .args([
             "--no-playlist",
             "--newline",
+            "--progress",
             "--progress-template",
-            "download:BP_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s",
+            "download:BP_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s",
             "--retries",
             "3",
             "--fragment-retries",

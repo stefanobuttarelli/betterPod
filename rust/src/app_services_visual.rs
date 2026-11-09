@@ -26,6 +26,30 @@ pub(super) fn item_height(item: &Item) -> f32 {
 }
 impl Extras {
     #[cfg(test)]
+    pub(in crate::app) fn qa_download_completion(&mut self) {
+        // Use the actual service event path with already-published local files.
+        self.task(Task::Downloaded, Purpose::Download);
+    }
+    pub(super) fn refresh_youtube_cover_page(&mut self, origin: &str) {
+        if let Some(item) = self
+            .detail_item
+            .as_ref()
+            .filter(|i| i.url == origin)
+            .cloned()
+        {
+            let rows = self.youtube_details_rows(&item);
+            if let Some(page) = self
+                .pages
+                .iter_mut()
+                .rev()
+                .find(|p| p.role == PageRole::YouTubeItem)
+            {
+                page.rows = rows;
+                page.visual_rows = None;
+            }
+        }
+    }
+    #[cfg(test)]
     pub(in crate::app) fn qa_youtube_details(&mut self, item: OnlineItem, cover: Option<PathBuf>) {
         self.cancel_browse_jobs();
         self.keyboard = None;
@@ -1180,6 +1204,7 @@ impl Extras {
         album: String,
         artist: String,
     ) {
+        self.youtube_cover_target = None;
         self.edit_paths = paths;
         self.edit_title = album.clone();
         self.cover_search = true;
@@ -1393,6 +1418,12 @@ impl Extras {
             let mut row = Item::new("None of these?", Choice::CombinedSearch);
             row.detail = "Edit the search and try other words".into();
             rows.push(row);
+        }
+        if state.cover && state.pending == 0 && self.youtube {
+            rows.push(Item::new(
+                "Search YouTube",
+                Choice::CoverSearch(Provider::YouTube),
+            ));
         }
         self.replace(title, rows);
         let page = self.pages.last_mut().unwrap();
@@ -1825,6 +1856,7 @@ impl Extras {
         self.pages.clear();
         self.push("Name This betterPod", Vec::new());
         self.keyboard = Some((Keyboard::new(String::new()), Typing::SharingName));
+        self.keyboard.as_mut().unwrap().0.search = false;
         self.refresh_share_name_gate();
     }
     pub(super) fn refresh_share_name_gate(&mut self) {
@@ -1920,6 +1952,130 @@ mod youtube_search_tests {
             .position(|row| row.title == label)
             .unwrap_or_else(|| panic!("Missing {label}"));
         extras.handle(Action::Select);
+    }
+    fn cached_cover(fixture: &Fixture) -> (OnlineItem, PathBuf) {
+        use sha2::{Digest, Sha256};
+        let mut item = OnlineItem::new(Provider::YouTube);
+        item.url = "https://www.youtube.com/watch?v=abcdefghijk".into();
+        item.title = "Chosen artwork".into();
+        item.cover = "https://example.invalid/fixture-cover.jpg".into();
+        let path = fixture
+            .root
+            .join("data/artwork/online")
+            .join(format!("{:x}.jpg", Sha256::digest(item.cover.as_bytes())));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        image::RgbImage::from_pixel(160, 90, image::Rgb([80, 140, 200]))
+            .save(&path)
+            .unwrap();
+        (item, path)
+    }
+    fn wait_foreground(extras: &mut Extras) -> Vec<Effect> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut effects = Vec::new();
+        while extras.foreground.is_some() {
+            effects.extend(extras.tick(0.));
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Cover task did not finish"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        effects
+    }
+    #[test]
+    fn youtube_cover_selection_returns_to_its_detail_and_cancel_rejects_late_artwork() {
+        let mut fixture = Fixture::new("chosen-cover");
+        let (chosen, cover) = cached_cover(&fixture);
+        let extras = &mut fixture.extras;
+        let mut original = chosen.clone();
+        original.title = "Original album".into();
+        original.cover.clear();
+        extras.qa_youtube_details(original.clone(), None);
+        let owner = extras.pages.last().unwrap().key;
+        select(extras, "Cover");
+        assert!(extras.pages.last().unwrap().role == PageRole::Sheet);
+        assert!(extras
+            .pages
+            .last()
+            .unwrap()
+            .rows
+            .iter()
+            .any(|r| matches!(r.choice, Choice::YouTubeCoverSource(_, Provider::YouTube))));
+        extras.handle(Action::Back);
+        // A completed search supplies this result; the actual artwork task
+        // uses its prepopulated private cache, with no live provider required.
+        extras.youtube_cover_target = Some((original.url.clone(), owner));
+        extras.push(
+            "Choose Cover",
+            vec![Item::new(
+                "Chosen artwork",
+                Choice::UseCover(chosen.clone()),
+            )],
+        );
+        extras.handle(Action::Select);
+        assert!(extras.foreground.is_some());
+        assert!(extras.pages.last().unwrap().rows[0].visual.busy);
+        wait_foreground(extras);
+        assert_eq!(extras.pages.last().unwrap().key, owner);
+        assert_eq!(extras.youtube_covers.get(&original.url), Some(&cover));
+        assert!(extras
+            .pages
+            .last()
+            .unwrap()
+            .rows
+            .iter()
+            .any(|r| r.title == "Cover" && r.cover.as_ref() == Some(&cover)));
+        extras.choose(Choice::YouTubeOriginalCover(original.url.clone()));
+        assert!(!extras.youtube_covers.contains_key(&original.url));
+        extras.youtube_cover_target = Some((original.url.clone(), owner));
+        extras.push(
+            "Choose Cover",
+            vec![Item::new("Chosen artwork", Choice::UseCover(chosen))],
+        );
+        extras.handle(Action::Select);
+        extras.handle(Action::Back);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !extras.jobs.is_empty() {
+            extras.tick(0.);
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!extras.youtube_covers.contains_key(&original.url));
+        assert_eq!(extras.title(), "Choose Cover");
+    }
+    #[test]
+    fn youtube_cover_for_existing_music_saves_square_override_and_refreshes_library() {
+        let mut fixture = Fixture::new("existing-cover");
+        let (chosen, _) = cached_cover(&fixture);
+        let song = fixture.root.join("music/song.mp3");
+        std::fs::write(&song, b"Original audio remains unchanged").unwrap();
+        let extras = &mut fixture.extras;
+        extras.edit_paths = vec![song.clone()];
+        extras.cover_search = true;
+        extras.cover_override = true;
+        extras.push(
+            "Choose Album Cover",
+            vec![Item::new("Chosen artwork", Choice::UseCover(chosen))],
+        );
+        extras.handle(Action::Select);
+        let effects = wait_foreground(extras);
+        assert!(effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Rescan)));
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(fixture.root.join("data/curation.json")).unwrap(),
+        )
+        .unwrap();
+        let canonical = std::fs::canonicalize(&song).unwrap();
+        let cover = manifest["tracks"][canonical.to_str().unwrap()]["cover"]
+            .as_str()
+            .unwrap();
+        let dimensions = image::image_dimensions(cover).unwrap();
+        assert_eq!(dimensions.0, dimensions.1);
+        assert_eq!(
+            std::fs::read(song).unwrap(),
+            b"Original audio remains unchanged"
+        );
     }
     fn finish_search_jobs(extras: &mut Extras) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -2212,8 +2368,8 @@ mod youtube_search_tests {
         );
         assert!(rows[0].visual.thumbnail && rows[0].visual.no_arrow);
         assert!(matches!(rows[1].choice, Choice::Preview(_, _, 0)));
-        assert!(matches!(rows[3].choice, Choice::Nothing));
-        assert!(rows[3].visual.no_arrow);
+        assert!(matches!(rows[3].choice, Choice::YouTubeCover(_)));
+        assert!(!rows[3].visual.no_arrow);
         assert!(matches!(
             rows[4].choice,
             Choice::Download(DownloadRequest::YouTube {

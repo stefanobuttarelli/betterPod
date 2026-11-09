@@ -247,17 +247,6 @@ impl App {
             };
             rows.push(videos);
         }
-        let downloads = self.extras.active_download_count();
-        if self.extras.has_downloads() {
-            let mut row = Row::new("Downloads", Intent::Extra(ExtraPage::ActiveDownloads));
-            row.visual.value = if downloads > 0 {
-                downloads.to_string()
-            } else {
-                "Recent".into()
-            };
-            row.visual.preview = PreviewKind::None;
-            rows.push(row);
-        }
         let mut apps = Row::new("Apps", Intent::Open(Screen::Apps));
         apps.visual.preview = PreviewKind::Apps;
         rows.push(apps);
@@ -294,6 +283,17 @@ impl App {
             Row::new("Receive", Intent::Extra(ExtraPage::Receive)),
             Row::new("Wi-Fi Library", Intent::Open(Screen::WifiLibrary)),
         ];
+        let downloads = self.extras.active_download_count();
+        if self.extras.has_downloads() {
+            let mut row = Row::new("Downloads", Intent::Extra(ExtraPage::ActiveDownloads));
+            row.visual.value = if downloads > 0 {
+                downloads.to_string()
+            } else {
+                "Recent".into()
+            };
+            row.visual.preview = PreviewKind::None;
+            rows.push(row);
+        }
         if self.reference_mini_visible() {
             for (name, screen) in [
                 ("Now playing", Screen::NowPlaying),
@@ -536,6 +536,9 @@ impl App {
                 Intent::Extra(ExtraPage::Online(betterpod_rust::online::Provider::Archive)),
             ),
         ];
+        let mut lossless = Row::new("Lossless", Intent::Open(Screen::Lossless));
+        lossless.visual.icon = "lossless".into();
+        rows.insert(1, lossless);
         if self.settings.youtube {
             rows.push(Row::new(
                 "YouTube",

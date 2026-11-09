@@ -32,6 +32,7 @@ struct Key {
 #[derive(Clone)]
 pub(super) struct Keyboard {
     pub query: String,
+    pub search: bool,
     /// Position in Unicode scalar values, exactly as Go's []rune editor.
     pub caret: usize,
     layer: usize,
@@ -49,6 +50,7 @@ impl Keyboard {
         let caret = query.chars().count();
         Self {
             query,
+            search: true,
             caret,
             layer: 0,
             shift: 0,
@@ -343,6 +345,7 @@ impl Keyboard {
                     KeyAction::Space => "space".into(),
                     KeyAction::Delete => "⌫".into(),
                     KeyAction::Layer => if self.layer == 0 { "123" } else { "ABC" }.into(),
+                    KeyAction::Enter if !self.search => "Enter".into(),
                     _ => String::new(),
                 };
                 let size = if character || key.action == KeyAction::Delete {
@@ -350,7 +353,7 @@ impl Keyboard {
                 } else {
                     22.0
                 };
-                let label_width = if key.action == KeyAction::Enter {
+                let label_width = if key.action == KeyAction::Enter && self.search {
                     26.0
                 } else {
                     r.text_width_weighted(&label, size, 600)
@@ -368,7 +371,7 @@ impl Keyboard {
                     badge_size(r, badge) + 8.0
                 };
                 let label_x = x + (key.width - label_width - badge_width) * 0.5;
-                if key.action == KeyAction::Enter {
+                if key.action == KeyAction::Enter && self.search {
                     draw_magnifier(r, label_x, center_y, 26.0, text);
                 } else {
                     r.text_baseline(

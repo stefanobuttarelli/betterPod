@@ -90,7 +90,9 @@ fn rows(
         Phase::Starting | Phase::Ready(_) | Phase::Connected(_)
     );
     let mut action = Row::new(
-        if active {
+        if *phase == Phase::Starting {
+            "Cancel"
+        } else if active {
             "Stop Connection"
         } else {
             "Start Connection"
@@ -173,6 +175,156 @@ fn grouped_code(code: &str) -> String {
 }
 
 impl App {
+    #[cfg(test)]
+    pub(super) fn wifi_library_fixture(&mut self, phase: &str) {
+        self.wifi_library.phase = match phase {
+            "ready" => Phase::Ready("00123456".into()),
+            "connected" => Phase::Connected("Studio Mac".into()),
+            "failed" => Phase::Failed("No Wi-Fi connection".into()),
+            "starting" => Phase::Starting,
+            _ => Phase::Off,
+        };
+        self.wifi_library.endpoints = if matches!(phase, "ready" | "connected") {
+            vec!["192.168.1.20:41234".into()]
+        } else {
+            Vec::new()
+        };
+        self.refresh_page();
+    }
+    pub(super) fn wifi_library_handle(&mut self, action: Action) -> bool {
+        if self.screen() != Screen::WifiLibrary || self.options.is_some() {
+            return false;
+        }
+        match action {
+            Action::Select => {
+                if self.wifi_library.active() {
+                    self.wifi_library_stop();
+                } else {
+                    self.wifi_library_start();
+                }
+            }
+            Action::Back if self.wifi_library.phase == Phase::Starting => self.wifi_library_stop(),
+            Action::Up
+            | Action::Down
+            | Action::Left
+            | Action::Right
+            | Action::Options
+            | Action::SelectHeld => {}
+            _ => return false,
+        }
+        true
+    }
+    pub(super) fn wifi_library_draw(&self, r: &mut Renderer, now: f64) {
+        let (bg, fg, sub) = self.colors();
+        r.rect(0., 40., 640., 440., bg);
+        let center = |r: &mut Renderer, text: &str, y: f32, size: f32, weight: u16, color| {
+            let text = app_visual_menu::ellipsize(r, text, size, weight, 576.);
+            let width = r.text_width_weighted(&text, size, weight);
+            r.text_baseline(
+                &text,
+                (640. - width) * 0.5,
+                y + crate::render::line_box(size).1,
+                size,
+                weight,
+                color,
+                576.,
+            );
+        };
+        let state = &self.wifi_library;
+        let (title, lines): (&str, Vec<&str>) = match &state.phase {
+            Phase::Off => (
+                "Your library, on your Mac",
+                vec![
+                    "Connect both devices to the same Wi-Fi.",
+                    "Open betterPod Share on your Mac.",
+                    "Choose betterPod, then select this player.",
+                ],
+            ),
+            Phase::Starting => ("Starting connection…", vec!["Preparing your pairing code"]),
+            Phase::Ready(_) => (
+                "Enter this code on your Mac",
+                vec![
+                    "betterPod Share → betterPod → this player",
+                    "Pairing code expires after ten minutes",
+                ],
+            ),
+            Phase::Connected(name) => (
+                "Connected",
+                vec![
+                    name,
+                    "Edit tags and covers from your Mac.",
+                    "Saved changes appear here automatically.",
+                ],
+            ),
+            Phase::Failed(_) => (
+                "Connection unavailable",
+                vec!["Check Wi-Fi on both devices, then try again."],
+            ),
+        };
+        center(r, title, 78., 32., 700, fg);
+        match &state.phase {
+            Phase::Ready(code) => {
+                center(r, &grouped_code(code), 140., 64., 600, fg);
+            }
+            Phase::Starting => app_visual_menu::draw_spinner_in(r, 320., 174., 22., now, sub),
+            _ => {
+                r.push_transform(266., 132., 3., 3., 1.);
+                app_visual_menu::draw_wifi(r, 0., 0., 3, sub);
+                r.pop_transform();
+            }
+        }
+        for (i, line) in lines.iter().enumerate() {
+            center(r, line, 224. + i as f32 * 30., 24., 400, sub);
+        }
+        if let Phase::Failed(error) = &state.phase {
+            center(r, error, 284., 24., 500, fg);
+        } else if let Some(update) = state
+            .last_update
+            .as_deref()
+            .or(state.connection_notice.as_deref())
+        {
+            center(r, update, 324., 22., 500, fg);
+        }
+        if state.active() {
+            if let Some(endpoint) = state.endpoints.first() {
+                center(
+                    r,
+                    &format!("Manual address: {endpoint}"),
+                    354.,
+                    22.,
+                    400,
+                    sub,
+                );
+            }
+            center(
+                r,
+                if state.phase == Phase::Starting {
+                    "[B] Cancel connection"
+                } else {
+                    "[B] Back · connection stays available"
+                },
+                382.,
+                20.,
+                400,
+                sub,
+            );
+        }
+        app_services::draw_job_button(
+            r,
+            if state.phase == Phase::Starting {
+                "Cancel"
+            } else if state.active() {
+                "Stop Connection"
+            } else if matches!(state.phase, Phase::Failed(_)) {
+                "Try Again"
+            } else {
+                "Start Connection"
+            },
+            true,
+            self.dark(),
+            fg,
+        );
+    }
     pub(super) fn wifi_library_rows(&self) -> Vec<Row> {
         rows(
             &self.wifi_library.phase,
@@ -200,6 +352,7 @@ impl App {
             return;
         }
         self.wifi_library.phase = Phase::Starting;
+        self.wifi_library.endpoints.clear();
         self.wifi_library.last_update = None;
         self.wifi_library.connection_notice = None;
         self.wifi_library.pairing_code = None;
@@ -360,7 +513,7 @@ mod tests {
         let rows = rows(&Phase::Off, None, None, &[]);
         assert!(matches!(rows[0].intent, Intent::StartWifiLibrary));
         assert!(rows.iter().any(|row| row.label == "Use the same Wi-Fi"));
-        assert!(app_visual_menu::is_menu(Screen::WifiLibrary));
+        assert!(!app_visual_menu::is_menu(Screen::WifiLibrary));
         assert_eq!(Screen::WifiLibrary.default_kind(), ViewKind::Full);
     }
 
@@ -387,9 +540,7 @@ mod tests {
         assert!(rows
             .iter()
             .any(|row| row.label == "Updated 2 songs from Mac"));
-        assert!(rows
-            .iter()
-            .any(|row| row.detail.contains("Stop playback")));
+        assert!(rows.iter().any(|row| row.detail.contains("Stop playback")));
     }
 
     #[test]

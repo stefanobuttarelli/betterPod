@@ -44,6 +44,46 @@ identity or every possible service, error and transition path.
 | Actual application ownership | SDL/GLES controller tests run the real Listen cache and video decoder with a private, paced PulseAudio null sink. They verify row-A controls, ignored generic Listen transport, unplug/resume/next, music restoration, concurrent video resolution, stale Ready rejection, opening cancellation, screen-off seek, EOF/retry and paused music after closing video. No physical audio device is used. |
 | Suite and builds | The ordinary final run passes 202 library, 65 application and 6 proxy tests (273 total); opt-in codec, AAC and SDL fixtures run separately. Linux native, AArch64/glibc2.28 and bundled Mac release builds are prepared locally. |
 
+## Console review, 2026-11-09
+
+This follow-up implements the reported Rust console corrections in PR #18.
+The requested departures from Go are recorded in `DESIGN.md`.
+
+| Area | Change and verification |
+| --- | --- |
+| YouTube progress | Read exact and estimated byte totals, accept numeric progress on either output stream, retain each playlist file's total and combine it with completed tracks. Archive keeps its cumulative byte semantics. Running jobs show the source spinner. The actual bundled yt-dlp emitted 14 reports, including 13 distinct byte counts, during an isolated local HTTP download. This is not a live YouTube extraction test. |
+| Download completion and navigation | Successful results request a library refresh even after job history is removed. Partial/cancelled albums retain their existing refresh path. An actual service callback and scanner fixture publishes a new file and verifies its Album and Artist rows without manual refresh. Downloads is reachable from Music and Videos; Home has no Downloads row. |
+| Artwork selection and proportions | The YouTube detail Cover action offers optional source searches and restoration of its original thumbnail. Existing albums can select a YouTube result as a square private cover override. Tests verify completion, cancellation, late-output rejection, unchanged source audio bytes and persisted square artwork. A native-size circular mark in a wide thumbnail remains circular in both detail rows. |
+| Playback and Cover Flow | Left/Right cycles time/scrubber/options without changing volume. Requested/loading playback keeps the mini-player out of its paused pose. Entry flip and pause tilt compose continuously, including pause during entry. Cover Flip song changes update artwork, album selection and Back destination. Ten-second idle following resumes on later track changes. |
+| Artwork cache | Frame lookups remain memory-only. Visible covers refresh LRU age, pending requests do not consume the foreground request budget, and the center cover is requested first. Scans retain unchanged GPU textures and invalidate replaced artwork using signatures collected on the scan worker. A 44-cover pressure fixture verifies that the visible texture survives eviction. |
+| Screensaver and controls | Active music returns from Cover Flip to Now Playing; paused playback restores the original screen. Hold permits automatic entry. Hold notices are centered; sharing uses Enter; scrollbars fade after navigation. Music → Search → Lossless lists albums containing at least one confirmed lossless track. |
+| Loading, battery and exit | The real Music search detail → Watch input route opens the full video loader and B restores its selection. Long durations show hours. System battery selection ignores device-scoped peripheral batteries; a fixture selects 82% over 50% and 40% alternatives. Shutdown continues presenting the 12-spoke indicator while workers stop and preferences flush. Actual device gauge readings still need hardware comparison. |
+| Wi-Fi Library | The dedicated console screen presents Start, Starting/Cancel, an eight-digit pairing code, Connected, and retryable failure states. It reuses the source header, fonts, Wi-Fi glyph and blue job button. Five native-size states are captured; no Mac UI components are moved into the console. |
+
+Validation for this pass:
+
+- 397 ordinary tests: 279 library, 112 application and 6 proxy cases. The 27
+  opt-in tests remain separately identified; seven actual SDL/GLES application
+  route tests pass, including the new multi-flow regression fixture.
+- Linux native and Knulli AArch64 release builds pass; Knulli requires no newer
+  than glibc 2.28. A 30-second smoke run loads 120 tracks, advances playback and
+  visits all five scripted screens with dummy audio.
+- Two independent capture passes for each of 65 general and 9 YouTube scenes
+  are repeatable. Native-size images were inspected. Semantic differences are
+  explicit: the existing Rust Wi-Fi Library entry, requested Lossless entry,
+  and an actionable Cover row even when a video has no thumbnail. Associated
+  list positions differ. Pixel differences include scrollbar fading, selected
+  Cancel/background hints, the download spinner and renderer antialiasing.
+- `build/rust/review-*.log`, `app-captures/review-*.png`, `visual-parity/`,
+  `youtube-design-checks/` and `review-ytdlp-progress.json` contain local evidence.
+  Generated media, preferences, binaries and captures are excluded from commits.
+
+Effects Full keeps animated artwork previews, weather icons and sheet/toast
+transitions. Light reduces those effects; neither setting changes audio quality.
+This pass does not install on the handheld, release a package, validate live
+YouTube challenges, or establish audible playback, physical battery accuracy,
+Wi-Fi/Bluetooth reliability or H700 frame timing.
+
 ## Separate acceptance stage
 
 The first muted console run is now recorded in `CONSOLE_QA.md`. Further acceptance must verify audible continuity,

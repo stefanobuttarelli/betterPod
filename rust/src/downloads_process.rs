@@ -114,7 +114,7 @@ fn run(
             last_probe = Instant::now();
         }
         out.drain(&mut stdout, Some(context))?;
-        err.drain(&mut stderr, None)?;
+        err.drain(&mut stderr, Some(context))?;
         if let Some(status) = group.child.try_wait().map_err(|e| e.to_string())? {
             break status;
         }
@@ -126,7 +126,7 @@ fn run(
     let until = Instant::now() + Duration::from_millis(250);
     loop {
         let out_done = out.drain(&mut stdout, Some(context))?;
-        let err_done = err.drain(&mut stderr, None)?;
+        let err_done = err.drain(&mut stderr, Some(context))?;
         if out_done && err_done {
             break;
         }
@@ -262,8 +262,19 @@ impl Capture {
                     if part.ends_with('\n') {
                         if let Some(progress) = self.line.trim().strip_prefix("BP_PROGRESS|") {
                             let mut fields = progress.split('|');
-                            let done = fields.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-                            let total = fields.next().and_then(|s| s.parse().ok());
+                            let bytes = |s: &str| {
+                                s.trim()
+                                    .parse::<f64>()
+                                    .ok()
+                                    .filter(|n| n.is_finite() && *n >= 0.)
+                                    .map(|n| n as u64)
+                            };
+                            let done = fields.next().and_then(bytes).unwrap_or(0);
+                            let total = fields
+                                .next()
+                                .and_then(bytes)
+                                .filter(|n| *n > 0)
+                                .or_else(|| fields.next().and_then(bytes).filter(|n| *n > 0));
                             if self.last_progress.elapsed() > Duration::from_millis(200) {
                                 context.progress(done, total, "Downloading YouTube");
                                 self.last_progress = Instant::now();

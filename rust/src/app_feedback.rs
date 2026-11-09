@@ -215,7 +215,11 @@ impl App {
             let x = 320.0 - w * 0.5;
             let line_height = crate::render::line_box(26.0).0;
             let h = 56.0 + lines.len().saturating_sub(1) as f32 * line_height;
-            let y = 280.0 - (h - 56.0) * 0.5 + (1.0 - a) * 16.0;
+            let y = if matches!(self.feedback.toast_text.as_str(), "Hold On" | "Hold Off") {
+                240.0 - h * 0.5
+            } else {
+                280.0 - (h - 56.0) * 0.5 + (1.0 - a) * 16.0
+            };
             rounded_gradient(
                 r,
                 x,

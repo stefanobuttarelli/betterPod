@@ -591,6 +591,16 @@ impl Renderer {
             [top, top, bottom, bottom],
         );
     }
+    pub fn image_cover(&mut self, texture: Texture, rect: [f32; 4], opacity: f32) {
+        let image_ratio = texture.width as f32 / texture.height.max(1) as f32;
+        let target_ratio = rect[2] / rect[3].max(1.);
+        let (u, v) = if image_ratio > target_ratio {
+            ((1. - target_ratio / image_ratio) * 0.5, 0.)
+        } else {
+            (0., (1. - image_ratio / target_ratio) * 0.5)
+        };
+        self.image_uv(texture, rect, [u, v, 1. - u, 1. - v], opacity);
+    }
     pub fn image(&mut self, texture: Texture, x: f32, y: f32, w: f32, h: f32, opacity: f32) {
         let c = [1.0, 1.0, 1.0, opacity];
         self.quad(

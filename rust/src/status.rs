@@ -87,42 +87,39 @@ pub fn current_battery() -> Option<u8> {
 }
 fn read_status(sys: &Path, wireless: &Path) -> Status {
     let mut state = Status::default();
-    // The console's own battery first, by the names the Go app reads
-    // (axp2202-battery on the H700); only without one, any battery that
-    // isn't a device's (a Bluetooth headset or controller).
+    // Prefer the known console paths even when firmware omits their type.
     let supply = sys.join("class/power_supply");
     let named = ["battery", "BAT0", "axp22-battery", "axp2202-battery"]
         .iter()
         .map(|name| supply.join(name))
-        .find(|p| trim(p.join("capacity")).parse::<u8>().is_ok());
+        .find(|p| {
+            trim(p.join("scope")) != "Device"
+                && trim(p.join("capacity"))
+                    .parse::<u8>()
+                    .is_ok_and(|v| v <= 100)
+        });
     if let Some(p) = &named {
-        state.battery = trim(p.join("capacity")).parse::<u8>().ok().map(|v| v.min(100));
+        state.battery = trim(p.join("capacity")).parse::<u8>().ok();
         state.charging = trim(p.join("status")) == "Charging";
         state.external_power |= matches!(trim(p.join("status")).as_str(), "Charging" | "Full");
     }
     if let Ok(entries) = fs::read_dir(&supply) {
-        for entry in entries.flatten() {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            (!name.starts_with("axp"), name)
+        });
+        for entry in entries {
             let p = entry.path();
-            if trim(p.join("type")) == "Battery" {
-                if named.is_some() {
-                    continue;
-                }
-                // A connected Bluetooth headset or controller is a Battery
-                // too ("scope" Device, e.g. hid-…-battery): only the
-                // console's own counts (axp2202-battery on the H700), as in
-                // the Go app. The headset's level showed as the console's.
-                if trim(p.join("scope")) == "Device" {
-                    continue;
-                }
-                if state.battery.is_some()
-                    && !entry.file_name().to_string_lossy().starts_with("axp")
-                {
-                    continue;
-                }
+            // A connected headset/controller must not replace the console level.
+            if trim(p.join("scope")) == "Device" {
+                continue;
+            }
+            if trim(p.join("type")) == "Battery" && state.battery.is_none() {
                 state.battery = trim(p.join("capacity"))
                     .parse::<u8>()
                     .ok()
-                    .map(|v| v.min(100));
+                    .filter(|v| *v <= 100);
                 state.charging = trim(p.join("status")) == "Charging";
                 state.external_power |=
                     matches!(trim(p.join("status")).as_str(), "Charging" | "Full");
@@ -198,6 +195,28 @@ fn wifi_bars(dbm: f64) -> i8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn system_battery_wins_over_peripheral_and_secondary_supplies() {
+        let root = std::env::temp_dir().join(format!("bp-battery-{}", std::process::id()));
+        for (name, scope, capacity) in [
+            ("battery", "System", "82"),
+            ("controller", "Device", "50"),
+            ("secondary", "System", "40"),
+        ] {
+            let p = root.join("class/power_supply").join(name);
+            fs::create_dir_all(&p).unwrap();
+            for (file, value) in [
+                ("type", "Battery"),
+                ("scope", scope),
+                ("capacity", capacity),
+                ("status", "Discharging"),
+            ] {
+                fs::write(p.join(file), value).unwrap();
+            }
+        }
+        assert_eq!(read_status(&root, &root.join("wireless")).battery, Some(82));
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn proc_wireless_driver_encodings() {
         assert_eq!(

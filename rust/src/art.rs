@@ -7,7 +7,21 @@ use std::sync::{
     mpsc, Arc, Mutex,
 };
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
+pub type CoverSignatures = HashMap<PathBuf, (u64, Option<SystemTime>)>;
+
+/// Called by the library worker, never by frame lookups.
+pub fn cover_signatures<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> CoverSignatures {
+    let mut signatures = HashMap::new();
+    for path in paths {
+        signatures.entry(path.clone()).or_insert_with(|| {
+            std::fs::metadata(path)
+                .map(|m| (m.len(), m.modified().ok()))
+                .unwrap_or((0, None))
+        });
+    }
+    signatures
+}
 #[path = "art_decode.rs"]
 mod decoder;
 
@@ -139,6 +153,7 @@ pub struct Artwork {
     palettes: HashMap<PathBuf, [[f32; 4]; 6]>,
     pub placeholder: Texture,
     closed: bool,
+    signatures: CoverSignatures,
 }
 impl Artwork {
     pub fn new(renderer: &Renderer, _assets: &Path) -> Result<Self, String> {
@@ -155,16 +170,24 @@ impl Artwork {
             palettes: HashMap::new(),
             placeholder,
             closed: false,
+            signatures: HashMap::new(),
         })
     }
-    pub fn peek(&self, path: Option<&Path>) -> Texture {
-        path.and_then(|p| self.textures.get(p).map(|(texture, _)| *texture))
-            .unwrap_or(self.placeholder)
+    pub fn peek(&mut self, path: Option<&Path>) -> Texture {
+        path.and_then(|p| {
+            self.textures.get_mut(p).map(|(texture, used)| {
+                *used = Instant::now();
+                *texture
+            })
+        })
+        .unwrap_or(self.placeholder)
     }
     /// A failed picture already has its final fallback. It must not consume
     /// Cover Flow's bounded request budget again on every frame.
     pub fn missing(&self, path: Option<&Path>) -> bool {
-        path.is_some_and(|p| !self.textures.contains_key(p) && !self.failed.contains(p))
+        path.is_some_and(|p| {
+            !self.textures.contains_key(p) && !self.failed.contains(p) && !self.pending.contains(p)
+        })
     }
     pub fn get(&mut self, path: Option<&Path>) -> Texture {
         let Some(path) = path else {
@@ -201,7 +224,11 @@ impl Artwork {
                     if let Some(palette) = result.palette {
                         self.palettes.insert(result.path.clone(), palette);
                     }
-                    self.textures.insert(result.path, (texture, Instant::now()));
+                    if let Some((old, _)) =
+                        self.textures.insert(result.path, (texture, Instant::now()))
+                    {
+                        renderer.delete_texture(old);
+                    }
                     changed = true;
                 }
                 Err(e) => {
@@ -230,9 +257,30 @@ impl Artwork {
         self.pending.clear();
         self.failed.clear();
         self.palettes.clear();
+        self.signatures.clear();
         for (_, (texture, _)) in self.textures.drain() {
             renderer.delete_texture(texture);
         }
+    }
+    pub fn reconcile(&mut self, signatures: CoverSignatures, renderer: &Renderer) {
+        let changed: Vec<_> = self
+            .signatures
+            .iter()
+            .filter(|(path, value)| signatures.get(*path) != Some(*value))
+            .map(|(path, _)| path.clone())
+            .collect();
+        if !changed.is_empty() {
+            self.generation = self.generation.wrapping_add(1);
+            self.pending.clear();
+            for path in changed {
+                self.failed.remove(&path);
+                self.palettes.remove(&path);
+                if let Some((texture, _)) = self.textures.remove(&path) {
+                    renderer.delete_texture(texture);
+                }
+            }
+        }
+        self.signatures = signatures;
     }
     pub fn close(&mut self, renderer: &Renderer) {
         self.decoders.shutdown();

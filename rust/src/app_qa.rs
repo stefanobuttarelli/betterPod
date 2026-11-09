@@ -114,7 +114,7 @@ fn controller_routes_and_real_screens() {
     // Go NowPlaying.OnCenter: progress → scrubber → options.
     app.handle(Action::Select);
     assert_eq!(app.np_mode, 1);
-    app.handle(Action::Right);
+    app.handle(Action::Up);
     assert!(app.np_seek.is_some());
     capture(&mut app, &mut r, &window, &out, "03-nowplaying-scrub");
     app.handle(Action::Select);
@@ -1032,8 +1032,8 @@ fn playlist_full_page_draws_its_reserved_mini_player() {
             category: "QA".into(),
             tags: None,
         });
-    let home = app.reference_home_rows();
-    let downloads = home.iter().find(|row| row.label == "Downloads").unwrap();
+    let music = app.reference_music_rows();
+    let downloads = music.iter().find(|row| row.label == "Downloads").unwrap();
     assert_eq!(downloads.visual.value, "1");
     let until = Instant::now() + Duration::from_secs(3);
     while app.extras.active_download_count() > 0 && Instant::now() < until {
@@ -1042,10 +1042,10 @@ fn playlist_full_page_draws_its_reserved_mini_player() {
     }
     assert_eq!(app.extras.active_download_count(), 0);
     let recent = app
-        .reference_home_rows()
+        .reference_music_rows()
         .into_iter()
         .find(|row| row.label == "Downloads")
-        .expect("Recent jobs must remain reachable from Home");
+        .expect("Recent jobs must remain reachable from Music");
     assert_eq!(recent.visual.value, "Recent");
     app.execute(recent.intent);
     let page = app.navigation_page().unwrap();

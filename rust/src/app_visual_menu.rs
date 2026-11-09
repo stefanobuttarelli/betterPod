@@ -209,6 +209,7 @@ pub(super) struct MenuVisual {
     layouts: Vec<Layout>,
     selection: Option<(Screen, usize)>,
     selection_since: f64,
+    scroll_until: f64,
     preview_pending: PreviewKind,
     preview_pending_since: f64,
     preview: PreviewKind,
@@ -257,6 +258,7 @@ impl MenuVisual {
             layouts: Vec::new(),
             selection: None,
             selection_since: 0.0,
+            scroll_until: f64::NEG_INFINITY,
             preview_pending: PreviewKind::Music,
             preview_pending_since: 0.0,
             preview: PreviewKind::Music,
@@ -552,7 +554,7 @@ impl App {
             .map(|view| view.page.clone())
     }
     pub(super) fn visual_menu_remote_state(&self) -> serde_json::Value {
-        serde_json::json!({"active":self.visual_menu.active_view,"left":anim_value(&self.visual_menu.left_panel,self.visual_time),"full":anim_value(&self.visual_menu.full_panel,self.visual_time),
+        serde_json::json!({"mini_pause":self.visual_menu.mini_pause.value(self.visual_time),"scroll_visible":self.visual_time < self.visual_menu.scroll_until,"active":self.visual_menu.active_view,"left":anim_value(&self.visual_menu.left_panel,self.visual_time),"full":anim_value(&self.visual_menu.full_panel,self.visual_time),
         "views":self.visual_menu.views.iter().map(|v|serde_json::json!({"id":v.id,"screen":format!("{:?}",v.page.screen),"kind":format!("{:?}",v.page.kind),"depth":v.depth,"enter":anim_value(&v.enter,self.visual_time),"hide":anim_value(&v.hide,self.visual_time),"exiting":v.exiting})).collect::<Vec<_>>()})
     }
     /// False asks the caller to use the source's fallback action sheet.
@@ -708,7 +710,7 @@ impl App {
                 self.audio_snapshot.playing,
             );
         }
-        if scrollable {
+        if scrollable && self.visual_time < self.visual_menu.scroll_until {
             draw_scrollbar(
                 r,
                 622.0,
@@ -718,7 +720,7 @@ impl App {
                 scroll,
                 total,
                 self.dark(),
-                1.0,
+                ((self.visual_menu.scroll_until - self.visual_time) / 0.3).clamp(0., 1.) as f32,
             );
         }
         r.pop_clip();
@@ -859,6 +861,14 @@ impl App {
         self.visual_menu_follow_ticker(now);
         let selected = active_page.as_ref().map(|p| (p.screen, p.selected));
         if self.visual_menu.selection != selected {
+            if self
+                .visual_menu
+                .selection
+                .zip(selected)
+                .is_some_and(|(old, new)| old.0 == new.0)
+            {
+                self.visual_menu.scroll_until = now + 1.2;
+            }
             self.visual_menu.selection = selected;
             self.visual_menu.selection_since = now;
         }
@@ -907,7 +917,7 @@ impl App {
                 .music_preview
                 .to(target, 0.4, Curve::InOut, 0.0, now);
         }
-        let paused = !self.audio_snapshot.playing;
+        let paused = !self.music_visually_playing();
         if paused {
             self.visual_menu.mini_paused_since.get_or_insert(now);
         } else {
@@ -923,8 +933,12 @@ impl App {
             }
         }
         if self.now_track.is_some()
-            && self.visual_menu.mini_track.as_ref().map(|t| &t.path)
-                != self.now_track.as_ref().map(|t| &t.path)
+            && self
+                .visual_menu
+                .mini_track
+                .as_ref()
+                .map(|t| (&t.path, &t.cover))
+                != self.now_track.as_ref().map(|t| (&t.path, &t.cover))
         {
             self.visual_menu.mini_old = self.visual_menu.mini_track.take();
             self.visual_menu.mini_track = self.now_track.clone();
@@ -1409,7 +1423,7 @@ impl App {
                 width - 32.0,
             );
         }
-        if scrollable && !track_list {
+        if scrollable && !track_list && self.visual_time < self.visual_menu.scroll_until {
             draw_scrollbar(
                 r,
                 x + width - SCROLLBAR_WIDTH,
@@ -1419,7 +1433,7 @@ impl App {
                 scroll,
                 total,
                 self.dark(),
-                1.0,
+                ((self.visual_menu.scroll_until - self.visual_time) / 0.3).clamp(0., 1.) as f32,
             );
         }
         r.pop_clip();
@@ -2319,9 +2333,9 @@ pub(super) fn is_menu(screen: Screen) -> bool {
             | Screen::GameClocks
             | Screen::GameHistory
             | Screen::Library
-            | Screen::WifiLibrary
             | Screen::Screensaver
             | Screen::SearchHub
+            | Screen::Lossless
             | Screen::YouTubeSettings
     )
 }
@@ -2489,8 +2503,19 @@ fn draw_row(
         } else {
             assets.get(&row.visual.icon)
         };
-        if let Some(texture) = texture {
-            r.image(texture, x, y + (height - 96.0) * 0.5, 96.0, 96.0, 1.0);
+        if row.visual.icon == "lossless" {
+            for (i, h) in [20., 38., 56., 38., 20.].into_iter().enumerate() {
+                r.rounded_rect(
+                    x + 25. + i as f32 * 10.,
+                    y + (height - h) * 0.5,
+                    6.,
+                    h,
+                    3.,
+                    color,
+                );
+            }
+        } else if let Some(texture) = texture {
+            r.image_cover(texture, [x, y + (height - 96.0) * 0.5, 96.0, 96.0], 1.0);
         }
         text_left = 104.0;
     }
@@ -3225,7 +3250,7 @@ fn put_icon(
     );
     right + ink.1 - width + ink.0 - 10.0
 }
-fn draw_wifi(r: &mut Renderer, x: f32, y: f32, arcs: usize, color: Color) {
+pub(super) fn draw_wifi(r: &mut Renderer, x: f32, y: f32, arcs: usize, color: Color) {
     r.rounded_rect(x + 15.2, y + 17.5, 5.6, 5.6, 2.8, color);
     for (i, radius) in [7.7, 13.2, 18.7].iter().copied().enumerate() {
         let color = if i < arcs { color } else { alpha(color, 0.3) };

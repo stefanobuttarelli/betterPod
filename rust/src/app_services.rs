@@ -19,6 +19,7 @@ mod visual;
 #[cfg(test)]
 #[path = "app_services_youtube_qa.rs"]
 mod youtube_visual_qa;
+pub(super) use downloads_ui::draw_job_button;
 use downloads_ui::DownloadState;
 #[path = "app_services_lists.rs"]
 mod lists_ui;
@@ -214,6 +215,9 @@ enum Choice {
     ShareCancel,
     CoverSearch(Provider),
     UseCover(OnlineItem),
+    YouTubeCover(OnlineItem),
+    YouTubeCoverSource(OnlineItem, Provider),
+    YouTubeOriginalCover(String),
     Nothing,
     ConfirmTask(Task, String),
     RunTask(Task),
@@ -357,6 +361,10 @@ enum Purpose {
     Remember,
     History,
     Cover,
+    YouTubeCover {
+        origin: String,
+        owner: u64,
+    },
     ReadTags {
         generation: u64,
     },
@@ -510,6 +518,8 @@ pub(super) struct Extras {
     weather_visual: weather_visual::ForecastVisual,
     share: ShareClient,
     cover_search: bool,
+    youtube_cover_target: Option<(String, u64)>,
+    youtube_covers: HashMap<String, PathBuf>,
     cover_override: bool,
     youtube: bool,
     sharing_name: String,
@@ -569,6 +579,8 @@ impl Extras {
             weather_visual: weather_visual::ForecastVisual::new(),
             share: ShareClient::new(data),
             cover_search: false,
+            youtube_cover_target: None,
+            youtube_covers: HashMap::new(),
             cover_override: false,
             youtube: false,
             sharing_name: String::new(),
@@ -768,6 +780,7 @@ impl Extras {
         artist: String,
         provider: Provider,
     ) {
+        self.youtube_cover_target = None;
         self.edit_paths = paths;
         self.edit_title = album.clone();
         self.cover_search = true;
@@ -866,6 +879,17 @@ impl Extras {
             url, video: false, ..
         } = &request
         {
+            if let Some(cover) = self.youtube_covers.get(url).cloned() {
+                self.task(
+                    Task::DownloadWithCover {
+                        request,
+                        cover,
+                        crop: betterpod_rust::downloads::SquareCrop::Center,
+                    },
+                    Purpose::Download,
+                );
+                return;
+            }
             let cover = self
                 .detail_item
                 .as_ref()
@@ -1048,6 +1072,7 @@ impl Extras {
     }
     pub(super) fn open(&mut self, page: ExtraPage) {
         self.cancel_browse_jobs();
+        self.youtube_cover_target = None;
         self.pending_share = None;
         self.videos.watch_depth = None;
         self.retain_current_visual();
@@ -2121,6 +2146,7 @@ impl Extras {
                     }),
                     Typing::SharingName,
                 ));
+                self.keyboard.as_mut().unwrap().0.search = false;
             }
             Choice::Page(page) => self.push_page(page),
             Choice::CombinedSearch => {
@@ -2604,12 +2630,68 @@ impl Extras {
                     Typing::Search(provider, true),
                 ));
             }
+            Choice::YouTubeCover(item) => {
+                let mut rows = [Provider::Itunes, Provider::Deezer, Provider::YouTube]
+                    .into_iter()
+                    .map(|provider| {
+                        Item::new(
+                            format!("Search {}", provider.name()),
+                            Choice::YouTubeCoverSource(item.clone(), provider),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                rows.push(Item::new(
+                    "Use Original Thumbnail",
+                    Choice::YouTubeOriginalCover(item.url),
+                ));
+                self.push_sheet("Cover", rows);
+            }
+            Choice::YouTubeCoverSource(item, provider) => {
+                if let Some(page) = self.pages.last() {
+                    self.youtube_cover_target = Some((item.url, page.key));
+                    self.cover_search = true;
+                    self.cover_override = false;
+                    self.search(provider, format!("{} {}", item.artist, item.title), 1, true);
+                }
+            }
+            Choice::YouTubeOriginalCover(origin) => {
+                self.youtube_covers.remove(&origin);
+                self.refresh_youtube_cover_page(&origin);
+            }
             Choice::UseCover(item) => {
+                if let Some((origin, owner)) =
+                    self.youtube_cover_target.clone().filter(|(_, owner)| {
+                        self.pages
+                            .iter()
+                            .any(|p| p.key == *owner && p.role == PageRole::YouTubeItem)
+                    })
+                {
+                    if item.cover.is_empty() {
+                        self.effects
+                            .push(Effect::Notice("No cover available".into()));
+                    } else {
+                        self.task(
+                            Task::CacheArtwork { url: item.cover },
+                            Purpose::YouTubeCover { origin, owner },
+                        );
+                    }
+                    return;
+                }
                 if self.cover_override && !item.cover.is_empty() {
                     self.task(
-                        Task::SetCover {
-                            paths: self.edit_paths.clone(),
-                            cover_url: item.cover,
+                        if matches!(
+                            item.provider,
+                            Provider::YouTube | Provider::YouTubePlaylists
+                        ) {
+                            Task::SetYouTubeCover {
+                                paths: self.edit_paths.clone(),
+                                url: item.cover,
+                            }
+                        } else {
+                            Task::SetCover {
+                                paths: self.edit_paths.clone(),
+                                cover_url: item.cover,
+                            }
                         },
                         Purpose::Tags,
                     );
@@ -3000,13 +3082,17 @@ impl Extras {
                 .jobs
                 .values()
                 .any(|(_, purpose)| matches!(purpose, Purpose::Preview(url) if url == &item.cover));
-        if !item.cover.is_empty() {
-            let mut artwork = visual::fact("Cover", "");
+        {
+            let mut artwork = Item::new("Cover", Choice::YouTubeCover(item.clone()));
             artwork.visual.thumbnail = true;
-            artwork.cover = cover;
+            artwork.cover = self.youtube_covers.get(&item.url).cloned().or(cover);
             artwork.detail = if artwork.cover.is_some() {
-                "Automatic"
-            } else if cover_pending {
+                if self.youtube_covers.contains_key(&item.url) {
+                    "Selected cover · [A] Change"
+                } else {
+                    "Automatic · [A] Change"
+                }
+            } else if !item.cover.is_empty() && cover_pending {
                 "Loading the picture…"
             } else {
                 "Picture unavailable"
@@ -3877,6 +3963,24 @@ impl Extras {
                                 }
                             }
                             Output::Files(files) => {
+                                if let Some(Purpose::YouTubeCover { origin, owner }) =
+                                    purpose.as_ref()
+                                {
+                                    if let Some(index) =
+                                        self.pages.iter().position(|p| p.key == *owner)
+                                    {
+                                        if let Some(path) = files.first() {
+                                            self.youtube_covers
+                                                .insert(origin.clone(), path.clone());
+                                            self.pages.truncate(index + 1);
+                                            self.youtube_cover_target = None;
+                                            self.refresh_youtube_cover_page(origin);
+                                            self.effects
+                                                .push(Effect::Notice("Cover chosen".into()));
+                                        }
+                                    }
+                                    continue;
+                                }
                                 if matches!(purpose, Some(Purpose::Download)) {
                                     self.refresh_video_catalog();
                                 }
@@ -3947,7 +4051,9 @@ impl Extras {
                                             files.len()
                                         )));
                                     }
-                                    self.effects.push(Effect::Rescan);
+                                    if !matches!(purpose, Some(Purpose::Download)) {
+                                        self.effects.push(Effect::Rescan);
+                                    }
                                     self.task(Task::Subscriptions, Purpose::Subscriptions);
                                 }
                             }
