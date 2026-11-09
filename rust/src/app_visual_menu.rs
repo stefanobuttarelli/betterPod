@@ -213,6 +213,7 @@ pub(super) struct MenuVisual {
     selection: Option<(Screen, usize)>,
     selection_since: f64,
     scroll_until: f64,
+    scroll_content: Option<(Screen, String, usize, bool)>,
     preview_pending: PreviewKind,
     preview_pending_since: f64,
     preview: PreviewKind,
@@ -262,6 +263,7 @@ impl MenuVisual {
             selection: None,
             selection_since: 0.0,
             scroll_until: f64::NEG_INFINITY,
+            scroll_content: None,
             preview_pending: PreviewKind::Music,
             preview_pending_since: 0.0,
             preview: PreviewKind::Music,
@@ -862,6 +864,16 @@ impl App {
             }
         }
         self.visual_menu_follow_ticker(now);
+        // Results can arrive after the input-triggered scrollbar has faded.
+        // Reveal it again when the visible content or loading state changes.
+        let content = active_page.as_ref().map(|page| (
+            page.screen, page.title.clone(), page.rows.len(),
+            page.rows.get(page.selected).is_some_and(|row| row.visual.busy),
+        ));
+        if self.visual_menu.scroll_content != content {
+            self.visual_menu.scroll_until = now + 1.2;
+            self.visual_menu.scroll_content = content;
+        }
         let selected = active_page.as_ref().map(|p| (p.screen, p.selected));
         if self.visual_menu.selection != selected {
             if self
@@ -3123,7 +3135,7 @@ fn caret_fit(r: &mut Renderer, text: &str, size: f32, weight: u16, width: f32) -
 }
 
 #[allow(clippy::too_many_arguments)]
-fn marquee(
+pub(super) fn marquee(
     r: &mut Renderer,
     text: &str,
     x: f32,

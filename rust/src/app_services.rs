@@ -135,6 +135,7 @@ enum Choice {
     CombinedSearch,
     CombinedClear,
     CombinedAutomatic,
+    CombinedRetry,
     Playlist(Playlist),
     PlaylistSong(Arc<Playlist>, usize),
     AppendPlaylist(Playlist),
@@ -150,13 +151,11 @@ enum Choice {
     },
     YouTubePlaylistMedia(OnlineItem, bool),
     ArchiveTrack(
-        OnlineItem,
+        Arc<OnlineItem>,
         String,
         serde_json::Value,
-        Vec<OnlineItem>,
-        usize,
     ),
-    Preview(OnlineItem, Vec<OnlineItem>, usize),
+    Preview(OnlineItem, Arc<Vec<OnlineItem>>, usize),
     ConfirmDeletePlaylist(Playlist),
     ConfirmBtForget(String),
     ConfirmAction(Box<Choice>, String),
@@ -956,7 +955,9 @@ impl Extras {
             .share
             .submit(share::Command::Send { paths, info, cover })
         {
-            self.effects.push(Effect::Notice(error));
+            if let Some(view) = self.share_view.as_mut() {
+                view.event(&share::Event::Error(error), self.visual_time);
+            }
         }
     }
     fn push(&mut self, title: impl Into<String>, rows: Vec<Item>) {
@@ -1616,11 +1617,9 @@ impl Extras {
                                             vec![Item::new(
                                                 "Download This Track",
                                                 Choice::ArchiveTrack(
-                                                    item.clone(),
+                                                    Arc::new(item.clone()),
                                                     format,
                                                     file,
-                                                    Vec::new(),
-                                                    0,
                                                 ),
                                             )],
                                         );
@@ -1669,12 +1668,10 @@ impl Extras {
                         }
                         Choice::Playlist(playlist) => {
                             let mut rows = visual::media_options(playlist.tracks.clone());
-                            if !playlist.read_only {
-                                rows.push(Item::new(
-                                    "Delete Playlist",
-                                    Choice::DeletePlaylist(playlist.clone()),
-                                ));
-                            }
+                            rows.push(Item::new(
+                                "Delete Playlist",
+                                Choice::DeletePlaylist(playlist.clone()),
+                            ));
                             self.push_sheet("", rows);
                             return;
                         }
@@ -2162,6 +2159,10 @@ impl Extras {
                 self.refresh_combined();
             }
             Choice::CombinedAutomatic => self.run_combined(None),
+            Choice::CombinedRetry => {
+                let query = self.combined.as_ref().map(|state| state.query.clone());
+                self.run_combined(query);
+            }
             Choice::MediaQueue(paths, next) => {
                 while self
                     .pages
@@ -2263,17 +2264,17 @@ impl Extras {
             Choice::Preview(item, queue, index) => {
                 if self.preview_origin.as_ref() == Some(&item.url) {
                     match listen_ui::row_tap(self.preview_ready, self.preview_state.as_ref()) {
-                        listen_ui::RowTap::Retry => self.start_inline_listen(item, queue, index),
+                        listen_ui::RowTap::Retry => self.start_inline_listen(item, queue.as_ref().clone(), index),
                         listen_ui::RowTap::Toggle => self.effects.push(Effect::TogglePreview),
                         listen_ui::RowTap::Ignore => {}
                     }
                 } else {
-                    self.start_inline_listen(item, queue, index);
+                    self.start_inline_listen(item, queue.as_ref().clone(), index);
                 }
             }
-            Choice::ArchiveTrack(item, format, file, _, _) => {
+            Choice::ArchiveTrack(item, format, file) => {
                 self.stop_preview();
-                let mut one = item;
+                let mut one = item.as_ref().clone();
                 one.raw["groups"][&format] = serde_json::json!([file]);
                 self.start_download(DownloadRequest::Archive { item: one, format });
             }
@@ -3021,11 +3022,11 @@ impl Extras {
             || item.raw["entries"]
                 .as_array()
                 .is_some_and(|entries| !entries.is_empty());
-        let entries = if playlist {
+        let entries = Arc::new(if playlist {
             Self::youtube_playlist_entries(item)
         } else {
             vec![item.clone()]
-        };
+        });
         let cover = self.previews.get(&item.cover).and_then(Clone::clone);
         let mut poster = visual::fact(&item.title, "");
         poster.visual.thumbnail = true;
@@ -3044,7 +3045,7 @@ impl Extras {
         let mut rows = vec![poster];
         if let Some(first) = entries.first() {
             let mut listen =
-                Item::new("Listen", Choice::Preview(first.clone(), entries.clone(), 0));
+                Item::new("Listen", Choice::Preview(first.clone(), Arc::clone(&entries), 0));
             listen.detail = if entries.len() > 1 {
                 format!("{} songs, before you download", entries.len())
             } else {
@@ -3123,7 +3124,7 @@ impl Extras {
             for (index, child) in entries.iter().enumerate() {
                 let mut row = Item::new(
                     &child.title,
-                    Choice::Preview(child.clone(), entries.clone(), index),
+                    Choice::Preview(child.clone(), Arc::clone(&entries), index),
                 );
                 row.visual.no_arrow = true;
                 if child.seconds > 0.0 {
@@ -4380,3 +4381,7 @@ fn choice_art(choice: &Choice) -> Option<&str> {
         Some(url)
     }
 }
+
+#[cfg(test)]
+#[path = "app_services_followup_qa.rs"]
+mod followup_qa;

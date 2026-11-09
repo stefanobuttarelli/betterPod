@@ -400,8 +400,7 @@ impl Context {
         Ok(out)
     }
     pub fn get_json(&self, url: &str) -> Result<Value, String> {
-        serde_json::from_slice(&self.get_bytes(url, 8 * 1024 * 1024)?)
-            .map_err(|e| format!("Invalid service response: {e}"))
+        service_json(&self.get_bytes(url, 8 * 1024 * 1024)?)
     }
     pub fn standalone() -> Self {
         let (tx, _) = mpsc::sync_channel(1);
@@ -412,6 +411,17 @@ impl Context {
             progress_scope: None,
         }
     }
+}
+fn service_json(bytes: &[u8]) -> Result<Value, String> {
+    let value: Value = serde_json::from_slice(bytes)
+        .map_err(|error| format!("Invalid service response: {error}"))?;
+    // Every endpoint consumed by this client returns an object. In particular,
+    // never let an error array/string reach the mutable metadata projections:
+    // serde_json's string indexing would panic and abort the release app.
+    if !value.is_object() {
+        return Err("Invalid service response: expected an object. Please try again".into());
+    }
+    Ok(value)
 }
 pub const USER_AGENT: &str = "betterPod-Rust/0.1 (https://github.com/stefanobuttarelli/betterPod)";
 pub fn http_agent(short: bool) -> ureq::Agent {
@@ -1335,8 +1345,9 @@ fn archive_details(context: &Context, id: &str) -> Result<OnlineItem, String> {
         .map(Vec::len)
         .max()
         .unwrap_or(0);
-    item.raw = raw;
-    item.raw["groups"] = Value::Object(groups);
+    // The source response duplicates every file and may contain very large
+    // descriptions. Keep only the normalized download groups in UI state.
+    item.raw = json!({"groups": groups});
     Ok(item)
 }
 fn archive_format(format: &str) -> Option<(&'static str, u8)> {
@@ -1644,4 +1655,16 @@ fn cache_artwork(data: &std::path::Path, context: &Context, url: &str) -> Result
     context.check()?;
     crate::storage::atomic_write(&path, &output.into_inner()).map_err(|e| e.to_string())?;
     Ok(path)
+}
+
+#[cfg(test)]
+mod response_shape_tests {
+    use super::*;
+    #[test]
+    fn service_error_shapes_return_errors_before_mutable_metadata_indexing() {
+        for bytes in [b"[]".as_slice(), b"42", b"null", b"\"temporarily unavailable\"", b"<html>Error</html>"] {
+            assert!(service_json(bytes).is_err());
+        }
+        assert!(service_json(br#"{"metadata":{},"files":[]}"#).unwrap().is_object());
+    }
 }

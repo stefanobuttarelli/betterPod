@@ -2,7 +2,13 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
-## Unreleased
+## v0.2.11 (2026-11-09)
+
+- Fix Share and Receive headers after entering the device name, keep long album titles inside their text column, and show the sharing code before preparing files or connecting. Add a gentle waiting float and the album's return animation after sending. Ignore cancelled transfer callbacks when reopening Share.
+- Add Delete Playlist to the Y menu for private and imported M3U playlists. Confirm before deleting and preserve all songs.
+- Start YouTube searches without forking the entire player, fixing the out-of-memory launch failure reproduced on the console. Preserve child-process memory protection and cancellation, and show readable retry feedback.
+- Reduce Internet Archive album memory use by sharing track queues and normalized metadata instead of copying them per row. Reject malformed service responses safely and retain manual Find Info searches when retrying an error.
+- Restore the scrollbar when results finish loading, with the existing navigation fade timing.
 
 - Covers saved from the Mac now take precedence over older folder artwork and imported Go cover records. The choice survives rescans, cache reuse and reconnection; removing an embedded cover does not restore an old YouTube thumbnail. Existing folder artwork and cached images are preserved.
 

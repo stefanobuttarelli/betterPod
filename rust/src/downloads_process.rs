@@ -72,28 +72,23 @@ fn run(
             );
             last_memory = memory;
         }
-        // The children (yt-dlp, Deno) inherit this score. Raising it needs no
-        // privilege; the write is async-signal-safe between fork and exec.
-        unsafe {
-            command.pre_exec(|| {
-                let path = b"/proc/self/oom_score_adj\0";
-                let fd = libc::open(path.as_ptr().cast(), libc::O_WRONLY);
-                if fd >= 0 {
-                    libc::write(fd, b"1000".as_ptr().cast(), 4);
-                    libc::close(fd);
-                }
-                Ok(())
-            });
-        }
+        protect_resolver(command);
     }
     command
         .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let child = command
-        .spawn()
-        .map_err(|e| format!("Start {:?}: {e}", command.get_program()))?;
+    let child = command.spawn().map_err(|error| {
+        eprintln!("Start {:?}: {error}", command.get_program());
+        if resolver && error.raw_os_error() == Some(libc::ENOMEM) {
+            MEMORY_ERROR.to_owned()
+        } else if resolver {
+            format!("YouTube tools could not start: {error}. Update Tools in Settings → YouTube")
+        } else {
+            format!("Start {:?}: {error}", command.get_program())
+        }
+    })?;
     let mut group = ProcessGroup {
         child,
         stopped: false,
@@ -155,6 +150,35 @@ fn run(
         return Err(command_error(&errors, resolver));
     }
     Ok(out.text())
+}
+
+fn protect_resolver(command: &mut Command) {
+    #[cfg(target_os = "linux")]
+    {
+        // pre_exec forces std::process to fork the entire player. On the 1 GB
+        // console that can fail with ENOMEM before yt-dlp even starts. Keep the
+        // posix_spawn path: a tiny shell sets the inherited OOM priority, then
+        // replaces itself with the tool in the same owned process group.
+        // Program/arguments are positional parameters, never shell source.
+        let mut child = Command::new("/bin/sh");
+        child.args([
+            "-c",
+            "{ printf 1000 > /proc/self/oom_score_adj; } 2>/dev/null || :; exec \"$@\"",
+            "betterpod-resolver",
+        ]);
+        child.arg(command.get_program()).args(command.get_args());
+        if let Some(directory) = command.get_current_dir() {
+            child.current_dir(directory);
+        }
+        for (key, value) in command.get_envs() {
+            if let Some(value) = value {
+                child.env(key, value);
+            } else {
+                child.env_remove(key);
+            }
+        }
+        *command = child;
+    }
 }
 
 fn command_error(errors: &str, resolver: bool) -> String {
@@ -616,6 +640,57 @@ mod tests {
             },
         );
         assert_eq!(result.unwrap().trim(), "1000");
+    }
+
+    #[test]
+    fn resolver_spawn_preserves_literal_arguments_environment_and_directory() {
+        let fixture = Fixture::new();
+        let directory = std::env::temp_dir();
+        let mut command = fixture.command("printf '%s\\n' \"$BP_LITERAL\"; printf '%s\\n' \"$3\"; pwd; cat /proc/self/oom_score_adj");
+        let literal = "spaces ' quotes ; $(do-not-run) `do-not-run`";
+        command
+            .arg(literal)
+            .env("BP_LITERAL", literal)
+            .current_dir(&directory);
+        let output = run(
+            &Context::standalone(),
+            &mut command,
+            Duration::from_secs(2),
+            true,
+            4096,
+            ample,
+        )
+        .unwrap();
+        let lines = output.lines().collect::<Vec<_>>();
+        assert_eq!(lines[0], literal);
+        assert_eq!(lines[1], literal);
+        assert_eq!(
+            std::fs::canonicalize(lines[2]).unwrap(),
+            std::fs::canonicalize(directory).unwrap()
+        );
+        assert_eq!(lines[3], "1000");
+    }
+
+    #[test]
+    fn protected_resolver_cancellation_stops_its_entire_process_group() {
+        let fixture = Fixture::new();
+        let context = Context::standalone();
+        let cancel = context.clone();
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(150));
+            cancel.cancel();
+        });
+        let result = run(
+            &context,
+            &mut fixture.command("trap '' TERM; echo $$ > \"$1\"; sleep 60 & wait"),
+            Duration::from_secs(4),
+            true,
+            4096,
+            ample,
+        );
+        worker.join().unwrap();
+        assert_eq!(result, Err("Cancelled".into()));
+        assert_stopped(fixture.pid());
     }
 
     #[test]

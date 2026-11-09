@@ -1210,7 +1210,7 @@ impl App {
     /// The controller's actual page owns its panel kind, not the App wrapper.
     fn projected_page(&mut self) -> Option<Page> {
         match self.screen() {
-            Screen::Extra => self.extras.visual_page(),
+            Screen::Extra => self.extras.visual_page().or_else(|| Some(self.page(Screen::Extra))),
             Screen::Files => Some(self.files.visual_page()),
             Screen::Curation => self.curation.visual_page(),
             Screen::Maintenance => self.maintenance.as_mut().and_then(|m| m.visual_page()),

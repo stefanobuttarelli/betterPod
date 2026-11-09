@@ -88,6 +88,12 @@ the code; they are finite evidence, not permission to assume untested parity.
   scrubber and shuffle/repeat controls. Sharing-name entry uses Enter. Menu
   scrollbars appear during navigation and fade shortly afterward. Hold notices
   are centered. Music → Search includes Lossless albums with the wave icon.
+- Playlist Y/options includes Delete Playlist, including imported M3U lists.
+  Confirm before deleting the playlist file; keep every song in the library.
+- Sharing leaves the name-entry title as soon as the name is submitted. Keep
+  album titles within the source text column and show the locally generated
+  code before preparing the archive or connecting. While waiting, the album
+  floats gently; after sending, it returns to its original pedestal position.
 - Cover Flip exits to Now Playing while music is active, otherwise to the
   previous screen. Hold permits the automatic screensaver. After ten seconds
   without input, Cover Flow follows the playing album.

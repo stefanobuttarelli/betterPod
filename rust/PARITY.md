@@ -86,6 +86,72 @@ This pass does not install on the handheld, release a package, validate live
 YouTube challenges, or establish audible playback, physical battery accuracy,
 Wi-Fi/Bluetooth reliability or H700 frame timing.
 
+## Console follow-up, 2026-11-09
+
+This pass addresses the subsequent playlist, search and Share reports.
+
+- Playlist Y/options offers confirmed deletion for private and imported M3U
+  files. The input-route fixture verifies cancellation and deletion while
+  preserving song bytes. Filesystem tests reject outside paths and symlinks.
+- Archive detail rows share one album and playback queue instead of copying
+  both for every track. A 500-track fixture verifies shared ownership. Stored
+  detail metadata excludes the duplicated original provider response.
+- Search rejects non-object provider JSON before mutable indexing can panic.
+  Failed Find Info searches retain the manual query and page for retry. The
+  four-provider failure fixture uses real workers with invalid local input;
+  it does not reproduce the original live-service crash.
+- Videos search has readable failure/retry feedback and a tool-repair action
+  when appropriate. Its query and video-only scope survive Back. The existing
+  Music → Search → Lossless entry is verified through actual controller input.
+- Scrollbars reappear after visible rows or loading state change, then fade
+  with the existing timing. Captures cover expiry, loaded rows and navigation.
+- Share drops the name-entry header when entering Send or Receive. Long album
+  and artist text uses the source clipped marquee. The locally generated code
+  precedes packaging and relay connection; progress still reports Preparing
+  until the relay is ready. Cancelled callbacks cannot alter a reopened screen.
+- Sharing restores the Go cover size, shadow, gloss and digit borders. Waiting
+  adds the requested gentle float; Sent returns the cover over the source
+  0.6-second transition. The shared Go/Rust capture harness covers name entry,
+  Receive, Preparing, Waiting and Sent, with additional Rust float and return
+  checkpoints. Native-size 640 × 480 images were inspected. Expected differences
+  are the requested float in place of Go's waiting scan and the fixture battery
+  indicator. The returning cover still uses its original colors instead of
+  Go's desaturated, striped ghost treatment; renderer antialiasing also differs.
+
+The connected 0.2.10 console reproduced the YouTube start failure during a
+user-triggered search. A bounded process trace recorded `clone(...)= -1 ENOMEM`
+while the app reported 644 MiB resident and 157 MiB available. The installed
+yt-dlp had executable permissions and ran `--version` successfully over SSH.
+The resolver now avoids `pre_exec`, which forced a full player fork, and uses a
+small positional-argument shell through the normal spawn path. The tool and
+its descendants retain OOM priority 1000 and their cancellable process group.
+Tests cover argument quoting, environment, working directory, OOM priority and
+descendant cancellation. No system memory settings or audio buffers change.
+
+Validation: 419 ordinary cases (296 library, 117 application, 6 proxy) and the
+opt-in SDL/GLES follow-up route/capture test pass. Native Linux and Knulli
+AArch64/glibc 2.28 builds pass. `rust/tools/check-console-followup.sh` reproduces
+the private fixtures and Go/Rust captures. Evidence is kept under ignored
+`build/rust/console-followup/` and `build/rust/followup-*.log`.
+
+The available console log covers the current launch and contains no original
+Archive or Find Info crash backtrace. Their precise historical crash causes
+remain unconfirmed. Live album exchange and corrected YouTube search on the
+handheld still require acceptance testing.
+
+The subsequent user-authorized SSH installation replaces only the Rust binary.
+The old binary is backed up, both checksums are verified, and configuration,
+music, launchers and the original Go installation are preserved. Native Ports
+launch starts the new binary with the physical controller and 657 tracks /
+25 albums. The running executable's SHA-256 is
+`bcd7fb5021fbc67b486606468c67120b269f71db1b4595a30969496ad9f51332`.
+The installation receipt is under ignored
+`build/rust/console-followup-install/`; functional device acceptance is pending.
+At the user's subsequent request, all 23 identified console backup items and
+old test executables were removed, including this installation's rollback copy.
+Both installed apps, their launchers, current configuration and music were
+preserved. The cleanup receipt is in `build/rust/console-backup-cleanup/`.
+
 ## Separate acceptance stage
 
 The first muted console run is now recorded in `CONSOLE_QA.md`. Further acceptance must verify audible continuity,

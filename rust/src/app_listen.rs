@@ -23,6 +23,7 @@ fn accepts_transport(ready: bool, floor: u64, generation: u64, failed: bool) -> 
 impl Extras {
     #[cfg(test)]
     pub(in crate::app) fn qa_listen_page(&mut self, items: Vec<OnlineItem>) {
+        let items = Arc::new(items);
         self.stop_preview();
         self.keyboard = None;
         self.pages.clear();
@@ -32,7 +33,7 @@ impl Extras {
             .map(|(index, item)| {
                 let mut row = Item::new(
                     item.title.clone(),
-                    Choice::Preview(item.clone(), items.clone(), index),
+                    Choice::Preview(item.clone(), Arc::clone(&items), index),
                 );
                 row.visual.no_arrow = true;
                 row

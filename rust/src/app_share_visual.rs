@@ -93,7 +93,9 @@ impl ShareVisual {
                 for (i, digit) in code.bytes().filter(u8::is_ascii_digit).take(8).enumerate() {
                     self.code[i] = digit - b'0';
                 }
-                Phase::Waiting
+                // Showing a locally generated code must not claim the relay
+                // or archive is ready. Progress owns that state transition.
+                self.phase
             }
             share::Event::Progress {
                 done,
@@ -312,35 +314,57 @@ impl ShareVisual {
             let color = if self.send { "blue" } else { "green" };
             let beam = if matches!(self.phase, Phase::Waiting | Phase::Preparing) {
                 0.55 + 0.45 * (0.5 + 0.5 * (now * std::f64::consts::TAU / 5.).sin()) as f32
+            } else if self.send && self.phase == Phase::Done {
+                0.5
             } else {
                 1.
             };
             pedestal(r, assets, 180., color, beam);
             if let Some(texture) = cover {
+                let (x, y, alpha) = self.cover_pose(now);
                 let cut = if self.phase == Phase::Moving {
-                    self.laser * 180.
+                    self.laser * 150.
                 } else {
                     if self.send {
                         0.
                     } else {
-                        180.
+                        150.
                     }
                 };
-                let (y0, y1) = if self.send { (cut, 180.) } else { (0., cut) };
+                let (y0, y1) = if self.send { (cut, 150.) } else { (0., cut) };
                 if y1 > y0 {
+                    for i in (1..=6).rev() {
+                        let i = i as f32;
+                        let shadow = [40. / 255., 50. / 255., 70. / 255., 0.05 * alpha];
+                        round(
+                            r,
+                            x + 4. - i * 1.5,
+                            y + y0 + 6. - i,
+                            142. + i * 3.,
+                            y1 - y0 - 2. + i * 2.,
+                            i * 2.,
+                            shadow,
+                            shadow,
+                        );
+                    }
                     r.image_uv(
                         texture,
-                        [90., 88. + y0, 180., y1 - y0],
-                        [0., y0 / 180., 1., y1 / 180.],
-                        1.,
+                        [x, y + y0, 150., y1 - y0],
+                        [0., y0 / 150., 1., y1 / 150.],
+                        alpha,
                     );
+                    if !matches!(self.phase, Phase::Moving | Phase::Done) {
+                        let gloss = [1., 1., 1., 0.15 * alpha];
+                        r.triangle([[x, y], [x + 150., y], [x + 150., y + 42.]], gloss);
+                        r.triangle([[x, y], [x + 150., y + 42.], [x, y + 69.]], gloss);
+                    }
                 }
                 if self.phase == Phase::Moving {
                     laser(
                         r,
-                        90.,
-                        270.,
-                        88. + cut,
+                        x,
+                        x + 150.,
+                        y + cut,
                         if self.send {
                             rgb(40, 150, 255)
                         } else {
@@ -377,7 +401,12 @@ impl ShareVisual {
                     52.,
                     15.,
                     600,
-                    rgb(110, 118, 130),
+                    match self.phase {
+                        Phase::Moving => rgb(40, 150, 255),
+                        Phase::Done => rgb(40, 150, 70),
+                        Phase::Failed => rgb(200, 60, 50),
+                        _ => rgb(110, 118, 130),
+                    },
                 );
                 for (i, digit) in self.code.iter().enumerate() {
                     digit_tile(
@@ -390,8 +419,30 @@ impl ShareVisual {
                         false,
                     );
                 }
-                text(r, title, 468., 150., 20., 700, rgb(40, 44, 52));
-                text(r, &sub, 468., 174., 15., 500, rgb(110, 118, 130));
+                marquee(
+                    r,
+                    title,
+                    468.,
+                    150.,
+                    20.,
+                    700,
+                    rgb(40, 44, 52),
+                    270.,
+                    self.since,
+                    now,
+                );
+                marquee(
+                    r,
+                    &sub,
+                    468.,
+                    174.,
+                    15.,
+                    500,
+                    rgb(110, 118, 130),
+                    270.,
+                    self.since,
+                    now,
+                );
                 match self.phase {
                     Phase::Preparing => {
                         text(r, "Getting ready…", 468., 222., 15., 500, rgb(70, 76, 88))
@@ -482,8 +533,30 @@ impl ShareVisual {
                     600,
                     rgb(40, 150, 70),
                 );
-                text(r, title, 468., 104., 20., 700, rgb(40, 44, 52));
-                text(r, &sub, 468., 128., 15., 500, rgb(110, 118, 130));
+                marquee(
+                    r,
+                    title,
+                    468.,
+                    104.,
+                    20.,
+                    700,
+                    rgb(40, 44, 52),
+                    270.,
+                    self.since,
+                    now,
+                );
+                marquee(
+                    r,
+                    &sub,
+                    468.,
+                    128.,
+                    15.,
+                    500,
+                    rgb(110, 118, 130),
+                    270.,
+                    self.since,
+                    now,
+                );
                 text(
                     r,
                     if self.phase == Phase::Saving {
@@ -537,6 +610,24 @@ impl ShareVisual {
         r.pop_clip();
         r.pop_transform();
     }
+    fn cover_pose(&self, now: f64) -> (f32, f32, f32) {
+        let elapsed = (now - self.since).max(0.);
+        if self.send && self.phase == Phase::Done {
+            // The sent cover returns to the same pedestal over Go's 0.6 s.
+            let t = (elapsed / 0.6).clamp(0., 1.) as f32;
+            let ease = super::super::app_visual_menu::go_ease_in_out(t);
+            return (105., 118. - 20. * (1. - ease), ease);
+        }
+        if self.send && matches!(self.phase, Phase::Preparing | Phase::Waiting) {
+            let phase = now * std::f64::consts::TAU / 5.;
+            return (
+                105. + (phase * 0.5).sin() as f32 * 2.,
+                118. + phase.sin() as f32 * 4.,
+                1.,
+            );
+        }
+        (105., 118., 1.)
+    }
     fn draw_received(
         &self,
         r: &mut Renderer,
@@ -555,9 +646,9 @@ impl ShareVisual {
             r.pop_transform();
         }
         let movement = ease(0.25, 1.25);
-        let size = 180. + 20. * movement;
+        let size = 150. + 50. * movement;
         let cx = 180. + 140. * movement;
-        let cy = 178. - 16. * movement;
+        let cy = 193. - 31. * movement;
         let turn = (movement * std::f32::consts::TAU).cos();
         let width = (size * turn.abs()).max(2.);
         if let Some(cover) = cover {
@@ -580,7 +671,7 @@ impl ShareVisual {
         }
         r.push_transform(0., 0., 1., 1., alpha);
         text(r, "RECEIVED", 320., 40., 15., 600, rgb(40, 150, 70));
-        text(
+        marquee(
             r,
             if self.info.title.is_empty() {
                 &self.info.album
@@ -592,8 +683,11 @@ impl ShareVisual {
             22.,
             700,
             rgb(40, 44, 52),
+            580.,
+            self.since,
+            now,
         );
-        text(
+        marquee(
             r,
             &self.info.artist,
             320.,
@@ -601,6 +695,9 @@ impl ShareVisual {
             15.,
             500,
             rgb(110, 118, 130),
+            580.,
+            self.since,
+            now,
         );
         button(
             r,
@@ -622,7 +719,16 @@ fn rgb(r: u8, g: u8, b: u8) -> Color {
     [r as f32 / 255., g as f32 / 255., b as f32 / 255., 1.]
 }
 fn text(r: &mut Renderer, value: &str, cx: f32, cy: f32, size: f32, weight: u16, color: Color) {
-    let width = r.text_width_weighted(value, size, weight);
+    let max_width = if cx == 468. { 280. } else { 600. };
+    let mut width = r.text_width_weighted(value, size, weight);
+    let fitted;
+    let value = if width > max_width {
+        fitted = super::super::app_visual_menu::ellipsize(r, value, size, weight, max_width);
+        width = r.text_width_weighted(&fitted, size, weight);
+        fitted.as_str()
+    } else {
+        value
+    };
     r.text_baseline(
         value,
         cx - width / 2.,
@@ -632,6 +738,38 @@ fn text(r: &mut Renderer, value: &str, cx: f32, cy: f32, size: f32, weight: u16,
         color,
         width + 1.,
     );
+}
+fn marquee(
+    r: &mut Renderer,
+    value: &str,
+    cx: f32,
+    cy: f32,
+    size: f32,
+    weight: u16,
+    color: Color,
+    width: f32,
+    since: f64,
+    now: f64,
+) {
+    if r.text_width_weighted(value, size, weight) <= width {
+        text(r, value, cx, cy, size, weight, color);
+        return;
+    }
+    r.push_clip(cx - width / 2., cy - size, width, size * 2.);
+    super::super::app_visual_menu::marquee(
+        r,
+        value,
+        cx - width / 2.,
+        cy + size * 0.727 / 2.,
+        size,
+        weight,
+        color,
+        width,
+        since,
+        now,
+        0.,
+    );
+    r.pop_clip();
 }
 fn round(r: &mut Renderer, x: f32, y: f32, w: f32, h: f32, radius: f32, top: Color, bottom: Color) {
     rounded_gradient(r, x, y, w, h, radius, &[(0., top), (1., bottom)]);
@@ -660,7 +798,9 @@ fn digit_tile(r: &mut Renderer, x: f32, y: f32, w: f32, h: f32, value: &str, sel
         [40. / 255., 50. / 255., 70. / 255., 0.12],
         [40. / 255., 50. / 255., 70. / 255., 0.12],
     );
-    round(r, x, y, w, h, 7., top, bottom);
+    let edge = rgb(150, 158, 170);
+    round(r, x, y, w, h, 7., edge, edge);
+    round(r, x + 1., y + 1., w - 2., h - 2., 6., top, bottom);
     text(r, value, x + w / 2., y + h / 2., h * 0.6, 600, color);
     round(
         r,
@@ -738,5 +878,36 @@ mod tests {
         assert!(
             matches!(s.handle(Action::Start,0.),Some(ShareAction::Receive(code))if code=="91000000")
         );
+    }
+}
+
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+    #[test]
+    fn sender_code_precedes_readiness_and_cover_returns_after_sending() {
+        let mut view = ShareVisual::send(ShareInfo::default(), None, 0.);
+        view.event(&share::Event::Code("12345678".into()), 0.01);
+        assert!(matches!(view.phase, Phase::Preparing));
+        assert_eq!(view.code, [1, 2, 3, 4, 5, 6, 7, 8]);
+        view.event(
+            &share::Event::Progress {
+                done: 0,
+                total: 0,
+                phase: "Waiting for receiver".into(),
+                peer: None,
+            },
+            1.,
+        );
+        let first = view.cover_pose(1.);
+        let later = view.cover_pose(2.);
+        assert_ne!(first, later);
+        assert!((first.1 - later.1).abs() < 8.);
+        view.event(&share::Event::Sent, 3.);
+        assert_eq!(view.cover_pose(3.).2, 0.);
+        let halfway = view.cover_pose(3.3);
+        assert!(halfway.1 > 98. && halfway.1 < 118.);
+        assert!(halfway.2 > 0. && halfway.2 < 1.);
+        assert_eq!(view.cover_pose(3.7), (105., 118., 1.));
     }
 }

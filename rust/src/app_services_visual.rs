@@ -178,6 +178,12 @@ impl Extras {
                         row.visual.typing = true;
                     }
                 }
+                if let Some((keyboard, Typing::SharingName)) = self.keyboard.as_ref() {
+                    if matches!(item.choice, Choice::EditSharingName) {
+                        row.label = keyboard.with_caret();
+                        row.visual.typing = true;
+                    }
+                }
                 row.cover = item.cover.clone().or_else(|| {
                     item_art(item)
                         .and_then(|url| self.previews.get(url))
@@ -701,11 +707,17 @@ impl Extras {
             rows.push(fact("Searching…", ""));
         } else if !state.error.is_empty() {
             let mut row = Item::new(
-                &state.error,
+                "Couldn't search · Try Again",
                 Choice::NextSearch(provider, state.query.clone(), state.page, metadata),
             );
+            row.detail = state.error.clone();
             row.visual.no_arrow = true;
             rows.push(row);
+            if matches!(provider, Provider::YouTube | Provider::YouTubePlaylists)
+                && state.error.contains("YouTube tools")
+            {
+                rows.push(Item::new("Update YouTube Tools", Choice::Page(ExtraPage::Tools)));
+            }
         } else if state.items.len() < state.total {
             let mut row = Item::new(
                 "More results…",
@@ -738,7 +750,8 @@ impl Extras {
             rows.push(fact("Loading…", ""));
             return rows;
         };
-        let queue = archive_preview_queue(item);
+        let queue = Arc::new(archive_preview_queue(item));
+        let shared_item = Arc::new(item.clone());
         if let Some(first) = queue.first() {
             let mut row = Item::new("Listen", Choice::Preview(first.clone(), queue.clone(), 0));
             row.detail = format!(
@@ -829,22 +842,18 @@ impl Extras {
                     Choice::Preview(queue[index].clone(), queue.clone(), index)
                 } else {
                     Choice::ArchiveTrack(
-                        item.clone(),
+                        Arc::clone(&shared_item),
                         format.into(),
                         file.clone(),
-                        queue.clone(),
-                        index,
                     )
                 },
             );
             row.options = vec![Item::new(
                 "Download This Track",
                 Choice::ArchiveTrack(
-                    item.clone(),
+                    Arc::clone(&shared_item),
                     format.into(),
                     file.clone(),
-                    queue.clone(),
-                    index,
                 ),
             )];
             row.visual.no_arrow = true;
@@ -1365,7 +1374,7 @@ impl Extras {
                 } else {
                     "Couldn't search"
                 },
-                Choice::CombinedAutomatic,
+                Choice::CombinedRetry,
             );
             row.detail = state
                 .errors

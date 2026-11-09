@@ -114,6 +114,10 @@ impl ShareClient {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+        // Discard completed events before starting a different transfer.
+        if let Some(rx) = &self.rx {
+            while rx.try_recv().is_ok() {}
+        }
         self.cancelled = Arc::new(AtomicBool::new(false));
         let state = State {
             events: self.tx.clone(),
@@ -146,7 +150,14 @@ impl ShareClient {
         Ok(())
     }
     pub fn poll(&self) -> Option<Event> {
-        self.rx.as_ref()?.try_recv().ok()
+        let rx = self.rx.as_ref()?;
+        if self.cancelled.load(Ordering::Acquire) {
+            // Release a worker publishing its terminal event without allowing
+            // cancelled output to update a new Receive/name-entry screen.
+            while rx.try_recv().is_ok() {}
+            return None;
+        }
+        rx.try_recv().ok()
     }
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
@@ -285,6 +296,8 @@ fn send(
         return Err("Choose at least one song".into());
     }
     let code_string = random_code()?;
+    // The code is local: publish before packaging music or contacting the relay.
+    let _ = state.events.send(Event::Code(code_string.clone()));
     state.progress(0, 0, "Preparing", None);
     let tmp = private_dir(data, &["tmp", "share"])?;
     let archive = tmp.join(format!("send-{}-{code_string}.zip", std::process::id()));
@@ -317,7 +330,6 @@ fn send(
             let mailbox = MailboxConnection::connect(config(), code(&code_string)?, true)
                 .await
                 .map_err(|e| e.to_string())?;
-            let _ = state.events.send(Event::Code(code_string.clone()));
             state.progress(0, 0, "Waiting for receiver", None);
             let mut wormhole = Wormhole::connect(mailbox)
                 .await
@@ -937,6 +949,25 @@ fn ensure_space(data: &Path, needed: u64) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sender_publishes_code_before_preparing_files_or_connecting() {
+        let root = std::env::temp_dir().join(format!("bp-code-first-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let (tx, rx) = mpsc::sync_channel(16);
+        let state = State { events: tx, cancelled: Arc::new(AtomicBool::new(false)) };
+        // A nonexistent song fails during packaging, before any network access.
+        assert!(send(&root, &state, vec![root.join("missing.flac")], ShareInfo::default(), None).is_err());
+        let Event::Code(code) = rx.try_recv().unwrap() else { panic!("Code must be the first event") };
+        assert_eq!(code.len(), 8);
+        assert!(code.bytes().all(|digit| digit.is_ascii_digit()));
+        let mut client = ShareClient::new(root.clone());
+        client.tx.send(Event::Sent).unwrap();
+        client.cancel();
+        assert!(client.poll().is_none(), "Cancelled callbacks cannot update a reopened screen");
+        client.shutdown();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn incremental_zip_preview_is_bounded_and_waits_for_complete_deflate() {
         use std::io::Write;

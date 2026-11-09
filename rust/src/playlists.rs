@@ -1,5 +1,5 @@
-//! Local M3U playlists. Imported files are always read-only; mutations are
-//! confined to the Rust app's own directory and belong on an I/O worker.
+//! Local M3U playlists. Imported lists cannot be edited; explicit deletion
+//! removes only their M3U file. All filesystem work belongs on an I/O worker.
 
 use std::collections::BTreeSet;
 use std::ffi::{CString, OsStr};
@@ -209,6 +209,9 @@ impl PlaylistStore {
 
     pub fn delete(&self, path: &Path) -> Result<(), String> {
         let _operation = self.operation.lock().map_err(|error| error.to_string())?;
+        if !self.lexically_private(path) {
+            return self.delete_imported(path);
+        }
         let filename = self.private_filename(path)?;
         // Opening with O_NOFOLLOW rejects directories and substituted symlinks.
         let _file = self.open_private(&filename)?;
@@ -218,6 +221,39 @@ impl PlaylistStore {
                 "Delete playlist: {}",
                 std::io::Error::last_os_error()
             ));
+        }
+        Ok(())
+    }
+
+    fn delete_imported(&self, path: &Path) -> Result<(), String> {
+        self.check_cancelled()?;
+        let relative = path.strip_prefix(&self.music).map_err(|_| "Playlist is outside the music folder")?;
+        if !playlist_path(path) || relative.components().any(|part| !matches!(part, Component::Normal(_))) {
+            return Err("Expected a music-folder M3U file".into());
+        }
+        let mut directory = OpenOptions::new().read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&self.music).map_err(|error| error.to_string())?;
+        // Walk through pinned directory handles: a substituted symlink cannot
+        // redirect deletion to a playlist outside the music root.
+        if let Some(parent) = relative.parent() {
+            for part in parent.components() {
+                let name = c_filename(part.as_os_str())?;
+                let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+                if fd < 0 { return Err(std::io::Error::last_os_error().to_string()); }
+                directory = unsafe { File::from_raw_fd(fd) };
+            }
+        }
+        let name = c_filename(relative.file_name().ok_or("Missing playlist filename")?)?;
+        let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK) };
+        if fd < 0 { return Err(std::io::Error::last_os_error().to_string()); }
+        let file = unsafe { File::from_raw_fd(fd) };
+        if !file.metadata().map_err(|error| error.to_string())?.is_file() {
+            return Err("Playlist must be a regular file".into());
+        }
+        self.check_cancelled()?;
+        if unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+            return Err(format!("Delete playlist: {}", std::io::Error::last_os_error()));
         }
         Ok(())
     }
@@ -550,11 +586,34 @@ mod tests {
         let loaded = store.load(&imported).unwrap();
         assert!(loaded.read_only);
         assert_eq!(loaded.tracks, vec![song.clone(), song.clone()]);
-        assert!(store.append(&imported, &[song]).is_err());
+        assert!(store.append(&imported, &[song.clone()]).is_err());
         assert!(store.remove_track(&imported, 0).is_err());
-        assert!(store.delete(&imported).is_err());
         assert_eq!(fs::read_to_string(&imported).unwrap(), contents);
         assert_eq!(store.list().unwrap().len(), 1);
+        store.delete(&imported).unwrap();
+        assert!(!imported.exists());
+        assert!(song.exists());
+        assert!(outside.exists());
+        assert!(store.list().unwrap().is_empty());
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn imported_playlist_deletion_rejects_symlink_paths_and_preserves_targets() {
+        use std::os::unix::fs::symlink;
+        let (root, store, song) = fixture("delete-import-links");
+        let outside = root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let list = outside.join("list.m3u");
+        fs::write(&list, b"#EXTM3U\n").unwrap();
+        symlink(&outside, store.music.join("linked")).unwrap();
+        symlink(&list, store.music.join("alias.m3u")).unwrap();
+        for path in [list.clone(), store.music.join("linked/list.m3u"), store.music.join("alias.m3u"), store.music.join("../outside/list.m3u"), song.clone()] {
+            assert!(store.delete(&path).is_err(), "{}", path.display());
+        }
+        assert_eq!(fs::read(&list).unwrap(), b"#EXTM3U\n");
+        assert!(song.exists());
         drop(store);
         fs::remove_dir_all(root).unwrap();
     }
