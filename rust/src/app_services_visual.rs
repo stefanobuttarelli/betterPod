@@ -1827,14 +1827,14 @@ impl Extras {
         &mut self,
         page: &super::super::Page,
         r: &mut Renderer,
-        _dark: bool,
+        dark: bool,
         now: f64,
         art: &mut crate::art::Artwork,
         assets: &VisualAssets,
     ) -> bool {
         match self.retired_custom.as_mut() {
             Some(RetiredCustom::Share { title, view }) if title == &page.title => {
-                view.draw(r, assets, art, now);
+                view.draw(r, assets, art, now, dark);
                 true
             }
             Some(RetiredCustom::Weather {

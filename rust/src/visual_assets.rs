@@ -42,6 +42,25 @@ impl VisualAssets {
                 );
             }
             textures.insert(name.clone(), texture);
+            if matches!(name.as_str(), "share_ped_blue" | "share_ped_green") {
+                // Prepare once at startup, as for the themed header sprites.
+                // Neutral metal becomes graphite; the colored light retains
+                // its hue and brightness. Keep the original silhouette/alpha.
+                let mut themed = rgba.clone();
+                for pixel in themed.pixels_mut() {
+                    let high = *pixel.0[..3].iter().max().unwrap() as f32;
+                    let low = *pixel.0[..3].iter().min().unwrap() as f32;
+                    let color = ((high - low) / 80.).clamp(0., 1.);
+                    let factor = 0.26 + 0.74 * color;
+                    for channel in &mut pixel.0[..3] {
+                        *channel = (*channel as f32 * factor).round() as u8;
+                    }
+                }
+                textures.insert(
+                    format!("{name}__dark"),
+                    renderer.upload(themed.width(), themed.height(), themed.as_raw())?,
+                );
+            }
             let lighten = matches!(
                 name.as_str(),
                 "bluetooth"

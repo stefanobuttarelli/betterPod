@@ -223,6 +223,26 @@ fn console_followup_input_and_captures() {
         r.finish();
         r.screenshot(&out.join(format!("followup-{name}.png")))
             .unwrap();
+        let light = r.capture_rgba();
+        app.settings.theme = "dark".into();
+        app.draw(r, now);
+        r.finish();
+        r.screenshot(&out.join(format!("followup-{name}-dark.png")))
+            .unwrap();
+        if name.starts_with("share-") && name != "share-back" && name != "share-name" {
+            let dark = r.capture_rgba();
+            assert!(dark.get_pixel(10, 400)[0] < 50, "Dark studio floor: {name}");
+            assert!(
+                light.get_pixel(10, 400)[0] > 180,
+                "Light studio floor: {name}"
+            );
+        }
+        app.settings.theme = "light".into();
+        if name == "share-received" {
+            let dark = r.capture_rgba();
+            assert_eq!(light.get_pixel(320, 200), dark.get_pixel(320, 200));
+            assert_eq!(dark.get_pixel(320, 200).0, [230, 90, 40, 255]);
+        }
     };
     app.open(Screen::SearchHub);
     let lossless = app
@@ -317,6 +337,82 @@ fn console_followup_input_and_captures() {
     app.handle(Action::Down);
     capture(&mut app, &mut r, "scroll-navigation", 14.1);
     assert_eq!(app.visual_menu_remote_state()["scroll_visible"], true);
+    // Exercise themed error, transfer and completion states without networking.
+    app.extras.pages.clear();
+    app.extras.push("Receive", Vec::new());
+    app.extras.share_view = Some(ShareVisual::receive(20.));
+    app.open(Screen::Extra);
+    app.visual_menu_snap_state(20.);
+    app.extras
+        .share_view
+        .as_mut()
+        .unwrap()
+        .handle(Action::Up, 20.);
+    app.extras
+        .share_view
+        .as_mut()
+        .unwrap()
+        .handle(Action::Select, 20.);
+    capture(&mut app, &mut r, "share-connecting", 21.);
+    app.extras.share_view.as_mut().unwrap().event(
+        &share::Event::Error("Connection interrupted. Try again.".into()),
+        22.,
+    );
+    capture(&mut app, &mut r, "share-receive-error", 22.);
+    let cover = root.join("fixture-cover.png");
+    image::RgbaImage::from_pixel(150, 150, image::Rgba([230, 90, 40, 255]))
+        .save(&cover)
+        .unwrap();
+    app.art.get(Some(&cover));
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !app.art.poll(&r) {
+        assert!(Instant::now() < deadline, "Fixture cover must finish decoding");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    app.extras.share_view.as_mut().unwrap().event(
+        &share::Event::Preview {
+            info: Some(ShareInfo {
+                album: "Midnight Sessions".into(),
+                artist: "The Night Quartet".into(),
+                songs: 12,
+                ..Default::default()
+            }),
+            cover: Some(cover.clone()),
+        },
+        23.,
+    );
+    for (name, phase, at) in [
+        ("share-receiving", "Receiving", 23.),
+        ("share-saving", "Saving", 24.),
+    ] {
+        app.extras.share_view.as_mut().unwrap().event(
+            &share::Event::Progress {
+                done: 50,
+                total: 100,
+                phase: phase.into(),
+                peer: None,
+            },
+            at,
+        );
+        capture(&mut app, &mut r, name, at + 0.5);
+    }
+    app.extras.share_view.as_mut().unwrap().event(
+        &share::Event::Received {
+            paths: vec![root.join("music/song.flac")],
+            info: None,
+        },
+        25.,
+    );
+    capture(&mut app, &mut r, "share-received", 27.);
+    app.extras
+        .share_view
+        .as_mut()
+        .unwrap()
+        .handle(Action::Right, 27.);
+    capture(&mut app, &mut r, "share-receive-another", 27.1);
+    app.handle(Action::Select);
+    capture(&mut app, &mut r, "share-reopened", 28.);
+    assert_eq!(app.pages.last().unwrap().title, "Receive");
     app.shutdown(&r).unwrap();
     std::fs::remove_dir_all(root).unwrap();
 }

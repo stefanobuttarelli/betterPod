@@ -2,6 +2,11 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.12 (2026-11-09)
+
+- Share and Receive now follow the console's dark theme, including code entry, transfer progress, errors and completion. Preserve original artwork colors and existing controls and motion.
+- Allow up to 240 seconds for an OTA package download, so slower connections have twice as long to complete the transfer.
+
 ## v0.2.11 (2026-11-09)
 
 - Fix Share and Receive headers after entering the device name, keep long album titles inside their text column, and show the sharing code before preparing files or connecting. Add a gentle waiting float and the album's return animation after sending. Ignore cancelled transfer callbacks when reopening Share.

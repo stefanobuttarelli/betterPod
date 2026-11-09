@@ -152,6 +152,25 @@ old test executables were removed, including this installation's rollback copy.
 Both installed apps, their launchers, current configuration and music were
 preserved. The cleanup receipt is in `build/rust/console-backup-cleanup/`.
 
+## Share dark theme, 2026-11-09
+
+The approved dark studio extends the Go light-only Share scene with the console
+dark palette. Active and outgoing Share/Receive pages consume the current theme,
+including automatic theme changes. Code tiles, text, hints, progress tracks,
+completion controls and pedestals adapt without changing geometry or motion.
+Pedestal variants are prepared once during asset loading; frame rendering uses
+the existing textures. Album artwork is never tinted.
+
+The follow-up SDL/GLES fixture captures both themes at 640 × 480, including name
+entry, code entry, preparing, waiting, sending completion, connection/error,
+receiving/saving, received actions, Receive Another and Back. A decoded color
+fixture verifies identical artwork pixels in both themes. Native-size dark
+captures were inspected; all nine prior light Share captures remain byte-identical.
+The ordinary 419 tests pass, and the extended opt-in capture/input test passes.
+Evidence is under ignored `build/rust/console-followup/` and
+`build/rust/share-dark-*.log`. Live transfer and handheld display checks remain
+separate from the private renderer fixtures.
+
 ## Separate acceptance stage
 
 The first muted console run is now recorded in `CONSOLE_QA.md`. Further acceptance must verify audible continuity,

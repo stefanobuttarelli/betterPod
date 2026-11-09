@@ -547,7 +547,7 @@ fn download_apply(config: &Config, manifest: Manifest, ctx: &Context<'_>) -> Res
     let root = install_root(config)?;
     let work = root.join(APP).join(".rust-download");
     ensure_regular_or_absent(&work)?;
-    let response = get_with_retry(&manifest.url, Duration::from_secs(120), ctx)?;
+    let response = get_with_retry(&manifest.url, Duration::from_secs(240), ctx)?;
     let mut reader = response.into_body().into_reader();
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);

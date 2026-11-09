@@ -4205,7 +4205,7 @@ impl Extras {
     ) {
         self.visual_time = elapsed;
         if let Some(view) = self.share_view.as_mut() {
-            view.draw(r, assets, art, elapsed);
+            view.draw(r, assets, art, elapsed, dark);
             return;
         }
         if self.draw_download_view(r, assets, dark, elapsed) {

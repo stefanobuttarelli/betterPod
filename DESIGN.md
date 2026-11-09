@@ -94,6 +94,10 @@ the code; they are finite evidence, not permission to assume untested parity.
   album titles within the source text column and show the locally generated
   code before preparing the archive or connecting. While waiting, the album
   floats gently; after sending, it returns to its original pedestal position.
+- Share and Receive follow the console theme, including transitions and error
+  states. The requested dark studio uses charcoal surfaces, graphite digit
+  tiles and pedestals, light text, and the existing blue/green transfer lights.
+  Keep the source geometry, controls, motion and original artwork colors.
 - Cover Flip exits to Now Playing while music is active, otherwise to the
   previous screen. Hold permits the automatic screensaver. After ten seconds
   without input, Cover Flow follows the playing album.
