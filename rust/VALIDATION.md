@@ -399,3 +399,36 @@ native launch and verify actual input, rather than only process existence.
 Generated captures and logs remain in ignored `build/rust/freeze-review/`;
 prior acceptance evidence remains in `build/rust/final-acceptance/` and
 `build/rust/device-acceptance/`.
+
+## 2026-11-09: Mac artwork precedence follow-up
+
+A real Mac save exposed a gap in the earlier fixture: it had no neighbouring
+`cover.jpg`. La Famiglia and two Lou X albums already contained the correct
+embedded covers, but the scanner unconditionally selected older folder artwork
+before the extracted image. Metadata had refreshed successfully.
+
+A successful remote artwork edit now persists a private embedded-art preference,
+including explicit removal. Scans bypass old imported/folder artwork for those
+tracks; later explicit console cover choices still take precedence. The ordinary
+metadata cache and content-addressed extracted/GPU artwork caches remain in use.
+No folder image or audio file is removed or overwritten by this correction.
+
+The new regression saves a real embedded picture beside old folder artwork,
+adds a newer stale Go index, scans twice, reads the cover as a new session would,
+and removes the embedded picture. It verifies correct metadata/artwork, stable
+cache identity, no fallback to the old image after removal, and preserved folder
+art and encoded audio payload. All 409 ordinary Rust tests pass, with 27 opt-in
+tests ignored. Native and AArch64/glibc 2.28 builds pass.
+
+The development build after published 0.2.10 was installed with a backup through
+the native Knulli launch. Existing saved choices were recovered for 40 tracks in
+41° Parallelo, A volte ritorno and La realtà, la lealtà e lo scontro, after checking
+that each embedded image matched its album's new cover. Only their private
+artwork-source preferences changed. After scanning, all 40 library artwork files
+matched the embedded SHA-256 values; source-file sizes and modification times
+were unchanged. The library retained the user's current 608 tracks. Native
+captures confirm correct square artwork in Albums and Cover Flow.
+
+Installed development binary SHA-256:
+`f42afffafaa8811e8050f6c98a346df9f1f160ab06253392d1e32abf8d48b920`.
+Evidence and backup references remain in ignored `build/rust/mac-cover-sync/`.

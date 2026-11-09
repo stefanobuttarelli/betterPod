@@ -254,13 +254,16 @@ impl Library {
         }
 
         let imported = import_cache.and_then(|path| import_go(path, &music));
+        let embedded_covers = crate::curation::embedded_cover_paths(&data);
         let artwork_dir = data.join("artwork");
         let mut tracks = Vec::with_capacity(inventory.music.len());
         for file in &inventory.music {
             SCAN_READ.fetch_add(1, Ordering::Relaxed);
             let mut track = imported
                 .as_ref()
-                .filter(|cache| file.modified() <= cache.modified)
+                .filter(|cache| {
+                    !embedded_covers.contains(&file.path) && file.modified() <= cache.modified
+                })
                 .and_then(|cache| cache.tracks.get(&file.path))
                 .cloned()
                 .unwrap_or_else(|| read_track(&file.path, &music, &artwork_dir));
@@ -290,7 +293,9 @@ impl Library {
                 .and_then(|parent| folder_covers.get(parent))
                 .or_else(|| folder_covers.get(&album_dir(&track.path)))
                 .cloned();
-            track.cover = imported_cover.or(folder_cover).or(track.cover);
+            if !embedded_covers.contains(&file.path) {
+                track.cover = imported_cover.or(folder_cover).or(track.cover);
+            }
             tracks.push(track);
         }
         // Imported metadata is no longer needed. Do not keep another library

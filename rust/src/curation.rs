@@ -120,6 +120,9 @@ struct Override {
     artist: Option<String>,
     group: String,
     cover: Option<PathBuf>,
+    // A physical cover edit from the Mac supersedes older folder/import art,
+    // including an explicit removal. Later console cover choices still win.
+    embedded_cover: bool,
     prior: Option<BeforeMerge>,
     disc: Option<u32>,
     added: bool,
@@ -192,6 +195,14 @@ pub(crate) fn apply(data: &Path, tracks: &mut [Track]) {
             }
         }
     }
+}
+
+pub(crate) fn embedded_cover_paths(data: &Path) -> HashSet<PathBuf> {
+    read(data)
+        .tracks
+        .into_iter()
+        .filter_map(|(path, entry)| entry.embedded_cover.then_some(path))
+        .collect()
 }
 fn validate_paths(
     data: &Path,
@@ -539,7 +550,7 @@ pub(crate) fn reconcile_remote_album(
     };
     let _lock = WRITER.lock().map_err(|e| e.to_string())?;
     let mut manifest = read(data);
-    if group.is_none() && !manifest.tracks.contains_key(path) {
+    if group.is_none() && !artwork_changed && !manifest.tracks.contains_key(path) {
         return Ok(());
     }
     let entry = manifest.tracks.entry(path.to_path_buf()).or_default();
@@ -560,6 +571,7 @@ pub(crate) fn reconcile_remote_album(
     }
     if artwork_changed {
         entry.cover = None;
+        entry.embedded_cover = true;
     }
     if let Some(group) = group {
         entry.group = group;

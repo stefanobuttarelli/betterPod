@@ -325,6 +325,77 @@ fn successful_physical_album_edit_clears_old_private_grouping_only() {
 }
 
 #[test]
+fn saved_cover_survives_folder_art_import_cache_rescan_and_reconnect() {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let fixture = Fixture::new();
+    let roots = files::Roots::new(&fixture.config).unwrap();
+    let state = shared(fixture.library.clone());
+    let folder_cover = fixture.config.music.join("cover.jpg");
+    fs::write(&folder_cover, b"old folder artwork").unwrap();
+    let original_folder = fs::read(&folder_cover).unwrap();
+    let before = Library::load_or_scan(&fixture.config.music, &fixture.config.data, None).unwrap();
+    assert_eq!(before.tracks[0].cover.as_ref(), Some(&folder_cover));
+
+    let mut encoded = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+        16,
+        16,
+        image::Rgb([230, 20, 80]),
+    ))
+    .write_to(&mut encoded, image::ImageFormat::Png)
+    .unwrap();
+    let picture = encoded.into_inner();
+    let mut edit = change(&fixture.path, json!({"title":"Saved from Mac"}));
+    edit.cover = Some(STANDARD.encode(&picture));
+    files::save(&fixture.config, &roots, &state, &fixture.library, &edit).unwrap();
+
+    // A newer Go index must not reintroduce its old art or metadata after the
+    // remote save. A warm Rust cache and a new session must agree as well.
+    let import = fixture.root.join("go-library.json");
+    fs::write(&import, serde_json::to_vec(&json!({
+        "tracks":[{"path":fixture.path,"title":"Stale imported title","album":"Original album","artist":"Artist"}],
+        "albums":[{"name":"Original album","artist":"Artist","artPath":folder_cover}]
+    })).unwrap()).unwrap();
+    let mut saved_cover = None;
+    for _ in 0..2 {
+        let scanned =
+            Library::load_or_scan(&fixture.config.music, &fixture.config.data, Some(&import))
+                .unwrap();
+        let track = &scanned.tracks[0];
+        assert_eq!(track.title, "Saved from Mac");
+        let cover = track.cover.as_ref().unwrap();
+        assert_ne!(cover, &folder_cover);
+        assert_eq!(fs::read(cover).unwrap(), picture);
+        if let Some(previous) = &saved_cover {
+            assert_eq!(cover, previous);
+        }
+        saved_cover = Some(cover.clone());
+        let response = files::cover(track, &roots, false).unwrap();
+        assert_eq!(
+            STANDARD
+                .decode(response["cover"].as_str().unwrap())
+                .unwrap(),
+            picture
+        );
+    }
+    assert_eq!(fs::read(&folder_cover).unwrap(), original_folder);
+    assert!(fs::read(&fixture.path)
+        .unwrap()
+        .ends_with(b"unchanged audio payload"));
+
+    let mut remove = change(&fixture.path, json!({}));
+    remove.remove_cover = true;
+    files::save(&fixture.config, &roots, &state, &fixture.library, &remove).unwrap();
+    let removed =
+        Library::load_or_scan(&fixture.config.music, &fixture.config.data, Some(&import)).unwrap();
+    assert!(
+        removed.tracks[0].cover.is_none(),
+        "An explicit removal must not restore old folder artwork"
+    );
+    assert_eq!(fs::read(&folder_cover).unwrap(), original_folder);
+}
+
+#[test]
 fn authenticated_batch_reports_partial_success_and_read_boundary() {
     let fixture = Fixture::new();
     let roots = files::Roots::new(&fixture.config).unwrap();

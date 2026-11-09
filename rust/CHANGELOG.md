@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## Unreleased
+
+- Covers saved from the Mac now take precedence over older folder artwork and imported Go cover records. The choice survives rescans, cache reuse and reconnection; removing an embedded cover does not restore an old YouTube thumbnail. Existing folder artwork and cached images are preserved.
+
 ## v0.2.10 (2026-11-09)
 
 - Prevent a direct SSH launch from suspending EmulationStation while it still owns the display. This unsafe handoff could freeze the Mali renderer and bypass physical controller setup. Console tests now return through the normal Ports launch; ordinary launch and exit preserve the firmware's display and input handoff.
