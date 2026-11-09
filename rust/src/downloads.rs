@@ -805,6 +805,9 @@ pub(crate) fn youtube_video_info(
     if let Some((info, _)) = youtube_info::load(context, data, url)? {
         return Ok(info);
     }
+    youtube_video_info_fresh(context, data, url)
+}
+fn youtube_video_info_fresh(context: &Context, data: &Path, url: &str) -> Result<Value, String> {
     let info = yt_json(
         context,
         data,
@@ -1301,18 +1304,20 @@ pub fn resolve_stream(
     for attempt in 0..3 {
         context.check()?;
         context.progress(attempt, None, "Opening YouTube stream");
-        let info = yt_json(
-            context,
-            data,
-            &[
-                "--no-playlist",
-                "--no-check-formats",
-                "--extractor-args",
-                "youtube:skip=hls",
-                &item.url,
-            ],
-        )?;
-        let (formats, audio) = select_formats(&info, video)?;
+        // Opening details already resolved the formats. Probe those URLs first;
+        // only rejected/expired formats require another expensive extraction.
+        let info = if attempt == 0 {
+            youtube_video_info(context, data, &item.url)?
+        } else {
+            youtube_video_info_fresh(context, data, &item.url)?
+        };
+        let (formats, audio) = match select_formats(&info, video) {
+            Ok(selected) => selected,
+            Err(error) => {
+                last = error;
+                continue;
+            }
+        };
         let at = [
             number(&formats, "available_at"),
             audio

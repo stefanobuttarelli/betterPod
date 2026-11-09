@@ -158,8 +158,9 @@ Running and queued entries offer **Cancel and Remove**; clearing the list asks
 for confirmation and cancels remaining jobs. Saved files stay in the library.
 When the visible list is empty, Downloads disappears from Music and Videos.
 
-Resolved video metadata is reused for extraction, with bounded private cache
-files and a compact UI projection. Logs record available memory, process-group
+Resolved video metadata is reused for extraction and Watch Video, with bounded
+private cache files and a compact UI projection. Watch Video probes cached media
+URLs first and resolves fresh formats if those URLs are rejected. Logs record available memory, process-group
 RSS and JavaScript heap failures. Fixed preflight, process-group and Deno heap
 caps no longer refuse downloads ahead of time. Cancellation and output bounds
 remain; resolver children receive higher kernel OOM priority than the player.

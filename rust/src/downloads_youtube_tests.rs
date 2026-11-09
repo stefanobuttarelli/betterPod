@@ -657,3 +657,70 @@ esac
         "A complete chapter album must return before fetching its source again"
     );
 }
+
+#[test]
+fn watch_reuses_detail_formats_and_refreshes_rejected_urls() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    for stale in [false, true] {
+        let fixture = Fixture::new();
+        let context = Context::standalone();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let media = format!("http://{}/media", listener.local_addr().unwrap());
+        let info = json!({"id":"first000001","title":"Video","duration":10,
+            "formats":[{"url":media,"protocol":"http","vcodec":"avc1","acodec":"mp4a","height":360}]});
+        let url = "https://www.youtube.com/watch?v=first000001";
+        youtube_info::store(&context, &fixture.root, url, &info).unwrap();
+        fs::write(
+            fixture.root.join("tools/first.json"),
+            serde_json::to_vec(&info).unwrap(),
+        )
+        .unwrap();
+        let server = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            for n in 0..if stale { 2 } else { 1 } {
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "Missing media probe");
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(e) => panic!("{e}"),
+                    }
+                };
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut request = [0; 4096];
+                let bytes = stream.read(&mut request).unwrap();
+                assert!(String::from_utf8_lossy(&request[..bytes])
+                    .to_lowercase()
+                    .contains("range: bytes=0-0"));
+                let status = if stale && n == 0 {
+                    "403 Forbidden"
+                } else {
+                    "206 Partial Content"
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+            }
+        });
+        let item = crate::online::youtube_item(
+            json!({"id":"first000001","webpage_url":url}),
+            crate::online::Provider::YouTube,
+        );
+        let stream = resolve_stream(&context, &fixture.root, &item, true).unwrap();
+        server.join().unwrap();
+        assert_eq!(stream.video_url, media);
+        let calls = fs::read_to_string(fixture.root.join("tools/invocations")).unwrap_or_default();
+        assert_eq!(
+            calls.lines().filter(|line| *line == "-J").count(),
+            usize::from(stale)
+        );
+    }
+}
