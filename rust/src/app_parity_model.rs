@@ -330,15 +330,6 @@ impl App {
                 Intent::Theme,
             ),
             setting(
-                "Effects",
-                if self.settings.effects == "light" {
-                    "Light"
-                } else {
-                    "Full"
-                },
-                Intent::Effects,
-            ),
-            setting(
                 "Screensaver",
                 if self.settings.screensaver_seconds == 0 {
                     "Never".into()

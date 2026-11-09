@@ -62,24 +62,26 @@ The requested departures from Go are recorded in `DESIGN.md`.
 
 Validation for this pass:
 
-- 397 ordinary tests: 279 library, 112 application and 6 proxy cases. The 27
+- 401 ordinary tests: 283 library, 112 application and 6 proxy cases. The 27
   opt-in tests remain separately identified; seven actual SDL/GLES application
   route tests pass, including the new multi-flow regression fixture.
 - Linux native and Knulli AArch64 release builds pass; Knulli requires no newer
   than glibc 2.28. A 30-second smoke run loads 120 tracks, advances playback and
   visits all five scripted screens with dummy audio.
-- Two independent capture passes for each of 65 general and 9 YouTube scenes
+- Two independent capture passes for each of 64 general and 9 YouTube scenes
   are repeatable. Native-size images were inspected. Semantic differences are
   explicit: the existing Rust Wi-Fi Library entry, requested Lossless entry,
-  and an actionable Cover row even when a video has no thumbnail. Associated
+  removed Effects choice, and an actionable Cover row even when a video has no
+  thumbnail. Associated
   list positions differ. Pixel differences include scrollbar fading, selected
   Cancel/background hints, the download spinner and renderer antialiasing.
 - `build/rust/review-*.log`, `app-captures/review-*.png`, `visual-parity/`,
   `youtube-design-checks/` and `review-ytdlp-progress.json` contain local evidence.
   Generated media, preferences, binaries and captures are excluded from commits.
 
-Effects Full keeps animated artwork previews, weather icons and sheet/toast
-transitions. Light reduces those effects; neither setting changes audio quality.
+The Effects menu and saved Full/Light choice are removed. Artwork previews,
+weather icons and sheet/toast transitions always use Full behavior. Legacy
+Light preferences are ignored without changing other saved settings.
 This pass does not install on the handheld, release a package, validate live
 YouTube challenges, or establish audible playback, physical battery accuracy,
 Wi-Fi/Bluetooth reliability or H700 frame timing.

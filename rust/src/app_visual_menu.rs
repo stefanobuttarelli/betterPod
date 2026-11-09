@@ -1797,11 +1797,7 @@ impl App {
                     352.0,
                     y,
                     256.0,
-                    if self.settings.effects == "light" {
-                        -1.0
-                    } else {
-                        (self.visual_time / 3.0).rem_euclid(1.0)
-                    },
+                    (self.visual_time / 3.0).rem_euclid(1.0),
                 );
             }
             PreviewKind::NowPlaying => {
@@ -1813,10 +1809,7 @@ impl App {
                     }
                     self.visual_menu.np_pan_shown = now;
                     let phase = (now - self.visual_menu.np_pan_start).rem_euclid(16.0);
-                    let light = self.settings.effects == "light";
-                    if light {
-                        r.image(texture, 320.0, 0.0, 480.0, 480.0, 1.0);
-                    } else if phase < 14.0 {
+                    if phase < 14.0 {
                         let shift = -160.0 * go_ease_in_out((phase / 14.0) as f32);
                         r.image(texture, 320.0 + shift, 0.0, 480.0, 480.0, 1.0);
                     } else {
@@ -1962,11 +1955,7 @@ impl App {
             self.visual_menu.cycle.transition = None;
             self.visual_menu.cycle.generation = self.library_generation;
         }
-        let fade = if self.settings.effects == "light" {
-            0.6
-        } else {
-            2.0
-        };
+        let fade = 2.0;
         let cycle = &mut self.visual_menu.cycle;
         if cycle.order.is_empty() {
             return;
@@ -1993,7 +1982,6 @@ impl App {
         let under_start = under
             .and_then(|i| cycle.starts.get(&i).copied())
             .unwrap_or(now);
-        let light = self.settings.effects == "light";
         let mut draw = |index: usize, started: f64, opacity: f32| {
             let cover = self
                 .library
@@ -2001,11 +1989,7 @@ impl App {
                 .get(index)
                 .and_then(|a| a.cover.as_deref());
             let texture = self.art.get(cover);
-            let pan = if light {
-                0.0
-            } else {
-                48.0 * go_ease_css(((now - started) / 20.0) as f32)
-            };
+            let pan = 48.0 * go_ease_css(((now - started) / 20.0) as f32);
             r.image(texture, 160.0 + pan, 0.0, 480.0, 480.0, opacity);
         };
         if let Some(under) = under {

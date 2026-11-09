@@ -175,7 +175,9 @@ unrelated global loading messages and fake progress percentages.
 ## Motion, performance and resources
 
 - Reuse source timing and easing: `durSlide`, `durPanel`, `durPreview`,
-  `delayMenuHide`, `easeCSS`, `easeInOut` and the Full/Light effects behavior.
+  `delayMenuHide`, `easeCSS` and `easeInOut`. **Requested override:** Rust always
+  uses Full effects; remove the Effects menu and Full/Light preference, including
+  the influence of a previously saved Light value.
   New backend code must not change how input or transitions feel.
 - Network, metadata resolution, image decoding, filesystem operations and
   serialization run off the UI/audio threads. Feedback begins before that

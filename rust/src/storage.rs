@@ -25,7 +25,6 @@ pub struct Settings {
     pub beta_updates: bool,
     pub repeat: String,
     pub screensaver_seconds: u32,
-    pub effects: String,
     pub apple: bool,
     pub hide_podcasts: bool,
     pub youtube: bool,
@@ -48,7 +47,6 @@ impl Default for Settings {
             beta_updates: false,
             repeat: "off".into(),
             screensaver_seconds: 0,
-            effects: "full".into(),
             apple: false,
             hide_podcasts: false,
             youtube: false,
@@ -83,9 +81,6 @@ impl Settings {
         }
         if !matches!(self.repeat.as_str(), "off" | "all" | "one") {
             self.repeat = "off".into();
-        }
-        if !matches!(self.effects.as_str(), "full" | "light") {
-            self.effects = "full".into();
         }
         if !matches!(self.screensaver_style.as_str(), "cover" | "viz") {
             self.screensaver_style = "cover".into();
@@ -921,7 +916,7 @@ mod tests {
         let root = temporary("invalid");
         fs::write(
             root.join("settings.json"),
-            br#"{"volume":9,"theme":"bad","repeat":"bad","screensaver_dim":255}"#,
+            br#"{"volume":9,"theme":"bad","repeat":"bad","screensaver_dim":255,"effects":"light"}"#,
         )
         .unwrap();
         fs::write(root.join("playback.json"), b"partial json").unwrap();
@@ -933,6 +928,13 @@ mod tests {
             assert_eq!(settings.repeat, "off");
             assert_eq!(settings.screensaver_dim, 100);
             assert_eq!(Settings::default().screensaver_dim, 0);
+            assert!(
+                serde_json::to_value(&settings)
+                    .unwrap()
+                    .get("effects")
+                    .is_none(),
+                "Legacy Light mode is ignored and is no longer saved"
+            );
             assert!(store.load_playback().is_none());
         }
         fs::remove_dir_all(root).unwrap();

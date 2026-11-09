@@ -169,7 +169,6 @@ pub(crate) enum Intent {
     ShareTrack(usize),
     ShareAlbum(usize),
     SongInfo(usize),
-    Effects,
     Apple,
     YouTube,
     Podcasts,
@@ -1929,16 +1928,6 @@ impl App {
                     }
                     Err(error) => self.notify(error),
                 }
-            }
-            Intent::Effects => {
-                self.settings.effects = if self.settings.effects == "light" {
-                    "full"
-                } else {
-                    "light"
-                }
-                .into();
-                self.save_settings();
-                self.refresh_page();
             }
             Intent::Apple => {
                 self.settings.apple = !self.settings.apple;

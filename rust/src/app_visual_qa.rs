@@ -178,7 +178,6 @@ fn capture_static_scenes() -> Result<(), String> {
     app.install_library(ScannedLibrary::new(Library::from_tracks(tracks)), &renderer);
     preload(&mut app, &renderer)?;
     app.settings.theme = "light".into();
-    app.settings.effects = "full".into();
     app.settings.shuffle = false;
     app.settings.repeat = "off".into();
     app.settings.youtube = false;

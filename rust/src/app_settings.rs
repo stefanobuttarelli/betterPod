@@ -6,7 +6,6 @@ pub(super) enum SettingValue {
     ShuffleMode(&'static str),
     Repeat(&'static str),
     Theme(&'static str),
-    Effects(&'static str),
     Apple(bool),
     YouTube(bool),
     Podcasts(bool),
@@ -36,7 +35,6 @@ impl App {
             SettingValue::ShuffleMode(v) => self.set_shuffle_mode(v),
             SettingValue::Repeat(v) => self.settings.repeat = v.into(),
             SettingValue::Theme(v) => self.settings.theme = v.into(),
-            SettingValue::Effects(v) => self.settings.effects = v.into(),
             SettingValue::Apple(v) => self.settings.apple = v,
             SettingValue::YouTube(v) => {
                 self.settings.youtube = v;
@@ -97,10 +95,6 @@ impl App {
                     }
                     r
                 })
-                .collect(),
-            Some(Intent::Effects) => [("Full", "full"), ("Light", "light")]
-                .into_iter()
-                .map(|(l, v)| choice(l, SettingValue::Effects(v), self.settings.effects == v))
                 .collect(),
             Some(Intent::Apple) => [false, true]
                 .into_iter()
@@ -197,8 +191,16 @@ impl App {
                 summary("Artists", self.library.artists.len().to_string(), ""),
             ],
             Some(Intent::Open(Screen::WifiLibrary)) => vec![
-                summary("Edit from your Mac", "", "Connect with the code shown on betterPod"),
-                summary("Local Wi-Fi only", "", "The Mac and betterPod must use the same network"),
+                summary(
+                    "Edit from your Mac",
+                    "",
+                    "Connect with the code shown on betterPod",
+                ),
+                summary(
+                    "Local Wi-Fi only",
+                    "",
+                    "The Mac and betterPod must use the same network",
+                ),
             ],
             Some(Intent::Open(Screen::Screensaver)) => vec![
                 summary(
@@ -272,7 +274,6 @@ impl App {
                 Intent::Shuffle
                     | Intent::Repeat
                     | Intent::Theme
-                    | Intent::Effects
                     | Intent::Apple
                     | Intent::Podcasts
                     | Intent::SoftwareUpdate

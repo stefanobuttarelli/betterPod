@@ -109,7 +109,6 @@ mod toast_tests {
 impl App {
     pub(super) fn visual_feedback_draw(&mut self, r: &mut Renderer) {
         let now = self.visual_time;
-        let light = self.settings.effects == "light";
         let active = self
             .options
             .clone()
@@ -136,21 +135,9 @@ impl App {
                 };
                 self.feedback.sheet = Some(page.clone());
                 self.feedback.sheet_y.snap(1.0);
-                self.feedback.sheet_y.set(
-                    0.0,
-                    if light { 0.0 } else { 0.3 },
-                    Ease::InOut,
-                    0.0,
-                    now,
-                );
+                self.feedback.sheet_y.set(0.0, 0.3, Ease::InOut, 0.0, now);
             } else {
-                self.feedback.sheet_y.set(
-                    1.0,
-                    if light { 0.0 } else { 0.3 },
-                    Ease::InOut,
-                    0.0,
-                    now,
-                );
+                self.feedback.sheet_y.set(1.0, 0.3, Ease::InOut, 0.0, now);
             }
         } else if let Some(page) = &active {
             self.feedback.sheet = Some(page.clone());
@@ -190,21 +177,11 @@ impl App {
                     (text, width)
                 })
                 .collect();
-                self.feedback.toast_alpha.set(
-                    1.0,
-                    if light { 0.0 } else { 0.2 },
-                    Ease::Css,
-                    0.0,
-                    now,
-                );
+                self.feedback.toast_alpha.set(1.0, 0.2, Ease::Css, 0.0, now);
             } else {
-                self.feedback.toast_alpha.set(
-                    0.0,
-                    if light { 0.0 } else { 0.25 },
-                    Ease::Css,
-                    0.0,
-                    now,
-                );
+                self.feedback
+                    .toast_alpha
+                    .set(0.0, 0.25, Ease::Css, 0.0, now);
             }
         }
         let a = self.feedback.toast_alpha.value(now) as f32;

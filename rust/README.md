@@ -91,7 +91,8 @@ All options use the `BETTERPOD_RUST_` prefix. They do not override the stable ap
 | `BETTERPOD_RUST_SCREENSHOT` | PNG output before a bounded run exits. |
 | `BETTERPOD_RUST_SWAP_AB=0` | Use SDL's face-button labels instead of Anbernic's mapping. |
 | `BETTERPOD_RUST_INSTALLATION` | Ports root for the independent Rust updater. |
-| `BETTERPOD_RUST_UPDATE_FEED` | Optional explicitly configured Rust-only manifest URL; no feed by default. |
+| `BETTERPOD_RUST_UPDATE_FEED` | Override the default `rust-latest` manifest URL; an empty value disables this channel. |
+| `BETTERPOD_RUST_BETA_UPDATE_FEED` | Override the `rust-beta` manifest URL, read with Beta Versions on; an empty value disables this channel. |
 
 ## Controls
 
@@ -112,6 +113,10 @@ All options use the `BETTERPOD_RUST_` prefix. They do not override the stable ap
 | — | Q | Quit. |
 
 Headset media play/pause/next/previous keys are read by a separate Linux worker without grabbing input devices. Knulli owns the physical volume and POWER buttons. The experimental input layer does not intercept those buttons through a second key-mapping process.
+
+In Now Playing, Left/Right cycles the time, scrubber and shuffle/repeat controls.
+Rust always uses Full animations and previews. The Effects menu and Full/Light
+preference are removed; a previously saved Light value is ignored.
 
 Before suspending EmulationStation, the Knulli launcher uses the Rust executable to park only its verified audio streams on the stable internal output. It restores their mute/routing policy and process state on exit. This prevents a frozen frontend client from blocking Bluetooth reconnection; firmware audio/graphics libraries stay unchanged.
 
@@ -136,9 +141,9 @@ control to the same selection. Audio and system controls remain available.
 The same interaction applies to service searches and album-information reads.
 
 Download opens the current job's progress page. **B goes back while the
-download continues**; **Cancel** stops it. **Downloads** remains available on
-Home while active or recent jobs exist, and selecting a job reopens its
-progress or outcome. Finished files remain available after cancellation.
+download continues**; **Cancel** stops it. **Downloads** remains available in
+Music and Videos while active or recent jobs exist. Selecting a job reopens
+its progress or outcome. Finished files remain available after cancellation.
 The cover uses an automatic square preview without an extra crop dialog.
 
 The job button is selected blue, including **Cancel**, to make its A-button
@@ -151,13 +156,14 @@ order. Selecting the same unfinished request reopens it without duplicating it.
 Press **Y** in Downloads to remove the selected entry or clear the entire list.
 Running and queued entries offer **Cancel and Remove**; clearing the list asks
 for confirmation and cancels remaining jobs. Saved files stay in the library.
-When the visible list is empty, Downloads disappears from Home.
+When the visible list is empty, Downloads disappears from Music and Videos.
 
 Resolved video metadata is reused for extraction, with bounded private cache
-files and a compact UI projection. Memory failures distinguish the tools
-preflight, process-group limit, audio reserve and JavaScript heap in the log.
-Audio formats, buffers and memory protections remain unchanged. These changes
-reduce redundant work; device acceptance is still required.
+files and a compact UI projection. Logs record available memory, process-group
+RSS and JavaScript heap failures. Fixed preflight, process-group and Deno heap
+caps no longer refuse downloads ahead of time. Cancellation and output bounds
+remain; resolver children receive higher kernel OOM priority than the player.
+Audio formats and buffers remain unchanged. Device acceptance is still required.
 
 ## Rewrite coverage
 
@@ -180,7 +186,7 @@ A local graphics smoke cannot validate every item. Hardware runs must inspect fr
 
 Music transfer and database maintenance use one worker with throttled I/O; Linux also requests low CPU and idle disk priority for that worker. Music is copied, hashed, read back and verified before switching roots. Removing originals requires explicit confirmation and an acknowledgement that application clients have switched. Interrupted music moves retain a manifest that can resume even after the pointer switched. File and directory entries are synced before recording verified copies and before removing originals; Linux uses `syncfs` only when a filesystem does not support directory `fsync`. Other platforms provide best effort for unsupported directory sync. Database moves require flushed state and stopped clients, preserve cover choices, and remove only verified files from this app's allowlist. Clear Artwork preserves deliberately chosen covers; Clear App Data preserves private downloads and tools. The separate Everything Including Tools reset is explicit.
 
-The independent updater shows **Local build** until a Rust feed is configured. It rejects stable betterPod manifests, foreign installation markers, untrusted archive paths, symlinks, configuration overwrites, incorrect size/SHA-256 and executables with the wrong architecture. Commit installs the executable last and keeps an on-disk rollback journal. A failed running transaction restores prior files. Startup recovery rolls back an incomplete journal before app clients open; after rollback the process must restart. This is not a fully atomic directory/version switch: native libraries can be loaded before Rust startup recovery runs. The prototype therefore rejects replacement of existing codec libraries, and enabling a real update feed still requires review of loader compatibility and recovery. No update is downloaded, applied or published by the build/test scripts.
+The independent updater uses the Rust feeds described above; **Local build** applies when no update feed is enabled. It rejects Go betterPod manifests, foreign installation markers, untrusted archive paths, symlinks, configuration overwrites, incorrect size/SHA-256 and executables with the wrong architecture. Commit installs the executable last and keeps an on-disk rollback journal. A failed running transaction restores prior files. Startup recovery rolls back an incomplete journal before app clients open; after rollback the process must restart. This is not a fully atomic directory/version switch: native libraries can be loaded before Rust startup recovery runs. The updater therefore rejects replacement of existing codec libraries. Local build/test scripts do not download, apply or publish an update; the GitHub workflow publishes only a new version with release notes.
 
 Useful local regression commands:
 
