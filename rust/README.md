@@ -160,11 +160,24 @@ When the visible list is empty, Downloads disappears from Music and Videos.
 
 Resolved video metadata is reused for extraction and Watch Video, with bounded
 private cache files and a compact UI projection. Watch Video probes cached media
-URLs first and resolves fresh formats if those URLs are rejected. Logs record available memory, process-group
+URLs first and resolves fresh formats if those URLs are rejected. Cache reads
+and writes use 64 KiB buffers to avoid tiny filesystem operations while parsing
+or serializing provider JSON. Writes still enforce the entry limit and flush
+before the atomic replacement. Startup logs separate metadata, URL probes,
+audio readiness and the first decoded frame. Logs record available memory, process-group
 RSS and JavaScript heap failures. Fixed preflight, process-group and Deno heap
 caps no longer refuse downloads ahead of time. Cancellation and output bounds
 remain; resolver children receive higher kernel OOM priority than the player.
 Audio formats and buffers remain unchanged. Device acceptance is still required.
+
+On 2026-11-09, the H700 console startup check found that reading an 11 MB
+cached metadata file took 20.05 seconds without buffering. With buffered I/O,
+the same cache loaded in about 0.5 seconds; three Watch Video activations
+reached advancing playback and a decoded frame in 1.41, 1.10 and 1.08 seconds.
+No decoder errors or PCM underruns were reported in those samples. These are
+warm-cache results for one live NASA video, not a bound on fresh YouTube
+extraction or network delays. The cache regression also verifies that an
+oversized replacement preserves the previous valid entry.
 
 ## Rewrite coverage
 

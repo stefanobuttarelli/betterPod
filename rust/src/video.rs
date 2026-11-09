@@ -269,6 +269,7 @@ impl Session {
         } else {
             start
         };
+        let opened = Instant::now();
         let (frame_tx, frames) = mpsc::sync_channel(8);
         let (free_tx, free_rx) = mpsc::sync_channel::<Vec<u8>>(12);
         // Construct the owner before spawning anything. Every subsequent '?'
@@ -407,6 +408,12 @@ impl Session {
                                 generation,
                                 recycle: free_tx.clone(),
                             };
+                            if index == 0 {
+                                eprintln!(
+                                    "[Video startup] first frame: {} ms",
+                                    opened.elapsed().as_millis()
+                                );
+                            }
                             index += 1;
                             loop {
                                 match frame_tx.try_send(frame) {
@@ -508,6 +515,10 @@ impl Session {
                 }
             }
         }
+        eprintln!(
+            "[Video startup] audio ready: {} ms",
+            opened.elapsed().as_millis()
+        );
         Ok(session)
     }
     fn position(&self) -> f64 {

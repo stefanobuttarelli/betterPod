@@ -1,6 +1,6 @@
 //! Full resolver metadata stays in a small private disk cache, outside UI clones.
 use super::*;
-use std::io;
+use std::io::{self, BufReader, BufWriter};
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
@@ -82,7 +82,10 @@ pub(super) fn load(
     #[cfg(unix)]
     options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
     let file = options.open(&path).map_err(|e| e.to_string())?;
-    let info: Value = match serde_json::from_reader(file.take(MAX_ENTRY + 1)) {
+    let info: Value = match serde_json::from_reader(BufReader::with_capacity(
+        64 * 1024,
+        file.take(MAX_ENTRY + 1),
+    )) {
         Ok(value) => value,
         Err(_) => return Ok(None),
     };
@@ -128,7 +131,11 @@ pub(super) fn store(context: &Context, data: &Path, url: &str, info: &Value) -> 
         return Err("YouTube metadata cache is not a private file".into());
     }
     crate::storage::atomic_write_with(&path, |file| {
-        serde_json::to_writer(Bounded { file, bytes: 0 }, info).map_err(io::Error::other)
+        // JSON emits small fragments; batch them without duplicating the full
+        // metadata blob. Flush explicitly before atomic_write_with syncs/renames.
+        let mut writer = BufWriter::with_capacity(64 * 1024, Bounded { file, bytes: 0 });
+        serde_json::to_writer(&mut writer, info).map_err(io::Error::other)?;
+        writer.flush()
     })
     .map_err(|e| e.to_string())?;
     context.check()?;
@@ -199,6 +206,23 @@ pub(super) fn stale_error(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn buffered_cache_roundtrip_and_oversized_write_preserve_previous_entry() {
+        let data =
+            std::env::temp_dir().join(format!("youtube-buffered-cache-{}", std::process::id()));
+        fs::create_dir_all(&data).unwrap();
+        let context = Context::standalone();
+        let url = "https://www.youtube.com/watch?v=first000001";
+        let info = json!({"id":"first000001","formats":[{"url":"https://example.com/video"}],
+            "description":"large metadata ".repeat(140_000)});
+        store(&context, &data, url, &info).unwrap();
+        assert_eq!(load(&context, &data, url).unwrap().unwrap().0, info);
+        let oversized = json!({"id":"first000001","formats":[],
+            "description":"x".repeat(MAX_ENTRY as usize)});
+        assert!(store(&context, &data, url, &oversized).is_err());
+        assert_eq!(load(&context, &data, url).unwrap().unwrap().0, info);
+        fs::remove_dir_all(data).unwrap();
+    }
     #[test]
     fn metadata_cache_has_private_permissions_ttl_count_and_symlink_bounds() {
         let data = std::env::temp_dir().join(format!("youtube-info-cache-{}", std::process::id()));

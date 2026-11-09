@@ -1300,6 +1300,7 @@ pub fn resolve_stream(
     item: &OnlineItem,
     video: bool,
 ) -> Result<StreamSource, String> {
+    let opened = Instant::now();
     let mut last = "No playable streams".to_string();
     for attempt in 0..3 {
         context.check()?;
@@ -1311,6 +1312,10 @@ pub fn resolve_stream(
         } else {
             youtube_video_info_fresh(context, data, &item.url)?
         };
+        eprintln!(
+            "[Video startup] metadata ready: {} ms",
+            opened.elapsed().as_millis()
+        );
         let (formats, audio) = match select_formats(&info, video) {
             Ok(selected) => selected,
             Err(error) => {
@@ -1358,7 +1363,11 @@ pub fn resolve_stream(
             })
             .unwrap_or_default();
         let mut valid = true;
-        for url in std::iter::once(video_url.as_str()).chain(audio_url.as_deref()) {
+        for (index, url) in std::iter::once(video_url.as_str())
+            .chain(audio_url.as_deref())
+            .enumerate()
+        {
+            let probe_started = Instant::now();
             validate_http(url)?;
             let mut request = http_agent(true).get(url).header("Range", "bytes=0-0");
             for (k, v) in &headers {
@@ -1369,7 +1378,15 @@ pub fn resolve_stream(
                 valid = false;
                 break;
             }
+            eprintln!(
+                "[Video startup] probe {index}: {} ms",
+                probe_started.elapsed().as_millis()
+            );
         }
+        eprintln!(
+            "[Video startup] probes ready: {} ms",
+            opened.elapsed().as_millis()
+        );
         if valid {
             return Ok(StreamSource {
                 video_url,
