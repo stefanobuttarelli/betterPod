@@ -42,9 +42,24 @@ trait Host {
     fn run(&mut self, tool: &str, args: &[String]) -> Result<String, String>;
     fn process(&self, pid: u32) -> Option<Process>;
     fn signal(&mut self, process: &Process, signal: i32) -> Result<(), String>;
+    fn owns_display(&self, process: &Process) -> Result<bool, String>;
 }
 struct System;
 impl Host for System {
+    fn owns_display(&self, process: &Process) -> Result<bool, String> {
+        let descriptors = fs::read_dir(format!("/proc/{}/fd", process.pid))
+            .map_err(|e| format!("Cannot inspect frontend display ownership: {e}"))?;
+        for entry in descriptors {
+            let entry = entry.map_err(|e| e.to_string())?;
+            match fs::read_link(entry.path()) {
+                Ok(path) if display_device(&path) => return Ok(true),
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("Cannot inspect frontend display descriptor: {e}")),
+            }
+        }
+        Ok(false)
+    }
     fn run(&mut self, tool: &str, args: &[String]) -> Result<String, String> {
         let mut command = Command::new(tool);
         command.args(args).env("LC_ALL", "C");
@@ -151,6 +166,20 @@ fn frontend(process: &Process) -> bool {
         process.name.as_str(),
         "emulationstation" | "emulationstatio"
     )
+}
+fn display_device(path: &Path) -> bool {
+    let name = path.to_string_lossy();
+    ["/dev/fb", "/dev/dri/card"].iter().any(|prefix| {
+        name.strip_prefix(prefix)
+            .is_some_and(|suffix| !suffix.is_empty() && suffix.bytes().all(|c| c.is_ascii_digit()))
+    })
+}
+
+fn require_released_display(host: &impl Host, process: &Process) -> Result<(), String> {
+    if host.owns_display(process)? {
+        return Err("EmulationStation still owns the display. Start betterPod Rust from Ports or EmulationStation's local /launch API; do not run its launcher directly over SSH.".into());
+    }
+    Ok(())
 }
 fn cookie(host: &mut impl Host) -> Result<Option<String>, String> {
     Ok(call(host, "pactl", &["info"])?
@@ -366,6 +395,12 @@ fn prepare(path: &Path, owner: u32, pids: &[u32], host: &mut impl Host) -> Resul
             Ok(p)
         })
         .collect::<Result<Vec<_>, &str>>()?;
+    // SIGSTOP is safe only after the native launcher has released scanout.
+    // Freezing a live Mali framebuffer owner can stall both applications, and
+    // a raw SSH launch also bypasses configgen's controller setup.
+    for process in &processes {
+        require_released_display(host, process)?;
+    }
     let mut plan = Plan {
         version: 1,
         owner,
@@ -472,6 +507,7 @@ fn prepare(path: &Path, owner: u32, pids: &[u32], host: &mut impl Host) -> Resul
                 return Err("Frontend restarted during handoff".into());
             }
             host.signal(p, libc::SIGSTOP)?;
+            require_released_display(host, p)?;
         }
         Ok(())
     })();

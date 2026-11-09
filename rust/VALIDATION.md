@@ -349,3 +349,53 @@ The initial muted console comparison covers Cover Flow, the music player, weathe
 The real provider implementations still need live service checks for availability, challenge handling and rate limits. Physical Bluetooth controls, brightness and power behavior also require the deferred console session. The independent Rust updater has no published feed; it never consumes the stable Go release manifests.
 
 Generated session evidence is under `build/rust/`: `final-all-build.log`, `final-app-qa.log`, `media-check.log`, `final-performance.json`, `mac-final/frames.csv` and the smoke directory named by `latest-smoke.txt`. Metadata and Share evidence is recorded at the paths listed in `README.md`.
+
+## 2026-11-09: final console acceptance and native launch correction
+
+The installed 0.2.9 development head (`0878c54`) completed live YouTube video
+playback, both cover replacement flows, and cancellation/restart of a nine-track
+NASA playlist. All nine output receipts matched their file hashes, the first
+completed track was reused unchanged, and the library refreshed automatically
+to 628 tracks / 26 albums. The selected pre-download artwork matched the saved
+album cover byte-for-byte. Real Mac companion LAN-core discovery, pairing,
+read and title/cover writes passed on an owned disposable FLAC fixture; decoded
+audio was unchanged. The fixture files were removed afterward.
+
+Additional device checks covered Enter, the fading scrollbar, centered Hold
+notices, Lossless filtering, idle Cover Flow following the playing album, saver
+return without active playback, pause/resume frame samples, and 95 samples of
+an automatic track transition without a mini-player pause flash. Direct
+framebuffer captures showed different shutdown-spinner positions. Earlier
+sessions cover active-playback Cover Flip return, album synchronization and
+automatic saver activation under Hold. These finite captures and counters do
+not establish audible quality, exhaustive motion timing, the full Swift Mac
+GUI, or every live provider response. The battery was 33–37%, so the reported
+82% case was not reproduced physically.
+
+A subsequent user report exposed an acceptance gap: checking a restarted PID
+and a library-ready log was insufficient. The direct SSH restart bypassed
+Knulli's native launch, left EmulationStation owning `/dev/fb0` when suspended,
+and omitted the physical-controller initialization seen during normal launch.
+The stalled main thread was in Mali; resuming the frontend allowed orderly
+player exit without reboot. The native loopback `/launch` route releases the
+frontend framebuffer and provides configgen's controller mapping. Native
+navigation changed the selected row using the console's actual event device.
+
+Version 0.2.10 rejects a framebuffer/DRM scanout owner before any audio/process
+mutation and checks again after suspension, rolling back if scanout reopened.
+Retained `/dev/mali0` and render-node descriptors are not treated as scanout:
+EmulationStation keeps a Mali handle even after a legitimate native handoff.
+Three added regressions cover rejection without side effects, descriptor
+classification and rollback. All 408 ordinary Rust tests pass (27 opt-in tests
+remain ignored); native and AArch64/glibc 2.28 release builds pass.
+
+The 0.2.10 console binary is SHA-256
+`24107b4a69dcb90998b31cde1cea915421d4ebd40f72dc2f600adb511f9926c4`.
+It was installed with a verified backup and atomic rename. The unsafe raw
+launcher was rejected while EmulationStation stayed running. Three native
+launch/navigation/MENU-held-exit cycles passed, each recording clean exit,
+resumed frontend and removed handoff journal. Normal test cleanup must use the
+native launch and verify actual input, rather than only process existence.
+Generated captures and logs remain in ignored `build/rust/freeze-review/`;
+prior acceptance evidence remains in `build/rust/final-acceptance/` and
+`build/rust/device-acceptance/`.

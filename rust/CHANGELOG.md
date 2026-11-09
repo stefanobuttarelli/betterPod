@@ -2,6 +2,17 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.10 (2026-11-09)
+
+- Prevent a direct SSH launch from suspending EmulationStation while it still owns the display. This unsafe handoff could freeze the Mali renderer and bypass physical controller setup. Console tests now return through the normal Ports launch; ordinary launch and exit preserve the firmware's display and input handoff.
+- YouTube downloads show live progress and refresh Albums and Artists automatically. Playlist retries reuse verified completed tracks. Downloads is inside Music and Videos.
+- YouTube video playback reuses resolved formats and reads the metadata cache with buffered I/O. Cold extraction skips unused subtitle URL expansion while preserving media formats. Measured on the test console: warm playback startup about 1.1–1.4 seconds; cold details about 19–21 seconds, depending on the video and network.
+- Fix YouTube cover selection before download and replacement on existing albums. Preserve thumbnail proportions, show hours in long durations, and show loading feedback when opening results.
+- Correct Now Playing time/repeat controls, pause/resume cover transitions and the pause indicator during automatic track changes. Keep Cover Flow artwork cached and follow the playing album after ten idle seconds.
+- Cover Flip updates the playing album, cover and Back destination, returns to Now Playing during active playback, and starts automatically under Hold. Without active music it returns to the previous screen.
+- Show Enter for sharing-name entry, center Hold notices, hide idle scrollbars, and add the compact Lossless search row with its wave icon. Clip search-field and gear gloss to their rounded outlines.
+- Remove Effects Full/Light and always use Full. Improve Wi-Fi Library pairing and connection screens, battery selection and the animated shutdown loader.
+
 ## v0.2.9 (2026-11-08)
 
 - A test release for Software Update from 0.2.8. No other changes.

@@ -43,6 +43,8 @@ fn input(index: u32, client: u32, node: u32, sink: u32) -> Value {
     json!({"index":index,"client":client,"sink":sink,"mute":false,"properties":{"application.name":"emulationstation","object.id":node.to_string(),"object.serial":format!("stream-{index}")}})
 }
 struct Fake {
+    display_owners: BTreeSet<u32>,
+    open_display_on_stop: bool,
     processes: BTreeMap<u32, Process>,
     clients: Vec<Value>,
     inputs: Vec<Value>,
@@ -56,6 +58,8 @@ struct Fake {
 impl Fake {
     fn new() -> Self {
         Self {
+            display_owners: BTreeSet::new(),
+            open_display_on_stop: false,
             processes: [
                 process(100, "launcher", false),
                 process(200, "emulationstatio", false),
@@ -135,6 +139,9 @@ impl Fake {
     }
 }
 impl Host for Fake {
+    fn owns_display(&self, process: &Process) -> Result<bool, String> {
+        Ok(self.display_owners.contains(&process.pid))
+    }
     fn run(&mut self, tool: &str, args: &[String]) -> Result<String, String> {
         let event = format!("{tool} {}", args.join(" "));
         self.events.push(event.clone());
@@ -206,8 +213,53 @@ impl Host for Fake {
             Self::signal_name(signal)
         ));
         self.processes.get_mut(&expected.pid).unwrap().stopped = signal == libc::SIGSTOP;
+        if signal == libc::SIGSTOP && self.open_display_on_stop {
+            self.display_owners.insert(expected.pid);
+        }
         Ok(())
     }
+}
+
+#[test]
+fn live_frontend_display_is_rejected_before_audio_or_process_changes() {
+    let temp = Scratch::new();
+    let mut host = Fake::new();
+    host.display_owners.insert(200);
+    let error = prepare(&temp.journal(), 100, &[200], &mut host).unwrap_err();
+    assert!(error.contains("still owns the display"));
+    assert!(host.events.is_empty());
+    assert!(!host.processes[&200].stopped);
+    assert!(!temp.journal().exists());
+}
+
+#[test]
+fn display_ownership_distinguishes_scanout_from_retained_gpu_handles() {
+    for path in ["/dev/fb0", "/dev/fb12", "/dev/dri/card0"] {
+        assert!(display_device(Path::new(path)), "{path}");
+    }
+    for path in [
+        "/dev/mali0",
+        "/dev/dri/renderD128",
+        "/dev/input/event1",
+        "/dev/fb",
+        "/dev/fb0-other",
+    ] {
+        assert!(!display_device(Path::new(path)), "{path}");
+    }
+}
+
+#[test]
+fn display_reopened_during_handoff_resumes_frontend_and_restores_audio() {
+    let temp = Scratch::new();
+    let mut host = Fake::new();
+    host.open_display_on_stop = true;
+    let error = prepare(&temp.journal(), 100, &[200], &mut host).unwrap_err();
+    assert!(error.contains("still owns the display"));
+    assert!(!host.processes[&200].stopped);
+    assert_eq!(host.owned()["mute"], false);
+    assert_eq!(host.route(30, "target.node"), None);
+    assert_eq!(host.route(30, "target.object"), None);
+    assert!(!temp.journal().exists());
 }
 
 #[test]

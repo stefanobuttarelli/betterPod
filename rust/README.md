@@ -295,6 +295,28 @@ and pending hardware checks are recorded in [BLUETOOTH_QA.md](BLUETOOTH_QA.md).
 
 ## SSH diagnostics
 
+Start the installed app through EmulationStation, including after tests. Its
+native launch releases the display and configures the physical controller.
+Running `bash "betterPod Rust.sh"` directly from SSH while EmulationStation
+owns the framebuffer can freeze Mali scanout and bypass controller setup. The
+frontend helper now refuses that handoff before suspending the frontend.
+
+On the console, with no game/player already running, request the ordinary Ports
+launch through the firmware's loopback API:
+
+```sh
+curl --fail --max-time 10 -H 'Content-Type: text/plain' \
+  --data-binary '/userdata/roms/ports/betterPod Rust.sh' \
+  http://127.0.0.1:1234/launch
+```
+
+An HTTP success only acknowledges the request. Verify that the player starts,
+the log reports the physical controller, and a controller navigation changes
+the screen. After closing it, verify EmulationStation resumes. For an isolated
+direct SSH diagnostic run, stop EmulationStation through the firmware service
+first, preserve the native controller mapping, and restore the service before
+the final normal launch. Do not leave an unrelated frontend suspended.
+
 Only an explicit `BETTERPOD_RUST_QA_DIR=/tmp/bp-qa` enables the private
 `control.sock` (mode 0600). It accepts a JSON line such as
 `{"action":"b","frames":30,"capture":"back"}` and returns the projected menu,
