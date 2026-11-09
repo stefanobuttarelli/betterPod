@@ -179,6 +179,28 @@ warm-cache results for one live NASA video, not a bound on fresh YouTube
 extraction or network delays. The cache regression also verifies that an
 oversized replacement preserves the previous valid entry.
 
+Cold metadata requests load an app-owned [yt-dlp extractor extension](https://github.com/yt-dlp/yt-dlp#developing-plugins)
+that avoids expanding unused subtitle URLs. It retains the upstream extractor,
+audio-language inference, media formats, chapters and artwork metadata. Empty
+subtitle-language entries are removed before yt-dlp formats its result. The
+extension is used only by betterPod's JSON requests and is written atomically
+under the private tools directory; installation failures fall back to ordinary
+extraction. It was verified with yt-dlp 2026.10.26. Review compatibility when
+updating yt-dlp, since `_SUBTITLE_FORMATS` is an upstream implementation detail.
+External-tool output now wakes the reader when bytes arrive instead of imposing
+a 25 ms delay after every drain. Output limits, cancellation and timeouts remain.
+
+Cold console verification on 2026-11-09: the Lunar Delivery NASA video opened
+its detail page in 20.47 seconds with no metadata cache (resolver: 19.88 seconds,
+previous measurements 37.53–43.71 seconds). Its metadata shrank from roughly
+11 MB to 301 KB while retaining all 136 media formats. Watch Video then decoded
+its first frame in 589 ms after player opening. A second previously uncached
+video, “We Are NASA”, retained all 32 formats and took about 19.3 seconds both
+before and after; benefits depend on the caption workload. Both played without
+reported decoder errors or underruns. These measurements do not guarantee
+provider/network timing or establish audible quality. The accompanying run
+passed 405 tests, with 27 explicitly ignored tests.
+
 ## Rewrite coverage
 
 A rewrite is complete only when behavior and data handling have been checked against the stable app. Keep the following as a verification checklist rather than declaring completion from a rendering demo:

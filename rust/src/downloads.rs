@@ -27,6 +27,8 @@ mod archive;
 mod process;
 #[path = "downloads_youtube_info.rs"]
 mod youtube_info;
+#[path = "downloads_youtube_plugin.rs"]
+mod youtube_plugin;
 #[path = "downloads_youtube_receipts.rs"]
 mod youtube_receipts;
 pub use archive::status as archive_status;
@@ -787,6 +789,9 @@ fn yt_command(data: &Path) -> Command {
 pub fn yt_json(context: &Context, data: &Path, args: &[&str]) -> Result<Value, String> {
     let _tools = tools_guard(context)?;
     let mut command = yt_command(data);
+    if let Err(error) = youtube_plugin::configure(&mut command, data) {
+        eprintln!("[YouTube] media metadata optimization unavailable: {error}");
+    }
     command.arg("-J").args(args);
     let output = process::run_ytdlp(context, &mut command, Duration::from_secs(120))?;
     output

@@ -42,7 +42,14 @@ pub(super) fn run_ytdlp(
 ) -> Result<String, String> {
     // No memory limits ahead of time: they refused videos that open fine on
     // the console (the Go app has none). The kernel stops these first instead.
-    run(context, command, timeout, true, 16 * MIB as usize, memory_usage)
+    run(
+        context,
+        command,
+        timeout,
+        true,
+        16 * MIB as usize,
+        memory_usage,
+    )
 }
 
 fn run(
@@ -113,12 +120,12 @@ fn run(
             }
             last_probe = Instant::now();
         }
-        out.drain(&mut stdout, Some(context))?;
-        err.drain(&mut stderr, Some(context))?;
+        let out_done = out.drain(&mut stdout, Some(context))?;
+        let err_done = err.drain(&mut stderr, Some(context))?;
         if let Some(status) = group.child.try_wait().map_err(|e| e.to_string())? {
             break status;
         }
-        thread::sleep(POLL);
+        wait_output(&stdout, !out_done, &stderr, !err_done)?;
     };
     // Even a failed/exited parent may leave Deno holding the pipe open. Kill the
     // whole owned group before draining, and never join a blocking reader thread.
@@ -141,7 +148,8 @@ fn run(
     }
     if !status.success() {
         // SIGKILL from the kernel: RAM really ran out and the tool was stopped first.
-        if resolver && std::os::unix::process::ExitStatusExt::signal(&status) == Some(libc::SIGKILL) {
+        if resolver && std::os::unix::process::ExitStatusExt::signal(&status) == Some(libc::SIGKILL)
+        {
             return Err(MEMORY_ERROR.into());
         }
         return Err(command_error(&errors, resolver));
@@ -213,6 +221,43 @@ impl Drop for ProcessGroup {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+// Wake as soon as either pipe has data. A fixed sleep throttles large JSON
+// responses when the child fills its pipe between nonblocking reads. Closed
+// pipes are disabled so POLLHUP cannot turn a quiet child into a busy loop.
+fn wait_output(
+    stdout: &impl AsRawFd,
+    out_open: bool,
+    stderr: &impl AsRawFd,
+    err_open: bool,
+) -> Result<(), String> {
+    let mut fds = [
+        libc::pollfd {
+            fd: if out_open { stdout.as_raw_fd() } else { -1 },
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: if err_open { stderr.as_raw_fd() } else { -1 },
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+    let result = unsafe {
+        libc::poll(
+            fds.as_mut_ptr(),
+            fds.len() as libc::nfds_t,
+            POLL.as_millis() as i32,
+        )
+    };
+    if result < 0 {
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error.to_string());
+        }
+    }
+    Ok(())
 }
 
 fn nonblocking(file: &impl AsRawFd) -> Result<(), String> {
@@ -420,6 +465,26 @@ mod tests {
             thread::sleep(POLL);
         }
         assert!(!is_running(pid), "process {pid} survived resolver cleanup");
+    }
+
+    #[test]
+    fn large_output_and_early_closed_stdout_are_drained_without_stalling() {
+        let fixture = Fixture::new();
+        let output = run_command(
+            &Context::standalone(),
+            &mut fixture.command("head -c 4194304 /dev/zero"),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(output.len(), 4 * 1024 * 1024);
+        assert!(output.bytes().all(|byte| byte == 0));
+        let error = run_command(
+            &Context::standalone(),
+            &mut fixture.command("exec 1>&-; sleep 0.1; printf 'late failure' >&2; exit 1"),
+            Duration::from_secs(2),
+        )
+        .unwrap_err();
+        assert_eq!(error, "late failure");
     }
 
     #[test]
