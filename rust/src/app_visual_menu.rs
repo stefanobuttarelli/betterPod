@@ -2745,9 +2745,15 @@ fn draw_search_field(
         left,
         y + 16.0,
         right - left,
-        10.0,
+        60.0,
         30.0,
-        &[(0.0, [0.0, 0.0, 0.0, 0.10]), (1.0, [0.0, 0.0, 0.0, 0.0])],
+        // Use the field's full outline: a short rounded strip clamps its
+        // radius and spills into the corners outside the pill.
+        &[
+            (0.0, [0.0, 0.0, 0.0, 0.10]),
+            (10.0 / 60.0, [0.0, 0.0, 0.0, 0.0]),
+            (1.0, [0.0, 0.0, 0.0, 0.0]),
+        ],
     );
     stroke_rounded(r, left, y + 16.0, right - left, 60.0, 30.0, 1.5, edge);
     super::app_keyboard::draw_magnifier(r, left + 20.0, cy, 26.0, dim);
@@ -2875,9 +2881,15 @@ fn draw_search_gear(r: &mut Renderer, cx: f32, cy: f32, radius: f32, selected: b
         cx - radius + 3.,
         cy - radius + 3.,
         radius * 2. - 6.,
+        radius * 2. - 6.,
         radius - 3.,
-        radius - 3.,
-        &[(0., [1., 1., 1., 0.45]), (1., [1., 1., 1., 0.05])],
+        // Keep the gloss inside the inset circle, ending at its equator.
+        &[
+            (0., [1., 1., 1., 0.45]),
+            (0.5, [1., 1., 1., 0.05]),
+            (0.5, [1., 1., 1., 0.]),
+            (1., [1., 1., 1., 0.]),
+        ],
     );
     if !selected {
         stroke_rounded(
