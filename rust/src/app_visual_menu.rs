@@ -133,7 +133,10 @@ pub(super) fn row_height(row: &Row) -> f32 {
     if !row.detail.is_empty() {
         height += line_box(24.0).0;
     }
-    if row.visual.thumbnail || row.cover.is_some() || !row.visual.icon.is_empty() {
+    if row.visual.thumbnail
+        || row.cover.is_some()
+        || (!row.visual.icon.is_empty() && row.visual.icon != "lossless")
+    {
         height = height.max(96.0);
     }
     height
@@ -2481,24 +2484,26 @@ fn draw_row(
         return;
     }
     let mut text_left = if track_list { 8.0 } else { 0.0 };
-    if row.visual.thumbnail || !row.visual.icon.is_empty() || row.cover.is_some() {
+    if row.visual.icon == "lossless" {
+        // A menu glyph, not a media thumbnail: keep the standard 50px row.
+        for (i, h) in [10., 19., 28., 19., 10.].into_iter().enumerate() {
+            r.rounded_rect(
+                x + 8. + i as f32 * 5.,
+                y + (height - h) * 0.5,
+                3.,
+                h,
+                1.5,
+                color,
+            );
+        }
+        text_left = 40.0;
+    } else if row.visual.thumbnail || !row.visual.icon.is_empty() || row.cover.is_some() {
         let texture = if row.visual.icon.is_empty() {
             Some(art.get(row.cover.as_deref()))
         } else {
             assets.get(&row.visual.icon)
         };
-        if row.visual.icon == "lossless" {
-            for (i, h) in [20., 38., 56., 38., 20.].into_iter().enumerate() {
-                r.rounded_rect(
-                    x + 25. + i as f32 * 10.,
-                    y + (height - h) * 0.5,
-                    6.,
-                    h,
-                    3.,
-                    color,
-                );
-            }
-        } else if let Some(texture) = texture {
+        if let Some(texture) = texture {
             r.image_cover(texture, [x, y + (height - 96.0) * 0.5, 96.0, 96.0], 1.0);
         }
         text_left = 104.0;
