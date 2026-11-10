@@ -3,7 +3,6 @@
 use crate::worker_task::WorkerRequest;
 pub use crate::worker_task::{WorkerHandle, WorkerReply};
 use crate::{render::Renderer, storage};
-#[path = "weather_icons.rs"]
 mod reference_icons;
 pub use reference_icons::{
     close_icons, draw_icon as draw_reference_icon, icon_cache_diagnostics, poll_icons, sky,

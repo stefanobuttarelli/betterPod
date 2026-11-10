@@ -19,6 +19,7 @@ pub mod motion;
 pub mod online;
 pub mod pcm;
 pub mod platform;
+pub mod player_geometry;
 pub mod playlists;
 pub mod podcasts;
 pub mod preview_icons;

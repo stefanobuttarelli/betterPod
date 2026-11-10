@@ -113,10 +113,10 @@ impl Keyboard {
             return text;
         }
         let Some(caret) = text.rfind('|') else {
-            return super::app_visual_menu::ellipsize(r, &text, size, weight, max_width);
+            return super::visual_menu::ellipsize(r, &text, size, weight, max_width);
         };
         if r.text_width_weighted(&format!("{}…", &text[..caret + 1]), size, weight) <= max_width {
-            return super::app_visual_menu::ellipsize(r, &text, size, weight, max_width);
+            return super::visual_menu::ellipsize(r, &text, size, weight, max_width);
         }
         let tail = if caret + 1 < text.len() { "…" } else { "" };
         let mut from = 0;
@@ -129,7 +129,7 @@ impl Keyboard {
         {
             from += text[from..].chars().next().unwrap().len_utf8();
         }
-        super::app_visual_menu::ellipsize(
+        super::visual_menu::ellipsize(
             r,
             &format!("…{}", &text[from..]),
             size,

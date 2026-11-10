@@ -4,11 +4,9 @@ use glow::HasContext;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
-#[path = "render_font.rs"]
 mod fallback;
 use fallback::{OutlineFont, RasterFont};
 #[cfg(test)]
-#[path = "render_qa.rs"]
 mod qa;
 
 pub type Color = [f32; 4];

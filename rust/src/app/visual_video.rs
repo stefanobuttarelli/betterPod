@@ -798,14 +798,14 @@ impl App {
                 ],
             );
             if now < self.video_visual.volume_until {
-                super::app_visual_menu::draw_volume_icon(
+                super::visual_menu::draw_volume_icon(
                     r,
                     24.,
                     426.,
                     self.visual_menu.status.headphones,
                     [1.; 4],
                 );
-                super::app_visual_player::progress(
+                super::visual_player::progress(
                     r,
                     &self.visual_assets,
                     68.,
@@ -856,7 +856,7 @@ impl App {
                     [1.; 4],
                     rw + 1.,
                 );
-                super::app_visual_player::progress(
+                super::visual_player::progress(
                     r,
                     &self.visual_assets,
                     bx,
@@ -1095,5 +1095,4 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "app_visual_video_qa.rs"]
 mod qa;

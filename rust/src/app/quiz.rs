@@ -1,5 +1,5 @@
 //! Source-faithful Guess the Song. Question state never owns the audio device.
-use super::app_feedback::{rounded_gradient, stroke_rounded};
+use super::feedback::{rounded_gradient, stroke_rounded};
 use super::{Action, AudioCommand, AudioSnapshot, Color, Library, Renderer, WHITE};
 use crate::art::Artwork;
 use std::{collections::HashSet, path::PathBuf};
@@ -432,7 +432,7 @@ impl Quiz {
                 },
             );
             if self.phase == Phase::Reveal {
-                let text = super::app_visual_menu::ellipsize(r, &track.artist, 22.0, 500, 284.0);
+                let text = super::visual_menu::ellipsize(r, &track.artist, 22.0, 500, 284.0);
                 r.text_weighted(&text, 318.0, y + 33.0, 22.0, 500, secondary, 284.0);
             }
         }
@@ -461,7 +461,7 @@ impl Quiz {
             } else {
                 format!("{} · {}", track.artist, track.album)
             };
-            let text = super::app_visual_menu::ellipsize(r, &text, 22.0, 500, 590.0);
+            let text = super::visual_menu::ellipsize(r, &text, 22.0, 500, 590.0);
             center(r, &text, 320.0, 444.0, 22.0, 500, sub);
         }
     }
@@ -499,7 +499,7 @@ fn title(
 ) {
     let full = r.text_width_weighted(text, size, weight);
     if !live || full <= width {
-        let text = super::app_visual_menu::ellipsize(r, text, size, weight, width);
+        let text = super::visual_menu::ellipsize(r, text, size, weight, width);
         r.text_baseline(&text, x, baseline, size, weight, color, width);
         return;
     }

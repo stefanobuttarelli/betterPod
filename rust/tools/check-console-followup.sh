@@ -30,5 +30,5 @@ docker run --rm --network none \
   export BETTERPOD_RUST_QA_OUTPUT=/out/rust
   mkdir -p /out/rust
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-native --bin betterpod-rust \
-   app::app_services::followup_qa::console_followup_input_and_captures -- --ignored --exact --nocapture --test-threads=1
+   app::services::followup_qa::console_followup_input_and_captures -- --ignored --exact --nocapture --test-threads=1
  '

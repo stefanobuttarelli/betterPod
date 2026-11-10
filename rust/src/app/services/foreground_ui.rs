@@ -13,7 +13,6 @@ pub(super) struct Foreground {
 }
 
 #[cfg(test)]
-#[path = "app_services_foreground_write_tests.rs"]
 mod write_tests;
 
 #[cfg(test)]

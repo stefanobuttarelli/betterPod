@@ -1,29 +1,18 @@
 //! UI for background library services. No task or menu callback performs I/O.
-#[path = "app_services_downloads.rs"]
 mod downloads_ui;
-#[path = "app_services_external_foreground.rs"]
 mod external_foreground;
-#[path = "app_services_foreground.rs"]
 mod foreground_ui;
 use external_foreground::{ExternalKind, ExternalPending};
-#[path = "app_listen.rs"]
 mod listen_ui;
-#[path = "app_metadata.rs"]
 mod metadata_edit;
-#[path = "app_share_visual.rs"]
 mod share_visual;
-#[path = "app_services_videos.rs"]
 mod videos_ui;
-#[path = "app_services_visual.rs"]
 mod visual;
 #[cfg(test)]
-#[path = "app_services_youtube_qa.rs"]
 mod youtube_visual_qa;
 pub(super) use downloads_ui::draw_job_button;
 use downloads_ui::DownloadState;
-#[path = "app_services_lists.rs"]
 mod lists_ui;
-#[path = "app_weather_visual.rs"]
 mod weather_visual;
 use super::{Keyboard, KeyboardEffect, VisualAssets, FG, MUTED, WHITE};
 use crate::input::Action;
@@ -4383,5 +4372,4 @@ fn choice_art(choice: &Choice) -> Option<&str> {
 }
 
 #[cfg(test)]
-#[path = "app_services_followup_qa.rs"]
 mod followup_qa;

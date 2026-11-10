@@ -1,6 +1,6 @@
 //! Menu contracts from Go 1.1's ij_library.go, ij_columns.go and ij_screensaver.go.
 use super::*;
-use app_visual_menu::PreviewKind;
+use visual_menu::PreviewKind;
 fn setting(label: &str, value: impl Into<String>, intent: Intent) -> Row {
     let mut row = Row::new(label, intent);
     row.visual.value = value.into();
@@ -678,7 +678,7 @@ impl App {
         };
         let library = &self.library;
         let by_path = &self.by_path;
-        let result = super::app_queue_order::order(
+        let result = super::queue_order::order(
             original,
             current,
             self.settings.shuffle_mode == "albums",

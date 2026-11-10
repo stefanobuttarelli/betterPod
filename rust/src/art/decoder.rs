@@ -310,7 +310,7 @@ mod tests {
         let progressive = temp.path("progressive.jpg");
         std::fs::write(
             &progressive,
-            include_bytes!("../tests/fixtures/art-progressive.jpg"),
+            include_bytes!("../../tests/fixtures/art-progressive.jpg"),
         )
         .unwrap();
         check_jpeg_quality(&progressive);
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn excessive_progressive_coefficients_and_compressed_files_fail_before_decode() {
         let temp = Scratch::new();
-        let mut jpeg = include_bytes!("../tests/fixtures/art-progressive.jpg").to_vec();
+        let mut jpeg = include_bytes!("../../tests/fixtures/art-progressive.jpg").to_vec();
         let sof = jpeg.windows(2).position(|p| p == [0xff, 0xc2]).unwrap();
         jpeg[sof + 5..sof + 7].copy_from_slice(&8192u16.to_be_bytes());
         jpeg[sof + 7..sof + 9].copy_from_slice(&8192u16.to_be_bytes());

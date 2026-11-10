@@ -1,7 +1,6 @@
 //! Cached library curation screens. Submitting network/filesystem work is an
 //! effect consumed by Extras; this controller performs no I/O.
 use super::{Intent, Page as VisualPage, Row as VisualRow, Screen, ViewKind};
-#[path = "app_curation_covers.rs"]
 mod covers;
 use betterpod_rust::{
     curation::CoverQuery,

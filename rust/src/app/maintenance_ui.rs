@@ -25,9 +25,7 @@ use crate::{input::Action, maintenance as m, render::Renderer, updater as u};
 use betterpod_rust::visual_assets::VisualAssets;
 use std::path::PathBuf;
 use std::sync::Arc;
-#[path = "app_maintenance_move.rs"]
 mod move_visual;
-#[path = "app_maintenance_update.rs"]
 mod update_visual;
 fn size(bytes: u64) -> String {
     crate::files::format_size(bytes)
@@ -35,7 +33,6 @@ fn size(bytes: u64) -> String {
 fn is_beta(version: &str) -> bool {
     version.split('+').next().unwrap_or(version).contains('-')
 }
-#[path = "app_maintenance_discovery.rs"]
 mod discovery;
 
 #[derive(Clone, Debug)]

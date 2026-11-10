@@ -1215,10 +1215,8 @@ pub(crate) fn youtube_playlist_entries(raw: &Value) -> Result<Vec<Value>, String
 }
 
 #[cfg(test)]
-#[path = "online_automatic_cover_tests.rs"]
 mod automatic_cover_tests;
 #[cfg(test)]
-#[path = "online_youtube_tests.rs"]
 mod youtube_tests;
 fn archive_search(
     context: &Context,

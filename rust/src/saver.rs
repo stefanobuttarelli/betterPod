@@ -13,11 +13,8 @@ struct Complex {
     re: f64,
     im: f64,
 }
-#[path = "saver_clock.rs"]
 mod clock;
-#[path = "saver_reference.rs"]
 mod reference;
-#[path = "saver_viz.rs"]
 mod viz;
 pub use reference::{
     effect_count, effect_name, palette_count, palette_name, Saver, SaverAction, SaverStatus,

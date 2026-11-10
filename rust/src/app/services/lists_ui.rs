@@ -155,7 +155,7 @@ mod tests {
             let before = extras.visual_page().unwrap();
             let row = before.rows.iter().find(|r| r.visual.thumbnail).unwrap();
             assert!(row.cover.is_none());
-            let height = crate::app::app_visual_menu::row_height(row);
+            let height = crate::app::visual_menu::row_height(row);
             extras.previews.insert(
                 podcast.art600.clone(),
                 Some(fixture.root.join("downloaded-cover.jpg")),
@@ -165,7 +165,7 @@ mod tests {
             let loaded = after.rows.iter().find(|r| r.visual.thumbnail).unwrap();
             assert_eq!(loaded.label, row.label);
             assert!(loaded.cover.is_some());
-            assert_eq!(crate::app::app_visual_menu::row_height(loaded), height);
+            assert_eq!(crate::app::visual_menu::row_height(loaded), height);
             assert_eq!(height, 96.0);
             extras.previews.clear();
         }

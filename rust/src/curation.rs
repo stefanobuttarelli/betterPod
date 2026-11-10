@@ -77,7 +77,6 @@ impl CoverQuery {
         crate::cover_match::AlbumQuery::new(&self.album, &self.artist, &self.tracks)
     }
 }
-#[path = "curation_search.rs"]
 mod search;
 pub use search::search_items as search_cover_items;
 /// Detailed state for the original Find Missing Covers view. It travels in
@@ -694,7 +693,6 @@ pub fn find_covers(
 }
 
 #[cfg(test)]
-#[path = "curation_cover_test.rs"]
 mod cover_integration_tests;
 #[cfg(test)]
 mod tests {

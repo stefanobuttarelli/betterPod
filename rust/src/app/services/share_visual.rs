@@ -1,6 +1,6 @@
 //! Share's code editor and transfer studio from ij_share.go / ij_share_draw.go.
 //! Rendering consumes actor events; it never opens files or connections.
-use super::super::app_feedback::rounded_gradient;
+use super::super::feedback::rounded_gradient;
 use super::*;
 use crate::render::{Color, Texture};
 // Share keeps the Go studio geometry; colors follow the console theme.
@@ -667,7 +667,7 @@ impl ShareVisual {
         if self.send && self.phase == Phase::Done {
             // The sent cover returns to the same pedestal over Go's 0.6 s.
             let t = (elapsed / 0.6).clamp(0., 1.) as f32;
-            let ease = super::super::app_visual_menu::go_ease_in_out(t);
+            let ease = super::super::visual_menu::go_ease_in_out(t);
             return (105., 118. - 20. * (1. - ease), ease);
         }
         if self.send && matches!(self.phase, Phase::Preparing | Phase::Waiting) {
@@ -785,7 +785,7 @@ fn text(r: &mut Renderer, value: &str, cx: f32, cy: f32, size: f32, weight: u16,
     let mut width = r.text_width_weighted(value, size, weight);
     let fitted;
     let value = if width > max_width {
-        fitted = super::super::app_visual_menu::ellipsize(r, value, size, weight, max_width);
+        fitted = super::super::visual_menu::ellipsize(r, value, size, weight, max_width);
         width = r.text_width_weighted(&fitted, size, weight);
         fitted.as_str()
     } else {
@@ -818,7 +818,7 @@ fn marquee(
         return;
     }
     r.push_clip(cx - width / 2., cy - size, width, size * 2.);
-    super::super::app_visual_menu::marquee(
+    super::super::visual_menu::marquee(
         r,
         value,
         cx - width / 2.,

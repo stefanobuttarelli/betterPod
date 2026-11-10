@@ -21,15 +21,10 @@ use std::{
     sync::{LazyLock, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-#[path = "downloads_archive.rs"]
 mod archive;
-#[path = "downloads_process.rs"]
 mod process;
-#[path = "downloads_youtube_info.rs"]
 mod youtube_info;
-#[path = "downloads_youtube_plugin.rs"]
 mod youtube_plugin;
-#[path = "downloads_youtube_receipts.rs"]
 mod youtube_receipts;
 pub use archive::status as archive_status;
 pub use process::run_command;
@@ -1226,7 +1221,6 @@ fn youtube_download_single(
 }
 
 #[cfg(test)]
-#[path = "downloads_youtube_tests.rs"]
 mod youtube_tests;
 fn commit_media(context: &Context, prepared: &Path, target: &Path) -> Result<(), String> {
     context.check()?;

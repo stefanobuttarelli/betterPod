@@ -15,27 +15,8 @@ subprocess.run(['docker','run','--rm','--network','none','-v',f'{ROOT}:/repo:ro'
 env=os.environ.copy();env['BETTERPOD_WEATHER_ICONS_OUT']=str(OUT)
 if os.uname().sysname=='Darwin':
  frameworks=ROOT/'build/rust/macdeps/frameworks';env['RUSTFLAGS']=f'-L framework={frameworks} -C link-arg=-Wl,-rpath,{frameworks}'
-shim=OUT/'rust-check';shim.mkdir(exist_ok=True)
-(shim/'Cargo.toml').write_text('''[package]
-name="betterpod-weather-reference-check"
-version="0.0.0"
-edition="2021"
-[lib]
-path="lib.rs"
-[dependencies]
-tiny-skia={version="=0.12.0",default-features=false,features=["std","simd"]}
-glow="0.18"
-fontdue="0.9"
-ttf-parser="0.25.1"
-flate2="1"
-image={version="0.25",default-features=false,features=["png"]}
-[target.'cfg(target_os="macos")'.dependencies]
-sdl2={version="0.38",features=["mixer","use_mac_framework"]}
-[target.'cfg(not(target_os="macos"))'.dependencies]
-sdl2={version="0.38",features=["mixer"]}
-''')
-(shim/'lib.rs').write_text('\n'.join(f'#[path="{ROOT}/rust/src/{name}.rs"]pub mod {name};'for name in ['render','font_metrics','weather_icons'])+'\n')
-subprocess.run(['cargo','test','--offline','--manifest-path',str(shim/'Cargo.toml'),'--lib','weather_icons::tests::dump_reference_icons','--target-dir',str(ROOT/'build/rust-player-tests'),'--','--exact','--ignored'],env=env,check=True,stdout=subprocess.DEVNULL)
+# Run the reference dump inside the real crate so it always builds against current sources.
+subprocess.run(['cargo','test','--offline','--manifest-path',str(ROOT/'rust/Cargo.toml'),'--lib','weather::reference_icons::tests::dump_reference_icons','--target-dir',str(ROOT/'build/rust-player-tests'),'--','--exact','--ignored'],env=env,check=True,stdout=subprocess.DEVNULL)
 spec=importlib.util.spec_from_file_location('visual',ROOT/'rust/tools/visual-parity.py');visual=importlib.util.module_from_spec(spec);spec.loader.exec_module(visual)
 report={};names=['Sun','Moon','PartlySun','PartlyMoon','Cloudy','Fog','Drizzle','Rain','Snow','Sleet','Thunder']
 for i,name in enumerate(names):

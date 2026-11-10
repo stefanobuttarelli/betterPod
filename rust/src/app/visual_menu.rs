@@ -2340,7 +2340,7 @@ pub(super) fn is_menu(screen: Screen) -> bool {
 }
 
 fn draw_mini_confirm(r: &mut Renderer, x: f32, y: f32, width: f32, selected: usize) {
-    use super::app_feedback::rounded_gradient;
+    use super::feedback::rounded_gradient;
     let heading = "Clear Now Playing?";
     let tw = r.text_width_weighted(heading, 24.0, 700);
     let left = x + (width - tw) * 0.5;
@@ -2578,7 +2578,7 @@ fn draw_row(
     if !queue_mark.is_empty() {
         let qx = x + queue_left + 12.0;
         let qy = text_y + 8.0 + label_ascent * 0.62;
-        super::app_feedback::queue_icon(r, qx, qy, queue_mark == "queue_next", color);
+        super::feedback::queue_icon(r, qx, qy, queue_mark == "queue_next", color);
     }
     if selected && label_width > text_width {
         // The outer list clip is restored immediately below.
@@ -2711,7 +2711,7 @@ fn draw_search_field(
     dark: bool,
     now: f64,
 ) {
-    use super::app_feedback::{rounded_gradient, stroke_rounded};
+    use super::feedback::{rounded_gradient, stroke_rounded};
     let (top, bottom, line, field, edge, text, dim) = if dark {
         (
             rgb(51, 54, 60),
@@ -2773,7 +2773,7 @@ fn draw_search_field(
         ],
     );
     stroke_rounded(r, left, y + 16.0, right - left, 60.0, 30.0, 1.5, edge);
-    super::app_keyboard::draw_magnifier(r, left + 20.0, cy, 26.0, dim);
+    super::keyboard::draw_magnifier(r, left + 20.0, cy, 26.0, dim);
     let mut text_x = left + 60.0;
     let mut text_right = right - 24.0;
     if row.visual.busy {
@@ -2851,7 +2851,7 @@ fn draw_search_field(
 // The search field's own round button from ij_views.go. Its field-height
 // geometry, glossy stops and eight-tooth glyph share the Go reference.
 fn draw_search_gear(r: &mut Renderer, cx: f32, cy: f32, radius: f32, selected: bool, dark: bool) {
-    use super::app_feedback::{rounded_gradient, stroke_rounded};
+    use super::feedback::{rounded_gradient, stroke_rounded};
     let (mut top, mut bottom, edge, mut glyph) = if dark {
         (
             rgb(74, 78, 86),
@@ -2987,7 +2987,7 @@ fn draw_header_bar(
     headphones: bool,
     color: Color,
 ) {
-    use super::app_feedback::rounded_gradient;
+    use super::feedback::rounded_gradient;
     if brightness {
         let (cx, cy) = (x + 14.0, 20.0 + off);
         r.circle(cx, cy, 5.2, color);

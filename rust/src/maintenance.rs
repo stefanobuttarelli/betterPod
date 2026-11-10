@@ -1,7 +1,6 @@
 //! Isolated filesystem maintenance. A single worker does traversal, hashing,
 //! copying and verification; the UI only submits commands and polls events.
 use crate::storage::{atomic_write, create_dir_all_synced, sync_directory};
-#[path = "maintenance_relocation.rs"]
 mod relocation;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

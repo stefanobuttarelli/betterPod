@@ -3,7 +3,6 @@
 //! original view's icon function; no raster work is performed while drawing.
 use std::path::Path;
 use tiny_skia as sk;
-#[path = "bluetooth_icons.rs"]
 mod bluetooth_icons;
 pub use bluetooth_icons::{
     device_icon_name as bluetooth_device_icon_name, generate as generate_bluetooth,

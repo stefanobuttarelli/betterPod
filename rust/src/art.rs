@@ -22,7 +22,6 @@ pub fn cover_signatures<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> CoverSi
     }
     signatures
 }
-#[path = "art_decode.rs"]
 mod decoder;
 
 struct Pixels {

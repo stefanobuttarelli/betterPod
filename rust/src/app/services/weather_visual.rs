@@ -1,5 +1,5 @@
 //! Native forecast composition: physical coordinates ported from ij_weather_view.go.
-use super::super::app_feedback::rounded_gradient;
+use super::super::feedback::rounded_gradient;
 use super::*;
 use crate::render::Color;
 use betterpod_rust::{
@@ -254,7 +254,7 @@ fn shadow_text(
     color: Color,
     width: f32,
 ) {
-    let value = super::super::app_visual_menu::ellipsize(r, value, size, weight, width);
+    let value = super::super::visual_menu::ellipsize(r, value, size, weight, width);
     r.text_baseline(
         &value,
         x + 1.,

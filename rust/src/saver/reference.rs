@@ -9,9 +9,7 @@ use std::{
     collections::{HashMap, VecDeque},
     path::Path,
 };
-#[path = "player_visual.rs"]
-mod geometry;
-#[path = "saver_status.rs"]
+use crate::player_geometry as geometry;
 mod status;
 const ROWS: usize = 4;
 const COLS: usize = 6;

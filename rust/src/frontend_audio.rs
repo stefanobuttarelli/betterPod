@@ -608,5 +608,4 @@ fn finish(path: &Path, plan: &Plan, host: &mut impl Host) -> Result<(), String> 
 }
 
 #[cfg(test)]
-#[path = "frontend_audio_qa.rs"]
 mod qa;

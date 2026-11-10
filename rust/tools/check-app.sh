@@ -27,8 +27,8 @@ docker run --rm --network none -v "$ROOT:/repo:ro" -v "$MUSIC:/music:ro" -v "$RO
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::controller_routes_and_real_screens -- --ignored --exact --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::custom_menu_entries_and_back_restore_visible_panels -- --ignored --exact --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::playlist_full_page_draws_its_reserved_mini_player -- --ignored --exact --nocapture --test-threads=1
-  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::app_visual_player::regression_qa::playback_saver_cache_and_navigation_regressions -- --ignored --exact --nocapture --test-threads=1
-  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::app_album_read::tests::initial_album_info_input_retains_source_and_cancels_before_late_results -- --ignored --exact --nocapture --test-threads=1
+  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::visual_player::regression_qa::playback_saver_cache_and_navigation_regressions -- --ignored --exact --nocapture --test-threads=1
+  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::album_read::tests::initial_album_info_input_retains_source_and_cancels_before_late_results -- --ignored --exact --nocapture --test-threads=1
   # SDL dummy supports one output. A private null sink allows the retained,
   # paused music mixer plus the independent Listen/video output, without devices.
   export SDL_AUDIODRIVER=pulseaudio PULSE_SERVER=unix:/tmp/bp-qa-pulse PULSE_SINK=qa
@@ -37,5 +37,5 @@ docker run --rm --network none -v "$ROOT:/repo:ro" -v "$MUSIC:/music:ro" -v "$RO
    -L "module-null-sink sink_name=qa rate=48000 channels=2"
   pactl set-default-sink qa
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::inline_preview_remote_pause_unplug_and_restore_use_real_decoder -- --ignored --exact --nocapture --test-threads=1
-  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::app_visual_video::qa::fullscreen_video_source_controls_and_opening_cancel_use_real_decoder -- --ignored --exact --nocapture --test-threads=1
+  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::visual_video::qa::fullscreen_video_source_controls_and_opening_cancel_use_real_decoder -- --ignored --exact --nocapture --test-threads=1
  '

@@ -322,7 +322,7 @@ fn sheet(
         card(r, 24.0, y, 592.0, n as f32 * 64.0 + title_h, dark);
     }
     if title_h > 0.0 {
-        let title = app_visual_menu::ellipsize(r, title, 22.0, 500, 544.0);
+        let title = visual_menu::ellipsize(r, title, 22.0, 500, 544.0);
         let tw = r.text_width_weighted(&title, 22.0, 500);
         r.text_baseline(
             &title,
@@ -376,7 +376,7 @@ fn sheet(
         }
         let weight = if i == n { 700 } else { 600 };
         let busy = row.visual.busy || busy_row == Some(i);
-        let label = app_visual_menu::ellipsize(
+        let label = visual_menu::ellipsize(
             r,
             &row.label,
             30.0,
@@ -404,7 +404,7 @@ fn sheet(
             544.0,
         );
         if busy {
-            app_visual_menu::draw_spinner_in(r, 584.0, yy + 32.0, 12.0, now, color);
+            visual_menu::draw_spinner_in(r, 584.0, yy + 32.0, 12.0, now, color);
         }
         if i + 1 < n && i != page.selected && i + 1 != page.selected {
             r.rect(48.0, yy + 63.0, 544.0, 1.0, sep);
@@ -412,7 +412,7 @@ fn sheet(
     }
 }
 pub(super) fn queue_icon(r: &mut Renderer, x: f32, cy: f32, next: bool, c: Color) {
-    use super::app_visual_menu::aa_polyline;
+    use super::visual_menu::aa_polyline;
     for i in 0..3 {
         let y = cy - 11.0 + i as f32 * 11.0;
         aa_polyline(
@@ -468,7 +468,7 @@ fn end_card(
     r.image(texture, 272.0, y + 26.0, 96.0, 96.0, 1.0);
     r.stroke_rounded(272.0, y + 26.0, 96.0, 96.0, 4.0, 1.0, [0.0, 0.0, 0.0, 0.18]);
     let centered = |r: &mut Renderer, s: &str, baseline: f32, size: f32, weight: u16, c: Color| {
-        let s = app_visual_menu::ellipsize(r, s, size, weight, 440.0);
+        let s = visual_menu::ellipsize(r, s, size, weight, 440.0);
         let width = r.text_width_weighted(&s, size, weight);
         r.text_baseline(&s, 320.0 - width * 0.5, baseline, size, weight, c, 440.0);
     };

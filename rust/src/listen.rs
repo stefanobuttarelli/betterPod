@@ -20,7 +20,6 @@ use std::{
 };
 
 const FIRST: f64 = 20.0;
-#[path = "listen_mp4.rs"]
 mod mp4;
 const NEXT: f64 = 180.0;
 const MAX_FILE: u64 = 4 * 1024 * 1024 * 1024;
@@ -735,5 +734,4 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "listen_qa.rs"]
 mod qa;

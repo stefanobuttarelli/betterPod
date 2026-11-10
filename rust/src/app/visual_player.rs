@@ -4,11 +4,9 @@
 use super::*;
 use betterpod_rust::motion::{Anim, Ease};
 use std::collections::BTreeMap;
-#[path = "player_visual.rs"]
-mod geometry;
+use betterpod_rust::player_geometry as geometry;
 use geometry::{now_playing_pose, Pose};
 #[cfg(test)]
-#[path = "app_player_regression_qa.rs"]
 mod regression_qa;
 
 struct PoseAnim {

@@ -1,6 +1,5 @@
 //! Opt-in local visual fixtures. Included only under cfg(test); no runtime API.
 use super::*;
-#[path = "app_visual_games_qa.rs"]
 mod games_qa;
 use serde::{Deserialize, Serialize};
 #[derive(Deserialize)]
@@ -221,7 +220,7 @@ fn capture_static_scenes() -> Result<(), String> {
         app.visual_player_set_phase_epoch(296.0);
         app.visual_menu
             .seed_preview_order((0..app.library.albums.len()).collect(), 0.0);
-        app.visual_menu.status = app_visual_menu::HeaderStatus {
+        app.visual_menu.status = visual_menu::HeaderStatus {
             battery: Some(model.battery),
             charging: false,
             external_power: false,
@@ -300,7 +299,7 @@ fn capture_static_scenes() -> Result<(), String> {
                 "searchhub" => app.pages.push(app.page(Screen::SearchHub)),
                 "search" => {
                     app.search_query.clear();
-                    app.search_rows = Arc::new(vec![app_search::search_field("")]);
+                    app.search_rows = Arc::new(vec![search::search_field("")]);
                     app.pages.push(app.page(Screen::Search));
                     let mut keyboard = Keyboard::new("");
                     keyboard.snap_visible(app.visual_time);

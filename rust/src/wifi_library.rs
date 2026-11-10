@@ -16,9 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[path = "wifi_library_files.rs"]
 mod files;
-#[path = "wifi_library_wire.rs"]
 mod wire;
 
 pub const DISCOVERY_PORT: u16 = 45841;
@@ -516,5 +514,4 @@ fn handle(
 }
 
 #[cfg(test)]
-#[path = "wifi_library_tests.rs"]
 mod tests;

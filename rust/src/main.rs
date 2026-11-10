@@ -1,5 +1,4 @@
 mod app;
-mod app_maintenance;
 mod remote_qa;
 pub use betterpod_rust::files;
 pub use betterpod_rust::{
@@ -205,7 +204,7 @@ fn run() -> Result<(), String> {
             import.clone(),
             &renderer,
         )?;
-        let mut controller = app_maintenance::Controller::new(
+        let mut controller = app::maintenance_ui::Controller::new(
             maintenance::Config {
                 bootstrap: bootstrap.clone(),
                 music: music.clone(),
@@ -315,13 +314,13 @@ fn run() -> Result<(), String> {
             shutdown?;
             break;
         };
-        if let app_maintenance::Request::FinalizeTransfer {
+        if let app::maintenance_ui::Request::FinalizeTransfer {
             manifest, visible, ..
         } = request
         {
             (music, data) = maintenance::resolve_paths(&bootstrap, &default_music, &default_data);
             maintenance::validate_private_data(&bootstrap, &data, &protected)?;
-            app_maintenance::prepare_verified_transfer_clients(
+            app::maintenance_ui::prepare_verified_transfer_clients(
                 maintenance::Config {
                     bootstrap: bootstrap.clone(),
                     music: music.clone(),
@@ -345,7 +344,7 @@ fn run() -> Result<(), String> {
         if user_quit || platform::quit_requested() {
             break;
         }
-        match app_maintenance::run(
+        match app::maintenance_ui::run(
             request,
             &mut renderer,
             &mut input,

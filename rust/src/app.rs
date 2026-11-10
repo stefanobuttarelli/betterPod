@@ -1,59 +1,41 @@
 //! Rust application state and navigation. Drawing performs no card I/O.
-#[path = "app_curation.rs"]
-mod app_curation;
-#[path = "app_files.rs"]
-mod app_files;
-#[path = "app_settings.rs"]
-mod app_settings;
-#[path = "app_wifi_library.rs"]
-mod app_wifi_library;
-use app_files::{Effect as FilesEffect, Files, Mode as FilesMode};
-use app_wifi_library::WifiLibrary;
+mod curation_ui;
+mod files_ui;
+mod settings;
+mod wifi_library_ui;
+use files_ui::{Effect as FilesEffect, Files, Mode as FilesMode};
+use wifi_library_ui::WifiLibrary;
 #[cfg(test)]
-#[path = "app_qa.rs"]
 mod qa;
-use app_settings::SettingValue;
-#[path = "app_parity_model.rs"]
-mod app_parity_model;
-#[path = "app_queue_order.rs"]
-mod app_queue_order;
-#[path = "app_search.rs"]
-mod app_search;
-#[path = "app_visual_menu.rs"]
-mod app_visual_menu;
-#[path = "app_visual_player.rs"]
-mod app_visual_player;
-#[path = "app_visual_video.rs"]
-mod app_visual_video;
-use app_search::SearchResults;
-use app_visual_menu::MenuVisual;
-pub(crate) use app_visual_menu::RowVisual;
-use app_visual_player::PlayerVisual;
-use app_visual_video::VideoVisual;
-#[path = "app_feedback.rs"]
-mod app_feedback;
-use app_feedback::Feedback;
-#[path = "app_compositor.rs"]
-mod app_compositor;
-#[path = "app_keyboard.rs"]
-mod app_keyboard;
-#[path = "app_remote_qa.rs"]
-mod app_remote_qa;
-#[path = "app_stream_control.rs"]
-mod app_stream_control;
-use app_keyboard::{Keyboard, KeyboardEffect};
+use settings::SettingValue;
+mod parity_model;
+mod queue_order;
+mod search;
+mod visual_menu;
+mod visual_player;
+mod visual_video;
+use search::SearchResults;
+use visual_menu::MenuVisual;
+pub(crate) use visual_menu::RowVisual;
+use visual_player::PlayerVisual;
+use visual_video::VideoVisual;
+mod feedback;
+use feedback::Feedback;
+mod compositor;
+mod keyboard;
+mod remote_qa;
+mod stream_control;
+use keyboard::{Keyboard, KeyboardEffect};
 use betterpod_rust::visual_assets::VisualAssets;
-#[path = "app_quiz.rs"]
-mod app_quiz;
-use app_curation::{Curation, CurationEffect, Mode as CurationMode};
-#[path = "app_services.rs"]
-mod app_services;
-use crate::app_maintenance::{
+mod quiz;
+use curation_ui::{Curation, CurationEffect, Mode as CurationMode};
+mod services;
+pub(crate) mod maintenance_ui;
+use maintenance_ui::{
     Controller as MaintenanceController, Effect as MaintenanceEffect, Mode as MaintenanceMode,
     Request as MaintenanceRequest,
 };
-#[path = "app_album_read.rs"]
-mod app_album_read;
+mod album_read;
 use crate::art::Artwork;
 use crate::audio::{AudioCommand, AudioEngine, AudioSnapshot};
 use crate::games::{GameCommand, GameEffect, GameKind, Games};
@@ -63,9 +45,9 @@ use crate::platform::{IdleGuard, Platform, SystemVolume};
 use crate::render::Texture;
 use crate::render::{Color, Renderer};
 use crate::storage::{Playback, Settings, Store};
-use app_album_read::PendingAlbumRead;
-use app_quiz::{Effect as QuizEffect, Quiz};
-use app_services::{Effect as ExtraEffect, ExtraPage, Extras};
+use album_read::PendingAlbumRead;
+use quiz::{Effect as QuizEffect, Quiz};
+use services::{Effect as ExtraEffect, ExtraPage, Extras};
 use betterpod_rust::online::StreamSource;
 use betterpod_rust::puzzles::{PuzzleGame, PUZZLES};
 use betterpod_rust::saver::{self, Saver, SaverAction};
@@ -269,9 +251,9 @@ impl Page {
             .rows
             .iter()
             .take(self.selected)
-            .map(app_visual_menu::row_height)
+            .map(visual_menu::row_height)
             .sum::<f32>();
-        let height = app_visual_menu::row_height(&self.rows[self.selected]);
+        let height = visual_menu::row_height(&self.rows[self.selected]);
         // Every list owns440px below its header; designated views reserve116
         // for their mini-player at draw time, where exact ensureVisible is applied.
         let available = available.clamp(1.0, 440.0);
@@ -283,7 +265,7 @@ impl Page {
         let total = self
             .rows
             .iter()
-            .map(app_visual_menu::row_height)
+            .map(visual_menu::row_height)
             .sum::<f32>();
         self.target_scroll = self.target_scroll.clamp(0.0, (total - available).max(0.0));
         self.scroll = self.target_scroll;
@@ -1054,7 +1036,7 @@ impl App {
             }
             Screen::Search => {
                 if self.search_rows.is_empty() {
-                    rows.push(app_search::search_field(&self.search_query));
+                    rows.push(search::search_field(&self.search_query));
                 } else {
                     cached = Some(Arc::clone(&self.search_rows));
                 }
@@ -1124,7 +1106,7 @@ impl App {
                 for (i, info) in PUZZLES.iter().enumerate() {
                     let mut row = Row::new(info.name, Intent::Puzzle(i));
                     row.detail = info.description.into();
-                    row.visual.preview = app_visual_menu::PreviewKind::Icon {
+                    row.visual.preview = visual_menu::PreviewKind::Icon {
                         asset: format!("pz_{}", info.id),
                         title: info.name.into(),
                         subtitle: String::new(),
@@ -3271,7 +3253,7 @@ impl App {
         match thread::Builder::new()
             .name("library-search".into())
             .spawn(move || {
-                let result = app_search::search(&library, &playlists, &query);
+                let result = search::search(&library, &playlists, &query);
                 let _ = tx.send((generation, query, result));
             }) {
             Ok(worker) => {
@@ -3977,7 +3959,7 @@ impl App {
         let screen = self.screen();
         let shared_split =
             screen == Screen::Extra && self.extras.visual_page().is_some_and(|page| page.split());
-        let shared_menu = app_visual_menu::is_menu(screen) || shared_split;
+        let shared_menu = visual_menu::is_menu(screen) || shared_split;
         if self.auto_saver {
             if self.screen() == Screen::NowPlaying {
                 self.visual_player_saver_hide(self.saver.fly_hides_np());
@@ -4351,7 +4333,7 @@ impl App {
             });
             loop {
                 renderer.begin(crate::render::BLACK);
-                app_visual_menu::draw_spinner_in(
+                visual_menu::draw_spinner_in(
                     renderer,
                     320.,
                     224.,
@@ -4510,5 +4492,4 @@ mod idle_intent_tests {
 }
 
 #[cfg(test)]
-#[path = "app_visual_qa.rs"]
 mod visual_qa;

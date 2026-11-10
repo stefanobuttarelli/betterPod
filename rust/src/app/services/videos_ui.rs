@@ -157,7 +157,7 @@ impl Extras {
             rows.push(row);
         }
         for row in &mut rows {
-            row.visual.preview = super::super::app_visual_menu::PreviewKind::Image {
+            row.visual.preview = super::super::visual_menu::PreviewKind::Image {
                 asset: "preview_videos".into(),
                 title: "Videos".into(),
                 subtitle: String::new(),

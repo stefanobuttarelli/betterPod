@@ -32,12 +32,6 @@ docker run --rm --network none -v "$ROOT:/repo:ro" -v "$OUT:/out" \
   fi
   if [ "$VISUAL_MODE" = all ] || [ "$VISUAL_MODE" = rust ]; then
    cp -R /repo/rust /w/rust
-   python3 - <<PY
-from pathlib import Path
-p=Path("/w/rust/src/app.rs")
-s=p.read_text()
-if "mod visual_qa;" not in s:p.write_text(s+"\n#[cfg(test)]\n#[path=\"app_visual_qa.rs\"]\nmod visual_qa;\n")
-PY
    Xvfb :96 -screen 0 640x480x24 +extension GLX -nolisten tcp >/out/xvfb.log 2>&1 &
    display_pid=$!;trap "kill $display_pid 2>/dev/null || true" EXIT
    n=0;until xdpyinfo >/dev/null 2>&1;do n=$((n+1));[ "$n" -lt 100 ]||exit 1;sleep .05;done

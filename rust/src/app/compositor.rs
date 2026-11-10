@@ -11,7 +11,7 @@ impl App {
         let Some((page, offset, whole_panel)) = self.visual_menu_outgoing_page() else {
             return;
         };
-        if app_visual_menu::is_menu(page.screen) || (page.screen == Screen::Extra && page.split()) {
+        if visual_menu::is_menu(page.screen) || (page.screen == Screen::Extra && page.split()) {
             return;
         }
         let (bg, _, _) = self.colors();

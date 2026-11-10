@@ -218,7 +218,7 @@ impl App {
         let (bg, fg, sub) = self.colors();
         r.rect(0., 40., 640., 440., bg);
         let center = |r: &mut Renderer, text: &str, y: f32, size: f32, weight: u16, color| {
-            let text = app_visual_menu::ellipsize(r, text, size, weight, 576.);
+            let text = visual_menu::ellipsize(r, text, size, weight, 576.);
             let width = r.text_width_weighted(&text, size, weight);
             r.text_baseline(
                 &text,
@@ -266,10 +266,10 @@ impl App {
             Phase::Ready(code) => {
                 center(r, &grouped_code(code), 140., 64., 600, fg);
             }
-            Phase::Starting => app_visual_menu::draw_spinner_in(r, 320., 174., 22., now, sub),
+            Phase::Starting => visual_menu::draw_spinner_in(r, 320., 174., 22., now, sub),
             _ => {
                 r.push_transform(266., 132., 3., 3., 1.);
-                app_visual_menu::draw_wifi(r, 0., 0., 3, sub);
+                visual_menu::draw_wifi(r, 0., 0., 3, sub);
                 r.pop_transform();
             }
         }
@@ -309,7 +309,7 @@ impl App {
                 sub,
             );
         }
-        app_services::draw_job_button(
+        services::draw_job_button(
             r,
             if state.phase == Phase::Starting {
                 "Cancel"
@@ -513,7 +513,7 @@ mod tests {
         let rows = rows(&Phase::Off, None, None, &[]);
         assert!(matches!(rows[0].intent, Intent::StartWifiLibrary));
         assert!(rows.iter().any(|row| row.label == "Use the same Wi-Fi"));
-        assert!(!app_visual_menu::is_menu(Screen::WifiLibrary));
+        assert!(!visual_menu::is_menu(Screen::WifiLibrary));
         assert_eq!(Screen::WifiLibrary.default_kind(), ViewKind::Full);
     }
 

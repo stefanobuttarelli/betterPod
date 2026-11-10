@@ -1,7 +1,6 @@
 //! Downloads outlive the page that started them. Their state never doubles as
 //! the foreground browser's loading state.
 use super::*;
-#[path = "app_services_download_history.rs"]
 mod history;
 
 #[derive(Clone)]
@@ -599,7 +598,7 @@ impl Extras {
         );
         let center = |r: &mut Renderer, text: &str, y: f32, size: f32, weight: u16, color| {
             let baseline = y + betterpod_rust::render::line_box(size).1;
-            let text = super::super::app_visual_menu::ellipsize(r, text, size, weight, 560.0);
+            let text = super::super::visual_menu::ellipsize(r, text, size, weight, 560.0);
             let width = r.text_width_weighted(&text, size, weight);
             r.text_baseline(
                 &text,
@@ -630,7 +629,7 @@ impl Extras {
         };
         center(r, &status, 192.0, 26.0, 600, fg);
         if state.active && queue_position.is_none() {
-            super::super::app_visual_menu::draw_spinner_in(r, 320., 174., 10., now, sub);
+            super::super::visual_menu::draw_spinner_in(r, 320., 174., 10., now, sub);
         }
         let detail = if let Some(position) = queue_position {
             if position == 1 {
@@ -680,7 +679,7 @@ impl Extras {
         } else {
             state.shown + (fraction - state.shown) * (dt * 10.0).min(1.0)
         };
-        super::super::app_visual_player::progress(
+        super::super::visual_player::progress(
             r,
             assets,
             80.0,
