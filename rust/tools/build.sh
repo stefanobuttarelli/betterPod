@@ -13,12 +13,24 @@ fi
 mkdir -p build/rust
 # Source and the production package are read-only. Cargo's target and registry
 # are separate caches, so test runs cannot alter the installed or stable app.
+# They are Docker volumes, or folders under RUST_CACHE_DIR when CI keeps them
+# between runs.
+if [ -n "${RUST_CACHE_DIR:-}" ]; then
+  mkdir -p "$RUST_CACHE_DIR/registry" "$RUST_CACHE_DIR/git" \
+    "$RUST_CACHE_DIR/target-native" "$RUST_CACHE_DIR/target-knulli"
+  set -- -v "$RUST_CACHE_DIR/registry:/opt/cargo/registry" -v "$RUST_CACHE_DIR/git:/opt/cargo/git" \
+    -v "$RUST_CACHE_DIR/target-native:/target-native" -v "$RUST_CACHE_DIR/target-knulli:/target-knulli"
+else
+  set -- -v betterpod-rust-registry:/opt/cargo/registry -v betterpod-rust-git:/opt/cargo/git \
+    -v betterpod-rust-target-native:/target-native -v betterpod-rust-target-knulli:/target-knulli
+fi
+# Cargo uses every CPU the container has unless CARGO_BUILD_JOBS is set. The
+# other variables pass CI's build settings through when they are set.
 docker run --rm \
-  -v "$PWD:/repo:ro" -v "$PWD/build/rust:/out" \
-  -v betterpod-rust-registry:/opt/cargo/registry \
-  -v betterpod-rust-git:/opt/cargo/git \
-  -v betterpod-rust-target-native:/target-native -v betterpod-rust-target-knulli:/target-knulli \
-  -e BUILD_MODE="$MODE" -e CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" "$IMAGE" sh -ec '
+  -v "$PWD:/repo:ro" -v "$PWD/build/rust:/out" "$@" \
+  -e BUILD_MODE="$MODE" -e CARGO_BUILD_JOBS -e CARGO_INCREMENTAL \
+  -e CARGO_PROFILE_DEV_DEBUG -e CARGO_PROFILE_TEST_DEBUG -e CARGO_TERM_COLOR \
+  "$IMAGE" sh -ec '
     mkdir -p /w
     # Host Cargo caches are not source and can dwarf the entire checkout.
     tar -C /repo --exclude=rust/target -cf - rust | tar -C /w -xf -

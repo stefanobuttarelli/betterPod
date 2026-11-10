@@ -24,7 +24,7 @@ betterPod Rust is published as a separate app beside betterPod (Knulli only).
 
 After that, new versions come through its own **Settings → Software Update**, which shows the Rust version. It reads `latest-rust.json` from the rolling `rust-latest` release (`updater::DEFAULT_FEED`). With **Beta Versions** on it also reads the one on `rust-beta` (`DEFAULT_BETA_FEED`), for versions like `0.3.0-beta.1`, and offers the newer. An empty `BETTERPOD_RUST_UPDATE_FEED` / `BETTERPOD_RUST_BETA_UPDATE_FEED` turns a channel off. After installing, the app closes; start it again from Ports.
 
-A version with a `-` (`0.3.0-beta.1`) is a beta: it goes to `rust-beta` only. To publish a version, raise `version` in `rust/Cargo.toml` (and `Cargo.lock`), add its `## vX.Y.Z` section to `rust/CHANGELOG.md`, and push. `.github/workflows/rust.yml` tests and builds it, publishes the pre-release `rust-vX.Y.Z` with `betterpod-rust-X.Y.Z.zip`, and points `rust-latest` at it. A push without a new version only keeps the package as an artifact.
+A version with a `-` (`0.3.0-beta.1`) is a beta: it goes to `rust-beta` only. To publish a version, raise `version` in `rust/Cargo.toml` (and `Cargo.lock`), add its `## vX.Y.Z` section to `rust/CHANGELOG.md`, and push. `.github/workflows/rust.yml` tests and builds it (in parallel, reusing the cached build image and compiled dependencies), publishes the pre-release `rust-vX.Y.Z` with `betterpod-rust-X.Y.Z.zip`, and points `rust-latest` at it. A push without a new version only keeps the package as an artifact.
 
 ## Isolation
 
@@ -36,7 +36,7 @@ Pinned Rust dependency notices are included in `THIRD_PARTY_NOTICES.txt`. Depend
 
 ## Build and test locally
 
-Docker isolates the Linux toolchain. The image pins Rust 1.98.1 and builds on the existing Knulli compiler image. `Cargo.lock` pins the dependency resolution. Build targets live in named Docker volumes on the Linux filesystem; only final binaries and test artifacts are copied to `build/rust/`. Two compiler jobs are used by default (`CARGO_BUILD_JOBS` can override this). The host needs Docker; Rust/SDL installation on macOS is not required for these commands.
+Docker isolates the Linux toolchain. The image pins Rust 1.98.1 and builds on the existing Knulli compiler image. `Cargo.lock` pins the dependency resolution. Build targets live in named Docker volumes on the Linux filesystem (or under `RUST_CACHE_DIR`, which CI keeps in its cache); only final binaries and test artifacts are copied to `build/rust/`. Cargo uses every CPU Docker gives the container; `CARGO_BUILD_JOBS` can limit it. The host needs Docker; Rust/SDL installation on macOS is not required for these commands.
 
 The Knulli linker uses GNU ld with a SHA-256-pinned glibc 2.28 sysroot. This preserves Rust's Cortex-A53 erratum 843419 workaround, which the older Zig linker cannot forward. Zig still compiles the unchanged third-party C engines and crypto sources.
 

@@ -8,6 +8,10 @@
 # "rust-beta" for a version like 0.3.0-beta.1): the manifests the app's own
 # Software Update reads (updater::DEFAULT_FEED / DEFAULT_BETA_FEED).
 # Neither is ever "Latest": that stays on the Go app's releases.
+#
+# The build image is made once per Dockerfile change and kept in the Actions
+# cache; tests and the console build then run side by side, each reusing its
+# compiled dependencies. Publishing waits for both.
 name: Rust app
 on:
   push:
@@ -19,20 +23,86 @@ permissions:
 concurrency:
   group: rust-${{ github.ref }}
   cancel-in-progress: false
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  CARGO_TERM_COLOR: always
 jobs:
-  build:
+  image:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
+    outputs:
+      key: ${{ steps.key.outputs.key }}
     steps:
       - uses: actions/checkout@v4
+      - id: key
+        run: echo "key=rust-image-${{ hashFiles('tools/Dockerfile', 'rust/tools/Dockerfile') }}" >> "$GITHUB_OUTPUT"
+      - id: cached
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/rust-image.tar.zst
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
       - name: Build images
+        if: steps.cached.outputs.cache-hit != 'true'
         run: |
           docker build -t betterpod-build:1 -f tools/Dockerfile tools
           docker build -t betterpod-rust-build:1 -f rust/tools/Dockerfile .
+          docker save betterpod-rust-build:1 | zstd -T0 -3 -o "$RUNNER_TEMP/rust-image.tar.zst"
+      - if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/rust-image.tar.zst
+          key: ${{ steps.key.outputs.key }}
+
+  test:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/rust-image.tar.zst
+          key: ${{ needs.image.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Load the build image
+        run: zstd -dc "$RUNNER_TEMP/rust-image.tar.zst" | docker load && rm "$RUNNER_TEMP/rust-image.tar.zst"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/rust-cache/registry
+            ${{ runner.temp }}/rust-cache/git
+            ${{ runner.temp }}/rust-cache/target-native
+          key: rust-test-${{ needs.image.outputs.key }}-${{ hashFiles('rust/Cargo.lock', 'rust/Cargo.toml') }}
       - name: Tests
-        run: rust/tools/build.sh test
+        run: RUST_CACHE_DIR="$RUNNER_TEMP/rust-cache" rust/tools/build.sh test
+      - name: Keep only dependencies in the cache
+        run: rust/tools/ci-cache-prune.sh "$RUNNER_TEMP/rust-cache"
+
+  knulli:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/rust-image.tar.zst
+          key: ${{ needs.image.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Load the build image
+        run: zstd -dc "$RUNNER_TEMP/rust-image.tar.zst" | docker load && rm "$RUNNER_TEMP/rust-image.tar.zst"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/rust-cache/registry
+            ${{ runner.temp }}/rust-cache/git
+            ${{ runner.temp }}/rust-cache/target-knulli
+          key: rust-knulli-${{ needs.image.outputs.key }}-${{ hashFiles('rust/Cargo.lock', 'rust/Cargo.toml') }}
       - name: Build for Knulli (AArch64, glibc 2.28)
-        run: rust/tools/build.sh knulli
+        run: RUST_CACHE_DIR="$RUNNER_TEMP/rust-cache" rust/tools/build.sh knulli
       - name: Package
         run: |
           sudo chown -R "$(id -u):$(id -g)" build
@@ -42,10 +112,24 @@ jobs:
         with:
           name: betterpod-rust
           path: dist/betterpod-rust-experimental.zip
+      - name: Keep only dependencies in the cache
+        run: rust/tools/ci-cache-prune.sh "$RUNNER_TEMP/rust-cache"
+
+  publish:
+    # pushes only, after the tests and the console build both pass
+    needs: [test, knulli]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: betterpod-rust
+          path: dist
       - name: Publish a new version
-        # pushes only: a version in rust/Cargo.toml with no release yet is
-        # published, with its section of rust/CHANGELOG.md as the notes
-        if: github.event_name == 'push'
+        # a version in rust/Cargo.toml with no release yet is published,
+        # with its section of rust/CHANGELOG.md as the notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
