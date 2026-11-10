@@ -526,6 +526,17 @@ fn initialise(mut config: Config) -> Result<Config, String> {
 }
 /// Resolve only this app's own bootstrap pointers before constructing Store
 /// or clients. Missing/unmounted folders fall back to the supplied defaults.
+/// The music folder chosen in Move Music when it is not there at start (its
+/// card was taken out): this run uses the default folder instead.
+pub fn missing_music_dir(bootstrap: &Path) -> Option<PathBuf> {
+    let path = bootstrap.join("musicdir.txt");
+    let meta = fs::metadata(&path).ok()?;
+    if !meta.is_file() || meta.len() >= 4096 {
+        return None;
+    }
+    let chosen = PathBuf::from(fs::read_to_string(path).ok()?.trim());
+    (chosen.is_absolute() && !chosen.is_dir()).then_some(chosen)
+}
 pub fn resolve_paths(bootstrap: &Path, music: &Path, data: &Path) -> (PathBuf, PathBuf) {
     fn read(base: &Path, name: &str, fallback: &Path) -> PathBuf {
         let path = base.join(name);
@@ -1954,6 +1965,25 @@ fn replace_database(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_chosen_music_card_that_is_out_is_reported() {
+        let root = std::env::temp_dir().join(format!("bp-musicdir-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("music")).unwrap();
+        assert_eq!(missing_music_dir(&root), None);
+        fs::write(
+            root.join("musicdir.txt"),
+            root.join("music").to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(missing_music_dir(&root), None);
+        let card = root.join("card-taken-out/music");
+        fs::write(root.join("musicdir.txt"), format!("{}\n", card.display())).unwrap();
+        assert_eq!(missing_music_dir(&root), Some(card));
+        fs::write(root.join("musicdir.txt"), "relative/path").unwrap();
+        assert_eq!(missing_music_dir(&root), None);
+        fs::remove_dir_all(root).unwrap();
+    }
     struct Fixture {
         root: PathBuf,
         config: Config,

@@ -118,6 +118,9 @@ struct ActiveMove {
     render_library: Arc<crate::library::Library>,
 }
 pub struct Controller {
+    /// Set by the app every frame: work that a library change would lose.
+    downloads_active: bool,
+    scanning: bool,
     config: m::Config,
     update_config: u::Config,
     worker: m::Maintenance,
@@ -232,6 +235,8 @@ impl Controller {
             creating: None,
             update_view: update_visual::UpdateView::new(),
             active_move: None,
+            downloads_active: false,
+            scanning: false,
             library: Arc::new(crate::library::Library::default()),
         })
     }
@@ -265,20 +270,19 @@ impl Controller {
             self.push("Moving Music", Vec::new());
             return;
         }
-        let _root = self
-            .config
-            .music
-            .parent()
-            .unwrap_or(&self.config.music)
-            .to_path_buf();
         match mode {
             Mode::Music => {
                 let mut now = Row::new("Now", Choice::Noop);
                 now.detail = self.config.music.display().to_string();
-                self.push(
-                    "Move Music",
-                    vec![now, Row::new("Looking for the cards…", Choice::Noop)],
-                );
+                let mut rows = vec![now];
+                // The chosen card is not in: this run uses the default folder.
+                if let Some(missing) = m::missing_music_dir(&self.config.bootstrap) {
+                    let mut row = Row::new("Chosen folder not found", Choice::Noop);
+                    row.detail = format!("{} · is the card in?", missing.display());
+                    rows.push(row);
+                }
+                rows.push(Row::new("Looking for the cards…", Choice::Noop));
+                self.push("Move Music", rows);
                 self.discovery
                     .submit(discovery::Query::Cards(self.config.clone()));
                 self.auto_pending = true;
@@ -677,7 +681,39 @@ impl Controller {
             );
         }
     }
+    /// What the app is doing that a maintenance run must not interrupt.
+    pub fn set_app_busy(&mut self, downloads_active: bool, scanning: bool) {
+        self.downloads_active = downloads_active;
+        self.scanning = scanning;
+    }
+    /// Music is being copied: new downloads would land behind the move.
+    pub fn music_moving(&self) -> bool {
+        self.active_move
+            .as_ref()
+            .is_some_and(|job| !job.view.finished())
+    }
     fn launch(&mut self, request: Request) -> Option<Effect> {
+        // Go refuses these rather than cancel the work: a run that restarts
+        // the app stops every download, and a move would leave new files
+        // behind. Changing the music or database during a scan loses it.
+        if self.downloads_active {
+            return Some(Effect::Notice("Wait for the download to end".into()));
+        }
+        if self.scanning
+            && matches!(
+                &request,
+                Request::Maintenance {
+                    command: m::Command::TransferMusic { .. }
+                        | m::Command::SelectMusic(_)
+                        | m::Command::MoveDatabase { .. }
+                        | m::Command::ReplaceDatabase { .. }
+                        | m::Command::UseDatabase { .. },
+                    ..
+                }
+            )
+        {
+            return Some(Effect::Notice("Wait for the library scan to end".into()));
+        }
         if self
             .active_move
             .as_ref()
@@ -1616,6 +1652,48 @@ mod controller_tests {
             })) => assert_eq!(path, destination),
             _ => panic!("replace must retain the lifecycle request"),
         }
+        drop(c);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn downloads_and_scans_are_waited_for_instead_of_cancelled() {
+        let (root, mut c) = fixture();
+        let destination = root.join("owned");
+        let open_sheet = |c: &mut Controller| {
+            c.open(Mode::Database);
+            c.choose_database(discovery::Destination {
+                path: destination.clone(),
+                writable: true,
+                owned: true,
+                foreign: false,
+            });
+        };
+        let notice = |effect: Option<Effect>| match effect {
+            Some(Effect::Notice(text)) => text,
+            _ => panic!("expected a notice"),
+        };
+        open_sheet(&mut c);
+        c.set_app_busy(true, false);
+        assert_eq!(
+            notice(c.handle(Action::Select)),
+            "Wait for the download to end"
+        );
+        open_sheet(&mut c);
+        c.set_app_busy(false, true);
+        assert_eq!(
+            notice(c.handle(Action::Select)),
+            "Wait for the library scan to end"
+        );
+        open_sheet(&mut c);
+        c.set_app_busy(false, false);
+        assert!(matches!(
+            c.handle(Action::Select),
+            Some(Effect::Run(Request::Maintenance {
+                command: m::Command::UseDatabase { .. },
+                ..
+            }))
+        ));
+        assert!(!c.music_moving());
         drop(c);
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -657,6 +657,11 @@ impl Extras {
             );
             if self.video_search_choice(item, metadata).is_some() {
                 row.options = self.video_download_options(item);
+                // A video result also opens its page (Listen, Cover, Download).
+                if provider == Provider::YouTube {
+                    row.options
+                        .push(Item::new("Video Page", Choice::Online(item.clone(), false)));
+                }
                 row.visual.no_arrow = true;
                 row.visual.thumbnail = true;
             }
@@ -2371,7 +2376,8 @@ mod youtube_search_tests {
 }
 
 #[cfg(test)]
-mod recent_search_tests {
+/// Go features the Rust port had lost, restored in the 2026-11-10 audit.
+mod parity_tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -2480,6 +2486,54 @@ mod recent_search_tests {
         assert_eq!(titles(extras), [""]);
     }
 
+    #[test]
+    fn a_video_result_also_opens_its_video_page() {
+        let mut fixture = Fixture::new();
+        let extras = &mut fixture.extras;
+        let mut item = OnlineItem::new(Provider::YouTube);
+        item.id = "abcdefghijk".into();
+        item.url = "https://www.youtube.com/watch?v=abcdefghijk".into();
+        item.title = "A short film".into();
+        extras.searches.push(SearchState {
+            provider: Provider::YouTube,
+            metadata: false,
+            query: "film".into(),
+            items: vec![item],
+            total: 1,
+            page: 1,
+            error: String::new(),
+            busy: false,
+            generation: 0,
+        });
+        extras.push("YouTube", Vec::new());
+        extras.videos.watch_depth = Some(1);
+        let rows = extras.search_rows(Provider::YouTube, false);
+        let row = rows.iter().find(|r| r.title == "A short film").unwrap();
+        let options: Vec<_> = row.options.iter().map(|r| r.title.as_str()).collect();
+        assert_eq!(options, ["Download", "Video Page"]);
+        assert!(matches!(row.options[1].choice, Choice::Online(_, false)));
+    }
+    #[test]
+    fn downloads_wait_while_the_music_is_moved() {
+        let mut fixture = Fixture::new();
+        let extras = &mut fixture.extras;
+        extras.set_music_moving(true);
+        let mut item = OnlineItem::new(Provider::Archive);
+        item.id = "fixture".into();
+        item.title = "Fixture".into();
+        extras.download(DownloadRequest::Archive {
+            item,
+            format: "MP3".into(),
+        });
+        assert!(!extras
+            .jobs
+            .values()
+            .any(|(_, purpose)| matches!(purpose, Purpose::Download)));
+        assert!(extras.download_states.is_empty());
+        assert!(extras.effects.iter().any(
+            |e| matches!(e, Effect::Notice(text) if text == "Wait for the music to be moved")
+        ));
+    }
     #[test]
     fn podcasts_list_recent_searches_before_your_podcasts() {
         let mut fixture = Fixture::new();

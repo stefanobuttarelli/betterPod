@@ -1470,6 +1470,7 @@ impl App {
                     Screen::Albums => "No albums",
                     Screen::Songs | Screen::Search => "No songs to show",
                     Screen::Album(_) => "No saved songs",
+                    Screen::GameHistory => "No words played yet",
                     _ => "Nothing to see here",
                 }
             };

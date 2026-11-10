@@ -2946,7 +2946,7 @@ impl App {
             }
         }
         if pool.is_empty() {
-            self.notify("No music in your library yet");
+            self.notify("No songs in your library yet");
             return;
         }
         self.queue = pool
@@ -3345,6 +3345,8 @@ impl App {
             }
         }
         if let Some(maintenance) = self.maintenance.as_mut() {
+            maintenance.set_app_busy(self.extras.active_download_count() > 0, self.scanning);
+            self.extras.set_music_moving(maintenance.music_moving());
             let effects = maintenance.tick();
             for effect in effects {
                 self.maintenance_effect(effect);

@@ -453,6 +453,8 @@ pub(super) struct Extras {
     searches: Vec<SearchState>,
     subscriptions: Vec<Podcast>,
     recent_searches: RecentSearches,
+    /// Set by the app while music is copied to another card.
+    music_moving: bool,
     active_feed: Option<(Podcast, Vec<Episode>)>,
     playlists: PlaylistClient,
     lists: Arc<Vec<Playlist>>,
@@ -540,6 +542,7 @@ impl Extras {
             searches: Vec::new(),
             subscriptions: Vec::new(),
             recent_searches: RecentSearches::default(),
+            music_moving: false,
             active_feed: None,
             playlists: PlaylistClient::new(music.clone(), data.clone()),
             lists: Arc::new(Vec::new()),
@@ -979,6 +982,11 @@ impl Extras {
                 self.show_download(id);
                 return;
             }
+            if self.music_moving {
+                self.effects
+                    .push(Effect::Notice("Wait for the music to be moved".into()));
+                return;
+            }
         }
         let foreground = Self::foreground_purpose(&purpose);
         let pending_purpose = foreground.then(|| purpose.clone());
@@ -1347,7 +1355,9 @@ impl Extras {
             rows.push(row);
         }
         if rows.len() == 1 {
-            rows.push(visual::fact("No songs", ""));
+            let mut empty = visual::fact("No songs yet", "");
+            empty.detail = "Press [Y] on a song, then Add to Playlist…".into();
+            rows.push(empty);
         }
         rows
     }
@@ -1763,6 +1773,9 @@ impl Extras {
             }
             _ => false,
         }
+    }
+    pub(in crate::app) fn set_music_moving(&mut self, moving: bool) {
+        self.music_moving = moving;
     }
     pub(in crate::app) fn set_recent_searches(&mut self, searches: RecentSearches) {
         self.recent_searches = searches;
