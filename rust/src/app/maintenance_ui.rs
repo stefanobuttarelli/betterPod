@@ -634,7 +634,8 @@ impl Controller {
             // one trying GitHub again after a 5xx): its answer comes
             self.update_view.checking();
         } else {
-            self.update_view.fail("Software Update stopped; reopen betterPod Rust".into());
+            self.update_view
+                .fail("Software Update stopped; reopen betterPod Rust".into());
         }
     }
     /// Called only after the old App is joined and PrepareTransferredClients
@@ -675,7 +676,9 @@ impl Controller {
     }
 
     pub fn has_active_library_transfer(&self) -> bool {
-        self.active_move.as_ref().is_some_and(|job| !job.view.finished())
+        self.active_move
+            .as_ref()
+            .is_some_and(|job| !job.view.finished())
     }
     /// Stop live mutations before the Store's final flush. A verified switch
     /// queued after the last frame must still be finalized by main, even Quit.
@@ -2037,7 +2040,11 @@ fn draw_runner_header(
     }
     // the console's level, as the header elsewhere (it was always full)
     let pct = battery.unwrap_or(100).max(15);
-    if let Some(fill) = assets.get(if pct <= 20 { "battery_fill_warn" } else { "battery_fill_ok" }) {
+    if let Some(fill) = assets.get(if pct <= 20 {
+        "battery_fill_warn"
+    } else {
+        "battery_fill_ok"
+    }) {
         let w = (44.0 * (pct as f32 / 85.0).min(1.0)).round();
         r.image_uv(fill, [578., 9., w, 20.], [0., 0., w / 44., 1.], 1.);
     }

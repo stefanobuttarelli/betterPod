@@ -174,9 +174,7 @@ impl Covers {
         if !line2.is_empty() {
             center(r, &line2, 184. + line_box(24.).1, 24., 500, sub);
         }
-        super::super::visual_player::progress(
-            r, assets, 80., 272., 480., self.shown, false, dark,
-        );
+        super::super::visual_player::progress(r, assets, 80., 272., 480., self.shown, false, dark);
         if self.started {
             center(
                 r,

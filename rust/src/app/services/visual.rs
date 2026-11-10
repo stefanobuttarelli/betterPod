@@ -716,7 +716,10 @@ impl Extras {
             if matches!(provider, Provider::YouTube | Provider::YouTubePlaylists)
                 && state.error.contains("YouTube tools")
             {
-                rows.push(Item::new("Update YouTube Tools", Choice::Page(ExtraPage::Tools)));
+                rows.push(Item::new(
+                    "Update YouTube Tools",
+                    Choice::Page(ExtraPage::Tools),
+                ));
             }
         } else if state.items.len() < state.total {
             let mut row = Item::new(
@@ -841,20 +844,12 @@ impl Extras {
                 if queue.len() == files.len() {
                     Choice::Preview(queue[index].clone(), queue.clone(), index)
                 } else {
-                    Choice::ArchiveTrack(
-                        Arc::clone(&shared_item),
-                        format.into(),
-                        file.clone(),
-                    )
+                    Choice::ArchiveTrack(Arc::clone(&shared_item), format.into(), file.clone())
                 },
             );
             row.options = vec![Item::new(
                 "Download This Track",
-                Choice::ArchiveTrack(
-                    Arc::clone(&shared_item),
-                    format.into(),
-                    file.clone(),
-                ),
+                Choice::ArchiveTrack(Arc::clone(&shared_item), format.into(), file.clone()),
             )];
             row.visual.no_arrow = true;
             row.visual.value = super::super::time_label(number_field(file, "length"));

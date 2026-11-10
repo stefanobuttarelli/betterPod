@@ -366,7 +366,10 @@ fn console_followup_input_and_captures() {
     app.art.get(Some(&cover));
     let deadline = Instant::now() + Duration::from_secs(3);
     while !app.art.poll(&r) {
-        assert!(Instant::now() < deadline, "Fixture cover must finish decoding");
+        assert!(
+            Instant::now() < deadline,
+            "Fixture cover must finish decoding"
+        );
         std::thread::sleep(Duration::from_millis(5));
     }
     app.extras.share_view.as_mut().unwrap().event(

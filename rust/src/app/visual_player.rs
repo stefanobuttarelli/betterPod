@@ -3,9 +3,9 @@
 //! only the final drawing coordinates are doubled for the physical panel.
 use super::*;
 use betterpod_rust::motion::{Anim, Ease};
-use std::collections::BTreeMap;
 use betterpod_rust::player_geometry as geometry;
 use geometry::{now_playing_pose, Pose};
+use std::collections::BTreeMap;
 #[cfg(test)]
 mod regression_qa;
 
@@ -1448,7 +1448,11 @@ fn draw_options(
         if !selected {
             // Go's 1 px outline on the unselected button (ij_npextra.go:
             // sheetBorder at 35 %), 2 px on the doubled panel
-            let border = if dark { rgb(0x15, 0x17, 0x1a) } else { rgb(0x3e, 0x42, 0x49) };
+            let border = if dark {
+                rgb(0x15, 0x17, 0x1a)
+            } else {
+                rgb(0x3e, 0x42, 0x49)
+            };
             r.stroke_rounded(bx, top, 272., h, 12., 2., opacity(border, 0.35));
         }
         let texture = if selected {

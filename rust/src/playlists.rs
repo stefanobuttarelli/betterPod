@@ -227,33 +227,64 @@ impl PlaylistStore {
 
     fn delete_imported(&self, path: &Path) -> Result<(), String> {
         self.check_cancelled()?;
-        let relative = path.strip_prefix(&self.music).map_err(|_| "Playlist is outside the music folder")?;
-        if !playlist_path(path) || relative.components().any(|part| !matches!(part, Component::Normal(_))) {
+        let relative = path
+            .strip_prefix(&self.music)
+            .map_err(|_| "Playlist is outside the music folder")?;
+        if !playlist_path(path)
+            || relative
+                .components()
+                .any(|part| !matches!(part, Component::Normal(_)))
+        {
             return Err("Expected a music-folder M3U file".into());
         }
-        let mut directory = OpenOptions::new().read(true)
+        let mut directory = OpenOptions::new()
+            .read(true)
             .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
-            .open(&self.music).map_err(|error| error.to_string())?;
+            .open(&self.music)
+            .map_err(|error| error.to_string())?;
         // Walk through pinned directory handles: a substituted symlink cannot
         // redirect deletion to a playlist outside the music root.
         if let Some(parent) = relative.parent() {
             for part in parent.components() {
                 let name = c_filename(part.as_os_str())?;
-                let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
-                if fd < 0 { return Err(std::io::Error::last_os_error().to_string()); }
+                let fd = unsafe {
+                    libc::openat(
+                        directory.as_raw_fd(),
+                        name.as_ptr(),
+                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    )
+                };
+                if fd < 0 {
+                    return Err(std::io::Error::last_os_error().to_string());
+                }
                 directory = unsafe { File::from_raw_fd(fd) };
             }
         }
         let name = c_filename(relative.file_name().ok_or("Missing playlist filename")?)?;
-        let fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK) };
-        if fd < 0 { return Err(std::io::Error::last_os_error().to_string()); }
+        let fd = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
         let file = unsafe { File::from_raw_fd(fd) };
-        if !file.metadata().map_err(|error| error.to_string())?.is_file() {
+        if !file
+            .metadata()
+            .map_err(|error| error.to_string())?
+            .is_file()
+        {
             return Err("Playlist must be a regular file".into());
         }
         self.check_cancelled()?;
         if unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) } != 0 {
-            return Err(format!("Delete playlist: {}", std::io::Error::last_os_error()));
+            return Err(format!(
+                "Delete playlist: {}",
+                std::io::Error::last_os_error()
+            ));
         }
         Ok(())
     }
@@ -609,7 +640,13 @@ mod tests {
         fs::write(&list, b"#EXTM3U\n").unwrap();
         symlink(&outside, store.music.join("linked")).unwrap();
         symlink(&list, store.music.join("alias.m3u")).unwrap();
-        for path in [list.clone(), store.music.join("linked/list.m3u"), store.music.join("alias.m3u"), store.music.join("../outside/list.m3u"), song.clone()] {
+        for path in [
+            list.clone(),
+            store.music.join("linked/list.m3u"),
+            store.music.join("alias.m3u"),
+            store.music.join("../outside/list.m3u"),
+            song.clone(),
+        ] {
             assert!(store.delete(&path).is_err(), "{}", path.display());
         }
         assert_eq!(fs::read(&list).unwrap(), b"#EXTM3U\n");

@@ -1660,9 +1660,17 @@ mod response_shape_tests {
     use super::*;
     #[test]
     fn service_error_shapes_return_errors_before_mutable_metadata_indexing() {
-        for bytes in [b"[]".as_slice(), b"42", b"null", b"\"temporarily unavailable\"", b"<html>Error</html>"] {
+        for bytes in [
+            b"[]".as_slice(),
+            b"42",
+            b"null",
+            b"\"temporarily unavailable\"",
+            b"<html>Error</html>",
+        ] {
             assert!(service_json(bytes).is_err());
         }
-        assert!(service_json(br#"{"metadata":{},"files":[]}"#).unwrap().is_object());
+        assert!(service_json(br#"{"metadata":{},"files":[]}"#)
+            .unwrap()
+            .is_object());
     }
 }

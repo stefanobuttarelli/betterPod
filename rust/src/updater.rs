@@ -820,9 +820,16 @@ fn remove_old_work(app: &Path) {
         return;
     };
     for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().starts_with(".rust-update-old-") {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".rust-update-old-")
+        {
             if let Err(e) = remove_work(&entry.path()) {
-                eprintln!("[Update] {} still cannot be removed: {e}", entry.path().display());
+                eprintln!(
+                    "[Update] {} still cannot be removed: {e}",
+                    entry.path().display()
+                );
             }
         }
     }
@@ -1603,11 +1610,18 @@ mod tests {
         let root = std::env::temp_dir().join(format!("rust-remove-tree-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let work = root.join(".rust-update");
-        for dir in ["payload/betterpod-rust/assets/ipod", "backup/betterpod-rust/libs"] {
+        for dir in [
+            "payload/betterpod-rust/assets/ipod",
+            "backup/betterpod-rust/libs",
+        ] {
             fs::create_dir_all(work.join(dir)).unwrap();
         }
         for i in 0..200 {
-            fs::write(work.join(format!("payload/betterpod-rust/assets/ipod/{i}.png")), b"x").unwrap();
+            fs::write(
+                work.join(format!("payload/betterpod-rust/assets/ipod/{i}.png")),
+                b"x",
+            )
+            .unwrap();
         }
         fs::write(work.join("backup/betterpod-rust/libs/lib.so"), b"x").unwrap();
         fs::write(work.join("journal.json"), b"{}").unwrap();
@@ -1628,7 +1642,10 @@ mod tests {
         assert!(!work.exists());
         let aside: Vec<_> = fs::read_dir(&root).unwrap().flatten().collect();
         assert_eq!(aside.len(), 1);
-        assert!(aside[0].file_name().to_string_lossy().starts_with(".rust-update-old-"));
+        assert!(aside[0]
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".rust-update-old-"));
         // a later update clears it when the card allows
         remove_old_work(&root);
         assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
@@ -1648,7 +1665,11 @@ mod tests {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut req = [0; 4096];
                 let _ = stream.read(&mut req);
-                let content: &[u8] = if status.starts_with("200") { &body } else { b"" };
+                let content: &[u8] = if status.starts_with("200") {
+                    &body
+                } else {
+                    b""
+                };
                 write!(
                     stream,
                     "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -1792,7 +1813,11 @@ mod tests {
         ] {
             assert!(allowed(Path::new(name)), "{name} should be allowed");
         }
-        for name in ["betterpod-rust/conf/settings.json", "betterpod-rust/x/DESIGN.md", "betterpod/betterpod"] {
+        for name in [
+            "betterpod-rust/conf/settings.json",
+            "betterpod-rust/x/DESIGN.md",
+            "betterpod/betterpod",
+        ] {
             assert!(!allowed(Path::new(name)), "{name} should be refused");
         }
     }

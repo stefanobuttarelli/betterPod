@@ -866,10 +866,16 @@ impl App {
         self.visual_menu_follow_ticker(now);
         // Results can arrive after the input-triggered scrollbar has faded.
         // Reveal it again when the visible content or loading state changes.
-        let content = active_page.as_ref().map(|page| (
-            page.screen, page.title.clone(), page.rows.len(),
-            page.rows.get(page.selected).is_some_and(|row| row.visual.busy),
-        ));
+        let content = active_page.as_ref().map(|page| {
+            (
+                page.screen,
+                page.title.clone(),
+                page.rows.len(),
+                page.rows
+                    .get(page.selected)
+                    .is_some_and(|row| row.visual.busy),
+            )
+        });
         if self.visual_menu.scroll_content != content {
             self.visual_menu.scroll_until = now + 1.2;
             self.visual_menu.scroll_content = content;

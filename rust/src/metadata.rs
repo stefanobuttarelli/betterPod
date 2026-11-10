@@ -294,10 +294,17 @@ pub(crate) struct RemoteTagWriter {
     _guard: std::sync::MutexGuard<'static, ()>,
 }
 pub(crate) fn lock_remote_tags() -> Result<RemoteTagWriter, String> {
-    Ok(RemoteTagWriter { _guard: TAG_WRITE_LOCK.lock().map_err(|e| e.to_string())? })
+    Ok(RemoteTagWriter {
+        _guard: TAG_WRITE_LOCK.lock().map_err(|e| e.to_string())?,
+    })
 }
 impl RemoteTagWriter {
-    pub(crate) fn write(&self, path: &Path, edit: &TagEdit, remove_cover: bool) -> Result<(), String> {
+    pub(crate) fn write(
+        &self,
+        path: &Path,
+        edit: &TagEdit,
+        remove_cover: bool,
+    ) -> Result<(), String> {
         write_tags_unlocked(path, edit, None, remove_cover)
     }
 }
@@ -312,11 +319,21 @@ fn check(context: Option<&Context>) -> Result<(), String> {
     context.map_or(Ok(()), Context::check)
 }
 static TAG_WRITE_LOCK: Mutex<()> = Mutex::new(());
-fn write_tags_impl(path: &Path, edit: &TagEdit, context: Option<&Context>, remove_cover: bool) -> Result<(), String> {
+fn write_tags_impl(
+    path: &Path,
+    edit: &TagEdit,
+    context: Option<&Context>,
+    remove_cover: bool,
+) -> Result<(), String> {
     let _write_lock = TAG_WRITE_LOCK.lock().map_err(|e| e.to_string())?;
     write_tags_unlocked(path, edit, context, remove_cover)
 }
-fn write_tags_unlocked(path: &Path, edit: &TagEdit, context: Option<&Context>, remove_cover: bool) -> Result<(), String> {
+fn write_tags_unlocked(
+    path: &Path,
+    edit: &TagEdit,
+    context: Option<&Context>,
+    remove_cover: bool,
+) -> Result<(), String> {
     check(context)?;
     let extension = path
         .extension()
@@ -343,7 +360,11 @@ fn write_tags_unlocked(path: &Path, edit: &TagEdit, context: Option<&Context>, r
             file.insert_tag(Tag::new(kind));
         }
         let tag = file.primary_tag_mut().ok_or("No editable tag")?;
-        if remove_cover { while !tag.pictures().is_empty() { tag.remove_picture(0); } }
+        if remove_cover {
+            while !tag.pictures().is_empty() {
+                tag.remove_picture(0);
+            }
+        }
         for (key, value) in [
             (ItemKey::TrackTitle, &edit.title),
             (ItemKey::TrackArtist, &edit.artist),
@@ -586,7 +607,9 @@ fn edit_items(body: &[u8], edit: &TagEdit, remove_cover: bool) -> Result<Vec<u8>
     let list = boxes(&mut std::io::Cursor::new(body), 0, body.len() as u64)?;
     let mut drop = std::collections::HashSet::new();
     let mut added = Vec::new();
-    if remove_cover { drop.insert(*b"covr"); }
+    if remove_cover {
+        drop.insert(*b"covr");
+    }
     for (key, value) in [
         ([0xa9, b'n', b'a', b'm'], &edit.title),
         ([0xa9, b'A', b'R', b'T'], &edit.artist),
@@ -675,7 +698,12 @@ fn edit_items(body: &[u8], edit: &TagEdit, remove_cover: bool) -> Result<Vec<u8>
     out.extend(added);
     Ok(out)
 }
-fn write_m4a(path: &Path, edit: &TagEdit, context: Option<&Context>, remove_cover: bool) -> Result<(), String> {
+fn write_m4a(
+    path: &Path,
+    edit: &TagEdit,
+    context: Option<&Context>,
+    remove_cover: bool,
+) -> Result<(), String> {
     let mut source = File::open(path).map_err(|e| e.to_string())?;
     let length = source.metadata().map_err(|e| e.to_string())?.len();
     let top = boxes(&mut source, 0, length)?;

@@ -1,5 +1,6 @@
 //! Original Go 1.1 screensaver state, timing and GPU composition.
 use super::*;
+use crate::player_geometry as geometry;
 use crate::{
     library::Track,
     motion::{Anim, Ease},
@@ -9,7 +10,6 @@ use std::{
     collections::{HashMap, VecDeque},
     path::Path,
 };
-use crate::player_geometry as geometry;
 mod status;
 const ROWS: usize = 4;
 const COLS: usize = 6;

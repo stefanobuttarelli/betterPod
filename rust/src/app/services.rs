@@ -139,11 +139,7 @@ enum Choice {
         query: String,
     },
     YouTubePlaylistMedia(OnlineItem, bool),
-    ArchiveTrack(
-        Arc<OnlineItem>,
-        String,
-        serde_json::Value,
-    ),
+    ArchiveTrack(Arc<OnlineItem>, String, serde_json::Value),
     Preview(OnlineItem, Arc<Vec<OnlineItem>>, usize),
     ConfirmDeletePlaylist(Playlist),
     ConfirmBtForget(String),
@@ -2253,7 +2249,9 @@ impl Extras {
             Choice::Preview(item, queue, index) => {
                 if self.preview_origin.as_ref() == Some(&item.url) {
                     match listen_ui::row_tap(self.preview_ready, self.preview_state.as_ref()) {
-                        listen_ui::RowTap::Retry => self.start_inline_listen(item, queue.as_ref().clone(), index),
+                        listen_ui::RowTap::Retry => {
+                            self.start_inline_listen(item, queue.as_ref().clone(), index)
+                        }
                         listen_ui::RowTap::Toggle => self.effects.push(Effect::TogglePreview),
                         listen_ui::RowTap::Ignore => {}
                     }
@@ -3033,8 +3031,10 @@ impl Extras {
             .join(" · ");
         let mut rows = vec![poster];
         if let Some(first) = entries.first() {
-            let mut listen =
-                Item::new("Listen", Choice::Preview(first.clone(), Arc::clone(&entries), 0));
+            let mut listen = Item::new(
+                "Listen",
+                Choice::Preview(first.clone(), Arc::clone(&entries), 0),
+            );
             listen.detail = if entries.len() > 1 {
                 format!("{} songs, before you download", entries.len())
             } else {

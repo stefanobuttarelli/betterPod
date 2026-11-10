@@ -129,13 +129,7 @@ impl Keyboard {
         {
             from += text[from..].chars().next().unwrap().len_utf8();
         }
-        super::visual_menu::ellipsize(
-            r,
-            &format!("…{}", &text[from..]),
-            size,
-            weight,
-            max_width,
-        )
+        super::visual_menu::ellipsize(r, &format!("…{}", &text[from..]), size, weight, max_width)
     }
 
     pub fn handle(&mut self, action: Action) -> KeyboardEffect {

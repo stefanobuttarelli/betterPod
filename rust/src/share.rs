@@ -954,16 +954,31 @@ mod tests {
         let root = std::env::temp_dir().join(format!("bp-code-first-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let (tx, rx) = mpsc::sync_channel(16);
-        let state = State { events: tx, cancelled: Arc::new(AtomicBool::new(false)) };
+        let state = State {
+            events: tx,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        };
         // A nonexistent song fails during packaging, before any network access.
-        assert!(send(&root, &state, vec![root.join("missing.flac")], ShareInfo::default(), None).is_err());
-        let Event::Code(code) = rx.try_recv().unwrap() else { panic!("Code must be the first event") };
+        assert!(send(
+            &root,
+            &state,
+            vec![root.join("missing.flac")],
+            ShareInfo::default(),
+            None
+        )
+        .is_err());
+        let Event::Code(code) = rx.try_recv().unwrap() else {
+            panic!("Code must be the first event")
+        };
         assert_eq!(code.len(), 8);
         assert!(code.bytes().all(|digit| digit.is_ascii_digit()));
         let mut client = ShareClient::new(root.clone());
         client.tx.send(Event::Sent).unwrap();
         client.cancel();
-        assert!(client.poll().is_none(), "Cancelled callbacks cannot update a reopened screen");
+        assert!(
+            client.poll().is_none(),
+            "Cancelled callbacks cannot update a reopened screen"
+        );
         client.shutdown();
         std::fs::remove_dir_all(root).unwrap();
     }

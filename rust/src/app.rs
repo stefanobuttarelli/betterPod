@@ -25,12 +25,12 @@ mod compositor;
 mod keyboard;
 mod remote_qa;
 mod stream_control;
-use keyboard::{Keyboard, KeyboardEffect};
 use betterpod_rust::visual_assets::VisualAssets;
+use keyboard::{Keyboard, KeyboardEffect};
 mod quiz;
 use curation_ui::{Curation, CurationEffect, Mode as CurationMode};
-mod services;
 pub(crate) mod maintenance_ui;
+mod services;
 use maintenance_ui::{
     Controller as MaintenanceController, Effect as MaintenanceEffect, Mode as MaintenanceMode,
     Request as MaintenanceRequest,
@@ -46,12 +46,12 @@ use crate::render::Texture;
 use crate::render::{Color, Renderer};
 use crate::storage::{Playback, Settings, Store};
 use album_read::PendingAlbumRead;
-use quiz::{Effect as QuizEffect, Quiz};
-use services::{Effect as ExtraEffect, ExtraPage, Extras};
 use betterpod_rust::online::StreamSource;
 use betterpod_rust::puzzles::{PuzzleGame, PUZZLES};
 use betterpod_rust::saver::{self, Saver, SaverAction};
 use betterpod_rust::video::{VideoCommand, VideoPlayer};
+use quiz::{Effect as QuizEffect, Quiz};
+use services::{Effect as ExtraEffect, ExtraPage, Extras};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
@@ -262,11 +262,7 @@ impl Page {
         } else if top + height > self.target_scroll + available {
             self.target_scroll = top + height - available;
         }
-        let total = self
-            .rows
-            .iter()
-            .map(visual_menu::row_height)
-            .sum::<f32>();
+        let total = self.rows.iter().map(visual_menu::row_height).sum::<f32>();
         self.target_scroll = self.target_scroll.clamp(0.0, (total - available).max(0.0));
         self.scroll = self.target_scroll;
     }
@@ -1192,7 +1188,10 @@ impl App {
     /// The controller's actual page owns its panel kind, not the App wrapper.
     fn projected_page(&mut self) -> Option<Page> {
         match self.screen() {
-            Screen::Extra => self.extras.visual_page().or_else(|| Some(self.page(Screen::Extra))),
+            Screen::Extra => self
+                .extras
+                .visual_page()
+                .or_else(|| Some(self.page(Screen::Extra))),
             Screen::Files => Some(self.files.visual_page()),
             Screen::Curation => self.curation.visual_page(),
             Screen::Maintenance => self.maintenance.as_mut().and_then(|m| m.visual_page()),
