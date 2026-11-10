@@ -2,7 +2,7 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
-## Unreleased
+## v0.2.13 (2026-11-10)
 
 - The field you type into stays visible above the keyboard. In Album Info, Artist, Album Artist, Genre and the other fields below the top rise with the keyboard and settle back when it closes, and the caret shows as soon as the keyboard opens. This applies to every list with a keyboard.
 - Album Info finds albums on Discogs and on the Italian Wikipedia, such as DJ Gruff's Rapadopa. Find Info Online now searches MusicBrainz, Discogs, iTunes, Deezer and Wikipedia, and the editor has Search Discogs. Discogs prefers the CD edition, gives one result per album with its songs, lengths and genre, and also opens a pasted Discogs link. Wikipedia searches the English and Italian articles of albums only and reads the songs of the first edition from the article.
