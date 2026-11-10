@@ -4,6 +4,8 @@ The separate Rust app for Knulli. A version here whose number is in `Cargo.toml`
 
 ## Unreleased
 
+- Uses less CPU on screens that are not moving: a frame identical to the one on screen is no longer redrawn. On the console, Now Playing with an AAC song playing went from about 22% to 9% of one core, and paused from 22% to 9%. Anything that moves still runs at 60 fps.
+- Covers are kept on disk at display size, so they reappear quickly after a restart or after leaving the memory cache. A changed cover is read again from its file.
 - Recent Searches are back under the Internet Archive, YouTube and Podcasts search fields: the last week's searches, ten per screen. Choose one to run it again; Y removes it or clears the list.
 - Renaming a merged album in Album Info now keeps its added songs with it under the new name.
 - Move Music, database changes, updates and resets wait for a running download instead of cancelling it, and music or database changes wait for a library scan. Downloads wait while the music is being moved.

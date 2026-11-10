@@ -186,3 +186,37 @@ One Rust UI sequence also failed its playback/menu precondition before any
 measurement and was repeated while the console controls were left untouched.
 No PR, push or release was made during this session. The original installed Go
 app remains available, alongside the independently installed Rust app.
+
+## Unchanged frames and scaled covers, 2026-11-10
+
+The Rust loop rebuilt and presented every frame at the display rate, even on a
+settled screen. It now compares the frame it built with the one on screen:
+background, vertices, batches and a revision that grows with every texture
+change, including new font glyphs. An identical frame is not sent to the GPU
+or swapped. After half a second without a change the loop checks every 25 ms,
+as Go's idle poll; any change presents at once, at the display rate. Frames
+that move, such as Ken Burns previews, scrolling titles and the lossless level
+meter, keep 60 fps. The Now Playing progress bar now grows in whole pixels, as
+Go draws it, instead of a thirtieth of a pixel per frame.
+
+Measured on the RG35XX Plus over SSH, per-second CPU of the `betterpod-rust`
+process (100% is one of four cores), same screens and user sequence, original
+Knulli libraries, music playing through the internal output:
+
+| Screen | Before | After |
+| --- | ---: | ---: |
+| Now Playing, lossless FLAC playing | 22–24% | 23–25% (meter and title move) |
+| Now Playing, paused | ~22% | 8–9% |
+| Settings, music paused | 14–17% | 11–12% |
+| Now Playing, AAC playing, short title | ~22% (redrawn every frame) | ~9% |
+
+Captures of the framebuffer during each sample show the same screens and
+layout as before. The AAC row's "before" is inferred from the paused sample,
+which the old loop also redrew at 60 fps; it was not sampled separately.
+
+Covers are also kept on disk at display size (`artwork-scaled/` in the data
+folder, as Go's `.ipod_art`), named from the original's path, size and time.
+On this console the originals average about 2 MB and the scaled copies about
+150 KB, so a cover that left the 40-texture GPU cache, or any cover after a
+restart, is read from the copy instead of decoded from the original. An
+edited cover gets a new entry; scans prune copies no album uses.
