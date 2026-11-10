@@ -589,19 +589,28 @@ mod tests {
         let fixture = Fixture::new();
         let context = Context::standalone();
         let cancel = context.clone();
+        // Cancel once the child has started and recorded its PID, however
+        // long a loaded machine takes to start a shell.
+        let pid_file = fixture.0.join("pid");
         let worker = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(150));
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !pid_file.exists() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            thread::sleep(Duration::from_millis(50));
             cancel.cancel();
+            Instant::now()
         });
-        let started = Instant::now();
         let result = run_command(
             &context,
             &mut fixture.command("trap '' TERM; echo $$ > \"$1\"; sleep 60 & wait"),
             Duration::from_secs(4),
         );
-        worker.join().unwrap();
+        let returned = Instant::now();
+        let cancelled = worker.join().unwrap();
         assert_eq!(result, Err("Cancelled".into()));
-        assert!(started.elapsed() < Duration::from_secs(2));
+        // The inherited pipe of `sleep 60` must not hold the return.
+        assert!(returned.saturating_duration_since(cancelled) < Duration::from_secs(2));
         assert_stopped(fixture.pid());
     }
 
