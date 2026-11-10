@@ -747,6 +747,9 @@ func (app *BetterPod) drawButtonLegend(x int, centerY float64, button string, la
 func getBatteryLevel() int {
 	// Read the battery capacity exposed by the system.
 	paths := []string{
+		// Knulli's BatteryPlus: the level Knulli itself shows, estimated
+		// from the voltage. The PMIC's capacity can be far lower.
+		"/tmp/battery.percent",
 		"/sys/class/power_supply/battery/capacity",
 		"/sys/class/power_supply/BAT0/capacity",
 		"/sys/class/power_supply/axp22-battery/capacity",

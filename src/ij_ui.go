@@ -1403,7 +1403,7 @@ func batteryInfo() (int, bool) {
 }
 
 func batteryCharging() bool {
-	for _, p := range []string{"/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
+	for _, p := range []string{"/tmp/battery.status", "/sys/class/power_supply/axp2202-battery/status", "/sys/class/power_supply/battery/status"} {
 		if b, err := os.ReadFile(p); err == nil {
 			s := string(b)
 			return len(s) >= 8 && s[:8] == "Charging"
