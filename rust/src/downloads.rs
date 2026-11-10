@@ -258,13 +258,18 @@ fn download_tagged(
 ) -> Result<(), String> {
     download_tagged_before_commit(context, url, target, expected_sha, tags, None)
 }
+/// Called with the staged file just before it replaces the target.
+type CommitHook<'a> = &'a mut dyn FnMut(&Path) -> Result<(), String>;
+/// Called with each staged YouTube track and its final path before commit.
+type TrackCommitHook<'a> = &'a mut dyn FnMut(&Path, &Path) -> Result<(), String>;
+
 fn download_tagged_before_commit(
     context: &Context,
     url: &str,
     target: &Path,
     expected_sha: Option<&str>,
     tags: Option<&TagEdit>,
-    mut before_commit: Option<&mut dyn FnMut(&Path) -> Result<(), String>>,
+    mut before_commit: Option<CommitHook<'_>>,
 ) -> Result<(), String> {
     validate_http(url)?;
     context.check()?;
@@ -439,8 +444,7 @@ fn download_tagged_before_commit(
                 | "aif"
                 | "aiff"
         )
-    {
-        if (|| -> Result<(), String> {
+        && (|| -> Result<(), String> {
             lofty::probe::Probe::open(&stage)
                 .map_err(|e| e.to_string())?
                 .guess_file_type()
@@ -450,11 +454,10 @@ fn download_tagged_before_commit(
             Ok(())
         })()
         .is_err()
-        {
-            let _ = fs::remove_file(&stage);
-            let _ = fs::remove_file(&sidecar);
-            return Err("Downloaded response is not a supported audio file".into());
-        }
+    {
+        let _ = fs::remove_file(&stage);
+        let _ = fs::remove_file(&sidecar);
+        return Err("Downloaded response is not a supported audio file".into());
     }
     if let Some(expected) = expected_sha {
         let actual = sha256_file(&stage)?;
@@ -960,7 +963,7 @@ fn youtube_download_single(
     split: bool,
     cover: Option<&Path>,
     album: Option<&YoutubeAlbum<'_>>,
-    mut before_commit: Option<&mut dyn FnMut(&Path, &Path) -> Result<(), String>>,
+    mut before_commit: Option<TrackCommitHook<'_>>,
 ) -> Result<Vec<PathBuf>, String> {
     validate_http(url)?;
     let info = youtube_video_info(context, data, url)?;
@@ -1114,7 +1117,7 @@ fn youtube_download_single(
         retry.arg(url);
         process::run_ytdlp(context, &mut retry, Duration::from_secs(7200))?;
     }
-    let source = fs::read_dir(&stage)
+    let source = fs::read_dir(stage)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .map(|e| e.path())

@@ -159,7 +159,13 @@ impl Pen {
             let (m, coverage) = font.rasterize(ch, px);
             if m.width > 0 && m.height > 0 {
                 if let Some(mut image) = sk::Pixmap::new(m.width as u32, m.height as u32) {
-                    for (rgba, a) in image.data_mut().chunks_exact_mut(4).zip(coverage) {
+                    for (rgba, a) in image
+                        .data_mut()
+                        .as_chunks_mut::<4>()
+                        .0
+                        .iter_mut()
+                        .zip(coverage)
+                    {
                         let a = (a as f32 * color.alpha()).round() as u8;
                         rgba[0] = (color.red() * a as f32).round() as u8;
                         rgba[1] = (color.green() * a as f32).round() as u8;
@@ -205,7 +211,7 @@ impl Pen {
     fn finish(self, name: &'static str, display_size: u16) -> GeneratedIcon {
         let (width, height) = (self.image.width(), self.image.height());
         let mut pixels = self.image.take();
-        for p in pixels.chunks_exact_mut(4) {
+        for p in pixels.as_chunks_mut::<4>().0 {
             let a = p[3] as u32;
             if a > 0 && a < 255 {
                 for c in &mut p[..3] {
@@ -319,7 +325,7 @@ fn read_picture(path: &Path) -> Result<sk::Pixmap, String> {
     let image = image::open(path).map_err(|e| e.to_string())?.to_rgba8();
     let (w, h) = image.dimensions();
     let mut pixels = image.into_raw();
-    for p in pixels.chunks_exact_mut(4) {
+    for p in pixels.as_chunks_mut::<4>().0 {
         let a = p[3] as u32;
         for c in &mut p[..3] {
             *c = ((*c as u32 * a + 127) / 255) as u8;
@@ -632,8 +638,13 @@ mod tests {
                 icon.width as usize * icon.height as usize * 4
             );
             assert_eq!(icon.pixels[3], 0);
-            assert!(icon.pixels.chunks_exact(4).any(|p| p[3] == 255));
-            assert!(icon.pixels.chunks_exact(4).any(|p| p[3] > 0 && p[3] < 255));
+            assert!(icon.pixels.as_chunks::<4>().0.iter().any(|p| p[3] == 255));
+            assert!(icon
+                .pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|p| p[3] > 0 && p[3] < 255));
         }
     }
     #[test]

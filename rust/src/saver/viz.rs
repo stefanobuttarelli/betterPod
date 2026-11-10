@@ -79,10 +79,10 @@ impl Visualizer {
     fn clear(&mut self) {
         self.pixels.fill(0);
         self.scratch.fill(0);
-        for p in self.pixels.chunks_exact_mut(4) {
+        for p in self.pixels.as_chunks_mut::<4>().0 {
             p[3] = 255;
         }
-        for p in self.scratch.chunks_exact_mut(4) {
+        for p in self.scratch.as_chunks_mut::<4>().0 {
             p[3] = 255;
         }
         self.sparks.clear();
@@ -161,14 +161,18 @@ impl Visualizer {
         if effect == 0 {
             self.draw_bars(r, a)?;
         } else {
-            if self.texture.is_none() {
-                let t = r.upload(W as u32, H as u32, &self.pixels)?;
-                r.set_texture_nearest(t);
-                self.texture = Some(t);
-                self.dirty = false;
-            } else if self.dirty || changed {
-                r.update_texture(self.texture.unwrap(), &self.pixels)?;
-                self.dirty = false;
+            match self.texture {
+                None => {
+                    let t = r.upload(W as u32, H as u32, &self.pixels)?;
+                    r.set_texture_nearest(t);
+                    self.texture = Some(t);
+                    self.dirty = false;
+                }
+                Some(t) if self.dirty || changed => {
+                    r.update_texture(t, &self.pixels)?;
+                    self.dirty = false;
+                }
+                Some(_) => {}
             }
             r.image_uv(
                 self.texture.unwrap(),
@@ -316,7 +320,7 @@ impl Visualizer {
         std::mem::swap(&mut self.pixels, &mut self.scratch);
     }
     fn fade(&mut self, f: u32) {
-        for p in self.pixels.chunks_exact_mut(4) {
+        for p in self.pixels.as_chunks_mut::<4>().0 {
             for c in &mut p[..3] {
                 *c = ((*c as u32 * f) >> 8) as u8;
             }
@@ -383,8 +387,8 @@ impl Visualizer {
             .map(|s| (*s as f64).abs())
             .fold(0., f64::max);
         let amp = 80. / gain.max(0.08);
-        let c = self.color(a.hue as f64);
-        let mut c2 = self.color(a.hue as f64 + 0.5);
+        let c = self.color(a.hue);
+        let mut c2 = self.color(a.hue + 0.5);
         for c in &mut c2 {
             *c /= 2;
         }
@@ -408,17 +412,16 @@ impl Visualizer {
             self.map_at = now;
         }
         self.remap(self.map, 236);
-        let base = 26. + 24. * a.bass as f64;
+        let base = 26. + 24. * a.bass;
         let (mut px, mut py) = (0, 0);
         for i in 0..=80 {
             let mut b = i % 80;
             if b >= 40 {
                 b = 79 - b;
             }
-            let angle =
-                i as f64 / 80. * std::f64::consts::TAU + a.hue as f64 * std::f64::consts::TAU;
-            let radius = base + a.bands[b] as f64 * 70.;
-            let c = self.color(a.hue as f64 + b as f64 / 80.);
+            let angle = i as f64 / 80. * std::f64::consts::TAU + a.hue * std::f64::consts::TAU;
+            let radius = base + a.bands[b] * 70.;
+            let c = self.color(a.hue + b as f64 / 80.);
             let x = 160 + (angle.cos() * radius) as i32;
             let y = 120 + (angle.sin() * radius) as i32;
             if i > 0 {
@@ -454,16 +457,16 @@ impl Visualizer {
     }
     fn stars(&mut self, a: &Analysis) {
         self.fade(200);
-        let treble = a.bands[20..].iter().sum::<f64>() as f64 / 20.;
+        let treble = a.bands[20..].iter().sum::<f64>() / 20.;
         if a.fresh {
             self.emit(
-                (2. + treble * 14. + a.bass as f64 * 6.) as usize,
+                (2. + treble * 14. + a.bass * 6.) as usize,
                 1.2 + 2.5 * treble,
-                a.hue as f64,
+                a.hue,
             )
         }
         if a.beat {
-            self.emit(90, 3. + 3. * a.bass as f64, a.hue as f64)
+            self.emit(90, 3. + 3. * a.bass, a.hue)
         }
         let mut k = 0;
         for i in 0..self.sparks.len() {
@@ -505,14 +508,14 @@ impl Visualizer {
         }
         let power = |bin: f64| {
             let i = bin as usize;
-            if i < 1 || i >= 511 {
+            if !(1..511).contains(&i) {
                 return 0.;
             }
             let f = bin - i as f64;
             let first = a.spectrum[i];
             let second = a.spectrum[i + 1];
-            let pa = (first.re * first.re + first.im * first.im) as f64;
-            let pb = (second.re * second.re + second.im * second.im) as f64;
+            let pa = first.re * first.re + first.im * first.im;
+            let pb = second.re * second.re + second.im * second.im;
             pa + (pb - pa) * f
         };
         for y in 0..H {
@@ -526,7 +529,7 @@ impl Visualizer {
                     b += 1;
                 }
                 let db = 10. * (p + 1e-12).log10() + 9. * (1. - y as f64 / H as f64);
-                x = (1. + (db - a.norm as f64 - 4.) / 60.).clamp(0., 1.);
+                x = (1. + (db - a.norm - 4.) / 60.).clamp(0., 1.);
             }
             let previous = self.previous[y];
             self.previous[y] = x;

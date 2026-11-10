@@ -373,7 +373,7 @@ impl Session {
                 .map_err(|e| e.to_string())?,
         );
         if !audio_only {
-            let mut command = Command::new(&executable);
+            let mut command = Command::new(executable);
             input_args(&mut command, &video, start);
             command.args(["-map","0:v:0","-an","-sn","-dn","-vf","scale=640:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2:color=black,fps=30","-pix_fmt","rgba","-f","rawvideo","pipe:1"])
                 .stdout(Stdio::piped()).stderr(Stdio::null()).stdin(Stdio::null());
@@ -539,9 +539,9 @@ impl Session {
         } else {
             self.start = self.pause_at;
             self.clock = Instant::now();
-            if self.output.is_some() {
+            if let Some(output) = &self.output {
                 /* PCM retains its own sample position. */
-                self.start -= self.output.as_ref().unwrap().position();
+                self.start -= output.position();
             }
         }
         self.paused = paused;
@@ -853,8 +853,8 @@ fn read_pcm(stdout: &mut impl Read, ring: &Ring, cancel: &AtomicBool) {
         carry.extend_from_slice(&bytes[..n]);
         let usable = carry.len() / 8 * 8;
         samples.clear();
-        for value in carry[..usable].chunks_exact(4) {
-            samples.push(f32::from_le_bytes(value.try_into().unwrap()));
+        for value in carry[..usable].as_chunks::<4>().0 {
+            samples.push(f32::from_le_bytes(*value));
         }
         if !ring.write(&samples, cancel) {
             break;

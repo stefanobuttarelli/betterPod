@@ -378,11 +378,7 @@ pub fn parse_feed(bytes: &[u8]) -> Result<(Podcast, Vec<Episode>), String> {
                                     podcast.art600 = text.into()
                                 }
                             }
-                            "category" => {
-                                if podcast.genre.is_empty() {
-                                    podcast.genre = text.into()
-                                }
-                            }
+                            "category" if podcast.genre.is_empty() => podcast.genre = text.into(),
                             _ => {}
                         }
                     }

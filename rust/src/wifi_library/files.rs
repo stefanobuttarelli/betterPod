@@ -444,7 +444,7 @@ pub(super) fn save(
     }
     let mut cleanup = Cleanup(Vec::new());
     if let Some(cover) = &change.cover {
-        if cover.len() > ((MAX_ART + 2) / 3) * 4 {
+        if cover.len() > MAX_ART.div_ceil(3) * 4 {
             return Err("The cover is too large".into());
         }
         let bytes = STANDARD

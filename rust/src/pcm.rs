@@ -347,9 +347,10 @@ impl RustTrack {
                     };
                     let spec = *decoded.spec();
                     let frames = decoded.frames();
-                    if samples.as_ref().map_or(true, |s| {
-                        s.capacity() < decoded.capacity() * spec.channels.count()
-                    }) {
+                    if samples
+                        .as_ref()
+                        .is_none_or(|s| s.capacity() < decoded.capacity() * spec.channels.count())
+                    {
                         samples = Some(SampleBuffer::<f32>::new(decoded.capacity() as u64, spec));
                     }
                     let buffer = samples.as_mut().unwrap();
@@ -462,8 +463,8 @@ impl RustTrack {
                     carry.extend_from_slice(&bytes[..n]);
                     let usable = carry.len() / 8 * 8;
                     samples.clear();
-                    for value in carry[..usable].chunks_exact(4) {
-                        samples.push(f32::from_le_bytes(value.try_into().unwrap()));
+                    for value in carry[..usable].as_chunks::<4>().0 {
+                        samples.push(f32::from_le_bytes(*value));
                     }
                     if !ring.write(&samples, &cancelled) {
                         break;

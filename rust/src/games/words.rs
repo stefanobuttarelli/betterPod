@@ -651,11 +651,9 @@ impl WordGame {
                 170.0,
             );
         }
-        let percent = if self.stats.played > 0 {
-            self.stats.wins * 100 / self.stats.played
-        } else {
-            0
-        };
+        let percent = (self.stats.wins * 100)
+            .checked_div(self.stats.played)
+            .unwrap_or(0);
         for (y, value, label) in [
             (44.0, self.stats.played.to_string(), "PLAYED"),
             (124.0, format!("{percent}%"), "WON"),

@@ -1342,88 +1342,6 @@ fn draw_menu(r: &mut Renderer, labels: &[&str], selected: usize, title: &str, su
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn card(rank: u8, suit: u8) -> Card {
-        Card {
-            rank,
-            suit,
-            face: true,
-        }
-    }
-    #[test]
-    fn original_layout_matches_six_eighty_pixel_columns() {
-        let mut game = Solitaire::new(7);
-        game.snap_visual_state();
-        assert!(game.valid());
-        assert_eq!(position(&game.state, Target::Stock).x, 46.0);
-        assert_eq!(position(&game.state, Target::Foundation(3)).x, 526.0);
-        assert_eq!(CW, 68.0);
-        assert_eq!(CH, 96.0);
-        assert_eq!(TABLEAU, 116.0);
-    }
-    #[test]
-    fn foundations_have_fixed_suits_and_auto_moves_are_conservative() {
-        let mut state = State::default();
-        state.stock.push(card(13, 3));
-        assert!(can_foundation(card(1, 2), &[], 2));
-        assert!(!can_foundation(card(1, 2), &[], 0));
-        assert!(!safe_auto(card(4, 2), &state));
-        state.foundations[0] = vec![card(2, 0)];
-        state.foundations[1] = vec![card(2, 1)];
-        assert!(safe_auto(card(4, 2), &state));
-    }
-    #[test]
-    fn stock_recycle_and_twenty_undos_conserve_the_deck() {
-        let mut game = Solitaire::new(27);
-        game.snap_visual_state();
-        for _ in 0..60 {
-            game.draw_stock();
-            game.tick(2.0);
-            assert!(game.valid());
-            assert!(game.history.len() <= 20);
-        }
-        for _ in 0..30 {
-            game.undo();
-            game.tick(2.0);
-            assert!(game.valid());
-        }
-    }
-    #[test]
-    fn picking_a_stack_offers_only_legal_destinations() {
-        let mut state = State::default();
-        state.tableau[0] = vec![card(8, 2)];
-        state.tableau[1] = vec![card(7, 0), card(6, 2)];
-        let cards = cards_from(&state, Target::Tableau(1, 0));
-        assert!(
-            drop_targets(&state, &cards, Target::Tableau(1, 0)).contains(&Target::Tableau(0, 0))
-        );
-        assert!(move_cards(&state, Target::Tableau(1, 0), Target::Empty(2)).is_none());
-    }
-    #[test]
-    fn menu_back_and_long_press_follow_original_phases() {
-        let mut game = Solitaire::new(19);
-        game.snap_visual_state();
-        assert!(game.back_consumed());
-        assert_eq!(game.rt.phase, Phase::Menu);
-        game.handle(Action::Start);
-        assert_eq!(game.rt.phase, Phase::Browsing);
-        game.draw_stock();
-        for _ in 0..60 {
-            if !game.animating() {
-                break;
-            }
-            game.tick(2.0);
-        }
-        let before = game.history.len();
-        game.handle(Action::SelectHeld);
-        game.tick(2.0);
-        assert_eq!(game.history.len(), before.saturating_sub(1));
-        assert!(game.valid());
-    }
-}
-
 fn valid_run(pile: &[Card], from: usize) -> bool {
     from < pile.len()
         && pile[from..].iter().all(|c| c.face)
@@ -1672,5 +1590,87 @@ fn position(state: &State, target: Target) -> Pos {
             x: COL_X + column as f32 * (CW + COL_GAP),
             y: TABLEAU,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn card(rank: u8, suit: u8) -> Card {
+        Card {
+            rank,
+            suit,
+            face: true,
+        }
+    }
+    #[test]
+    fn original_layout_matches_six_eighty_pixel_columns() {
+        let mut game = Solitaire::new(7);
+        game.snap_visual_state();
+        assert!(game.valid());
+        assert_eq!(position(&game.state, Target::Stock).x, 46.0);
+        assert_eq!(position(&game.state, Target::Foundation(3)).x, 526.0);
+        assert_eq!(CW, 68.0);
+        assert_eq!(CH, 96.0);
+        assert_eq!(TABLEAU, 116.0);
+    }
+    #[test]
+    fn foundations_have_fixed_suits_and_auto_moves_are_conservative() {
+        let mut state = State::default();
+        state.stock.push(card(13, 3));
+        assert!(can_foundation(card(1, 2), &[], 2));
+        assert!(!can_foundation(card(1, 2), &[], 0));
+        assert!(!safe_auto(card(4, 2), &state));
+        state.foundations[0] = vec![card(2, 0)];
+        state.foundations[1] = vec![card(2, 1)];
+        assert!(safe_auto(card(4, 2), &state));
+    }
+    #[test]
+    fn stock_recycle_and_twenty_undos_conserve_the_deck() {
+        let mut game = Solitaire::new(27);
+        game.snap_visual_state();
+        for _ in 0..60 {
+            game.draw_stock();
+            game.tick(2.0);
+            assert!(game.valid());
+            assert!(game.history.len() <= 20);
+        }
+        for _ in 0..30 {
+            game.undo();
+            game.tick(2.0);
+            assert!(game.valid());
+        }
+    }
+    #[test]
+    fn picking_a_stack_offers_only_legal_destinations() {
+        let mut state = State::default();
+        state.tableau[0] = vec![card(8, 2)];
+        state.tableau[1] = vec![card(7, 0), card(6, 2)];
+        let cards = cards_from(&state, Target::Tableau(1, 0));
+        assert!(
+            drop_targets(&state, &cards, Target::Tableau(1, 0)).contains(&Target::Tableau(0, 0))
+        );
+        assert!(move_cards(&state, Target::Tableau(1, 0), Target::Empty(2)).is_none());
+    }
+    #[test]
+    fn menu_back_and_long_press_follow_original_phases() {
+        let mut game = Solitaire::new(19);
+        game.snap_visual_state();
+        assert!(game.back_consumed());
+        assert_eq!(game.rt.phase, Phase::Menu);
+        game.handle(Action::Start);
+        assert_eq!(game.rt.phase, Phase::Browsing);
+        game.draw_stock();
+        for _ in 0..60 {
+            if !game.animating() {
+                break;
+            }
+            game.tick(2.0);
+        }
+        let before = game.history.len();
+        game.handle(Action::SelectHeld);
+        game.tick(2.0);
+        assert_eq!(game.history.len(), before.saturating_sub(1));
+        assert!(game.valid());
     }
 }

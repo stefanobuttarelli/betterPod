@@ -367,7 +367,9 @@ unsafe extern "C" fn d_polygon(
     }
     let coords = std::slice::from_raw_parts(xy, n as usize * 2);
     let points: Vec<[f32; 2]> = coords
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| [p[0] as f32 + 0.5, p[1] as f32 + 0.5])
         .collect();
     frontend(h).push(Shape::Polygon {
@@ -646,7 +648,7 @@ impl Core {
             height: 384,
             presets: Vec::new(),
         };
-        let loaded = save.as_deref().map_or(false, |s| out.load(s).is_ok());
+        let loaded = save.as_deref().is_some_and(|s| out.load(s).is_ok());
         if !loaded {
             unsafe {
                 if let Some(index) = preset {
@@ -703,7 +705,9 @@ impl Core {
         if !colours.is_null() && (1..1000).contains(&n) {
             let floats = unsafe { std::slice::from_raw_parts(colours, n as usize * 3) };
             self.palette = floats
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|v| [v[0], v[1], v[2], 1.0])
                 .collect();
         }
@@ -1198,6 +1202,187 @@ impl PuzzleGame {
     }
 }
 
+fn short_text(r: &mut Renderer, text: &str, width: f32) -> String {
+    if r.text_width_weighted(text, 20.0, 600) <= width {
+        return text.into();
+    }
+    let mut result = String::new();
+    for c in text.chars() {
+        let next = format!("{result}{c}…");
+        if r.text_width_weighted(&next, 20.0, 600) > width {
+            break;
+        }
+        result.push(c);
+    }
+    result.push('…');
+    result
+}
+
+fn input_key(numeric: bool, digit: &mut i32, action: Action) -> Option<i32> {
+    Some(match action {
+        Action::Up => UP,
+        Action::Down => DOWN,
+        Action::Left => LEFT,
+        Action::Right => RIGHT,
+        Action::Select => {
+            if numeric {
+                if *digit == 0 {
+                    SELECT2
+                } else {
+                    '0' as i32 + *digit
+                }
+            } else {
+                SELECT
+            }
+        }
+        Action::Options => {
+            if numeric {
+                SELECT
+            } else {
+                SELECT2
+            }
+        }
+        Action::Previous => 'u' as i32,
+        Action::Next if numeric => {
+            *digit = (*digit + 1) % 10;
+            return None;
+        }
+        Action::Next => 'r' as i32,
+        _ => return None,
+    })
+}
+
+fn circle_points(cx: f32, cy: f32, r: f32) -> Vec<[f32; 2]> {
+    let count = ((r * 1.5) as usize).clamp(16, 64);
+    (0..count)
+        .map(|i| {
+            let a = i as f32 / count as f32 * std::f32::consts::TAU;
+            [cx + r * a.cos(), cy + r * a.sin()]
+        })
+        .collect()
+}
+fn line_rings(x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> ([[f32; 2]; 4], [[f32; 2]; 4]) {
+    let length = (x1 - x0).hypot(y1 - y0);
+    let (ux, uy) = if length < 0.01 {
+        (1.0, 0.0)
+    } else {
+        ((x1 - x0) / length, (y1 - y0) / length)
+    };
+    let nx = -uy;
+    let ny = ux;
+    let half = width * 0.5;
+    let ring = |inset: f32| {
+        let side = (half - inset).max(0.0);
+        let cap = half - inset;
+        [
+            [x0 - ux * cap + nx * side, y0 - uy * cap + ny * side],
+            [x1 + ux * cap + nx * side, y1 + uy * cap + ny * side],
+            [x1 + ux * cap - nx * side, y1 + uy * cap - ny * side],
+            [x0 - ux * cap - nx * side, y0 - uy * cap - ny * side],
+        ]
+    };
+    (ring(0.5), ring(-0.5))
+}
+#[allow(clippy::too_many_arguments)]
+fn puzzle_circle(
+    r: &mut Renderer,
+    cx: f32,
+    cy: f32,
+    radius: f32,
+    points: &[[f32; 2]],
+    dx: f32,
+    dy: f32,
+    color: Color,
+) {
+    if radius <= 0.0 {
+        return;
+    }
+    let inset = (radius - 0.5).max(0.0) / radius;
+    let outset = (radius + 0.5) / radius;
+    let mut clear = color;
+    clear[3] = 0.0;
+    let ring =
+        |p: [f32; 2], scale: f32| [cx + (p[0] + dx - cx) * scale, cy + (p[1] + dy - cy) * scale];
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        let ia = ring(a, inset);
+        let ib = ring(b, inset);
+        let oa = ring(a, outset);
+        let ob = ring(b, outset);
+        r.triangle([[cx, cy], ia, ib], color);
+        r.colored_triangle([ia, ib, ob], [color, color, clear]);
+        r.colored_triangle([ia, ob, oa], [color, clear, clear]);
+    }
+}
+
+fn puzzle_line(r: &mut Renderer, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Color) {
+    let (inner, outer) = line_rings(x0, y0, x1, y1, width);
+    r.triangle([inner[0], inner[1], inner[2]], color);
+    r.triangle([inner[0], inner[2], inner[3]], color);
+    let mut clear = color;
+    clear[3] = 0.0;
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        r.colored_triangle([inner[i], inner[j], outer[j]], [color, color, clear]);
+        r.colored_triangle([inner[i], outer[j], outer[i]], [color, clear, clear]);
+    }
+}
+
+fn triangulate(points: &[[f32; 2]]) -> Vec<[[f32; 2]; 3]> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+    let area: f32 = (0..points.len())
+        .map(|i| {
+            let a = points[i];
+            let b = points[(i + 1) % points.len()];
+            a[0] * b[1] - a[1] * b[0]
+        })
+        .sum();
+    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
+    let mut indices: Vec<usize> = (0..points.len()).collect();
+    let mut out = Vec::with_capacity(points.len() - 2);
+    let mut attempts = 0;
+    while indices.len() > 3 && attempts < points.len() * points.len() {
+        let mut found = false;
+        for i in 0..indices.len() {
+            let a = points[indices[(i + indices.len() - 1) % indices.len()]];
+            let b = points[indices[i]];
+            let c = points[indices[(i + 1) % indices.len()]];
+            if cross(a, b, c) * sign <= 0.0001 {
+                continue;
+            }
+            if indices.iter().any(|j| {
+                let p = points[*j];
+                p != a
+                    && p != b
+                    && p != c
+                    && cross(a, b, p) * sign >= 0.0
+                    && cross(b, c, p) * sign >= 0.0
+                    && cross(c, a, p) * sign >= 0.0
+            }) {
+                continue;
+            }
+            out.push([a, b, c]);
+            indices.remove(i);
+            found = true;
+            break;
+        }
+        if !found {
+            break;
+        }
+        attempts += 1;
+    }
+    if indices.len() == 3 {
+        out.push([points[indices[0]], points[indices[1]], points[indices[2]]]);
+    }
+    out
+}
+fn cross(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f32 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1458,185 +1643,4 @@ mod tests {
             d_blitter_free(h, b);
         }
     }
-}
-
-fn short_text(r: &mut Renderer, text: &str, width: f32) -> String {
-    if r.text_width_weighted(text, 20.0, 600) <= width {
-        return text.into();
-    }
-    let mut result = String::new();
-    for c in text.chars() {
-        let next = format!("{result}{c}…");
-        if r.text_width_weighted(&next, 20.0, 600) > width {
-            break;
-        }
-        result.push(c);
-    }
-    result.push('…');
-    result
-}
-
-fn input_key(numeric: bool, digit: &mut i32, action: Action) -> Option<i32> {
-    Some(match action {
-        Action::Up => UP,
-        Action::Down => DOWN,
-        Action::Left => LEFT,
-        Action::Right => RIGHT,
-        Action::Select => {
-            if numeric {
-                if *digit == 0 {
-                    SELECT2
-                } else {
-                    '0' as i32 + *digit
-                }
-            } else {
-                SELECT
-            }
-        }
-        Action::Options => {
-            if numeric {
-                SELECT
-            } else {
-                SELECT2
-            }
-        }
-        Action::Previous => 'u' as i32,
-        Action::Next if numeric => {
-            *digit = (*digit + 1) % 10;
-            return None;
-        }
-        Action::Next => 'r' as i32,
-        _ => return None,
-    })
-}
-
-fn circle_points(cx: f32, cy: f32, r: f32) -> Vec<[f32; 2]> {
-    let count = ((r * 1.5) as usize).clamp(16, 64);
-    (0..count)
-        .map(|i| {
-            let a = i as f32 / count as f32 * std::f32::consts::TAU;
-            [cx + r * a.cos(), cy + r * a.sin()]
-        })
-        .collect()
-}
-fn line_rings(x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> ([[f32; 2]; 4], [[f32; 2]; 4]) {
-    let length = (x1 - x0).hypot(y1 - y0);
-    let (ux, uy) = if length < 0.01 {
-        (1.0, 0.0)
-    } else {
-        ((x1 - x0) / length, (y1 - y0) / length)
-    };
-    let nx = -uy;
-    let ny = ux;
-    let half = width * 0.5;
-    let ring = |inset: f32| {
-        let side = (half - inset).max(0.0);
-        let cap = half - inset;
-        [
-            [x0 - ux * cap + nx * side, y0 - uy * cap + ny * side],
-            [x1 + ux * cap + nx * side, y1 + uy * cap + ny * side],
-            [x1 + ux * cap - nx * side, y1 + uy * cap - ny * side],
-            [x0 - ux * cap - nx * side, y0 - uy * cap - ny * side],
-        ]
-    };
-    (ring(0.5), ring(-0.5))
-}
-#[allow(clippy::too_many_arguments)]
-fn puzzle_circle(
-    r: &mut Renderer,
-    cx: f32,
-    cy: f32,
-    radius: f32,
-    points: &[[f32; 2]],
-    dx: f32,
-    dy: f32,
-    color: Color,
-) {
-    if radius <= 0.0 {
-        return;
-    }
-    let inset = (radius - 0.5).max(0.0) / radius;
-    let outset = (radius + 0.5) / radius;
-    let mut clear = color;
-    clear[3] = 0.0;
-    let ring =
-        |p: [f32; 2], scale: f32| [cx + (p[0] + dx - cx) * scale, cy + (p[1] + dy - cy) * scale];
-    for i in 0..points.len() {
-        let a = points[i];
-        let b = points[(i + 1) % points.len()];
-        let ia = ring(a, inset);
-        let ib = ring(b, inset);
-        let oa = ring(a, outset);
-        let ob = ring(b, outset);
-        r.triangle([[cx, cy], ia, ib], color);
-        r.colored_triangle([ia, ib, ob], [color, color, clear]);
-        r.colored_triangle([ia, ob, oa], [color, clear, clear]);
-    }
-}
-
-fn puzzle_line(r: &mut Renderer, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Color) {
-    let (inner, outer) = line_rings(x0, y0, x1, y1, width);
-    r.triangle([inner[0], inner[1], inner[2]], color);
-    r.triangle([inner[0], inner[2], inner[3]], color);
-    let mut clear = color;
-    clear[3] = 0.0;
-    for i in 0..4 {
-        let j = (i + 1) % 4;
-        r.colored_triangle([inner[i], inner[j], outer[j]], [color, color, clear]);
-        r.colored_triangle([inner[i], outer[j], outer[i]], [color, clear, clear]);
-    }
-}
-
-fn triangulate(points: &[[f32; 2]]) -> Vec<[[f32; 2]; 3]> {
-    if points.len() < 3 {
-        return Vec::new();
-    }
-    let area: f32 = (0..points.len())
-        .map(|i| {
-            let a = points[i];
-            let b = points[(i + 1) % points.len()];
-            a[0] * b[1] - a[1] * b[0]
-        })
-        .sum();
-    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
-    let mut indices: Vec<usize> = (0..points.len()).collect();
-    let mut out = Vec::with_capacity(points.len() - 2);
-    let mut attempts = 0;
-    while indices.len() > 3 && attempts < points.len() * points.len() {
-        let mut found = false;
-        for i in 0..indices.len() {
-            let a = points[indices[(i + indices.len() - 1) % indices.len()]];
-            let b = points[indices[i]];
-            let c = points[indices[(i + 1) % indices.len()]];
-            if cross(a, b, c) * sign <= 0.0001 {
-                continue;
-            }
-            if indices.iter().any(|j| {
-                let p = points[*j];
-                p != a
-                    && p != b
-                    && p != c
-                    && cross(a, b, p) * sign >= 0.0
-                    && cross(b, c, p) * sign >= 0.0
-                    && cross(c, a, p) * sign >= 0.0
-            }) {
-                continue;
-            }
-            out.push([a, b, c]);
-            indices.remove(i);
-            found = true;
-            break;
-        }
-        if !found {
-            break;
-        }
-        attempts += 1;
-    }
-    if indices.len() == 3 {
-        out.push([points[indices[0]], points[indices[1]], points[indices[2]]]);
-    }
-    out
-}
-fn cross(a: [f32; 2], b: [f32; 2], c: [f32; 2]) -> f32 {
-    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }

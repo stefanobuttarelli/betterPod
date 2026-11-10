@@ -1001,7 +1001,7 @@ fn raster(kind: Kind, size: u32, phase: f64) -> Vec<u8> {
     let mut pen = Pen::new(size);
     pen.draw(kind, phase);
     let mut pixels = pen.image.take();
-    for p in pixels.chunks_exact_mut(4) {
+    for p in pixels.as_chunks_mut::<4>().0 {
         let a = p[3] as u32;
         if a > 0 && a < 255 {
             for c in &mut p[..3] {
@@ -1178,7 +1178,7 @@ mod tests {
         {
             for size in [84, 216] {
                 let mut pixels = raster(kind, size, 0.3);
-                for p in pixels.chunks_exact_mut(4) {
+                for p in pixels.as_chunks_mut::<4>().0 {
                     let a = p[3] as u32;
                     for (ch, bg) in [80_u32, 112, 144].into_iter().enumerate() {
                         p[ch] = ((p[ch] as u32 * a + bg * (255 - a) + 127) / 255) as u8;
@@ -1221,8 +1221,8 @@ mod tests {
         ] {
             let p = raster(kind, 216, 0.3);
             assert_eq!(p.len(), 216 * 216 * 4);
-            assert!(p.chunks_exact(4).any(|c| c[3] > 200));
-            assert!(p.chunks_exact(4).any(|c| c[3] == 0));
+            assert!(p.as_chunks::<4>().0.iter().any(|c| c[3] > 200));
+            assert!(p.as_chunks::<4>().0.iter().any(|c| c[3] == 0));
         }
     }
 }

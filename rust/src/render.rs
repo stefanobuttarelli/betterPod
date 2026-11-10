@@ -1227,7 +1227,7 @@ pub fn line_box(size: f32) -> (f32, f32) {
     let baseline =
         (css * 0.96875 * 2.0).round() - if (css - 14.0).abs() < 0.001 { 1.0 } else { 0.0 };
     (
-        2.0 * ((css * 0.96875).round() + (css * 0.2412109375).round()),
+        2.0 * ((css * 0.96875).round() + (css * (247.0 / 1024.0)).round()),
         baseline,
     )
 }

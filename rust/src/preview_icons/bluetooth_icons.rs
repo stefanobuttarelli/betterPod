@@ -227,10 +227,12 @@ mod tests {
         let mut rasters = std::collections::HashSet::new();
         for icon in icons {
             assert_eq!((icon.width, icon.height, icon.display_size), (192, 192, 96));
-            assert!(icon.pixels.chunks_exact(4).any(|p| p[3] == 0));
+            assert!(icon.pixels.as_chunks::<4>().0.iter().any(|p| p[3] == 0));
             assert!(icon
                 .pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|p| p[3] == 255 && p[..3].iter().all(|c| *c > 245)));
             assert!(
                 rasters.insert(icon.pixels),

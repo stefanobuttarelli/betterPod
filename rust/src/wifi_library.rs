@@ -7,7 +7,7 @@ use std::{
     collections::HashSet,
     io::ErrorKind,
     net::{IpAddr, Shutdown, TcpListener, TcpStream, UdpSocket},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
@@ -420,7 +420,7 @@ fn handle(
                 if let Some(track) = library
                     .tracks
                     .iter()
-                    .find(|track| track.path == PathBuf::from(&path))
+                    .find(|track| track.path.as_path() == Path::new(&path))
                 {
                     tracks.push(files::record_with_display(
                         track,
@@ -445,7 +445,7 @@ fn handle(
             let track = library
                 .tracks
                 .iter()
-                .find(|t| t.path == PathBuf::from(path))
+                .find(|t| t.path.as_path() == Path::new(path))
                 .ok_or("This track is not in the library")?;
             files::cover(track, roots, changed_artwork.contains(&track.path))
         }

@@ -566,7 +566,11 @@ impl Tiles {
             return;
         }
         self.spawned = free[self.rng.next() as usize % count];
-        self.board[self.spawned] = if self.rng.next() % 10 == 0 { 4 } else { 2 };
+        self.board[self.spawned] = if self.rng.next().is_multiple_of(10) {
+            4
+        } else {
+            2
+        };
         self.motion.push(MovingTile {
             value: self.board[self.spawned],
             index: self.spawned,
@@ -1482,7 +1486,7 @@ mod tests {
         g.phase = Phase::Playing;
         let block = g.blocks[0];
         g.ball = [block.x, block.y];
-        g.velocity = [-0.7071067811865476, -0.7071067811865476];
+        g.velocity = [-std::f64::consts::FRAC_1_SQRT_2; 2];
         g.tick(1.0 / 60.0);
         assert!(!g.blocks[0].active);
         assert_eq!(g.score, 7);

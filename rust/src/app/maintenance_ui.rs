@@ -286,7 +286,7 @@ impl Controller {
             self.push("Moving Music", Vec::new());
             return;
         }
-        let root = self
+        let _root = self
             .config
             .music
             .parent()
@@ -980,9 +980,7 @@ impl Controller {
                 }
             }
             Action::Select => {
-                let Some(choice) = page.rows.get(page.selected).map(|r| r.choice.clone()) else {
-                    return None;
-                };
+                let choice = page.rows.get(page.selected).map(|r| r.choice.clone())?;
                 match choice {
                     Choice::Noop | Choice::StopMove | Choice::HideMove => {}
                     Choice::Card(card) => self.choose_card(card),
@@ -1332,350 +1330,6 @@ impl Controller {
         }
         r.text(&self.status, 20., 400., 16, muted, 600.);
         r.text("A Select   B Back", 20., 454., 16, muted, 600.);
-    }
-}
-
-#[cfg(test)]
-mod controller_tests {
-    use super::*;
-    use std::time::Instant;
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    fn fixture() -> (PathBuf, Controller) {
-        let root = std::env::temp_dir().join(format!(
-            "betterpod-maint-controller-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        let music = root.join("music");
-        let data = root.join("data");
-        std::fs::create_dir_all(&music).unwrap();
-        std::fs::create_dir_all(&data).unwrap();
-        let config = m::Config {
-            bootstrap: data.clone(),
-            music,
-            data,
-            protected: vec![],
-        };
-        let updates = u::Config {
-            installation: root.join("ports"),
-            current_version: "1.1.0".into(),
-            feed: None,
-            beta_feed: None,
-            allow_beta: false,
-        };
-        (root, Controller::new(config, updates).unwrap())
-    }
-    #[test]
-    fn existing_owned_database_offers_use_or_explicit_replace_and_stable_sheet_identity() {
-        let (root, mut c) = fixture();
-        c.open(Mode::Database);
-        let destination = root.join("owned");
-        c.choose_database(discovery::Destination {
-            path: destination.clone(),
-            writable: true,
-            owned: true,
-            foreign: false,
-            has_files: true,
-        });
-        let one = c.visual_options().unwrap();
-        let two = c.visual_options().unwrap();
-        assert!(Arc::ptr_eq(&one.rows, &two.rows));
-        assert_eq!(
-            one.rows
-                .iter()
-                .map(|r| r.label.as_str())
-                .collect::<Vec<_>>(),
-            vec!["Use database there", "Replace with current", "Cancel"]
-        );
-        c.handle(Action::Down);
-        match c.handle(Action::Select) {
-            Some(Effect::Run(Request::Maintenance {
-                command:
-                    m::Command::ReplaceDatabase {
-                        destination: path,
-                        quiescent: true,
-                        confirmed: true,
-                    },
-                ..
-            })) => assert_eq!(path, destination),
-            _ => panic!("replace must retain the lifecycle request"),
-        }
-        drop(c);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn foreign_database_is_never_offered_for_replacement() {
-        let (root, mut c) = fixture();
-        c.open(Mode::Database);
-        c.choose_database(discovery::Destination {
-            path: root.join("foreign"),
-            writable: true,
-            owned: false,
-            foreign: true,
-            has_files: true,
-        });
-        assert!(!c.has_options());
-        assert!(c.status.contains("belonging to this app"));
-        drop(c);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn music_card_choice_preserves_all_three_original_actions() {
-        let (root, mut c) = fixture();
-        c.open(Mode::Music);
-        c.choose_card(discovery::Card {
-            name: "SD 2".into(),
-            root: root.clone(),
-            music: root.join("existing-music"),
-            free: 100,
-            total: 200,
-            here: false,
-            has_music: true,
-        });
-        let page = c.visual_options().unwrap();
-        assert_eq!(
-            page.rows
-                .iter()
-                .map(|r| r.label.as_str())
-                .collect::<Vec<_>>(),
-            vec![
-                "Move Music",
-                "Copy Music (keep the originals)",
-                "Use the Music Already There",
-                "Cancel"
-            ]
-        );
-        c.handle(Action::Back);
-        assert!(!c.has_options());
-        assert!(matches!(c.mode, Some(Mode::Music)));
-        drop(c);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn beta_detection_ignores_hyphens_in_build_metadata() {
-        assert!(!is_beta("1.1.0+local-build"));
-        assert!(is_beta("1.2.0-beta.3+local-build"));
-    }
-    #[test]
-    fn quit_collects_verified_switch_queued_after_last_frame_before_store_flush() {
-        use crate::storage::{Playback, Store};
-        let (root, mut controller) = fixture();
-        let config = controller.config.clone();
-        let source = config.music.clone();
-        let destination = root.join("second/music");
-        std::fs::create_dir_all(source.join("Album")).unwrap();
-        let song = source.join("Album/song.wav");
-        std::fs::write(&song, b"retained original").unwrap();
-        let store = Store::new(config.data.clone()).unwrap();
-        let request = controller.request(
-            m::Command::TransferMusic {
-                destination: destination.clone(),
-                remove_source: true,
-                confirmed: true,
-            },
-            "Moving Music",
-        );
-        assert!(matches!(
-            controller.launch(request),
-            Some(Effect::PauseMusic)
-        ));
-        // Do not tick: the critical event stays queued, as when Quit arrives
-        // after the last frame and verification publishes during shutdown.
-        let deadline = Instant::now() + std::time::Duration::from_secs(5);
-        while m::resolve_paths(&config.bootstrap, &source, &config.data).0 != destination {
-            assert!(Instant::now() < deadline);
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        let Some(Request::FinalizeTransfer { manifest, .. }) = controller.quiesce_for_shutdown()
-        else {
-            panic!("queued switch was lost during shutdown")
-        };
-        assert!(song.exists());
-        assert!(controller
-            .worker
-            .command(m::Command::Browse(source.clone()))
-            .is_none());
-        store
-            .save_playback(&Playback {
-                queue: vec![song.clone()],
-                index: 0,
-                position: 4.0,
-                paused: true,
-                ..Default::default()
-            })
-            .unwrap();
-        store.flush().unwrap();
-        drop(store);
-        drop(controller);
-        let mut switched = config.clone();
-        switched.music = destination.clone();
-        prepare_verified_transfer_clients(switched, manifest).unwrap();
-        let data = Store::new(config.data.clone()).unwrap();
-        assert!(data.load_playback().is_none());
-        assert_eq!(std::fs::read(&song).unwrap(), b"retained original");
-        assert_eq!(
-            std::fs::read(destination.join("Album/song.wav")).unwrap(),
-            b"retained original"
-        );
-        drop(data);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn verified_transfer_reopens_clients_before_background_cleanup_and_preserves_hide() {
-        use crate::storage::{Playback, Store};
-        for hidden in [false, true] {
-            let (root, mut old) = fixture();
-            let source = old.config.music.clone();
-            let destination = root.join("second-card/music");
-            let config = old.config.clone();
-            let updates = old.update_config.clone();
-            std::fs::create_dir_all(source.join("Album")).unwrap();
-            let original = source.join("Album/song.wav");
-            let bytes = vec![0x6a; 32768];
-            std::fs::write(&original, &bytes).unwrap();
-            let old_store = Store::new(config.data.clone()).unwrap();
-            let playback = Playback {
-                queue: vec![original.clone()],
-                index: 0,
-                position: 3.0,
-                paused: true,
-                ..Default::default()
-            };
-            old_store.save_playback(&playback).unwrap();
-            old_store.flush().unwrap();
-            let playlist = config.data.join("playlists/late.m3u");
-            std::fs::create_dir_all(playlist.parent().unwrap()).unwrap();
-            std::fs::write(&playlist, format!("#EXTM3U\n{}\n", original.display())).unwrap();
-            let library = Arc::new(crate::library::Library::from_tracks(vec![
-                crate::library::Track {
-                    path: original.clone(),
-                    title: "Song".into(),
-                    album: "Album".into(),
-                    ..Default::default()
-                },
-            ]));
-            old.set_library(Arc::clone(&library));
-            let request = old.request(
-                m::Command::TransferMusic {
-                    destination: destination.clone(),
-                    remove_source: true,
-                    confirmed: true,
-                },
-                "Moving Music",
-            );
-            assert!(matches!(old.launch(request), Some(Effect::PauseMusic)));
-            if hidden {
-                old.handle(Action::Back);
-                old.handle(Action::Down);
-                assert!(matches!(old.handle(Action::Select), Some(Effect::Exit)));
-            }
-            let deadline = Instant::now() + std::time::Duration::from_secs(5);
-            let finalize = loop {
-                let mut finalize = None;
-                for effect in old.tick() {
-                    if let Effect::Run(request) = effect {
-                        finalize = Some(request);
-                    }
-                }
-                if let Some(request) = finalize {
-                    break request;
-                }
-                assert!(
-                    Instant::now() < deadline,
-                    "verified copy did not reach client barrier"
-                );
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            };
-            assert_eq!(std::fs::read(&original).unwrap(), bytes);
-            assert_eq!(
-                std::fs::read(destination.join("Album/song.wav")).unwrap(),
-                bytes
-            );
-            // Reproduce late writes by clients that were alive during the first
-            // verification. No new client may read these old paths yet.
-            let mut late = playback.clone();
-            late.position = 4.0;
-            old_store.save_playback(&late).unwrap();
-            old_store.flush().unwrap();
-            assert!(std::fs::read_to_string(config.data.join("playback.json"))
-                .unwrap()
-                .contains(original.to_str().unwrap()));
-            std::fs::write(&playlist, format!("#EXTM3U\n{}\n", original.display())).unwrap();
-            drop(old_store);
-            drop(old);
-            let Request::FinalizeTransfer {
-                manifest, visible, ..
-            } = finalize
-            else {
-                panic!(
-                    "verified transfer must reopen clients instead of entering a blocking runner"
-                )
-            };
-            assert_eq!(visible, !hidden);
-            let mut new_config = config.clone();
-            new_config.music = destination.clone();
-            prepare_verified_transfer_clients(new_config.clone(), manifest.clone()).unwrap();
-            assert!(original.exists(), "preparation must not delete originals");
-            let cleared: Playback =
-                serde_json::from_slice(&std::fs::read(config.data.join("playback.json")).unwrap())
-                    .unwrap();
-            assert!(cleared.queue.is_empty());
-            let text = std::fs::read_to_string(&playlist).unwrap();
-            assert!(text.contains(destination.to_str().unwrap()));
-            assert!(!text.contains(source.to_str().unwrap()));
-            // The newly opened Store is operable while cleanup runs. Its
-            // current destination playback must survive the cleanup worker.
-            let new_store = Store::new(config.data.clone()).unwrap();
-            assert!(new_store.load_playback().is_none());
-            let current = Playback {
-                queue: vec![destination.join("Album/song.wav")],
-                index: 0,
-                position: 9.0,
-                paused: false,
-                ..Default::default()
-            };
-            new_store.save_playback(&current).unwrap();
-            new_store.flush().unwrap();
-            let mut new = Controller::new(new_config, updates).unwrap();
-            new.adopt_verified_transfer(manifest, library, visible)
-                .unwrap();
-            assert_eq!(new.has_visible_transfer(), !hidden);
-            if !hidden {
-                new.handle(Action::Back);
-                assert!(new.has_options());
-                new.handle(Action::Down);
-                assert!(matches!(new.handle(Action::Select), Some(Effect::Exit)));
-                assert!(!new.has_visible_transfer());
-            }
-            let deadline = Instant::now() + std::time::Duration::from_secs(5);
-            while !new.active_move.as_ref().unwrap().view.finished() {
-                for effect in new.tick() {
-                    assert!(
-                        !matches!(effect, Effect::Run(_)),
-                        "adopted cleanup must stay in the operable App"
-                    );
-                }
-                assert!(Instant::now() < deadline, "background cleanup stalled");
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-            assert!(!original.exists());
-            assert_eq!(
-                std::fs::read(destination.join("Album/song.wav")).unwrap(),
-                bytes
-            );
-            let saved: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(config.data.join("playback.json")).unwrap())
-                    .unwrap();
-            assert_eq!(
-                saved["queue"][0],
-                current.queue[0].to_string_lossy().as_ref()
-            );
-            assert_eq!(saved["position"], 9.0);
-            assert!(!new.has_visible_transfer());
-            drop(new);
-            drop(new_store);
-            std::fs::remove_dir_all(root).unwrap();
-        }
     }
 }
 
@@ -2047,5 +1701,349 @@ fn draw_runner_header(
     }) {
         let w = (44.0 * (pct as f32 / 85.0).min(1.0)).round();
         r.image_uv(fill, [578., 9., w, 20.], [0., 0., w / 44., 1.], 1.);
+    }
+}
+
+#[cfg(test)]
+mod controller_tests {
+    use super::*;
+    use std::time::Instant;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    fn fixture() -> (PathBuf, Controller) {
+        let root = std::env::temp_dir().join(format!(
+            "betterpod-maint-controller-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let music = root.join("music");
+        let data = root.join("data");
+        std::fs::create_dir_all(&music).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        let config = m::Config {
+            bootstrap: data.clone(),
+            music,
+            data,
+            protected: vec![],
+        };
+        let updates = u::Config {
+            installation: root.join("ports"),
+            current_version: "1.1.0".into(),
+            feed: None,
+            beta_feed: None,
+            allow_beta: false,
+        };
+        (root, Controller::new(config, updates).unwrap())
+    }
+    #[test]
+    fn existing_owned_database_offers_use_or_explicit_replace_and_stable_sheet_identity() {
+        let (root, mut c) = fixture();
+        c.open(Mode::Database);
+        let destination = root.join("owned");
+        c.choose_database(discovery::Destination {
+            path: destination.clone(),
+            writable: true,
+            owned: true,
+            foreign: false,
+            has_files: true,
+        });
+        let one = c.visual_options().unwrap();
+        let two = c.visual_options().unwrap();
+        assert!(Arc::ptr_eq(&one.rows, &two.rows));
+        assert_eq!(
+            one.rows
+                .iter()
+                .map(|r| r.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Use database there", "Replace with current", "Cancel"]
+        );
+        c.handle(Action::Down);
+        match c.handle(Action::Select) {
+            Some(Effect::Run(Request::Maintenance {
+                command:
+                    m::Command::ReplaceDatabase {
+                        destination: path,
+                        quiescent: true,
+                        confirmed: true,
+                    },
+                ..
+            })) => assert_eq!(path, destination),
+            _ => panic!("replace must retain the lifecycle request"),
+        }
+        drop(c);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn foreign_database_is_never_offered_for_replacement() {
+        let (root, mut c) = fixture();
+        c.open(Mode::Database);
+        c.choose_database(discovery::Destination {
+            path: root.join("foreign"),
+            writable: true,
+            owned: false,
+            foreign: true,
+            has_files: true,
+        });
+        assert!(!c.has_options());
+        assert!(c.status.contains("belonging to this app"));
+        drop(c);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn music_card_choice_preserves_all_three_original_actions() {
+        let (root, mut c) = fixture();
+        c.open(Mode::Music);
+        c.choose_card(discovery::Card {
+            name: "SD 2".into(),
+            root: root.clone(),
+            music: root.join("existing-music"),
+            free: 100,
+            total: 200,
+            here: false,
+            has_music: true,
+        });
+        let page = c.visual_options().unwrap();
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|r| r.label.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "Move Music",
+                "Copy Music (keep the originals)",
+                "Use the Music Already There",
+                "Cancel"
+            ]
+        );
+        c.handle(Action::Back);
+        assert!(!c.has_options());
+        assert!(matches!(c.mode, Some(Mode::Music)));
+        drop(c);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn beta_detection_ignores_hyphens_in_build_metadata() {
+        assert!(!is_beta("1.1.0+local-build"));
+        assert!(is_beta("1.2.0-beta.3+local-build"));
+    }
+    #[test]
+    fn quit_collects_verified_switch_queued_after_last_frame_before_store_flush() {
+        use crate::storage::{Playback, Store};
+        let (root, mut controller) = fixture();
+        let config = controller.config.clone();
+        let source = config.music.clone();
+        let destination = root.join("second/music");
+        std::fs::create_dir_all(source.join("Album")).unwrap();
+        let song = source.join("Album/song.wav");
+        std::fs::write(&song, b"retained original").unwrap();
+        let store = Store::new(config.data.clone()).unwrap();
+        let request = controller.request(
+            m::Command::TransferMusic {
+                destination: destination.clone(),
+                remove_source: true,
+                confirmed: true,
+            },
+            "Moving Music",
+        );
+        assert!(matches!(
+            controller.launch(request),
+            Some(Effect::PauseMusic)
+        ));
+        // Do not tick: the critical event stays queued, as when Quit arrives
+        // after the last frame and verification publishes during shutdown.
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while m::resolve_paths(&config.bootstrap, &source, &config.data).0 != destination {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let Some(Request::FinalizeTransfer { manifest, .. }) = controller.quiesce_for_shutdown()
+        else {
+            panic!("queued switch was lost during shutdown")
+        };
+        assert!(song.exists());
+        assert!(controller
+            .worker
+            .command(m::Command::Browse(source.clone()))
+            .is_none());
+        store
+            .save_playback(&Playback {
+                queue: vec![song.clone()],
+                index: 0,
+                position: 4.0,
+                paused: true,
+                ..Default::default()
+            })
+            .unwrap();
+        store.flush().unwrap();
+        drop(store);
+        drop(controller);
+        let mut switched = config.clone();
+        switched.music = destination.clone();
+        prepare_verified_transfer_clients(switched, manifest).unwrap();
+        let data = Store::new(config.data.clone()).unwrap();
+        assert!(data.load_playback().is_none());
+        assert_eq!(std::fs::read(&song).unwrap(), b"retained original");
+        assert_eq!(
+            std::fs::read(destination.join("Album/song.wav")).unwrap(),
+            b"retained original"
+        );
+        drop(data);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn verified_transfer_reopens_clients_before_background_cleanup_and_preserves_hide() {
+        use crate::storage::{Playback, Store};
+        for hidden in [false, true] {
+            let (root, mut old) = fixture();
+            let source = old.config.music.clone();
+            let destination = root.join("second-card/music");
+            let config = old.config.clone();
+            let updates = old.update_config.clone();
+            std::fs::create_dir_all(source.join("Album")).unwrap();
+            let original = source.join("Album/song.wav");
+            let bytes = vec![0x6a; 32768];
+            std::fs::write(&original, &bytes).unwrap();
+            let old_store = Store::new(config.data.clone()).unwrap();
+            let playback = Playback {
+                queue: vec![original.clone()],
+                index: 0,
+                position: 3.0,
+                paused: true,
+                ..Default::default()
+            };
+            old_store.save_playback(&playback).unwrap();
+            old_store.flush().unwrap();
+            let playlist = config.data.join("playlists/late.m3u");
+            std::fs::create_dir_all(playlist.parent().unwrap()).unwrap();
+            std::fs::write(&playlist, format!("#EXTM3U\n{}\n", original.display())).unwrap();
+            let library = Arc::new(crate::library::Library::from_tracks(vec![
+                crate::library::Track {
+                    path: original.clone(),
+                    title: "Song".into(),
+                    album: "Album".into(),
+                    ..Default::default()
+                },
+            ]));
+            old.set_library(Arc::clone(&library));
+            let request = old.request(
+                m::Command::TransferMusic {
+                    destination: destination.clone(),
+                    remove_source: true,
+                    confirmed: true,
+                },
+                "Moving Music",
+            );
+            assert!(matches!(old.launch(request), Some(Effect::PauseMusic)));
+            if hidden {
+                old.handle(Action::Back);
+                old.handle(Action::Down);
+                assert!(matches!(old.handle(Action::Select), Some(Effect::Exit)));
+            }
+            let deadline = Instant::now() + std::time::Duration::from_secs(5);
+            let finalize = loop {
+                let mut finalize = None;
+                for effect in old.tick() {
+                    if let Effect::Run(request) = effect {
+                        finalize = Some(request);
+                    }
+                }
+                if let Some(request) = finalize {
+                    break request;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "verified copy did not reach client barrier"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            };
+            assert_eq!(std::fs::read(&original).unwrap(), bytes);
+            assert_eq!(
+                std::fs::read(destination.join("Album/song.wav")).unwrap(),
+                bytes
+            );
+            // Reproduce late writes by clients that were alive during the first
+            // verification. No new client may read these old paths yet.
+            let mut late = playback.clone();
+            late.position = 4.0;
+            old_store.save_playback(&late).unwrap();
+            old_store.flush().unwrap();
+            assert!(std::fs::read_to_string(config.data.join("playback.json"))
+                .unwrap()
+                .contains(original.to_str().unwrap()));
+            std::fs::write(&playlist, format!("#EXTM3U\n{}\n", original.display())).unwrap();
+            drop(old_store);
+            drop(old);
+            let Request::FinalizeTransfer {
+                manifest, visible, ..
+            } = finalize
+            else {
+                panic!(
+                    "verified transfer must reopen clients instead of entering a blocking runner"
+                )
+            };
+            assert_eq!(visible, !hidden);
+            let mut new_config = config.clone();
+            new_config.music = destination.clone();
+            prepare_verified_transfer_clients(new_config.clone(), manifest.clone()).unwrap();
+            assert!(original.exists(), "preparation must not delete originals");
+            let cleared: Playback =
+                serde_json::from_slice(&std::fs::read(config.data.join("playback.json")).unwrap())
+                    .unwrap();
+            assert!(cleared.queue.is_empty());
+            let text = std::fs::read_to_string(&playlist).unwrap();
+            assert!(text.contains(destination.to_str().unwrap()));
+            assert!(!text.contains(source.to_str().unwrap()));
+            // The newly opened Store is operable while cleanup runs. Its
+            // current destination playback must survive the cleanup worker.
+            let new_store = Store::new(config.data.clone()).unwrap();
+            assert!(new_store.load_playback().is_none());
+            let current = Playback {
+                queue: vec![destination.join("Album/song.wav")],
+                index: 0,
+                position: 9.0,
+                paused: false,
+                ..Default::default()
+            };
+            new_store.save_playback(&current).unwrap();
+            new_store.flush().unwrap();
+            let mut new = Controller::new(new_config, updates).unwrap();
+            new.adopt_verified_transfer(manifest, library, visible)
+                .unwrap();
+            assert_eq!(new.has_visible_transfer(), !hidden);
+            if !hidden {
+                new.handle(Action::Back);
+                assert!(new.has_options());
+                new.handle(Action::Down);
+                assert!(matches!(new.handle(Action::Select), Some(Effect::Exit)));
+                assert!(!new.has_visible_transfer());
+            }
+            let deadline = Instant::now() + std::time::Duration::from_secs(5);
+            while !new.active_move.as_ref().unwrap().view.finished() {
+                for effect in new.tick() {
+                    assert!(
+                        !matches!(effect, Effect::Run(_)),
+                        "adopted cleanup must stay in the operable App"
+                    );
+                }
+                assert!(Instant::now() < deadline, "background cleanup stalled");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert!(!original.exists());
+            assert_eq!(
+                std::fs::read(destination.join("Album/song.wav")).unwrap(),
+                bytes
+            );
+            let saved: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(config.data.join("playback.json")).unwrap())
+                    .unwrap();
+            assert_eq!(
+                saved["queue"][0],
+                current.queue[0].to_string_lossy().as_ref()
+            );
+            assert_eq!(saved["position"], 9.0);
+            assert!(!new.has_visible_transfer());
+            drop(new);
+            drop(new_store);
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 }

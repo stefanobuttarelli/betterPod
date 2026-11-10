@@ -35,7 +35,7 @@ impl App {
         if page.screen != Screen::CoverFlow {
             r.rect(0.0, 40.0, 640.0, 440.0, bg);
         }
-        if page.screen == Screen::Extra
+        let drew_previous = (page.screen == Screen::Extra
             && self.extras.draw_previous(
                 &page,
                 r,
@@ -43,17 +43,21 @@ impl App {
                 elapsed,
                 &mut self.art,
                 &self.visual_assets,
-            )
-        {
-        } else if page.screen == Screen::Curation
-            && self
-                .curation
-                .draw_previous(&page, r, self.dark(), &self.visual_assets, elapsed)
-        {
-        } else if matches!(page.screen, Screen::Extra | Screen::Curation) && !page.rows.is_empty() {
-            self.visual_menu_page(r, &page, 0.0, false, true);
-        } else {
-            self.visual_draw_screen(page.screen, r, elapsed, fg, muted);
+            ))
+            || (page.screen == Screen::Curation
+                && self.curation.draw_previous(
+                    &page,
+                    r,
+                    self.dark(),
+                    &self.visual_assets,
+                    elapsed,
+                ));
+        if !drew_previous {
+            if matches!(page.screen, Screen::Extra | Screen::Curation) && !page.rows.is_empty() {
+                self.visual_menu_page(r, &page, 0.0, false, true);
+            } else {
+                self.visual_draw_screen(page.screen, r, elapsed, fg, muted);
+            }
         }
         if whole_panel && !matches!(page.screen, Screen::Visualizer | Screen::Video) {
             self.visual_menu_draw_header(r, &page.title, 0.0, 640.0, false);

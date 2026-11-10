@@ -551,9 +551,9 @@ impl Saver {
                         .unwrap_or(0);
                 }
             }
-            if card.playing && !card.home.running(now) && card.home.value(now) >= 1. {
-                card_done = true;
-            } else if !card.playing && card.open.target() == 0. && !card.open.running(now) {
+            if (card.playing && !card.home.running(now) && card.home.value(now) >= 1.)
+                || (!card.playing && card.open.target() == 0. && !card.open.running(now))
+            {
                 card_done = true;
             }
             let h = 400. - info_height() - 4.;
@@ -1126,7 +1126,7 @@ impl Saver {
         }
         let elapsed = now - self.name_at;
         if elapsed < 1.8 {
-            let a = ((1.8 - elapsed) / 0.5).min(1.).max(0.);
+            let a = ((1.8 - elapsed) / 0.5).clamp(0., 1.);
             let text = if self.name_palette {
                 format!("Colors · {}", palette_name(self.palette))
             } else {

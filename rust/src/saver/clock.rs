@@ -45,8 +45,8 @@ impl FrostClock {
             width += self.font.metrics(c, 150.).advance_width;
             previous = Some(c);
         }
-        self.width = (width.ceil() as usize + 24 + 3) / 4 * 4;
-        self.height = (113 + 24 + 3) / 4 * 4;
+        self.width = (width.ceil() as usize + 24).next_multiple_of(4);
+        self.height = (113_usize + 24).next_multiple_of(4);
         let n = self.width * self.height;
         self.mask = vec![0; n];
         let mut x = 12_f32;
@@ -179,13 +179,13 @@ impl FrostClock {
                 let i01 = (sy0 * sw + sx1) * 3;
                 let i10 = (sy1 * sw + sx0) * 3;
                 let i11 = (sy1 * sw + sx1) * 3;
-                let a = mask as u32 * ka >> 8;
-                let rim = self.rim[i] as u32 * ka >> 8;
+                let a = (mask as u32 * ka) >> 8;
+                let rim = (self.rim[i] as u32 * ka) >> 8;
                 for ch in 0..3 {
                     let top = (self.small[i00 + ch] * (256 - wx) + self.small[i01 + ch] * wx) >> 8;
                     let bottom =
                         (self.small[i10 + ch] * (256 - wx) + self.small[i11 + ch] * wx) >> 8;
-                    let value = (((top * (256 - wy) + bottom * wy) >> 8) * 179 >> 8) + 77;
+                    let value = ((((top * (256 - wy) + bottom * wy) >> 8) * 179) >> 8) + 77;
                     let mut result = (value * a + original[ch] as u32 * (255 - a)) / 255;
                     result += (255 - result) * rim / 255;
                     self.pixels[o + ch] = result as u8;

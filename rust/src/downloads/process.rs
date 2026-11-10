@@ -152,6 +152,7 @@ fn run(
     Ok(out.text())
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
 fn protect_resolver(command: &mut Command) {
     #[cfg(target_os = "linux")]
     {

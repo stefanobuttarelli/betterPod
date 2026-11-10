@@ -1067,7 +1067,7 @@ impl App {
                     .map_or(f64::INFINITY, |start| now - start);
                 if elapsed >= 4.26 {
                     self.visual_menu.ticker_started = Some(now);
-                } else if elapsed >= 0.38 && elapsed < 3.88 {
+                } else if (0.38..3.88).contains(&elapsed) {
                     self.visual_menu.ticker_started = Some(now - 0.38);
                 } else if elapsed >= 3.88 {
                     self.visual_menu.ticker_next = Some(track.clone());
@@ -2152,9 +2152,8 @@ impl App {
             return;
         }
         let phase = self.visual_menu.mini_change.value(now);
-        let old = self.visual_menu.mini_old.clone();
-        if phase < 1.0 && old.is_some() {
-            let old = old.unwrap();
+        let old = self.visual_menu.mini_old.clone().filter(|_| phase < 1.0);
+        if let Some(old) = old {
             let out = go_ease_in_out((phase / 0.45).min(1.0));
             let incoming = go_ease_in_out(((phase - 0.45) / 0.55).max(0.0));
             let shift = 52.0 * self.visual_menu.mini_direction;
@@ -3100,7 +3099,7 @@ pub(super) fn ellipsize(
     ends.push(text.len());
     let (mut lo, mut hi) = (0, ends.len() - 1);
     while lo < hi {
-        let mid = (lo + hi + 1) / 2;
+        let mid = (lo + hi).div_ceil(2);
         if r.text_width_weighted(&text[..ends[mid]], size, weight) + ew <= max_width {
             lo = mid;
         } else {

@@ -684,8 +684,8 @@ mod album_path_tests {
                 .len(),
             2
         );
-        assert!(validated_tag_paths(&data, Some(&music), &[outside.clone()]).is_err());
-        assert!(validated_tag_paths(&data, Some(&music), &[music.clone()]).is_err());
+        assert!(validated_tag_paths(&data, Some(&music), std::slice::from_ref(&outside)).is_err());
+        assert!(validated_tag_paths(&data, Some(&music), std::slice::from_ref(&music)).is_err());
         #[cfg(unix)]
         {
             let link = music.join("escape.mp3");

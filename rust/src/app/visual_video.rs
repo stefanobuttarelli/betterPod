@@ -961,7 +961,7 @@ fn ellipsize(r: &mut Renderer, text: &str, size: f32, weight: u16, width: f32) -
     }
     let (mut lo, mut hi) = (0, chars.len());
     while lo < hi {
-        let mid = (lo + hi + 1) / 2;
+        let mid = (lo + hi).div_ceil(2);
         let candidate = format!("{}…", chars[..mid].iter().collect::<String>());
         if r.text_width_weighted(&candidate, size, weight) <= width {
             lo = mid

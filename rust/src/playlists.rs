@@ -617,7 +617,9 @@ mod tests {
         let loaded = store.load(&imported).unwrap();
         assert!(loaded.read_only);
         assert_eq!(loaded.tracks, vec![song.clone(), song.clone()]);
-        assert!(store.append(&imported, &[song.clone()]).is_err());
+        assert!(store
+            .append(&imported, std::slice::from_ref(&song))
+            .is_err());
         assert!(store.remove_track(&imported, 0).is_err());
         assert_eq!(fs::read_to_string(&imported).unwrap(), contents);
         assert_eq!(store.list().unwrap().len(), 1);
@@ -706,7 +708,7 @@ mod tests {
         let link = store.directory.join("Alias.m3u8");
         symlink(&original, &link).unwrap();
         assert!(store.load(&link).is_err());
-        assert!(store.append(&link, &[song.clone()]).is_err());
+        assert!(store.append(&link, std::slice::from_ref(&song)).is_err());
         assert!(store.delete(&link).is_err());
         let moved = root.join("old-playlists");
         fs::rename(&store.directory, &moved).unwrap();

@@ -3312,11 +3312,7 @@ impl Extras {
                 } => {
                     self.status = format!(
                         "{phase} - {}% {}",
-                        if total > 0 {
-                            done.saturating_mul(100) / total
-                        } else {
-                            0
-                        },
+                        done.saturating_mul(100).checked_div(total).unwrap_or(0),
                         peer.unwrap_or_default()
                     );
                 }
@@ -3706,13 +3702,13 @@ impl Extras {
                                     {
                                         state.pending = state.pending.saturating_sub(1);
                                         for item in items {
-                                            if !state.cover || !item.cover.is_empty() {
-                                                if !state.hits.iter().any(|old| {
+                                            if (!state.cover || !item.cover.is_empty())
+                                                && !state.hits.iter().any(|old| {
                                                     old.provider == item.provider
                                                         && old.id == item.id
-                                                }) {
-                                                    state.hits.push(item);
-                                                }
+                                                })
+                                            {
+                                                state.hits.push(item);
                                             }
                                         }
                                         let cover = state.cover;

@@ -146,7 +146,7 @@ impl Covers {
         }
     }
     pub fn draw(&mut self, r: &mut Renderer, assets: &VisualAssets, dark: bool, now: f64) {
-        let dt = self.last.map_or(0.5, |last| (now - last).max(0.).min(0.5));
+        let dt = self.last.map_or(0.5, |last| (now - last).clamp(0., 0.5));
         self.last = Some(now);
         let target = self.target();
         if target < self.shown {
@@ -300,7 +300,7 @@ fn center(r: &mut Renderer, text: &str, baseline: f32, size: f32, weight: u16, c
     if r.text_width_weighted(&label, size, weight) > max {
         let (mut lo, mut hi) = (0, chars.len());
         while lo < hi {
-            let mid = (lo + hi + 1) / 2;
+            let mid = (lo + hi).div_ceil(2);
             let candidate = format!("{}…", chars[..mid].iter().collect::<String>());
             if r.text_width_weighted(&candidate, size, weight) <= max {
                 lo = mid

@@ -1340,7 +1340,7 @@ mod tests {
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0; 4096];
-            stream.read(&mut request).unwrap();
+            assert!(stream.read(&mut request).unwrap() > 0);
             ready_tx.send(()).unwrap();
             let _ = release_rx.recv_timeout(Duration::from_secs(5));
             let _ = stream.write_all(

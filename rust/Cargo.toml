@@ -2,6 +2,8 @@
 name = "betterpod-rust"
 version = "0.2.12"
 edition = "2021"
+# Matches RUST_VERSION in tools/Dockerfile, which builds the console package.
+rust-version = "1.98"
 publish = false
 
 [dependencies]
@@ -37,6 +39,14 @@ spake2 = "=0.4.0"
 chacha20poly1305 = "=0.10.1"
 hkdf = "=0.12.4"
 rand = "=0.8.8"
+
+[lints.clippy]
+# Drawing helpers keep the Go reference's positional geometry arguments.
+too_many_arguments = "allow"
+# Pixel, band and grid loops mirror the Go reference's index arithmetic.
+needless_range_loop = "allow"
+# Worker messages cross a channel once per event; boxing them buys nothing.
+large_enum_variant = "allow"
 
 [build-dependencies]
 cc = "1"

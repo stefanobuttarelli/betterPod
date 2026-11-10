@@ -458,7 +458,7 @@ fn capture_static_scenes() -> Result<(), String> {
             mini_shown: app.visual_menu_qa_mini_state().1,
             control_mode:
                 if matches!(scene.screen.as_str(), "coverflow-card" | "nowplaying-card") {
-                    "card".into()
+                    "card"
                 } else if app.screen() == Screen::NowPlaying {
                     match app.np_mode {
                         1 => "scrub",

@@ -124,7 +124,7 @@ fn automatic_cover_cache_miss_and_hit_embed_the_center_cover_in_m4a() {
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0; 4096];
-        stream.read(&mut request).unwrap();
+        assert!(stream.read(&mut request).unwrap() > 0);
         stream
             .write_all(
                 format!(
@@ -173,7 +173,7 @@ fn automatic_cover_cancel_keeps_the_download_lane_and_never_starts_media() {
     let server = thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0; 4096];
-        stream.read(&mut request).unwrap();
+        assert!(stream.read(&mut request).unwrap() > 0);
         stream
             .write_all(
                 format!(
@@ -257,7 +257,7 @@ fn archive_then_youtube_downloads_are_fifo_after_success_failure_or_cancel() {
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0; 4096];
-            stream.read(&mut request).unwrap();
+            assert!(stream.read(&mut request).unwrap() > 0);
             ready_tx.send(()).unwrap();
             release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
             let code = if outcome == "failure" {

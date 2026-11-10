@@ -198,11 +198,10 @@ fn serve(mut socket: TcpStream, source: &Source) -> Result<(), String> {
         from,
         from.saturating_add(CHUNK - 1).min(to.unwrap_or(u64::MAX)),
     )
-    .map_err(|error| {
+    .inspect_err(|_| {
         let _ = socket.write_all(
             b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         );
-        error
     })?;
     let size = total(&response).max(source.size.load(Ordering::Acquire));
     if size > 0 {

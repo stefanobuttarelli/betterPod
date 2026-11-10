@@ -77,35 +77,6 @@ fn toast_lines(text: &str, width: f32, mut measure: impl FnMut(&str) -> f32) -> 
     lines
 }
 
-#[cfg(test)]
-mod toast_tests {
-    use super::toast_lines;
-    fn width(text: &str) -> f32 {
-        text.chars()
-            .map(|c| if c.is_ascii() { 1. } else { 2. })
-            .sum()
-    }
-    #[test]
-    fn toast_errors_wrap_inside_the_screen_without_losing_short_message_words() {
-        let message = "Choose a playlist name without path separators or control characters";
-        let lines = toast_lines(message, 26., width);
-        assert_eq!(lines.join(" "), message);
-        assert!(lines.len() > 1 && lines.len() <= 3);
-        assert!(lines.iter().all(|line| width(line) <= 26.));
-        assert_eq!(
-            toast_lines("Enter a playlist name", 26., width),
-            ["Enter a playlist name"]
-        );
-    }
-    #[test]
-    fn toast_long_paths_and_unicode_remain_bounded_and_show_truncation() {
-        let lines = toast_lines(&"長い名前/file".repeat(100), 20., width);
-        assert_eq!(lines.len(), 3);
-        assert!(lines.iter().all(|line| width(line) <= 20.));
-        assert!(lines.last().unwrap().ends_with('…'));
-    }
-}
-
 impl App {
     pub(super) fn visual_feedback_draw(&mut self, r: &mut Renderer) {
         let now = self.visual_time;
@@ -570,5 +541,34 @@ fn sparkle(r: &mut Renderer, x: f32, y: f32, c: Color) {
             let q = points[(i + 1) % 8];
             r.triangle([[x, y], [x + p[0], y + p[1]], [x + q[0], y + q[1]]], c);
         }
+    }
+}
+
+#[cfg(test)]
+mod toast_tests {
+    use super::toast_lines;
+    fn width(text: &str) -> f32 {
+        text.chars()
+            .map(|c| if c.is_ascii() { 1. } else { 2. })
+            .sum()
+    }
+    #[test]
+    fn toast_errors_wrap_inside_the_screen_without_losing_short_message_words() {
+        let message = "Choose a playlist name without path separators or control characters";
+        let lines = toast_lines(message, 26., width);
+        assert_eq!(lines.join(" "), message);
+        assert!(lines.len() > 1 && lines.len() <= 3);
+        assert!(lines.iter().all(|line| width(line) <= 26.));
+        assert_eq!(
+            toast_lines("Enter a playlist name", 26., width),
+            ["Enter a playlist name"]
+        );
+    }
+    #[test]
+    fn toast_long_paths_and_unicode_remain_bounded_and_show_truncation() {
+        let lines = toast_lines(&"長い名前/file".repeat(100), 20., width);
+        assert_eq!(lines.len(), 3);
+        assert!(lines.iter().all(|line| width(line) <= 20.));
+        assert!(lines.last().unwrap().ends_with('…'));
     }
 }

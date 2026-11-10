@@ -864,7 +864,7 @@ fn commas(value: usize) -> String {
     let value = value.to_string();
     let mut out = String::new();
     for (i, c) in value.chars().enumerate() {
-        if i > 0 && (value.len() - i) % 3 == 0 {
+        if i > 0 && (value.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c)

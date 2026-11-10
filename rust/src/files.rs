@@ -531,8 +531,8 @@ fn space(path: &Path) -> Result<Space, String> {
     }
     let stat = unsafe { stat.assume_init() };
     Ok(Space {
-        total: (stat.f_blocks as u64).saturating_mul(stat.f_frsize as u64),
-        free: (stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64),
+        total: (stat.f_blocks as u64).saturating_mul(stat.f_frsize),
+        free: (stat.f_bavail as u64).saturating_mul(stat.f_frsize),
     })
 }
 fn audio(path: &Path) -> bool {

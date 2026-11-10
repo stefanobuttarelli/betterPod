@@ -553,7 +553,7 @@ fn fetch(
 ) -> Result<File, String> {
     let (index, part) = key;
     let item = &session.items[index];
-    if !session.plans.contains_key(&index) {
+    if let std::collections::hash_map::Entry::Vacant(slot) = session.plans.entry(index) {
         let youtube = item.url.contains("youtube.com/") || item.url.contains("youtu.be/");
         let source = if youtube {
             downloads::resolve_listen_stream(context, data, item)?
@@ -576,15 +576,12 @@ fn fetch(
         let duration = fragment
             .as_ref()
             .map_or(source.duration.max(item.seconds), |p| p.duration);
-        session.plans.insert(
-            index,
-            Plan {
-                source,
-                chunked: fragment.is_some(),
-                duration,
-                fragment,
-            },
-        );
+        slot.insert(Plan {
+            source,
+            chunked: fragment.is_some(),
+            duration,
+            fragment,
+        });
     }
     let plan = &session.plans[&index];
     let path = session.root.join(format!(

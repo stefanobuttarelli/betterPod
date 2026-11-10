@@ -805,11 +805,15 @@ mod tests {
     #[test]
     fn sharing_name_stays_unset_until_chosen_and_bounds_unicode_without_splitting() {
         assert!(Settings::default().normalize().sharing_name.is_empty());
-        let mut settings = Settings::default();
-        settings.sharing_name = "é".repeat(40);
+        let settings = Settings {
+            sharing_name: "é".repeat(40),
+            ..Settings::default()
+        };
         assert_eq!(settings.normalize().sharing_name, "é".repeat(32));
-        let mut settings = Settings::default();
-        settings.sharing_name = " \n ".into();
+        let settings = Settings {
+            sharing_name: " \n ".into(),
+            ..Settings::default()
+        };
         assert!(settings.normalize().sharing_name.is_empty());
     }
 

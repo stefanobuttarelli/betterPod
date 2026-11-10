@@ -939,7 +939,7 @@ fn ensure_space(data: &Path, needed: u64) -> Result<(), String> {
         return Err(std::io::Error::last_os_error().to_string());
     }
     let stat = unsafe { stat.assume_init() };
-    let available = (stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64);
+    let available = (stat.f_bavail as u64).saturating_mul(stat.f_frsize);
     if available < needed {
         Err(format!("Not enough free space; {needed} bytes needed"))
     } else {

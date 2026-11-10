@@ -137,9 +137,8 @@ impl Extras {
     }
     pub(super) fn external_weather_reply(&mut self, reply: WorkerReply<WeatherEvent>) {
         let owned = self.owns_external(reply.id, true);
-        match &reply.value {
-            WeatherEvent::State(state) => self.weather_state = state.clone(),
-            _ => {}
+        if let WeatherEvent::State(state) = &reply.value {
+            self.weather_state = state.clone()
         }
         if reply.id.is_some() && !owned {
             if self

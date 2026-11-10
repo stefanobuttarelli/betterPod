@@ -15,116 +15,6 @@ pub(super) struct Foreground {
 #[cfg(test)]
 mod write_tests;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    struct Fixture {
-        root: PathBuf,
-        extras: Extras,
-    }
-    impl Fixture {
-        fn new() -> Self {
-            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let root = std::env::temp_dir().join(format!(
-                "bp-foreground-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            ));
-            std::fs::create_dir_all(root.join("music")).unwrap();
-            let extras = Extras::new(root.join("music"), root.join("data")).unwrap();
-            Self { root, extras }
-        }
-    }
-    impl Drop for Fixture {
-        fn drop(&mut self) {
-            self.extras.shutdown();
-            let _ = std::fs::remove_dir_all(&self.root);
-        }
-    }
-    fn detail() -> Purpose {
-        Purpose::Details {
-            metadata: false,
-            generation: 0,
-            item: OnlineItem::new(Provider::YouTube),
-        }
-    }
-    #[test]
-    fn foreground_keeps_the_source_list_blocks_navigation_and_back_releases_only_its_row() {
-        let mut fixture = Fixture::new();
-        let extras = &mut fixture.extras;
-        extras.push(
-            "YouTube",
-            vec![
-                Item::new("First result", Choice::Nothing),
-                Item::new("Second result", Choice::Nothing),
-            ],
-        );
-        let owner = extras.pages.last().unwrap().key;
-        let foreground = extras.services.submit(Task::Downloaded).unwrap();
-        let background = extras.services.submit(Task::Downloaded).unwrap();
-        extras
-            .jobs
-            .insert(foreground.id, (foreground.clone(), detail()));
-        extras
-            .jobs
-            .insert(background.id, (background.clone(), Purpose::Downloads));
-        extras.claim_foreground(foreground.id, owner, detail());
-        assert!(extras.pages.last().unwrap().rows[0].visual.busy);
-        let visual = extras.visual_page().unwrap();
-        assert!(visual.rows[0].visual.busy);
-        for action in [Action::Down, Action::Select, Action::Options, Action::Right] {
-            extras.handle(action);
-        }
-        assert_eq!(extras.pages.last().unwrap().selected, 0);
-        assert_eq!(extras.pages.len(), 1);
-        assert!(extras.effects.is_empty());
-        assert!(!extras.handle_foreground(Action::VolumeUp));
-        extras.handle(Action::Back);
-        assert!(foreground.is_cancelled());
-        assert!(
-            !background.is_cancelled(),
-            "Back only cancels the foreground request"
-        );
-        assert_eq!(extras.pages.len(), 1);
-        assert_eq!(extras.pages.last().unwrap().key, owner);
-        assert!(!extras.pages.last().unwrap().rows[0].visual.busy);
-        assert!(
-            !extras.finish_foreground(foreground.id, Some(owner)),
-            "Cancelled output must not open a page"
-        );
-        extras.handle(Action::Down);
-        assert_eq!(extras.pages.last().unwrap().selected, 1);
-    }
-    #[test]
-    fn settings_loader_uses_display_owner_but_completes_only_its_target_job_and_generation() {
-        let mut fixture = Fixture::new();
-        let extras = &mut fixture.extras;
-        extras.push("YouTube", vec![Item::new("Search", Choice::Nothing)]);
-        let target = extras.pages.last().unwrap().key;
-        extras.push(
-            "Search Settings",
-            vec![
-                Item::new("Videos", Choice::Nothing),
-                Item::new("Playlists & Albums", Choice::Nothing),
-            ],
-        );
-        extras.pages.last_mut().unwrap().selected = 1;
-        let display = extras.pages.last().unwrap().key;
-        extras.claim_foreground(102, target, detail());
-        assert!(extras.pages.last().unwrap().rows[1].visual.busy);
-        assert!(!extras.pages[0].rows[0].visual.busy);
-        assert!(!extras.finish_foreground(77, Some(target)));
-        assert!(extras.foreground.is_some());
-        assert!(extras.finish_foreground(102, Some(target)));
-        assert_eq!(extras.pages.last().unwrap().key, display);
-        assert!(!extras.pages.last().unwrap().rows[1].visual.busy);
-        extras.claim_foreground(103, target, detail());
-        extras.generation += 1;
-        assert!(!extras.finish_foreground(103, Some(target)));
-        assert!(extras.foreground.is_none());
-    }
-}
-
 impl Extras {
     pub(in crate::app) fn service_foreground_token(&self) -> Option<u64> {
         self.foreground
@@ -493,5 +383,115 @@ impl Extras {
             | Action::MenuUp => true,
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Fixture {
+        root: PathBuf,
+        extras: Extras,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "bp-foreground-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(root.join("music")).unwrap();
+            let extras = Extras::new(root.join("music"), root.join("data")).unwrap();
+            Self { root, extras }
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            self.extras.shutdown();
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+    fn detail() -> Purpose {
+        Purpose::Details {
+            metadata: false,
+            generation: 0,
+            item: OnlineItem::new(Provider::YouTube),
+        }
+    }
+    #[test]
+    fn foreground_keeps_the_source_list_blocks_navigation_and_back_releases_only_its_row() {
+        let mut fixture = Fixture::new();
+        let extras = &mut fixture.extras;
+        extras.push(
+            "YouTube",
+            vec![
+                Item::new("First result", Choice::Nothing),
+                Item::new("Second result", Choice::Nothing),
+            ],
+        );
+        let owner = extras.pages.last().unwrap().key;
+        let foreground = extras.services.submit(Task::Downloaded).unwrap();
+        let background = extras.services.submit(Task::Downloaded).unwrap();
+        extras
+            .jobs
+            .insert(foreground.id, (foreground.clone(), detail()));
+        extras
+            .jobs
+            .insert(background.id, (background.clone(), Purpose::Downloads));
+        extras.claim_foreground(foreground.id, owner, detail());
+        assert!(extras.pages.last().unwrap().rows[0].visual.busy);
+        let visual = extras.visual_page().unwrap();
+        assert!(visual.rows[0].visual.busy);
+        for action in [Action::Down, Action::Select, Action::Options, Action::Right] {
+            extras.handle(action);
+        }
+        assert_eq!(extras.pages.last().unwrap().selected, 0);
+        assert_eq!(extras.pages.len(), 1);
+        assert!(extras.effects.is_empty());
+        assert!(!extras.handle_foreground(Action::VolumeUp));
+        extras.handle(Action::Back);
+        assert!(foreground.is_cancelled());
+        assert!(
+            !background.is_cancelled(),
+            "Back only cancels the foreground request"
+        );
+        assert_eq!(extras.pages.len(), 1);
+        assert_eq!(extras.pages.last().unwrap().key, owner);
+        assert!(!extras.pages.last().unwrap().rows[0].visual.busy);
+        assert!(
+            !extras.finish_foreground(foreground.id, Some(owner)),
+            "Cancelled output must not open a page"
+        );
+        extras.handle(Action::Down);
+        assert_eq!(extras.pages.last().unwrap().selected, 1);
+    }
+    #[test]
+    fn settings_loader_uses_display_owner_but_completes_only_its_target_job_and_generation() {
+        let mut fixture = Fixture::new();
+        let extras = &mut fixture.extras;
+        extras.push("YouTube", vec![Item::new("Search", Choice::Nothing)]);
+        let target = extras.pages.last().unwrap().key;
+        extras.push(
+            "Search Settings",
+            vec![
+                Item::new("Videos", Choice::Nothing),
+                Item::new("Playlists & Albums", Choice::Nothing),
+            ],
+        );
+        extras.pages.last_mut().unwrap().selected = 1;
+        let display = extras.pages.last().unwrap().key;
+        extras.claim_foreground(102, target, detail());
+        assert!(extras.pages.last().unwrap().rows[1].visual.busy);
+        assert!(!extras.pages[0].rows[0].visual.busy);
+        assert!(!extras.finish_foreground(77, Some(target)));
+        assert!(extras.foreground.is_some());
+        assert!(extras.finish_foreground(102, Some(target)));
+        assert_eq!(extras.pages.last().unwrap().key, display);
+        assert!(!extras.pages.last().unwrap().rows[1].visual.busy);
+        extras.claim_foreground(103, target, detail());
+        extras.generation += 1;
+        assert!(!extras.finish_foreground(103, Some(target)));
+        assert!(extras.foreground.is_none());
     }
 }

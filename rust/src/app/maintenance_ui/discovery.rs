@@ -245,8 +245,8 @@ fn space(path: &Path) -> Option<(u64, u64)> {
     }
     let s = unsafe { stats.assume_init() };
     Some((
-        s.f_bavail as u64 * s.f_frsize as u64,
-        s.f_blocks as u64 * s.f_frsize as u64,
+        s.f_bavail as u64 * s.f_frsize,
+        s.f_blocks as u64 * s.f_frsize,
     ))
 }
 #[cfg(not(unix))]

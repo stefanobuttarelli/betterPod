@@ -2732,11 +2732,8 @@ impl App {
                             Instant::now() + Duration::from_millis(250),
                         ));
                     } else if self.np_mode == 2 {
-                        if positive {
-                            self.np_option = (self.np_option + 1) % 2;
-                        } else {
-                            self.np_option = (self.np_option + 1) % 2;
-                        }
+                        // Two options: either direction moves to the other one.
+                        self.np_option = (self.np_option + 1) % 2;
                     } else {
                         self.set_volume(if positive { 0.05 } else { -0.05 });
                     }
@@ -3913,10 +3910,10 @@ impl App {
             && self.last_activity.elapsed()
                 > Duration::from_secs(self.settings.screensaver_seconds as u64)
             && self.screen() != Screen::Visualizer
+            && !self.video_open
+            && !self.auto_saver
         {
-            if !self.video_open && !self.auto_saver {
-                self.enter_saver();
-            }
+            self.enter_saver();
         }
         if self.clock_updated.elapsed() >= Duration::from_secs(1) {
             self.clock = local_clock();
@@ -4435,9 +4432,9 @@ fn time_label(seconds: f64) -> String {
     }
 }
 fn local_clock() -> String {
-    let mut now: libc::time_t = unsafe { libc::time(std::ptr::null_mut()) };
+    let now: libc::time_t = unsafe { libc::time(std::ptr::null_mut()) };
     let mut parts: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&mut now, &mut parts) }.is_null() {
+    if unsafe { libc::localtime_r(&now, &mut parts) }.is_null() {
         return String::new();
     }
     format!("{:02}:{:02}", parts.tm_hour, parts.tm_min)

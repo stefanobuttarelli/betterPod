@@ -68,7 +68,7 @@ pub(super) fn decode(path: &Path) -> Result<RgbaImage, String> {
                 ),
                 PixelFormat::CMYK32 => {
                     let mut rgb = Vec::with_capacity(w as usize * h as usize * 3);
-                    for p in pixels.chunks_exact(4) {
+                    for p in pixels.as_chunks::<4>().0 {
                         for c in &p[..3] {
                             rgb.push(((255 - u16::from(*c)) * (255 - u16::from(p[3])) / 255) as u8);
                         }

@@ -23,6 +23,171 @@ pub(super) struct PendingAlbumRead {
     completion: Completion,
 }
 
+impl PendingAlbumRead {
+    fn source(&self, page: &Page) -> bool {
+        self.screen == page.screen && Arc::ptr_eq(&self.rows, &page.rows)
+    }
+}
+
+impl App {
+    pub(super) fn album_read_busy_row(&self, page: &Page) -> Option<usize> {
+        self.pending_album_read
+            .as_ref()
+            .filter(|pending| pending.source(page))
+            .map(|pending| pending.selected)
+    }
+    pub(super) fn album_read_row_busy(&self, page: &Page, row: usize) -> bool {
+        self.album_read_busy_row(page) == Some(row)
+    }
+    pub(super) fn begin_album_read(
+        &mut self,
+        paths: Vec<PathBuf>,
+        title: String,
+        edit: betterpod_rust::metadata::TagEdit,
+    ) {
+        if !self.prepare_source_service(Completion::ReadEditor) {
+            return;
+        }
+        self.extras.edit_album(paths, title, edit);
+        if let Some(token) = self.extras.initial_album_read_token() {
+            self.pending_album_read.as_mut().unwrap().token = token;
+        } else {
+            // Submission errors already prepare a readable editor error page.
+            self.finish_pending_album_read();
+        }
+    }
+    pub(super) fn begin_service_write(&mut self, task: betterpod_rust::online::Task) {
+        if !self.prepare_source_service(Completion::ServiceWrite) {
+            return;
+        }
+        self.extras.curation_task(task);
+        if let Some(token) = self.extras.service_foreground_token() {
+            self.pending_album_read.as_mut().unwrap().token = token;
+        } else {
+            self.finish_pending_album_read();
+        }
+    }
+    fn prepare_source_service(&mut self, completion: Completion) -> bool {
+        if self.pending_album_read.is_some() {
+            return false;
+        }
+        let (source, kind) = if let Some(page) = self.options.clone() {
+            (Some(page), Source::AppSheet)
+        } else if self.screen() == Screen::Curation && self.curation.has_options() {
+            (self.curation.visual_options(), Source::CurationSheet)
+        } else {
+            (self.navigation_page(), Source::List)
+        };
+        let Some(source) = source else {
+            return false;
+        };
+        self.pending_album_read = Some(PendingAlbumRead {
+            token: 0,
+            screen: self.screen(),
+            depth: self.pages.len(),
+            generation: self.library_generation,
+            rows: source.rows,
+            selected: source.selected,
+            source: kind,
+            completion,
+        });
+        true
+    }
+    pub(super) fn cancel_pending_album_read(&mut self) {
+        let Some(pending) = self.pending_album_read.take() else {
+            return;
+        };
+        match pending.completion {
+            Completion::ReadEditor
+                if self.extras.initial_album_read_token() == Some(pending.token) =>
+            {
+                self.extras.cancel_initial_album_read()
+            }
+            Completion::ServiceWrite => self.extras.cancel_service_foreground(pending.token),
+            _ => {}
+        }
+    }
+    fn finish_pending_album_read(&mut self) {
+        let Some(pending) = self.pending_album_read.take() else {
+            return;
+        };
+        match pending.completion {
+            Completion::ReadEditor => {
+                self.options = None;
+                self.open(Screen::Extra);
+            }
+            Completion::ServiceWrite => {
+                self.extras.dismiss_service_source_view();
+                if self.extras.service_write_result(pending.token) == Some(true) {
+                    match pending.source {
+                        Source::AppSheet => self.options = None,
+                        Source::CurationSheet => self.curation.dismiss_options(),
+                        Source::List => {}
+                    }
+                }
+            }
+        }
+    }
+    pub(super) fn poll_pending_album_read(&mut self) {
+        let Some(pending) = self.pending_album_read.as_ref() else {
+            return;
+        };
+        let (screen, depth, generation, kind, completion, token, source_rows) = (
+            pending.screen,
+            pending.depth,
+            pending.generation,
+            pending.source,
+            pending.completion,
+            pending.token,
+            Arc::clone(&pending.rows),
+        );
+        let source = match kind {
+            Source::AppSheet => self.options.clone(),
+            Source::CurationSheet => self.curation.visual_options(),
+            Source::List => self.navigation_page(),
+        };
+        let owns_source = self.screen() == screen
+            && self.pages.len() == depth
+            && self.library_generation == generation
+            && source
+                .is_some_and(|page| page.screen == screen && Arc::ptr_eq(&page.rows, &source_rows));
+        if !owns_source {
+            self.cancel_pending_album_read();
+        } else {
+            let current = match completion {
+                Completion::ReadEditor => self.extras.initial_album_read_token(),
+                Completion::ServiceWrite => self.extras.service_foreground_token(),
+            };
+            if current.is_none() {
+                self.finish_pending_album_read();
+            } else if current != Some(token) {
+                // A follow-up read owns its own worker and source marker.
+                self.pending_album_read = None;
+            }
+        }
+    }
+    pub(super) fn handle_pending_album_read(&mut self, action: Action) -> bool {
+        if self.pending_album_read.is_none() {
+            return false;
+        }
+        match action {
+            Action::Back | Action::BackHeld => {
+                self.cancel_pending_album_read();
+                true
+            }
+            Action::Up
+            | Action::Down
+            | Action::Left
+            | Action::Right
+            | Action::Select
+            | Action::SelectHeld
+            | Action::Options
+            | Action::Search => true,
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,170 +477,5 @@ mod tests {
         assert_ne!(app.screen(), Screen::Extra);
         assert_eq!(std::fs::read(&first).unwrap(), original_audio);
         app.shutdown(&r).unwrap();
-    }
-}
-
-impl PendingAlbumRead {
-    fn source(&self, page: &Page) -> bool {
-        self.screen == page.screen && Arc::ptr_eq(&self.rows, &page.rows)
-    }
-}
-
-impl App {
-    pub(super) fn album_read_busy_row(&self, page: &Page) -> Option<usize> {
-        self.pending_album_read
-            .as_ref()
-            .filter(|pending| pending.source(page))
-            .map(|pending| pending.selected)
-    }
-    pub(super) fn album_read_row_busy(&self, page: &Page, row: usize) -> bool {
-        self.album_read_busy_row(page) == Some(row)
-    }
-    pub(super) fn begin_album_read(
-        &mut self,
-        paths: Vec<PathBuf>,
-        title: String,
-        edit: betterpod_rust::metadata::TagEdit,
-    ) {
-        if !self.prepare_source_service(Completion::ReadEditor) {
-            return;
-        }
-        self.extras.edit_album(paths, title, edit);
-        if let Some(token) = self.extras.initial_album_read_token() {
-            self.pending_album_read.as_mut().unwrap().token = token;
-        } else {
-            // Submission errors already prepare a readable editor error page.
-            self.finish_pending_album_read();
-        }
-    }
-    pub(super) fn begin_service_write(&mut self, task: betterpod_rust::online::Task) {
-        if !self.prepare_source_service(Completion::ServiceWrite) {
-            return;
-        }
-        self.extras.curation_task(task);
-        if let Some(token) = self.extras.service_foreground_token() {
-            self.pending_album_read.as_mut().unwrap().token = token;
-        } else {
-            self.finish_pending_album_read();
-        }
-    }
-    fn prepare_source_service(&mut self, completion: Completion) -> bool {
-        if self.pending_album_read.is_some() {
-            return false;
-        }
-        let (source, kind) = if let Some(page) = self.options.clone() {
-            (Some(page), Source::AppSheet)
-        } else if self.screen() == Screen::Curation && self.curation.has_options() {
-            (self.curation.visual_options(), Source::CurationSheet)
-        } else {
-            (self.navigation_page(), Source::List)
-        };
-        let Some(source) = source else {
-            return false;
-        };
-        self.pending_album_read = Some(PendingAlbumRead {
-            token: 0,
-            screen: self.screen(),
-            depth: self.pages.len(),
-            generation: self.library_generation,
-            rows: source.rows,
-            selected: source.selected,
-            source: kind,
-            completion,
-        });
-        true
-    }
-    pub(super) fn cancel_pending_album_read(&mut self) {
-        let Some(pending) = self.pending_album_read.take() else {
-            return;
-        };
-        match pending.completion {
-            Completion::ReadEditor
-                if self.extras.initial_album_read_token() == Some(pending.token) =>
-            {
-                self.extras.cancel_initial_album_read()
-            }
-            Completion::ServiceWrite => self.extras.cancel_service_foreground(pending.token),
-            _ => {}
-        }
-    }
-    fn finish_pending_album_read(&mut self) {
-        let Some(pending) = self.pending_album_read.take() else {
-            return;
-        };
-        match pending.completion {
-            Completion::ReadEditor => {
-                self.options = None;
-                self.open(Screen::Extra);
-            }
-            Completion::ServiceWrite => {
-                self.extras.dismiss_service_source_view();
-                if self.extras.service_write_result(pending.token) == Some(true) {
-                    match pending.source {
-                        Source::AppSheet => self.options = None,
-                        Source::CurationSheet => self.curation.dismiss_options(),
-                        Source::List => {}
-                    }
-                }
-            }
-        }
-    }
-    pub(super) fn poll_pending_album_read(&mut self) {
-        let Some(pending) = self.pending_album_read.as_ref() else {
-            return;
-        };
-        let (screen, depth, generation, kind, completion, token, source_rows) = (
-            pending.screen,
-            pending.depth,
-            pending.generation,
-            pending.source,
-            pending.completion,
-            pending.token,
-            Arc::clone(&pending.rows),
-        );
-        let source = match kind {
-            Source::AppSheet => self.options.clone(),
-            Source::CurationSheet => self.curation.visual_options(),
-            Source::List => self.navigation_page(),
-        };
-        let owns_source = self.screen() == screen
-            && self.pages.len() == depth
-            && self.library_generation == generation
-            && source
-                .is_some_and(|page| page.screen == screen && Arc::ptr_eq(&page.rows, &source_rows));
-        if !owns_source {
-            self.cancel_pending_album_read();
-        } else {
-            let current = match completion {
-                Completion::ReadEditor => self.extras.initial_album_read_token(),
-                Completion::ServiceWrite => self.extras.service_foreground_token(),
-            };
-            if current.is_none() {
-                self.finish_pending_album_read();
-            } else if current != Some(token) {
-                // A follow-up read owns its own worker and source marker.
-                self.pending_album_read = None;
-            }
-        }
-    }
-    pub(super) fn handle_pending_album_read(&mut self, action: Action) -> bool {
-        if self.pending_album_read.is_none() {
-            return false;
-        }
-        match action {
-            Action::Back | Action::BackHeld => {
-                self.cancel_pending_album_read();
-                true
-            }
-            Action::Up
-            | Action::Down
-            | Action::Left
-            | Action::Right
-            | Action::Select
-            | Action::SelectHeld
-            | Action::Options
-            | Action::Search => true,
-            _ => false,
-        }
     }
 }

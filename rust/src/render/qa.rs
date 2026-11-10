@@ -137,7 +137,9 @@ fn evicting_a_texture_preserves_queued_images_until_frame_end() {
     let pixels = r.capture_rgba().into_raw();
     assert!(
         pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|p| p[0] > 250 && p[1] < 5 && p[2] < 5),
         "queued image was deleted before the GPU used it"
     );

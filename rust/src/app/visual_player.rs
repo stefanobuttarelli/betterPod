@@ -1704,36 +1704,6 @@ fn track_length(seconds: f64) -> String {
         format!("{}:{:02}", seconds / 60, seconds % 60)
     }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn original_control_rows_leave_on_the_original_sides() {
-        assert_eq!(control_targets(false, false, false), [0., 1.1, 1.1, 1.1]);
-        assert_eq!(control_targets(false, false, true), [-1.1, 0., 1.1, 1.1]);
-        assert_eq!(control_targets(true, false, true), [-1.1, 1.1, 0., 1.1]);
-        assert_eq!(control_targets(false, true, false), [-1.1, 1.1, -1.1, 0.]);
-    }
-    #[test]
-    fn interrupted_cover_pose_starts_at_the_visible_position() {
-        let mut pose = PoseAnim::new(Pose::FRONT);
-        pose.set(Pose::BACK, 0.5, 1.);
-        pose.sample(1.2);
-        let visible = pose.value;
-        pose.set(Pose::FRONT, 0.3, 1.2);
-        assert_eq!(pose.from, visible);
-        pose.sample(1.5);
-        assert_eq!(pose.value, Pose::FRONT);
-    }
-    #[test]
-    fn source_time_formats_keep_distinct_list_and_playback_rules() {
-        assert_eq!(track_length(59.6), "1:00");
-        assert_eq!(track_length(3600.), "1:00:00");
-        assert_eq!(playback_time(3599.9), "59:59");
-        assert_eq!(playback_time(3600.), "00:00");
-        assert_eq!(playback_time(-2.), "00:00");
-    }
-}
 fn draw_scrollbar(
     r: &mut Renderer,
     x: f32,
@@ -1817,5 +1787,35 @@ fn draw_scrollbar(
                 alpha,
             ),
         );
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn original_control_rows_leave_on_the_original_sides() {
+        assert_eq!(control_targets(false, false, false), [0., 1.1, 1.1, 1.1]);
+        assert_eq!(control_targets(false, false, true), [-1.1, 0., 1.1, 1.1]);
+        assert_eq!(control_targets(true, false, true), [-1.1, 1.1, 0., 1.1]);
+        assert_eq!(control_targets(false, true, false), [-1.1, 1.1, -1.1, 0.]);
+    }
+    #[test]
+    fn interrupted_cover_pose_starts_at_the_visible_position() {
+        let mut pose = PoseAnim::new(Pose::FRONT);
+        pose.set(Pose::BACK, 0.5, 1.);
+        pose.sample(1.2);
+        let visible = pose.value;
+        pose.set(Pose::FRONT, 0.3, 1.2);
+        assert_eq!(pose.from, visible);
+        pose.sample(1.5);
+        assert_eq!(pose.value, Pose::FRONT);
+    }
+    #[test]
+    fn source_time_formats_keep_distinct_list_and_playback_rules() {
+        assert_eq!(track_length(59.6), "1:00");
+        assert_eq!(track_length(3600.), "1:00:00");
+        assert_eq!(playback_time(3599.9), "59:59");
+        assert_eq!(playback_time(3600.), "00:00");
+        assert_eq!(playback_time(-2.), "00:00");
     }
 }

@@ -824,13 +824,11 @@ fn execute(config: &mut Config, command: Command, ctx: &Context<'_>) -> Result<(
                 return Err("Stop artwork workers before clearing their cache".into());
             }
             read_owner(&config.data)?;
-            for folder in ["artwork"] {
-                let path = config.data.join(folder);
-                if path.exists() {
-                    let _ = inventory(&path, &[], ctx)?;
-                    fs::remove_dir_all(path).map_err(|e| e.to_string())?;
-                    sync_directory(&config.data).map_err(|e| e.to_string())?;
-                }
+            let path = config.data.join("artwork");
+            if path.exists() {
+                let _ = inventory(&path, &[], ctx)?;
+                fs::remove_dir_all(path).map_err(|e| e.to_string())?;
+                sync_directory(&config.data).map_err(|e| e.to_string())?;
             }
             Ok(())
         }
@@ -1486,7 +1484,7 @@ pub fn recover_transferred_clients(config: &Config) -> Result<usize, String> {
 fn perform_transfer(
     config: &mut Config,
     manifest: &Path,
-    mut transfer: Transfer,
+    transfer: Transfer,
     ctx: &Context<'_>,
 ) -> Result<(), String> {
     perform_transfer_ready(config, manifest, transfer, ctx, false)

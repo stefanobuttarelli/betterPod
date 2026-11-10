@@ -45,8 +45,7 @@ fn parts(text: &str) -> Option<Vec<Part<'_>>> {
     }
     let (mut rest, mut found) = (text, false);
     let mut parts = Vec::new();
-    loop {
-        let Some(open) = rest.find('[') else { break };
+    while let Some(open) = rest.find('[') {
         let Some(close) = rest[open..].find(']') else {
             break;
         };
@@ -227,7 +226,7 @@ pub fn ellipsize(r: &mut Renderer, text: &str, size: f32, weight: u16, max_width
     ends.push(text.len());
     let (mut low, mut high) = (0, ends.len() - 1);
     while low < high {
-        let mid = (low + high + 1) / 2;
+        let mid: usize = (low + high).div_ceil(2);
         if width(r, &text[..ends[mid]], size, weight) + ellipsis <= max_width {
             low = mid;
         } else {

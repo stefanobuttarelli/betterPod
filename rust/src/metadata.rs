@@ -279,7 +279,12 @@ fn wiki_fields(source: &str) -> std::collections::HashMap<String, String> {
             .replace("}}", "")
             .replace("<br>", ", ")
             .replace("<br />", ", ");
-        let value = value.split('|').last().unwrap_or("").trim().to_string();
+        let value = value
+            .split('|')
+            .next_back()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         fields.entry(key.trim().to_lowercase()).or_insert(value);
     }
     fields
@@ -1319,7 +1324,7 @@ mod tests {
                 ItemKey::AlbumArtist,
             ] {
                 assert_eq!(
-                    tag.get_string(key.clone()),
+                    tag.get_string(key),
                     original_tag.get_string(key),
                     "unrelated tag changed in {name}"
                 );

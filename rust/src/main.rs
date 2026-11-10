@@ -50,7 +50,7 @@ fn run() -> Result<(), String> {
     let exit_after = std::env::var("BETTERPOD_RUST_EXIT_AFTER_SECONDS")
         .ok()
         .and_then(|s| s.parse::<f64>().ok());
-    let benchmark = std::env::var("BETTERPOD_RUST_BENCHMARK").map_or(false, |s| s == "1");
+    let benchmark = std::env::var("BETTERPOD_RUST_BENCHMARK").is_ok_and(|s| s == "1");
     let screenshot = std::env::var_os("BETTERPOD_RUST_SCREENSHOT").map(PathBuf::from);
     let target = std::env::var("BETTERPOD_RUST_FPS")
         .ok()
@@ -80,7 +80,7 @@ fn run() -> Result<(), String> {
     let mut builder = video.window("betterPod Rust", 640, 480);
     builder.opengl().position_centered();
     if cfg!(target_os = "linux")
-        && std::env::var("BETTERPOD_RUST_FULLSCREEN").map_or(false, |s| s == "1")
+        && std::env::var("BETTERPOD_RUST_FULLSCREEN").is_ok_and(|s| s == "1")
     {
         builder.fullscreen_desktop();
     }
@@ -89,7 +89,7 @@ fn run() -> Result<(), String> {
         .and_then(|s| s.parse::<u8>().ok())
         .filter(|n| matches!(n, 0 | 2 | 4))
         .unwrap_or(4);
-    let mut create_context = |samples: u8| -> Result<_, String> {
+    let create_context = |samples: u8| -> Result<_, String> {
         attr.set_multisample_buffers(u8::from(samples > 0));
         attr.set_multisample_samples(samples);
         let window = builder.build().map_err(|e| e.to_string())?;
