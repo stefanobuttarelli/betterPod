@@ -26,7 +26,6 @@ pub(super) struct Destination {
     pub writable: bool,
     pub owned: bool,
     pub foreign: bool,
-    pub has_files: bool,
 }
 pub(super) enum Query {
     Cards(m::Config),
@@ -272,7 +271,6 @@ fn inspect(path: PathBuf) -> Destination {
         writable,
         owned,
         foreign,
-        has_files,
     }
 }
 fn create_folder(path: &Path, protected: &[PathBuf]) -> Result<(), String> {

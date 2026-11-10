@@ -81,12 +81,14 @@ impl Keyboard {
     pub fn finished(&self, now: f64) -> bool {
         self.exiting && !self.animation.running(now)
     }
+    #[cfg(test)]
     pub fn snap_visible(&mut self, now: f64) {
         self.now = now;
         self.started = true;
         self.exiting = false;
         self.animation.snap(1.0);
     }
+    #[cfg(test)]
     pub fn height(&mut self, now: f64) -> f32 {
         PANEL_HEIGHT * self.animation.value(now) as f32
     }
@@ -100,36 +102,6 @@ impl Keyboard {
         text.push('|');
         text.push_str(&self.query[byte..]);
         text
-    }
-    pub fn fit_with_caret(
-        &self,
-        r: &mut Renderer,
-        size: f32,
-        weight: u16,
-        max_width: f32,
-    ) -> String {
-        let text = self.with_caret();
-        if r.text_width_weighted(&text, size, weight) <= max_width {
-            return text;
-        }
-        let Some(caret) = text.rfind('|') else {
-            return super::visual_menu::ellipsize(r, &text, size, weight, max_width);
-        };
-        if r.text_width_weighted(&format!("{}…", &text[..caret + 1]), size, weight) <= max_width {
-            return super::visual_menu::ellipsize(r, &text, size, weight, max_width);
-        }
-        let tail = if caret + 1 < text.len() { "…" } else { "" };
-        let mut from = 0;
-        while from < caret
-            && r.text_width_weighted(
-                &format!("…{}{}", &text[from..caret + 1], tail),
-                size,
-                weight,
-            ) > max_width
-        {
-            from += text[from..].chars().next().unwrap().len_utf8();
-        }
-        super::visual_menu::ellipsize(r, &format!("…{}", &text[from..]), size, weight, max_width)
     }
 
     pub fn handle(&mut self, action: Action) -> KeyboardEffect {
@@ -158,20 +130,6 @@ impl Keyboard {
             _ => {}
         }
         KeyboardEffect::None
-    }
-    /// Optional click-wheel routing, separate from L/R caret movement.
-    pub fn step(&mut self, direction: i32) {
-        let rows = key_rows(self.layer);
-        let next = self.col as i32 + direction;
-        if next >= rows[self.row].len() as i32 {
-            self.row = (self.row + 1) % rows.len();
-            self.col = 0;
-        } else if next < 0 {
-            self.row = (self.row + rows.len() - 1) % rows.len();
-            self.col = rows[self.row].len() - 1;
-        } else {
-            self.col = next as usize;
-        }
     }
     fn move_key(&mut self, dx: i32, dy: i32) {
         let rows = key_rows(self.layer);
@@ -453,26 +411,6 @@ fn key_positions(row: &[Key]) -> Vec<f32> {
 }
 fn rgb(r: u8, g: u8, b: u8) -> Color {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
-}
-fn color_mix(a: Color, b: Color, t: f32) -> Color {
-    std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t)
-}
-fn rounded_inset(y: f32, height: f32, radius: f32) -> f32 {
-    if radius <= 0.0 {
-        return 0.0;
-    }
-    let dy = if y < radius {
-        radius - y
-    } else if y > height - radius {
-        y - (height - radius)
-    } else {
-        0.0
-    };
-    if dy == 0.0 {
-        0.0
-    } else {
-        radius - (radius * radius - dy * dy).max(0.0).sqrt()
-    }
 }
 /// GPU scanline primitives retain the original rounded gradient profile. This
 /// produces vertices, never a CPU framebuffer or an uploaded frame texture.

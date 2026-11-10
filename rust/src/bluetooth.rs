@@ -300,6 +300,7 @@ fn device_sink<'a>(listing: &'a str, address: &str) -> Option<&'a str> {
         .filter_map(|line| line.split_whitespace().nth(1))
         .find(|sink| sink.starts_with("bluez_") && sink.to_ascii_uppercase().contains(&id))
 }
+#[cfg(test)]
 /// Source btUseSink: the Bluetooth output appears asynchronously after connect.
 /// Both detection and routing stay on this worker, with a bounded overall wait.
 fn route_sink(
@@ -353,9 +354,6 @@ fn command_owned(context: &Context, args: &[&str], timeout: Duration) -> Result<
     let executable =
         std::env::var("BETTERPOD_RUST_BLUETOOTHCTL").unwrap_or_else(|_| "bluetoothctl".into());
     run_output_owned(context, &executable, args, timeout)
-}
-fn run_output(executable: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
-    run_output_owned(&Context::standalone(), executable, args, timeout)
 }
 fn run_output_owned(
     context: &Context,

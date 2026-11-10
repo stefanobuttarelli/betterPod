@@ -16,7 +16,6 @@ pub(super) struct FragmentPlan {
 #[derive(Clone, Copy)]
 struct BoxInfo {
     kind: [u8; 4],
-    start: usize,
     body: usize,
     end: usize,
 }
@@ -46,7 +45,6 @@ fn boxes(bytes: &[u8], mut at: usize) -> Vec<BoxInfo> {
         };
         out.push(BoxInfo {
             kind: bytes[at + 4..at + 8].try_into().unwrap(),
-            start: at,
             body: at + head,
             end,
         });
@@ -75,7 +73,6 @@ pub(super) fn open(
         head.extend_from_slice(&more);
         sidx = Some(BoxInfo {
             kind: *b"sidx",
-            start: moov.end,
             body: moov.end + 8,
             end: moov.end + size,
         });

@@ -7,8 +7,8 @@ use betterpod_rust::{
     input::Action,
     library::{Album, Library},
     metadata::TagEdit,
-    online::{Provider, Task},
-    render::{Renderer, BLACK, WHITE},
+    online::Task,
+    render::Renderer,
 };
 use std::{
     collections::{HashSet, VecDeque},
@@ -18,40 +18,22 @@ use std::{
         mpsc, Arc, Mutex,
     },
     thread,
-    time::Instant,
 };
 #[derive(Clone, Debug)]
 pub enum Mode {
     MissingInfo,
     MissingCovers,
-    Merge {
-        paths: Vec<PathBuf>,
-    },
-    MergeQuery {
-        paths: Vec<PathBuf>,
-        query: String,
-    },
-    Covers {
-        paths: Vec<PathBuf>,
-        album: String,
-        artist: String,
-    },
+    Merge { paths: Vec<PathBuf> },
+    MergeQuery { paths: Vec<PathBuf>, query: String },
 }
 #[derive(Clone, Debug)]
 pub enum CurationEffect {
     Close,
-    OpenAlbum(usize),
     AlbumOptions(usize),
     EditInfo {
         paths: Vec<PathBuf>,
         title: String,
         edit: TagEdit,
-    },
-    SearchCovers {
-        paths: Vec<PathBuf>,
-        album: String,
-        artist: String,
-        provider: Provider,
     },
     SearchCoversAll {
         paths: Vec<PathBuf>,
@@ -75,12 +57,6 @@ enum RowAction {
         paths: Vec<PathBuf>,
         album: String,
         artist: String,
-    },
-    Provider {
-        paths: Vec<PathBuf>,
-        album: String,
-        artist: String,
-        provider: Provider,
     },
     Submit(Arc<Mutex<Option<Task>>>),
     Merge {
@@ -114,7 +90,6 @@ pub struct Curation {
     rows: Arc<Vec<Row>>,
     selected: usize,
     scroll: f32,
-    last_draw: Instant,
     history: Vec<ScreenState>,
     merge_source: Arc<Vec<PathBuf>>,
     worker: CurationWorker,
@@ -163,7 +138,6 @@ impl Curation {
             rows: Arc::new(Vec::new()),
             selected: 0,
             scroll: 0.0,
-            last_draw: Instant::now(),
             history: Vec::new(),
             merge_source: Arc::new(Vec::new()),
             worker: CurationWorker::new(),
@@ -213,7 +187,6 @@ impl Curation {
             Mode::MissingCovers => "Missing Covers",
             Mode::Merge { .. } => "Add to Album",
             Mode::MergeQuery { .. } => "Add to Album",
-            Mode::Covers { .. } => "Choose Cover",
         }
         .into();
         self.generation = self.generation.wrapping_add(1);
@@ -541,19 +514,6 @@ impl Curation {
                             artist,
                         });
                     }
-                    RowAction::Provider {
-                        paths,
-                        album,
-                        artist,
-                        provider,
-                    } => {
-                        return Some(CurationEffect::SearchCovers {
-                            paths,
-                            album,
-                            artist,
-                            provider,
-                        })
-                    }
                     RowAction::Submit(task) => {
                         if self.auto_covers.as_ref().is_some_and(|view| view.running()) {
                             self.enter_auto(None);
@@ -607,73 +567,6 @@ impl Curation {
             _ => {}
         }
         None
-    }
-    pub fn draw(&mut self, r: &mut Renderer, dark: bool) {
-        self.poll_rows();
-        if !self.active {
-            return;
-        }
-        let now = Instant::now();
-        let dt = now.duration_since(self.last_draw).as_secs_f32().min(0.1);
-        self.last_draw = now;
-        let target = (self.selected.saturating_sub(5)) as f32 * 57.0;
-        self.scroll += (target - self.scroll) * (1.0 - (-dt * 18.0).exp());
-        let (bg, fg, muted) = if dark {
-            ([0.035, 0.045, 0.06, 1.0], WHITE, [0.60, 0.66, 0.73, 1.0])
-        } else {
-            ([0.94, 0.95, 0.97, 1.0], BLACK, [0.37, 0.41, 0.47, 1.0])
-        };
-        r.rect(0.0, 0.0, 640.0, 480.0, bg);
-        r.gradient(
-            0.0,
-            0.0,
-            640.0,
-            42.0,
-            if dark { [0.12, 0.14, 0.18, 1.0] } else { WHITE },
-            bg,
-        );
-        r.centered(&self.title, 15.0, 9.0, 610.0, 24, fg);
-        if self.rows.is_empty() {
-            r.centered(self.empty, 20.0, 215.0, 600.0, 23, muted);
-        }
-        r.set_clip(0.0, 45.0, 640.0, 396.0);
-        let start = (self.scroll / 57.0).floor().max(0.0) as usize;
-        for (index, row) in self.rows.iter().enumerate().skip(start).take(9) {
-            let y = 49.0 + index as f32 * 57.0 - self.scroll;
-            let selected = index == self.selected;
-            if selected {
-                r.gradient(
-                    5.0,
-                    y - 2.0,
-                    630.0,
-                    55.0,
-                    [0.17, 0.52, 0.95, 1.0],
-                    [0.06, 0.32, 0.76, 1.0],
-                );
-            }
-            let text = if selected { WHITE } else { fg };
-            let secondary = if selected {
-                [0.85, 0.92, 1.0, 1.0]
-            } else {
-                muted
-            };
-            r.text(&row.title, 17.0, y + 3.0, 22, text, 585.0);
-            r.text(&row.subtitle, 17.0, y + 31.0, 15, secondary, 585.0);
-            r.text("›", 611.0, y + 11.0, 26, text, 25.0);
-        }
-        r.reset_clip();
-        r.rect(0.0, 445.0, 640.0, 35.0, bg);
-        r.text("A Select     B Back", 16.0, 454.0, 16, muted, 460.0);
-        if !self.rows.is_empty() {
-            r.text(
-                &format!("{}/{}", self.selected + 1, self.rows.len()),
-                540.0,
-                454.0,
-                16,
-                muted,
-                90.0,
-            );
-        }
     }
 }
 fn build_rows(mode: Mode, library: &Library) -> (ScreenState, Arc<Vec<PathBuf>>) {
@@ -886,34 +779,6 @@ fn build_rows(mode: Mode, library: &Library) -> (ScreenState, Arc<Vec<PathBuf>>)
             });
             rows.extend(near);
             rows.extend(rest);
-        }
-        Mode::Covers {
-            paths,
-            album,
-            artist,
-        } => {
-            title = "Choose Cover".into();
-            empty = "No cover providers available";
-            for provider in [
-                Provider::MusicBrainz,
-                Provider::Itunes,
-                Provider::Deezer,
-                Provider::Wikipedia,
-            ] {
-                rows.push(Row {
-                    title: provider.name().into(),
-                    subtitle: format!("{artist} · {album}"),
-                    action: RowAction::Provider {
-                        paths: paths.clone(),
-                        album: album.clone(),
-                        artist: artist.clone(),
-                        provider,
-                    },
-                    cover: None,
-                    thumb: false,
-                    album_index: None,
-                });
-            }
         }
     }
     let visual = if rows.is_empty() {

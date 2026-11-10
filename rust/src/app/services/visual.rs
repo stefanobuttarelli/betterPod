@@ -64,38 +64,6 @@ impl Extras {
         page.role = PageRole::YouTubeItem;
         page.selected = 1;
     }
-    #[cfg(test)]
-    pub(in crate::app) fn qa_youtube_busy(&mut self, item: OnlineItem, cover: Option<PathBuf>) {
-        self.cancel_browse_jobs();
-        self.keyboard = None;
-        self.pages.clear();
-        if let Some(path) = cover {
-            self.previews.insert(item.cover.clone(), Some(path));
-        }
-        let mut result = Item::new(item.title.clone(), Choice::Online(item.clone(), false));
-        result.detail = item.artist.clone();
-        result.visual.thumbnail = true;
-        self.push(
-            "YouTube",
-            vec![
-                search_row(Provider::YouTube, "anri timely", ""),
-                header("Showing: Videos"),
-                result,
-            ],
-        );
-        let page = self.pages.last_mut().unwrap();
-        page.selected = 2;
-        let owner = page.key;
-        self.claim_foreground(
-            999_998,
-            owner,
-            Purpose::Details {
-                item,
-                metadata: false,
-                generation: self.generation,
-            },
-        );
-    }
     pub(in crate::app) fn has_custom_visual(&self) -> bool {
         self.share_view.is_some()
             || self
@@ -569,14 +537,6 @@ impl Extras {
         self.pages.push(Page::new(title, rows));
         self.pages.last_mut().unwrap().role = PageRole::Sheet;
     }
-    pub(in crate::app) fn resolve_preview(
-        &mut self,
-        item: OnlineItem,
-        queue: Vec<OnlineItem>,
-        index: usize,
-    ) {
-        self.start_inline_listen(item, queue, index);
-    }
     pub(super) fn push_confirmation(
         &mut self,
         title: impl Into<String>,
@@ -589,10 +549,7 @@ impl Extras {
             title.push_str(". ");
             title.push_str(note);
         }
-        let action = Item::new(
-            confirm,
-            Choice::ConfirmAction(Box::new(choice), title.clone()),
-        );
+        let action = Item::new(confirm, Choice::ConfirmAction(Box::new(choice)));
         let mut page = Page::new(title, vec![action, Item::new("Cancel", Choice::Dismiss)]);
         page.role = PageRole::Sheet;
         self.pages.push(page);
@@ -1075,14 +1032,8 @@ impl Extras {
     }
 }
 impl Extras {
-    pub(in crate::app) fn tools_snapshot(&self) -> &betterpod_rust::downloads::ToolStatus {
-        &self.tools_state
-    }
     pub(in crate::app) fn refresh_tools(&mut self) {
         self.task(Task::ToolsStatus, Purpose::Tools);
-    }
-    pub(in crate::app) fn install_tools(&mut self) {
-        self.task(Task::Tools, Purpose::ToolAction);
     }
     pub(super) fn tools_rows(&self) -> Vec<Item> {
         let mut toggle = Item::new("YouTube", Choice::ToggleYouTube);
@@ -1439,9 +1390,6 @@ impl Extras {
     /// PipeWire/PulseAudio's actual default sink, sampled on the bounded worker.
     pub(in crate::app) fn bluetooth_audio_connected(&self) -> Option<bool> {
         self.bt_state.audio_connected
-    }
-    pub(in crate::app) fn bluetooth_snapshot(&self) -> &BtState {
-        &self.bt_state
     }
     pub(in crate::app) fn prevents_screensaver(&self) -> bool {
         self.share_view.as_ref().is_some_and(|view| view.busy())
@@ -2159,7 +2107,6 @@ mod youtube_search_tests {
                 Purpose::Search {
                     provider: Provider::YouTube,
                     query: "Old mode".into(),
-                    page: 1,
                     metadata: false,
                     generation: old_generation,
                 },

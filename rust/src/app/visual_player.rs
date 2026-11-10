@@ -37,6 +37,7 @@ impl PoseAnim {
     fn sample(&mut self, now: f64) {
         self.value = self.from.lerp(self.to, self.progress.value(now));
     }
+    #[cfg(test)]
     fn snap(&mut self) {
         self.from = self.to;
         self.value = self.to;

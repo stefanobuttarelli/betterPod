@@ -72,6 +72,8 @@ pub(crate) enum Screen {
     Artists,
     Artist(usize),
     Album(usize),
+    // Built only by tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     Songs,
     Queue,
     Settings,
@@ -87,7 +89,6 @@ pub(crate) enum Screen {
     Puzzles,
     Puzzle,
     Video,
-    GameClocks,
     GameHistory,
     Quiz,
     Curation,
@@ -98,7 +99,6 @@ pub(crate) enum Screen {
     Screensaver,
     SearchHub,
     Lossless,
-    YouTubeSettings,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ViewKind {
@@ -125,20 +125,16 @@ pub(crate) enum Intent {
     Open(Screen),
     Song(usize),
     QueueSong(usize),
-    PlayAlbum(usize),
-    ShuffleSongs,
     Genius,
     Quiz,
     Shuffle,
     Repeat,
     Theme,
-    Volume,
     Rescan,
     SearchKeyboard,
     Game(GameKind),
     AddNext(usize),
     AddLater(usize),
-    Stop,
     CloseOptions,
     Extra(ExtraPage),
     AddToPlaylist(usize),
@@ -150,26 +146,26 @@ pub(crate) enum Intent {
     VideoDownloadMenu,
     ShareTrack(usize),
     ShareAlbum(usize),
+    // Built only by tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     SongInfo(usize),
     Apple,
-    YouTube,
     Podcasts,
-    SaverTime,
     SaverDim,
     StartSaver,
     SaverStyle,
-    SaverEffect,
-    SaverColors,
     GameClock(String),
     Curation(CurationMode),
     Maintenance(MaintenanceMode),
     AddAlbumPlaylist(usize),
-    AddQueuePlaylist,
     QueueAlbum(usize, bool),
     RemoveQueue(usize),
     Playlist(betterpod_rust::playlists::Playlist),
-    Unmerge(usize),
+    // Built only by tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     MergeSong(usize),
+    // Built only by tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     SeparateSong(usize),
     ClearUpcoming,
     AskClearUpcoming,
@@ -998,10 +994,6 @@ impl App {
                 rows = self.reference_saver_rows();
                 "Screensaver".into()
             }
-            Screen::YouTubeSettings => {
-                rows = self.reference_youtube_rows();
-                "YouTube".into()
-            }
             Screen::Library => {
                 rows = self.reference_library_rows();
                 "Library".into()
@@ -1078,25 +1070,6 @@ impl App {
                     }
                 }
                 "History".into()
-            }
-            Screen::GameClocks => {
-                for name in ["2048", "Brick", "Solitaire", "Five Letters", "Guess Song"]
-                    .into_iter()
-                    .chain(PUZZLES.iter().map(|p| p.name))
-                {
-                    rows.push(Row::new(
-                        format!(
-                            "{name}: {}",
-                            if self.settings.game_clock.iter().any(|n| n == name) {
-                                "On"
-                            } else {
-                                "Off"
-                            }
-                        ),
-                        Intent::GameClock(name.into()),
-                    ));
-                }
-                "Time in Games".into()
             }
             Screen::Puzzles => {
                 for (i, info) in PUZZLES.iter().enumerate() {
@@ -1660,40 +1633,6 @@ impl App {
                     self.open(Screen::NowPlaying);
                 }
             }
-            Intent::PlayAlbum(i) => {
-                self.queue_original = None;
-                self.queued_marks.clear();
-                if let Some(a) = self.library.albums.get(i) {
-                    self.queue = a
-                        .track_indices
-                        .iter()
-                        .map(|&i| self.library.tracks[i].path.clone())
-                        .collect::<Vec<_>>()
-                        .into();
-                    self.queue_index = 0;
-                    self.play_current(0.0);
-                    self.open(Screen::NowPlaying);
-                }
-            }
-            Intent::ShuffleSongs => {
-                self.queue_original = None;
-                self.queued_marks.clear();
-                self.queue = self
-                    .library
-                    .tracks
-                    .iter()
-                    .map(|t| t.path.clone())
-                    .collect::<Vec<_>>()
-                    .into();
-                self.queue_index = 0;
-                if !self.queue.is_empty() {
-                    let i = self.random() as usize % self.queue.len();
-                    Arc::make_mut(&mut self.queue).swap(0, i);
-                    self.shuffle_remaining();
-                    self.play_current(0.0);
-                    self.open(Screen::NowPlaying);
-                }
-            }
             Intent::Shuffle => {
                 let mode = match self.shuffle_label() {
                     "Off" => "songs",
@@ -1787,16 +1726,6 @@ impl App {
                     });
                 }
             }
-            Intent::Unmerge(album) => {
-                if let Some(a) = self.library.albums.get(album) {
-                    let paths = a
-                        .track_indices
-                        .iter()
-                        .map(|&i| self.library.tracks[i].path.clone())
-                        .collect();
-                    self.begin_service_write(betterpod_rust::online::Task::Unmerge { paths });
-                }
-            }
             Intent::Maintenance(mode) => {
                 let modal = matches!(mode, MaintenanceMode::DeleteAlbum(_));
                 if let Some(maintenance) = self.maintenance.as_mut() {
@@ -1817,10 +1746,6 @@ impl App {
                     self.open(Screen::Extra);
                 }
             }
-            Intent::AddQueuePlaylist => {
-                self.extras.add_to_playlist(self.queue.as_ref().clone());
-                self.open(Screen::Extra);
-            }
             Intent::QueueAlbum(album, next) => {
                 if let Some(album) = self.library.albums.get(album) {
                     self.enqueue_paths(
@@ -1835,14 +1760,6 @@ impl App {
             }
             Intent::RemoveQueue(index) => self.remove_queued(index),
             Intent::MoveQueueNext(index) => self.move_queued_next(index),
-            Intent::Curation(CurationMode::Covers {
-                paths,
-                album,
-                artist,
-            }) => {
-                self.extras.open_cover_search_all(paths, album, artist);
-                self.open(Screen::Extra);
-            }
             Intent::Curation(mode) => {
                 self.curation.open(mode, Arc::clone(&self.library));
                 self.open(Screen::Curation);
@@ -1859,7 +1776,6 @@ impl App {
                 self.save_settings();
                 self.refresh_page();
             }
-            Intent::Volume => self.set_volume(0.05),
             Intent::Rescan => {
                 self.rescan();
                 self.notify("Scanning music in the background");
@@ -1890,13 +1806,6 @@ impl App {
                     self.enqueue_paths(vec![t.path.clone()], matches!(intent, Intent::AddNext(_)));
                 }
             }
-            Intent::Stop => {
-                self.send(AudioCommand::Stop);
-                self.queue = Arc::new(Vec::new());
-                self.now_track = None;
-                self.restored = false;
-                self.save_playback();
-            }
             Intent::Puzzle(i) => {
                 let saved = PUZZLES
                     .get(i)
@@ -1915,12 +1824,6 @@ impl App {
                 self.save_settings();
                 self.refresh_page();
             }
-            Intent::YouTube => {
-                self.settings.youtube = !self.settings.youtube;
-                self.extras.set_youtube(self.settings.youtube);
-                self.save_settings();
-                self.refresh_page();
-            }
             Intent::Podcasts => {
                 self.settings.hide_podcasts = !self.settings.hide_podcasts;
                 self.save_settings();
@@ -1936,16 +1839,6 @@ impl App {
                 self.save_settings();
                 self.refresh_page();
             }
-            Intent::SaverTime => {
-                self.settings.screensaver_seconds = match self.settings.screensaver_seconds {
-                    0 => 60,
-                    60 => 120,
-                    120 => 300,
-                    _ => 0,
-                };
-                self.save_settings();
-                self.refresh_page();
-            }
             Intent::SaverStyle => {
                 self.settings.screensaver_style = if self.settings.screensaver_style == "cover" {
                     "viz"
@@ -1953,20 +1846,6 @@ impl App {
                     "cover"
                 }
                 .into();
-                self.save_settings();
-                self.refresh_page();
-            }
-            Intent::SaverEffect => {
-                self.settings.screensaver_effect = (self.settings.screensaver_effect + 1)
-                    % saver::effect_count(&self.settings.screensaver_style);
-                self.configure_saver(false);
-                self.save_settings();
-                self.refresh_page();
-            }
-            Intent::SaverColors => {
-                self.settings.screensaver_colors =
-                    (self.settings.screensaver_colors + 1) % saver::palette_count();
-                self.configure_saver(false);
                 self.save_settings();
                 self.refresh_page();
             }
@@ -2600,12 +2479,7 @@ impl App {
                         .map(|r| r.intent.clone());
                     if !matches!(
                         intent,
-                        Some(
-                            Intent::AlbumInfo(_)
-                                | Intent::SongInfo(_)
-                                | Intent::SeparateSong(_)
-                                | Intent::Unmerge(_)
-                        )
+                        Some(Intent::AlbumInfo(_) | Intent::SongInfo(_) | Intent::SeparateSong(_))
                     ) {
                         self.options = None;
                     }
@@ -2915,20 +2789,9 @@ impl App {
                 }
             }
             CurationEffect::Rescan => self.rescan(),
-            CurationEffect::OpenAlbum(index) => self.open(Screen::Album(index)),
             CurationEffect::AlbumOptions(index) => self.show_album_options(index),
             CurationEffect::EditInfo { paths, title, edit } => {
                 self.begin_album_read(paths, title, edit);
-            }
-            CurationEffect::SearchCovers {
-                paths,
-                album,
-                artist,
-                provider,
-            } => {
-                self.extras
-                    .open_cover_search(paths, album, artist, provider);
-                self.open(Screen::Extra);
             }
             CurationEffect::SearchCoversAll {
                 paths,
@@ -4228,15 +4091,6 @@ impl App {
         self.extras
             .resolve_media(item, self.video_queue.clone(), index as usize, video, 0.0);
     }
-    fn video_overlay_visible(&self) -> bool {
-        self.video_audio_only
-            || self.video_overlay.elapsed() < Duration::from_millis(2500)
-            || self.pending_stream.is_some()
-            || self.video.as_ref().is_some_and(|v| {
-                let s = v.snapshot();
-                s.paused || s.loading || s.error.is_some() || s.ended
-            })
-    }
     fn remember_video(&mut self) {
         if self.video_open && !self.video_origin.is_empty() {
             if let Some(video) = self.video.as_ref() {
@@ -4356,6 +4210,7 @@ impl App {
         self.finish_shutdown(renderer)?;
         request.1
     }
+    #[cfg(test)]
     pub fn shutdown(&mut self, renderer: &Renderer) -> Result<(), String> {
         if let Some(request) = self
             .maintenance

@@ -107,9 +107,6 @@ impl Visualizer {
             }
         }
     }
-    pub(super) fn pixels(&self) -> &[u8] {
-        &self.pixels
-    }
     pub(super) fn render(
         &mut self,
         r: &mut Renderer,

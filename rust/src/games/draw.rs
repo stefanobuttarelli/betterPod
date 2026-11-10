@@ -3,9 +3,6 @@ use crate::render::{Color, Renderer};
 pub(super) fn rgb(r: u8, g: u8, b: u8) -> Color {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }
-pub(super) fn mix(a: Color, b: Color, t: f32) -> Color {
-    std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t)
-}
 #[allow(clippy::too_many_arguments)]
 pub(super) fn rounded(
     r: &mut Renderer,

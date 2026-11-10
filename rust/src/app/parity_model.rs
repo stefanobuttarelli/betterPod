@@ -600,28 +600,6 @@ impl App {
         self.extras.refresh_tools();
         self.open(Screen::Extra);
     }
-    pub(super) fn reference_youtube_rows(&self) -> Vec<Row> {
-        let mut row = detail(
-            "YouTube",
-            "Watch in Videos, download in Music → Search",
-            Intent::YouTube,
-        );
-        row.visual.value = on_off(self.settings.youtube).into();
-        row.arrow = false;
-        vec![
-            row,
-            detail(
-                "Get the Tools",
-                "yt-dlp and Deno from GitHub: 80 MB to get, 185 MB on the card",
-                Intent::Extra(ExtraPage::Tools),
-            ),
-            detail(
-                "Only download what you may",
-                "Your own or freely licensed videos",
-                Intent::Noop,
-            ),
-        ]
-    }
     pub(super) fn set_shuffle_mode(&mut self, mode: &str) {
         let current = self.queue.get(self.queue_index).cloned();
         if mode == "off" {

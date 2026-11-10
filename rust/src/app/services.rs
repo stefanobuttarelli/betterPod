@@ -34,13 +34,14 @@ use std::sync::Arc;
 use videos_ui::{VideoAction, VideoJob};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum ExtraPage {
+pub(crate) enum ExtraPage {
     Playlists,
     AddToPlaylist,
+    // Built only by tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     SearchSources,
     Online(Provider),
     Podcasts,
-    Downloads,
     ActiveDownloads,
     Tools,
     Bluetooth,
@@ -50,7 +51,6 @@ pub(super) enum ExtraPage {
     VideoHistory,
     Weather,
     Receive,
-    Sharing,
 }
 #[derive(Clone)]
 pub(super) enum Effect {
@@ -143,13 +143,10 @@ enum Choice {
     Preview(OnlineItem, Arc<Vec<OnlineItem>>, usize),
     ConfirmDeletePlaylist(Playlist),
     ConfirmBtForget(String),
-    ConfirmAction(Box<Choice>, String),
-    YouTubeOff,
+    ConfirmAction(Box<Choice>),
     ToggleYouTube,
     NextSearch(Provider, String, u32, bool),
     Online(OnlineItem, bool),
-    ResumeVideo(OnlineItem, f64),
-    Recent(OnlineItem),
     Download(DownloadRequest),
     ShowDownload(u64),
     CancelDownload(u64),
@@ -158,7 +155,6 @@ enum Choice {
     ConfirmClearDownloads,
     Media(String, String, bool),
     Feed(Podcast),
-    Subscribe(Podcast),
     Unsubscribe(Podcast),
     Episode(Episode, Podcast),
     DownloadEpisodes(Podcast, Vec<Episode>),
@@ -192,10 +188,8 @@ enum Choice {
     WeatherRetry,
     WeatherPlace(usize),
     WeatherAdd(Place),
-    WeatherRefresh(usize),
     WeatherRemove(usize),
     WeatherUnits,
-    ShareReceive,
     ShareCancel,
     CoverSearch(Provider),
     UseCover(OnlineItem),
@@ -315,25 +309,26 @@ enum Purpose {
     },
     Search {
         provider: Provider,
+        // Read only by tests.
+        #[cfg_attr(not(test), allow(dead_code))]
         query: String,
-        page: u32,
         metadata: bool,
         generation: u64,
     },
     Details {
         metadata: bool,
         generation: u64,
-        item: OnlineItem,
     },
     Feed {
         generation: u64,
-        podcast: Podcast,
     },
     Download,
     ArchiveStatus {
         generation: u64,
         item: String,
     },
+    // Built only by tests, as a background job that owns no page.
+    #[cfg_attr(not(test), allow(dead_code))]
     Downloads,
     Tags,
     Merge,
@@ -343,7 +338,6 @@ enum Purpose {
     Subscriptions,
     ToolAction,
     Remember,
-    History,
     Cover,
     YouTubeCover {
         origin: String,
@@ -377,7 +371,6 @@ enum Typing {
     Search(Provider, bool),
     Tag(Field),
     Weather,
-    Receive,
     SharingName,
 }
 
@@ -472,7 +465,6 @@ pub(super) struct Extras {
     viewport_height: f32,
     bluetooth: Bluetooth,
     bt_state: BtState,
-    bt_selected: Option<String>,
     status: String,
     append_paths: Vec<PathBuf>,
     edit_paths: Vec<PathBuf>,
@@ -590,7 +582,6 @@ impl Extras {
             viewport_height: 440.0,
             bluetooth: Bluetooth::new(),
             bt_state: BtState::default(),
-            bt_selected: None,
             status: String::new(),
             append_paths: Vec::new(),
             edit_paths: Vec::new(),
@@ -756,22 +747,6 @@ impl Extras {
             self.push("Album Changes", vec![Item::new("Cancel", Choice::Cancel)]);
             self.task(task, Purpose::Tags);
         }
-    }
-    pub(super) fn open_cover_search(
-        &mut self,
-        paths: Vec<PathBuf>,
-        album: String,
-        artist: String,
-        provider: Provider,
-    ) {
-        self.youtube_cover_target = None;
-        self.edit_paths = paths;
-        self.edit_title = album.clone();
-        self.cover_search = true;
-        self.cover_override = true;
-        self.pages.clear();
-        self.push("Choose Album Cover", Vec::new());
-        self.search(provider, format!("{artist} {album}"), 1, true);
     }
     pub(super) fn set_sharing_name(&mut self, name: String) {
         self.sharing_name = name;
@@ -1168,11 +1143,6 @@ impl Extras {
                 self.pages.last_mut().unwrap().role = PageRole::PodcastHome;
                 self.task(Task::Subscriptions, Purpose::Subscriptions);
             }
-            ExtraPage::Downloads => {
-                self.push("Downloaded", Vec::new());
-                self.pages.last_mut().unwrap().role = PageRole::DownloadedFiles;
-                self.task(Task::Downloaded, Purpose::Downloads);
-            }
             ExtraPage::ActiveDownloads => self.show_downloads(None),
             ExtraPage::Tools => {
                 let rows = self.tools_rows();
@@ -1198,15 +1168,6 @@ impl Extras {
                 } else {
                     self.pages.last_mut().unwrap().selected = 1;
                 }
-            }
-            ExtraPage::Sharing => {
-                let mut name = Item::new("Device Name", Choice::EditSharingName);
-                name.visual.value = self.sharing_name.clone();
-                name.detail = "Your friends see it when you share with them".into();
-                name.visual.no_arrow = true;
-                let mut how = visual::fact("How it works", "");
-                how.detail = "[Y] on an album or a song → Share; Music → Receive".into();
-                self.push("Sharing", vec![name, how]);
             }
             ExtraPage::Receive => {
                 if self.sharing_name.trim().is_empty() {
@@ -1865,7 +1826,6 @@ impl Extras {
         let purpose = Purpose::Search {
             provider,
             query,
-            page,
             metadata,
             generation,
         };
@@ -2280,7 +2240,7 @@ impl Extras {
             Choice::ConfirmBtForget(address) => {
                 self.start_external_bluetooth(BtRequest::Forget(address));
             }
-            Choice::ConfirmAction(choice, _) => self.choose(*choice),
+            Choice::ConfirmAction(choice) => self.choose(*choice),
             Choice::ToggleYouTube => {
                 self.youtube = !self.youtube;
                 self.effects.push(Effect::YouTubeEnabled(self.youtube));
@@ -2289,10 +2249,6 @@ impl Extras {
                 }
                 let rows = self.tools_rows();
                 self.replace("YouTube", rows);
-            }
-            Choice::YouTubeOff => {
-                self.youtube = false;
-                self.effects.push(Effect::YouTubeEnabled(false));
             }
             Choice::NextSearch(provider, query, page, metadata) => {
                 self.search(provider, query, page, metadata)
@@ -2309,17 +2265,9 @@ impl Extras {
                         Purpose::Details {
                             metadata,
                             generation: self.generation,
-                            item,
                         },
                     );
                 }
-            }
-            Choice::ResumeVideo(item, start) => {
-                self.play_video_item(item.clone(), vec![item], 0, start)
-            }
-            Choice::Recent(item) => {
-                let start = item.raw["position"].as_f64().unwrap_or(0.);
-                self.play_video_item(item.clone(), vec![item], 0, start);
             }
             Choice::Download(request) => {
                 self.stop_preview();
@@ -2368,14 +2316,12 @@ impl Extras {
             Choice::Feed(podcast) => {
                 self.active_feed = None;
                 self.task(
-                    Task::Feed(podcast.clone()),
+                    Task::Feed(podcast),
                     Purpose::Feed {
                         generation: self.generation,
-                        podcast,
                     },
                 );
             }
-            Choice::Subscribe(podcast) => self.task(Task::RememberPodcast(podcast), Purpose::Tags),
             Choice::Unsubscribe(podcast) => {
                 while self.pages.last().is_some_and(|p| p.role == PageRole::Sheet) {
                     self.pages.pop();
@@ -2749,14 +2695,6 @@ impl Extras {
                     ExternalKind::WeatherAdd(place),
                 );
             }
-            Choice::WeatherRefresh(index) => {
-                self.forecast_loading = true;
-                self.forecast_error.clear();
-                self.start_external_weather(
-                    WeatherCommand::Refresh(index),
-                    ExternalKind::Forecast { index, open: false },
-                );
-            }
             Choice::WeatherRemove(index) => {
                 self.weather.command(WeatherCommand::Remove(index));
                 self.forecast = None;
@@ -2767,9 +2705,6 @@ impl Extras {
             Choice::WeatherUnits => {
                 self.weather
                     .command(WeatherCommand::Units(!self.weather_state.fahrenheit));
-            }
-            Choice::ShareReceive => {
-                self.keyboard = Some((Keyboard::new(String::new()), Typing::Receive))
             }
             Choice::ShareCancel => {
                 self.share.cancel();
@@ -2923,19 +2858,6 @@ impl Extras {
                     WeatherCommand::Search(query),
                     ExternalKind::WeatherSearch,
                 );
-            }
-            Typing::Receive => {
-                if query.len() != 8 || !query.bytes().all(|c| c.is_ascii_digit()) {
-                    self.effects
-                        .push(Effect::Notice("Enter exactly 8 digits".into()));
-                } else if let Err(error) = self.share.submit(share::Command::Receive {
-                    code: query,
-                    name: self.sharing_name.clone(),
-                }) {
-                    self.effects.push(Effect::Notice(error));
-                } else {
-                    self.status = "Waiting for the sender...".into();
-                }
             }
             Typing::SharingName => {
                 let name = query
@@ -3744,21 +3666,6 @@ impl Extras {
                                     continue;
                                 }
 
-                                if matches!(purpose, Some(Purpose::History)) {
-                                    if !owns_page {
-                                        continue;
-                                    }
-                                    self.replace(
-                                        "Recently Watched",
-                                        items
-                                            .into_iter()
-                                            .map(|item| {
-                                                Item::new(item.title.clone(), Choice::Recent(item))
-                                            })
-                                            .collect(),
-                                    );
-                                    continue;
-                                }
                                 if let Some(Purpose::Search {
                                     provider,
                                     metadata,
@@ -4342,9 +4249,8 @@ fn choice_art(choice: &Choice) -> Option<&str> {
         Choice::Video(VideoAction::Watch(i))
         | Choice::Online(i, _)
         | Choice::UseCover(i)
-        | Choice::Recent(i)
         | Choice::ApplyMetadata(i) => &i.cover,
-        Choice::Feed(p) | Choice::Subscribe(p) | Choice::Unsubscribe(p) => {
+        Choice::Feed(p) | Choice::Unsubscribe(p) => {
             if p.art600.is_empty() {
                 &p.art
             } else {

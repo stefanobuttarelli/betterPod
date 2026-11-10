@@ -35,7 +35,6 @@ fn details(generation: u64) -> Purpose {
     Purpose::Details {
         generation,
         metadata: false,
-        item: OnlineItem::new(Provider::YouTube),
     }
 }
 

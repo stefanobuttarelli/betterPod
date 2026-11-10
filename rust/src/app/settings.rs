@@ -1,8 +1,7 @@
 //! Original Settings columns. Choices are rebuilt only on a state change.
 use super::*;
 #[derive(Clone)]
-pub(super) enum SettingValue {
-    Shuffle(bool),
+pub(crate) enum SettingValue {
     ShuffleMode(&'static str),
     Repeat(&'static str),
     Theme(&'static str),
@@ -10,10 +9,6 @@ pub(super) enum SettingValue {
     YouTube(bool),
     Podcasts(bool),
     Delay(u32),
-    Dim(u8),
-    Style(&'static str),
-    Effect(u32),
-    Palette(u32),
 }
 fn choice(label: impl Into<String>, value: SettingValue, selected: bool) -> Row {
     let mut row = Row::new(label, Intent::Setting(value));
@@ -31,7 +26,6 @@ fn summary(label: &str, value: impl Into<String>, detail: impl Into<String>) -> 
 impl App {
     pub(super) fn apply_setting(&mut self, value: SettingValue) {
         match value {
-            SettingValue::Shuffle(v) => self.set_shuffle_mode(if v { "songs" } else { "off" }),
             SettingValue::ShuffleMode(v) => self.set_shuffle_mode(v),
             SettingValue::Repeat(v) => self.settings.repeat = v.into(),
             SettingValue::Theme(v) => self.settings.theme = v.into(),
@@ -42,10 +36,6 @@ impl App {
             }
             SettingValue::Podcasts(v) => self.settings.hide_podcasts = !v,
             SettingValue::Delay(v) => self.settings.screensaver_seconds = v,
-            SettingValue::Dim(v) => self.settings.screensaver_dim = v,
-            SettingValue::Style(v) => self.settings.screensaver_style = v.into(),
-            SettingValue::Effect(v) => self.settings.screensaver_effect = v,
-            SettingValue::Palette(v) => self.settings.screensaver_colors = v,
         }
         self.configure_saver(false);
         self.save_settings();
@@ -315,5 +305,4 @@ impl App {
         }
         false
     }
-    pub(super) fn draw_setting_preview(&self, _r: &mut Renderer, _fg: Color, _muted: Color) {}
 }

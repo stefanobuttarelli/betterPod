@@ -53,9 +53,11 @@ impl Extras {
                 .as_ref()
                 .is_some_and(|state| state.error.is_none())
     }
+    #[cfg(test)]
     pub(in crate::app) fn preview_cache_snapshot(&self) -> Snapshot {
         self.listen_snapshot.clone()
     }
+    #[cfg(test)]
     pub(in crate::app) fn preview_row_state(&self) -> Option<VideoSnapshot> {
         self.preview_state.clone()
     }

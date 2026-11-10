@@ -157,7 +157,6 @@ extern "C" {
     ) -> *mut Midend;
     fn midend_free(midend: *mut Midend);
     fn midend_new_game(midend: *mut Midend);
-    fn midend_restart_game(midend: *mut Midend);
     fn midend_size(midend: *mut Midend, w: *mut c_int, h: *mut c_int, user_size: c_int);
     fn midend_process_key(midend: *mut Midend, x: c_int, y: c_int, button: c_int) -> c_int;
     #[cfg(test)]
@@ -169,7 +168,6 @@ extern "C" {
     fn midend_colours(midend: *mut Midend, count: *mut c_int) -> *mut c_float;
     fn midend_timer(midend: *mut Midend, dt: c_float);
     fn midend_status(midend: *mut Midend) -> c_int;
-    fn midend_solve(midend: *mut Midend) -> *mut c_char;
     fn midend_num_presets(midend: *mut Midend) -> c_int;
     fn midend_which_preset(midend: *mut Midend) -> c_int;
     fn midend_fetch_preset(
@@ -854,7 +852,6 @@ pub struct PuzzleGame {
     error: Option<String>,
     digit: i32,
     menu: bool,
-    menu_index: usize,
     preset: usize,
 }
 impl Drop for PuzzleGame {
@@ -891,7 +888,6 @@ impl PuzzleGame {
             error: None,
             digit: 1,
             menu: false,
-            menu_index: 0,
             preset: 0,
         })
     }

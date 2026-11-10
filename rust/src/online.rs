@@ -1378,51 +1378,6 @@ fn archive_format(format: &str) -> Option<(&'static str, u8)> {
     }
 }
 
-static HISTORY_LOCK: Mutex<()> = Mutex::new(());
-fn read_history(data: &std::path::Path) -> Vec<Value> {
-    let path = data.join("video-history.json");
-    if std::fs::metadata(&path).map_or(true, |m| m.len() > 1024 * 1024) {
-        return Vec::new();
-    }
-    std::fs::read(path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
-}
-fn remember_video(
-    data: &std::path::Path,
-    url: &str,
-    title: &str,
-    position: f64,
-) -> Result<(), String> {
-    validate_http(url)?;
-    let _lock = HISTORY_LOCK.lock().map_err(|e| e.to_string())?;
-    let mut history = read_history(data);
-    history.retain(|v| text(v, "url") != url);
-    history.insert(0,json!({"url":url,"title":title,"position":if position.is_finite(){position.max(0.0)}else{0.0}}));
-    history.truncate(100);
-    crate::storage::atomic_write(
-        &data.join("video-history.json"),
-        &serde_json::to_vec(&history).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
-}
-fn video_history(data: &std::path::Path) -> Result<Vec<OnlineItem>, String> {
-    let _lock = HISTORY_LOCK.lock().map_err(|e| e.to_string())?;
-    Ok(read_history(data)
-        .into_iter()
-        .map(|raw| {
-            let mut item = OnlineItem::new(Provider::YouTube);
-            item.url = text(&raw, "url");
-            item.id = item.url.clone();
-            item.title = text(&raw, "title");
-            item.kind = "video".into();
-            item.raw = raw;
-            item
-        })
-        .collect())
-}
-
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;

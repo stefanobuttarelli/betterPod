@@ -11,8 +11,6 @@ use std::{
     path::Path,
 };
 mod status;
-const ROWS: usize = 4;
-const COLS: usize = 6;
 const CELL: f64 = 110.;
 const EFFECTS: [&str; 5] = ["Bars", "Waves", "Tunnel", "Stars", "Spectrogram"];
 const PALETTES: [&str; 8] = [

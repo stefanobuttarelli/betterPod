@@ -39,7 +39,6 @@ mod discovery;
 pub enum Mode {
     Music,
     Database,
-    Maintenance,
     Update,
     DeleteAlbum(Vec<PathBuf>),
 }
@@ -51,11 +50,7 @@ pub enum Request {
         label: String,
     },
     /// Only main may handle this after joining the old App's writers.
-    FinalizeTransfer {
-        config: m::Config,
-        manifest: PathBuf,
-        visible: bool,
-    },
+    FinalizeTransfer { manifest: PathBuf, visible: bool },
     Update {
         config: u::Config,
         manifest: u::Manifest,
@@ -70,11 +65,7 @@ pub enum Effect {
 }
 #[derive(Clone, Copy)]
 enum Destination {
-    SelectMusic,
-    CopyMusic,
-    MoveMusic,
     MoveDatabase,
-    UseDatabase,
 }
 #[derive(Clone)]
 enum Choice {
@@ -86,12 +77,9 @@ enum Choice {
     CreateDatabase(PathBuf),
     Browse(PathBuf, Destination),
     Select(PathBuf, Destination),
-    Confirm(Request),
     Run(Request),
     Pending,
     Resume(m::PendingTransfer),
-    Check,
-    Apply(u::Manifest),
     Back,
 }
 struct Row {
@@ -120,7 +108,6 @@ struct Page {
 }
 struct ActiveMove {
     id: u64,
-    request: Request,
     view: move_visual::MoveView,
     visible: bool,
     stopping: bool,
@@ -192,17 +179,8 @@ impl Controller {
             "maintenance-move-copy" | "maintenance-move-verify" => {
                 controller.mode = Some(Mode::Music);
                 controller.push("Moving Music", Vec::new());
-                let request = controller.request(
-                    m::Command::TransferMusic {
-                        destination: "/fixture-sd2/music".into(),
-                        remove_source: true,
-                        confirmed: true,
-                    },
-                    "Moving Music",
-                );
                 controller.active_move = Some(ActiveMove {
                     id: u64::MAX,
-                    request,
                     view: move_visual::MoveView::visual_fixture(
                         music,
                         &library,
@@ -309,45 +287,6 @@ impl Controller {
                 self.database_rows(Vec::new());
                 self.discovery
                     .submit(discovery::Query::Cards(self.config.clone()));
-            }
-            Mode::Maintenance => {
-                let clear = self.request(
-                    m::Command::ClearArtwork { quiescent: true },
-                    "Clear artwork cache",
-                );
-                let prefs = self.request(
-                    m::Command::Reset {
-                        scope: m::ResetScope::Preferences,
-                        confirmed: true,
-                        quiescent: true,
-                    },
-                    "Reset preferences",
-                );
-                let data = self.request(
-                    m::Command::Reset {
-                        scope: m::ResetScope::AppData,
-                        confirmed: true,
-                        quiescent: true,
-                    },
-                    "Clear app data",
-                );
-                let all = self.request(
-                    m::Command::Reset {
-                        scope: m::ResetScope::EverythingIncludingTools,
-                        confirmed: true,
-                        quiescent: true,
-                    },
-                    "Reset this Rust app",
-                );
-                self.push(
-                    "Maintenance",
-                    vec![
-                        Row::new("Clear artwork cache", Choice::Confirm(clear)),
-                        Row::new("Reset preferences", Choice::Confirm(prefs)),
-                        Row::new("Clear app data", Choice::Confirm(data)),
-                        Row::new("Reset Rust app and downloads", Choice::Confirm(all)),
-                    ],
-                );
             }
             Mode::Update => {
                 self.push("Software Update", Vec::new());
@@ -653,11 +592,9 @@ impl Controller {
             manifest: manifest.clone(),
             clients_ready: true,
         };
-        let request = self.request(command.clone(), "Moving Music");
         let id = self.worker.command(command).ok_or("Music worker is busy")?;
         self.active_move = Some(ActiveMove {
             id,
-            request,
             view: move_visual::MoveView::new(),
             visible,
             stopping: false,
@@ -700,7 +637,6 @@ impl Controller {
             let manifest = job.manifest.clone()?;
             job.committing = true;
             Some(Request::FinalizeTransfer {
-                config: self.config.clone(),
                 manifest,
                 visible: job.visible,
             })
@@ -761,7 +697,6 @@ impl Controller {
                 if let Some(id) = self.worker.command(command.clone()) {
                     self.active_move = Some(ActiveMove {
                         id,
-                        request,
                         view: move_visual::MoveView::new(),
                         visible: true,
                         stopping: false,
@@ -839,7 +774,6 @@ impl Controller {
                     };
                     job.committing = true;
                     return Some(Effect::Run(Request::FinalizeTransfer {
-                        config: self.config.clone(),
                         manifest,
                         visible: job.visible,
                     }));
@@ -1005,31 +939,12 @@ impl Controller {
                     }
                     Choice::Browse(path, kind) => self.browse(path, kind),
                     Choice::Select(path, kind) => {
-                        if matches!(kind, Destination::MoveDatabase | Destination::UseDatabase) {
+                        if matches!(kind, Destination::MoveDatabase) {
                             self.probe = Some(path.clone());
                             self.discovery.submit(discovery::Query::Inspect(path));
                             return None;
                         }
                         let (command, label) = match kind {
-                            Destination::SelectMusic => {
-                                (m::Command::SelectMusic(path), "Use this music folder")
-                            }
-                            Destination::CopyMusic => (
-                                m::Command::TransferMusic {
-                                    destination: path,
-                                    remove_source: false,
-                                    confirmed: true,
-                                },
-                                "Copy music and use destination",
-                            ),
-                            Destination::MoveMusic => (
-                                m::Command::TransferMusic {
-                                    destination: path,
-                                    remove_source: true,
-                                    confirmed: true,
-                                },
-                                "Move music and remove verified sources",
-                            ),
                             Destination::MoveDatabase => (
                                 m::Command::MoveDatabase {
                                     destination: path,
@@ -1037,18 +952,10 @@ impl Controller {
                                 },
                                 "Move database here",
                             ),
-                            Destination::UseDatabase => (
-                                m::Command::UseDatabase {
-                                    directory: path,
-                                    quiescent: true,
-                                },
-                                "Use this Rust database",
-                            ),
                         };
                         let req = self.request(command, label);
                         self.confirm(req, label);
                     }
-                    Choice::Confirm(req) => self.confirm(req, "Continue"),
                     Choice::Run(req) => return self.launch(req),
                     Choice::Pending => {
                         self.worker.command(m::Command::PendingTransfers);
@@ -1063,16 +970,6 @@ impl Controller {
                             "Resume music transfer",
                         );
                         self.confirm(req, "Resume verified transfer");
-                    }
-                    Choice::Check => {
-                        self.check_updates();
-                    }
-                    Choice::Apply(manifest) => {
-                        let req = Request::Update {
-                            config: self.update_config.clone(),
-                            manifest,
-                        };
-                        self.confirm(req, "Install Rust update");
                     }
                 }
             }
@@ -1199,12 +1096,6 @@ impl Controller {
                             Choice::CreateDatabase(path.join("betterpod-rust")),
                         ));
                     }
-                    if matches!(kind, Destination::CopyMusic | Destination::MoveMusic) {
-                        rows.push(Row::new(
-                            "New music folder here",
-                            Choice::Select(path.join("betterpod-music"), kind),
-                        ));
-                    }
                     if let Some(parent) = path.parent() {
                         rows.push(Row::new("..", Choice::Browse(parent.into(), kind)));
                     }
@@ -1293,43 +1184,6 @@ impl Controller {
             }
         }
         effects
-    }
-    pub fn draw(&mut self, r: &mut Renderer, dark: bool) {
-        let fg = if dark {
-            [0.94, 0.94, 0.96, 1.]
-        } else {
-            [0.1, 0.11, 0.13, 1.]
-        };
-        let muted = if dark {
-            [0.65, 0.66, 0.7, 1.]
-        } else {
-            [0.4, 0.42, 0.47, 1.]
-        };
-        r.text(self.title(), 20., 60., 24, fg, 600.);
-        if let Some(page) = self.pages.last() {
-            let first = page.selected.saturating_sub(5);
-            for (i, row) in page.rows.iter().enumerate().skip(first).take(6) {
-                let y = 106. + (i - first) as f32 * 46.;
-                let selected = i == page.selected;
-                if selected {
-                    r.rect(12., y - 4., 616., 44., [0.12, 0.48, 0.88, 1.]);
-                }
-                let color = if selected { [1.; 4] } else { fg };
-                r.text(&row.label, 24., y, 20, color, 585.);
-                if !row.detail.is_empty() {
-                    r.text(
-                        &row.detail,
-                        24.,
-                        y + 23.,
-                        13,
-                        if selected { [1.; 4] } else { muted },
-                        585.,
-                    );
-                }
-            }
-        }
-        r.text(&self.status, 20., 400., 16, muted, 600.);
-        r.text("A Select   B Back", 20., 454., 16, muted, 600.);
     }
 }
 
@@ -1744,7 +1598,6 @@ mod controller_tests {
             writable: true,
             owned: true,
             foreign: false,
-            has_files: true,
         });
         let one = c.visual_options().unwrap();
         let two = c.visual_options().unwrap();
@@ -1781,7 +1634,6 @@ mod controller_tests {
             writable: true,
             owned: false,
             foreign: true,
-            has_files: true,
         });
         assert!(!c.has_options());
         assert!(c.status.contains("belonging to this app"));

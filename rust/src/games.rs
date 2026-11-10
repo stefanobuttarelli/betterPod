@@ -1,7 +1,7 @@
 //! Self-contained Rust games. Logic does no disk I/O and uses fixed-size
 //! boards and bounded physics steps, so music keeps its own execution budget.
 use crate::input::Action;
-use crate::render::{Color, Renderer, Texture};
+use crate::render::{Renderer, Texture};
 use crate::visual_assets::VisualAssets;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -891,6 +891,7 @@ fn cell(direction: Action, line: usize, pos: usize) -> usize {
     }
 }
 
+#[cfg(test)]
 fn merge_line(input: [u32; 4]) -> ([u32; 4], u64, [bool; 4]) {
     let mut packed = [0; 4];
     let mut count = 0;
@@ -933,23 +934,6 @@ fn can_move(board: &[u32; 16]) -> bool {
         }
     }
     false
-}
-
-fn tile_color(value: u32) -> Color {
-    match value {
-        2 => color(238, 228, 218),
-        4 => color(237, 224, 200),
-        8 => color(242, 177, 121),
-        16 => color(245, 149, 99),
-        32 => color(246, 124, 95),
-        64 => color(246, 94, 59),
-        128 => color(237, 207, 114),
-        256 => color(237, 204, 97),
-        512 => color(237, 200, 80),
-        1024 => color(237, 197, 63),
-        2048 => color(237, 194, 46),
-        _ => color(62, 57, 51),
-    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -1393,29 +1377,6 @@ fn radial_t(x: f32, y: f32, x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32
     }
     t.clamp(0.0, 1.0)
 }
-fn circle_rect(ball: [f64; 2], x: f64, y: f64, w: f64, h: f64) -> bool {
-    let dx = ball[0] - ball[0].clamp(x, x + w);
-    let dy = ball[1] - ball[1].clamp(y, y + h);
-    dx * dx + dy * dy <= BALL_RADIUS * BALL_RADIUS
-}
-
-fn color(r: u8, g: u8, b: u8) -> Color {
-    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
-}
-fn overlay(r: &mut Renderer, title: &str, hint: &str, x: f32, y: f32, w: f32, h: f32) {
-    r.rect(x - 3.0, y - 3.0, w + 6.0, h + 6.0, [0.0, 0.0, 0.0, 0.22]);
-    r.rect(x, y, w, h, [0.13, 0.15, 0.19, 0.96]);
-    centered(r, title, x + 8.0, y + 42.0, w - 16.0, 26, [1.0; 4]);
-    centered(
-        r,
-        hint,
-        x + 8.0,
-        y + 77.0,
-        w - 16.0,
-        18,
-        [0.82, 0.86, 0.94, 1.0],
-    );
-}
 
 #[cfg(test)]
 mod tests {
@@ -1538,17 +1499,3 @@ mod snapshot_tests {
 }
 
 // Game layouts use text baselines; the shared renderer accepts a top edge.
-fn text(r: &mut Renderer, value: &str, x: f32, baseline: f32, size: u16, color: Color, width: f32) {
-    r.text(value, x, baseline - size as f32, size, color, width);
-}
-fn centered(
-    r: &mut Renderer,
-    value: &str,
-    x: f32,
-    baseline: f32,
-    width: f32,
-    size: u16,
-    color: Color,
-) {
-    r.centered(value, x, baseline - size as f32, width, size, color);
-}

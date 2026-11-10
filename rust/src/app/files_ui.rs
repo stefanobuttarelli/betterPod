@@ -13,7 +13,6 @@ use std::{
 #[derive(Clone, Copy, Debug)]
 pub enum Mode {
     Browse,
-    Stats,
     Scanned,
 }
 #[derive(Clone, Debug)]
@@ -99,7 +98,6 @@ impl Files {
                         .unwrap_or("Files")
                 }
             }
-            Mode::Stats => "Library",
             Mode::Scanned => "Scanned Folders",
         }
     }
@@ -123,7 +121,6 @@ impl Files {
                 self.request(files::Command::Browse(self.current.clone()));
                 let _ = self.client.submit(files::Command::Stats);
             }
-            Mode::Stats => self.request(files::Command::StatsLibrary(library)),
             Mode::Scanned => self.request(files::Command::Scanned(library)),
         }
     }

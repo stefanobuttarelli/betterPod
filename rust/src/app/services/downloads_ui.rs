@@ -283,38 +283,6 @@ fn update_archive_row(row: &mut Item, id: u64, state: &DownloadState, format: &s
 }
 
 impl Extras {
-    #[cfg(test)]
-    pub(in crate::app) fn qa_download_view(&mut self, outcome: &str) {
-        self.open(ExtraPage::ActiveDownloads);
-        let request = DownloadRequest::YouTube {
-            url: "https://example.invalid/qa-video".into(),
-            video: false,
-            split_chapters: true,
-        };
-        let mut state = DownloadState::from_task(&Task::Download(request)).unwrap();
-        state.title = "Timely!!".into();
-        state.creator = "Anri".into();
-        state.status = "Track 3 of 8 · Downloading audio".into();
-        state.started = true;
-        state.done = 32 * 1024 * 1024;
-        state.total = Some(64 * 1024 * 1024);
-        state.shown = 0.5;
-        state.speed = 256.0 * 1024.0;
-        if outcome != "active" {
-            state.active = false;
-            match outcome {
-                "done" => {
-                    state.completed = Some(8);
-                    state.done = state.total.unwrap();
-                    state.shown = 1.0;
-                }
-                "cancelled" => state.error = Some("Cancelled".into()),
-                _ => state.error = Some("Connection interrupted".into()),
-            }
-        }
-        self.download_states.insert(999_999, state);
-        self.show_download(999_999);
-    }
     pub(super) fn apply_service_progress(
         &mut self,
         id: u64,
@@ -390,7 +358,6 @@ impl Extras {
                     | Purpose::Combined { .. }
                     | Purpose::CoverContext { .. }
                     | Purpose::ArchiveStatus { .. }
-                    | Purpose::History
                     | Purpose::Downloads
             ) {
                 handle.cancel();

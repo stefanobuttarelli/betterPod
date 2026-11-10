@@ -155,7 +155,6 @@ struct Layout {
     tops: Vec<f32>,
 }
 struct Navigation {
-    previous: Page,
     forward: bool,
     started: f64,
     cross_panel: bool,
@@ -325,6 +324,7 @@ impl MenuVisual {
             self.brightness_osd.set(0.0, 0.3, Curve::Css, 0.0, now);
         }
     }
+    #[cfg(test)]
     pub fn seed_preview_order(&mut self, order: Vec<usize>, started: f64) {
         self.cycle.order = order;
         self.cycle.starts.clear();
@@ -542,7 +542,6 @@ impl MenuVisual {
         }
         self.active_view = Some(current_id);
         self.navigation = Some(Navigation {
-            previous,
             forward,
             started: now,
             cross_panel: cross,
@@ -2334,13 +2333,11 @@ pub(super) fn is_menu(screen: Screen) -> bool {
             | Screen::Search
             | Screen::SearchResults(_)
             | Screen::Puzzles
-            | Screen::GameClocks
             | Screen::GameHistory
             | Screen::Library
             | Screen::Screensaver
             | Screen::SearchHub
             | Screen::Lossless
-            | Screen::YouTubeSettings
     )
 }
 
@@ -3113,30 +3110,6 @@ pub(super) fn ellipsize(
     out.push_str(&text[..ends[lo]]);
     out.push_str(ellipsis);
     out
-}
-
-fn caret_fit(r: &mut Renderer, text: &str, size: f32, weight: u16, width: f32) -> String {
-    if r.text_width_weighted(text, size, weight) <= width {
-        return text.to_owned();
-    }
-    let Some(caret) = text.rfind('|') else {
-        return ellipsize(r, text, size, weight, width);
-    };
-    if r.text_width_weighted(&format!("{}…", &text[..caret + 1]), size, weight) <= width {
-        return ellipsize(r, text, size, weight, width);
-    }
-    let tail = if caret + 1 < text.len() { "…" } else { "" };
-    let mut from = 0;
-    while from < caret
-        && r.text_width_weighted(
-            &format!("…{}{}", &text[from..caret + 1], tail),
-            size,
-            weight,
-        ) > width
-    {
-        from += text[from..].chars().next().unwrap().len_utf8();
-    }
-    ellipsize(r, &format!("…{}", &text[from..]), size, weight, width)
 }
 
 #[allow(clippy::too_many_arguments)]

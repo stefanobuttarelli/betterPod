@@ -167,6 +167,7 @@ impl Extras {
             })
             .map(|pending| pending.id)
     }
+    #[cfg(test)]
     pub(in crate::app) fn initial_album_read_pending(&self) -> bool {
         self.initial_album_read_token().is_some()
     }
@@ -416,7 +417,6 @@ mod tests {
         Purpose::Details {
             metadata: false,
             generation: 0,
-            item: OnlineItem::new(Provider::YouTube),
         }
     }
     #[test]
