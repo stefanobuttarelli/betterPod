@@ -1279,7 +1279,8 @@ pub fn run(
     // The App has already joined its writers. Sprites are loaded before this
     // new interaction loop and released on both success and failure.
     let mut assets = VisualAssets::new(r, assets_path)?;
-    let mut art = match crate::art::Artwork::new(r, assets_path) {
+    // The database may be moving: covers decode from their originals here.
+    let mut art = match crate::art::Artwork::new(r, assets_path, None) {
         Ok(art) => art,
         Err(error) => {
             assets.close(r);

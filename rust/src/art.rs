@@ -7,8 +7,107 @@ use std::sync::{
     mpsc, Arc, Mutex,
 };
 use std::thread;
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub type CoverSignatures = HashMap<PathBuf, (u64, Option<SystemTime>)>;
+
+/// Scaled covers kept on disk in the database folder, as Go's `.ipod_art`:
+/// a cover is decoded from its original once, then from this copy, until the
+/// original changes. Each name comes from the original's path, size and
+/// modification time, so an edited cover gets a new entry; scans prune the
+/// entries no album uses.
+pub const SCALED_DIR: &str = "artwork-scaled";
+
+fn scaled_name(path: &Path, len: u64, modified: Option<SystemTime>) -> String {
+    use sha2::{Digest, Sha256};
+    let nanos = modified
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let mut hash = Sha256::new();
+    hash.update(path.as_os_str().as_encoded_bytes());
+    hash.update(format!("\0{len}\0{nanos}"));
+    hash.finalize()[..16]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// The cover at display size: from the scaled copy when the original is
+/// unchanged, else decoded from the original and saved for next time.
+fn decode_cached(dir: &Path, path: &Path) -> Result<image::RgbaImage, String> {
+    let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let name = scaled_name(path, meta.len(), meta.modified().ok());
+    for extension in ["jpg", "png"] {
+        let copy = dir.join(format!("{name}.{extension}"));
+        if copy.is_file() {
+            if let Ok(image) = decoder::decode(&copy) {
+                return Ok(image);
+            }
+        }
+    }
+    let image = decoder::decode(path)?;
+    if let Err(error) = store_scaled(dir, &name, &image) {
+        eprintln!("Artwork cache {}: {error}", path.display());
+    }
+    Ok(image)
+}
+
+/// JPEG for opaque covers (as Go); PNG keeps a transparent cover's alpha.
+/// Written beside the target and renamed, so readers see whole files only.
+fn store_scaled(dir: &Path, name: &str, image: &image::RgbaImage) -> Result<(), String> {
+    use std::io::Write;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let opaque = image.pixels().all(|pixel| pixel[3] == 255);
+    let mut bytes = Vec::new();
+    let extension = if opaque {
+        let rgb = image::DynamicImage::ImageRgba8(image.clone()).to_rgb8();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 90)
+            .encode_image(&rgb)
+            .map_err(|e| e.to_string())?;
+        "jpg"
+    } else {
+        image
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .map_err(|e| e.to_string())?;
+        "png"
+    };
+    let target = dir.join(format!("{name}.{extension}"));
+    let temporary = dir.join(format!(".{name}.{}.tmp", std::process::id()));
+    let mut file = std::fs::File::create(&temporary).map_err(|e| e.to_string())?;
+    let written = file
+        .write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .and_then(|_| std::fs::rename(&temporary, &target));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written.map_err(|e| e.to_string())
+}
+
+/// Deletes scaled copies no album uses any more. Only files older than ten
+/// minutes go: not one just written for an album a scan is still adding.
+fn prune_scaled(dir: &Path, keep: &HashSet<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let old = SystemTime::now() - Duration::from_secs(600);
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let stem = name.split('.').next().unwrap_or_default();
+        let hex = stem.len() == 32 && stem.bytes().all(|b| b.is_ascii_hexdigit());
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|modified| modified < old);
+        let leftover = name.starts_with('.') && name.ends_with(".tmp");
+        if stale && ((hex && !keep.contains(stem)) || leftover) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
 
 /// Called by the library worker, never by frame lookups.
 pub fn cover_signatures<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> CoverSignatures {
@@ -38,8 +137,11 @@ struct Decoders {
     threads: Vec<thread::JoinHandle<()>>,
 }
 impl Decoders {
-    fn new() -> Result<Self, String> {
-        Self::with_decoder(decode)
+    fn new(scaled: Option<PathBuf>) -> Result<Self, String> {
+        match scaled {
+            Some(dir) => Self::with_decoder(move |path| decode_cached(&dir, path)),
+            None => Self::with_decoder(decode),
+        }
     }
     fn with_decoder<F>(decode: F) -> Result<Self, String>
     where
@@ -153,11 +255,18 @@ pub struct Artwork {
     pub placeholder: Texture,
     closed: bool,
     signatures: CoverSignatures,
+    scaled: Option<PathBuf>,
 }
 impl Artwork {
-    pub fn new(renderer: &Renderer, _assets: &Path) -> Result<Self, String> {
+    /// `scaled` is the folder for scaled copies (`SCALED_DIR` in the
+    /// database folder); None decodes every cover from its original.
+    pub fn new(
+        renderer: &Renderer,
+        _assets: &Path,
+        scaled: Option<PathBuf>,
+    ) -> Result<Self, String> {
         let image = raster_default_artwork(512)?;
-        let decoders = Decoders::new()?;
+        let decoders = Decoders::new(scaled.clone())?;
         let placeholder =
             renderer.upload_artwork(image.width(), image.height(), image.as_raw(), &[])?;
         Ok(Self {
@@ -170,6 +279,7 @@ impl Artwork {
             placeholder,
             closed: false,
             signatures: HashMap::new(),
+            scaled,
         })
     }
     pub fn peek(&mut self, path: Option<&Path>) -> Texture {
@@ -278,6 +388,19 @@ impl Artwork {
                     renderer.delete_texture(texture);
                 }
             }
+        }
+        if let Some(dir) = self.scaled.clone() {
+            let keep: HashSet<String> = signatures
+                .iter()
+                .map(|(path, (len, modified))| scaled_name(path, *len, *modified))
+                .collect();
+            // File I/O stays off the UI thread.
+            let _ = thread::Builder::new()
+                .name("artwork-prune".into())
+                .spawn(move || {
+                    background_priority();
+                    prune_scaled(&dir, &keep);
+                });
         }
         self.signatures = signatures;
     }
@@ -509,6 +632,92 @@ fn decode(path: &Path) -> Result<image::RgbaImage, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scaled_covers_are_kept_until_the_original_changes() {
+        let root = std::env::temp_dir().join(format!("bp-scaled-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let cache = root.join(SCALED_DIR);
+        std::fs::create_dir_all(&root).unwrap();
+        let cover = root.join("cover.png");
+        let opaque = image::RgbaImage::from_fn(1000, 800, |x, y| {
+            image::Rgba([(x % 251) as u8, (y % 241) as u8, ((x + y) % 239) as u8, 255])
+        });
+        opaque.save(&cover).unwrap();
+        let first = decode_cached(&cache, &cover).unwrap();
+        assert_eq!(first.dimensions(), (512, 410));
+        let names = |dir: &Path| {
+            let mut names: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        let saved = names(&cache);
+        assert_eq!(saved.len(), 1);
+        assert!(saved[0].ends_with(".jpg"), "{saved:?}");
+        // The copy is read back instead of the original: same size, close pixels.
+        let again = decode_cached(&cache, &cover).unwrap();
+        assert_eq!(again.dimensions(), first.dimensions());
+        let error = first
+            .as_raw()
+            .iter()
+            .zip(again.as_raw())
+            .map(|(a, b)| f64::from(a.abs_diff(*b)))
+            .sum::<f64>()
+            / first.as_raw().len() as f64;
+        eprintln!("scaled copy mean channel error: {error:.2}");
+        assert!(
+            error < 4.0,
+            "a q90 copy stays close to the decoded cover: {error}"
+        );
+        assert_eq!(names(&cache), saved, "a hit writes nothing new");
+
+        // A transparent cover keeps its alpha in a PNG copy.
+        let clear = root.join("clear.png");
+        image::RgbaImage::from_pixel(64, 64, image::Rgba([10, 20, 30, 128]))
+            .save(&clear)
+            .unwrap();
+        let alpha = decode_cached(&cache, &clear).unwrap();
+        assert_eq!(alpha.get_pixel(0, 0)[3], 128);
+        assert_eq!(
+            decode_cached(&cache, &clear).unwrap().get_pixel(0, 0)[3],
+            128
+        );
+        assert!(names(&cache).iter().any(|n| n.ends_with(".png")));
+
+        // An edited cover (new size or time) gets its own entry.
+        let edited = image::RgbaImage::from_pixel(700, 700, image::Rgba([200, 0, 0, 255]));
+        edited.save(&cover).unwrap();
+        let file = std::fs::File::options().write(true).open(&cover).unwrap();
+        file.set_modified(SystemTime::now() + Duration::from_secs(5))
+            .unwrap();
+        drop(file);
+        let red = decode_cached(&cache, &cover).unwrap();
+        assert_eq!(red.dimensions(), (512, 512));
+        assert!(red.get_pixel(10, 10)[0] > 180);
+        assert_eq!(names(&cache).len(), 3);
+
+        // Pruning keeps what albums use and anything written in the last ten
+        // minutes; an old unused copy goes.
+        let meta = std::fs::metadata(&cover).unwrap();
+        let keep: HashSet<String> = [scaled_name(&cover, meta.len(), meta.modified().ok())].into();
+        prune_scaled(&cache, &keep);
+        assert_eq!(names(&cache).len(), 3, "recent copies stay");
+        let old = SystemTime::now() - Duration::from_secs(3600);
+        for name in names(&cache) {
+            let file = std::fs::File::options()
+                .write(true)
+                .open(cache.join(&name))
+                .unwrap();
+            file.set_modified(old).unwrap();
+        }
+        prune_scaled(&cache, &keep);
+        let left = names(&cache);
+        assert_eq!(left.len(), 1);
+        assert!(left[0].starts_with(keep.iter().next().unwrap().as_str()));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
     #[test]
     fn shutdown_joins_inflight_decoders_without_reading_the_queued_backlog() {
         use std::sync::{atomic::AtomicUsize, Barrier};

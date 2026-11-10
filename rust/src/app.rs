@@ -578,7 +578,7 @@ impl App {
             idle_stopped: true,
             idle_play_pending: None,
             last_idle_error: None,
-            art: Artwork::new(renderer, &assets)?,
+            art: Artwork::new(renderer, &assets, Some(data.join(crate::art::SCALED_DIR)))?,
             store,
             extras,
             pending_album_read: None,

@@ -33,6 +33,7 @@ pub(crate) const DATA_ITEMS: &[&str] = &[
     "album-merges.json",
     "share-name.txt",
     "artwork",
+    "artwork-scaled",
     "chosen_covers",
     "chosen-covers",
     "curation.json",
@@ -786,6 +787,7 @@ fn execute(config: &mut Config, command: Command, ctx: &Context<'_>) -> Result<(
                     "chosen-covers",
                     "chosen_covers",
                     "artwork",
+                    "artwork-scaled",
                     "playlists",
                     "games",
                     "puzzles",
@@ -836,11 +838,13 @@ fn execute(config: &mut Config, command: Command, ctx: &Context<'_>) -> Result<(
                 return Err("Stop artwork workers before clearing their cache".into());
             }
             read_owner(&config.data)?;
-            let path = config.data.join("artwork");
-            if path.exists() {
-                let _ = inventory(&path, &[], ctx)?;
-                fs::remove_dir_all(path).map_err(|e| e.to_string())?;
-                sync_directory(&config.data).map_err(|e| e.to_string())?;
+            for folder in ["artwork", crate::art::SCALED_DIR] {
+                let path = config.data.join(folder);
+                if path.exists() {
+                    let _ = inventory(&path, &[], ctx)?;
+                    fs::remove_dir_all(path).map_err(|e| e.to_string())?;
+                    sync_directory(&config.data).map_err(|e| e.to_string())?;
+                }
             }
             Ok(())
         }
