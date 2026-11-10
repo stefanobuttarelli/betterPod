@@ -58,7 +58,7 @@ impl RecentSearches {
                     }
                 }
             }
-            list.sort_by(|a, b| b.at.cmp(&a.at));
+            list.sort_by_key(|search| std::cmp::Reverse(search.at));
         }
         searches.prune(now);
         searches

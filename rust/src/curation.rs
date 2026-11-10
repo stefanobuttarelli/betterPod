@@ -9,7 +9,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::Cursor,
     path::{Path, PathBuf},
@@ -484,6 +484,60 @@ pub fn unmerge(
     save(data, &manifest)
 }
 
+/// Album Info on the console renamed an album or its artist. A merged album
+/// keeps its songs together under the new name: every override in an edited
+/// song's group follows (Go's retargetAlbumMerges). An edited disc number
+/// replaces the private disc a merge assigned. Other choices stay.
+pub(crate) fn follow_album_edit(
+    data: &Path,
+    edits: &[(PathBuf, metadata::TagEdit)],
+) -> Result<(), String> {
+    let _lock = WRITER.lock().map_err(|e| e.to_string())?;
+    let mut manifest = read(data);
+    let mut changed = false;
+    let mut renamed: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+    for (path, edit) in edits {
+        let Some(entry) = manifest.tracks.get_mut(path) else {
+            continue;
+        };
+        if edit.disc.is_some() && entry.disc.take().is_some() {
+            changed = true;
+        }
+        if edit.album.is_none() && edit.album_artist.is_none() {
+            continue;
+        }
+        if entry.group.is_empty() {
+            // A grouped name with no group cannot be shared; follow it here.
+            changed |= rename(entry, &edit.album, &edit.album_artist);
+        } else {
+            renamed
+                .entry(entry.group.clone())
+                .or_insert_with(|| (edit.album.clone(), edit.album_artist.clone()));
+        }
+    }
+    for entry in manifest.tracks.values_mut() {
+        if let Some((album, artist)) = renamed.get(&entry.group) {
+            changed |= rename(entry, album, artist);
+        }
+    }
+    if changed {
+        save(data, &manifest)?;
+    }
+    Ok(())
+}
+fn rename(entry: &mut Override, album: &Option<String>, artist: &Option<String>) -> bool {
+    let mut changed = false;
+    if let Some(album) = album.as_ref().filter(|_| entry.album.is_some()) {
+        changed |= entry.album.as_ref() != Some(album);
+        entry.album = Some(album.clone());
+    }
+    if let Some(artist) = artist.as_ref().filter(|_| entry.artist.is_some()) {
+        changed |= entry.artist.as_ref() != Some(artist);
+        entry.artist = Some(artist.clone());
+    }
+    changed
+}
+
 /// Physical edits from the paired Mac must not remain hidden behind older
 /// private album grouping or chosen-cover overrides. Unrelated choices stay.
 pub(crate) fn reconcile_remote_tags(
@@ -697,6 +751,61 @@ mod cover_integration_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn album_info_renames_carry_a_merged_album_and_its_added_songs() {
+        let data = std::env::temp_dir().join(format!("bp-follow-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&data);
+        fs::create_dir_all(&data).unwrap();
+        let own = PathBuf::from("/music/Rumours/01.flac");
+        let added = PathBuf::from("/music/Rumours Bonus/01.flac");
+        let alone = PathBuf::from("/music/Other/01.flac");
+        let merged = |added: bool, disc: Option<u32>| Override {
+            album: Some("Rumours".into()),
+            artist: Some("Fleetwood Mac".into()),
+            group: "private:rumours".into(),
+            disc,
+            added,
+            ..Default::default()
+        };
+        let mut manifest = Manifest::default();
+        manifest.tracks.insert(own.clone(), merged(false, None));
+        manifest.tracks.insert(added.clone(), merged(true, Some(2)));
+        manifest.tracks.insert(
+            alone.clone(),
+            Override {
+                cover: Some("/data/chosen-covers/x.jpg".into()),
+                ..Default::default()
+            },
+        );
+        save(&data, &manifest).unwrap();
+
+        // Only the album's own song is edited; the added one follows.
+        let edit = metadata::TagEdit {
+            album: Some("Rumours (Deluxe)".into()),
+            ..Default::default()
+        };
+        follow_album_edit(&data, &[(own.clone(), edit)]).unwrap();
+        let after = read(&data);
+        for path in [&own, &added] {
+            let entry = &after.tracks[path];
+            assert_eq!(entry.album.as_deref(), Some("Rumours (Deluxe)"));
+            assert_eq!(entry.artist.as_deref(), Some("Fleetwood Mac"));
+            assert_eq!(entry.group, "private:rumours");
+        }
+        assert_eq!(after.tracks[&added].disc, Some(2));
+        assert!(after.tracks[&added].added);
+        // A song with only a chosen cover gains no album name.
+        assert_eq!(after.tracks[&alone].album, None);
+
+        // An edited disc number replaces the merge's private disc.
+        let disc = metadata::TagEdit {
+            disc: Some(1),
+            ..Default::default()
+        };
+        follow_album_edit(&data, &[(added.clone(), disc)]).unwrap();
+        assert_eq!(read(&data).tracks[&added].disc, None);
+        fs::remove_dir_all(&data).unwrap();
+    }
     #[test]
     fn cancelled_search_finishes_before_validating_or_accessing_any_music_path() {
         let context = Context::standalone();

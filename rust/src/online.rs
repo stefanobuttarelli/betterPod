@@ -841,6 +841,10 @@ fn execute(
                 .zip(edits.into_iter().map(|(_, edit)| edit))
                 .collect();
             metadata::write_album_tags(&edits, context)?;
+            // The tags are saved; a merged album's private names follow them.
+            if let Err(error) = curation::follow_album_edit(data, &edits) {
+                eprintln!("Album Info: merged songs keep their old album name: {error}");
+            }
             Ok(Output::Saved)
         }
         Task::PreviewAlbumInfo { paths, item } => {
