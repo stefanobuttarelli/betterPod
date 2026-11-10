@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.14 (2026-11-10)
+
+- The battery icon now matches Knulli's own percentage. Knulli's BatteryPlus estimates the level from the battery voltage and writes it to `/tmp/battery.percent`; the app read the power chip's own figure instead, which can be far lower (55% while Knulli showed 93%). The app reads BatteryPlus first and the chip only without it.
+
 ## v0.2.13 (2026-11-10)
 
 - The field you type into stays visible above the keyboard. In Album Info, Artist, Album Artist, Genre and the other fields below the top rise with the keyboard and settle back when it closes, and the caret shows as soon as the keyboard opens. This applies to every list with a keyboard.

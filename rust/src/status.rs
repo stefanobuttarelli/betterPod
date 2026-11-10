@@ -161,7 +161,7 @@ fn trim(path: impl AsRef<Path>) -> String {
 /// The console's status now, unsmoothed. Screens drawn outside the app's
 /// loop, such as the update runner, read it directly.
 pub fn current() -> Status {
-    read_status(Path::new("/sys"), Path::new("/proc/net/wireless"))
+    read_status(Path::new("/sys"), Path::new("/proc/net/wireless"), Path::new("/tmp"))
 }
 fn read_battery(supply: &Path, state: &mut Status) {
     state.battery = trim(supply.join("capacity"))
@@ -173,7 +173,7 @@ fn read_battery(supply: &Path, state: &mut Status) {
     state.charged = status == "Full";
     state.external_power |= state.charging || state.charged;
 }
-fn read_status(sys: &Path, wireless: &Path) -> Status {
+fn read_status(sys: &Path, wireless: &Path, tmp: &Path) -> Status {
     let mut state = Status::default();
     // Prefer the known console paths even when firmware omits their type.
     let supply = sys.join("class/power_supply");
@@ -207,6 +207,22 @@ fn read_status(sys: &Path, wireless: &Path) -> Status {
                 state.external_power |= trim(p.join("online")) == "1";
             }
         }
+    }
+    // Knulli's BatteryPlus estimates the level from the voltage and writes
+    // it here; Knulli's own screens show this number (knulli-battery-check).
+    // The PMIC's capacity read above can be far lower (55% against 93%).
+    if let Some(pct) = trim(tmp.join("battery.percent"))
+        .parse::<u8>()
+        .ok()
+        .filter(|v| *v <= 100)
+    {
+        state.battery = Some(pct);
+    }
+    let status = trim(tmp.join("battery.status"));
+    if !status.is_empty() {
+        state.charging = status == "Charging";
+        state.charged = status == "Full";
+        state.external_power |= state.charging || state.charged;
     }
     if let Ok(entries) = fs::read_dir(sys.join("class/net")) {
         for entry in entries.flatten() {
@@ -325,7 +341,7 @@ mod tests {
         fs::create_dir_all(&battery).unwrap();
         fs::write(battery.join("capacity"), "100\n").unwrap();
         fs::write(battery.join("status"), "Full\n").unwrap();
-        let state = read_status(&root, &root.join("no-wireless"));
+        let state = read_status(&root, &root.join("no-wireless"), &root.join("no-tmp"));
         assert_eq!(state.battery, Some(100));
         assert!(state.charged && !state.charging && state.external_power);
         let _ = fs::remove_dir_all(&root);
@@ -349,7 +365,7 @@ mod tests {
                 fs::write(p.join(file), value).unwrap();
             }
         }
-        assert_eq!(read_status(&root, &root.join("wireless")).battery, Some(82));
+        assert_eq!(read_status(&root, &root.join("wireless"), &root.join("no-tmp")).battery, Some(82));
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
@@ -383,9 +399,29 @@ mod tests {
                 fs::write(d.join("scope"), scope).unwrap();
             }
         }
-        let state = read_status(&root, &root.join("no-wireless"));
+        let state = read_status(&root, &root.join("no-wireless"), &root.join("no-tmp"));
         assert_eq!(state.battery, Some(97));
         assert!(!state.charging);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn knulli_batteryplus_level_wins_over_the_pmic() {
+        let root = std::env::temp_dir().join(format!("bp-status-plus-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let console = root.join("class/power_supply/axp2202-battery");
+        fs::create_dir_all(&console).unwrap();
+        fs::write(console.join("type"), "Battery").unwrap();
+        fs::write(console.join("capacity"), "55\n").unwrap();
+        fs::write(console.join("status"), "Discharging\n").unwrap();
+        let tmp = root.join("tmp");
+        fs::create_dir_all(&tmp).unwrap();
+        let wireless = root.join("no-wireless");
+        assert_eq!(read_status(&root, &wireless, &tmp).battery, Some(55));
+        fs::write(tmp.join("battery.percent"), "93\n").unwrap();
+        assert_eq!(read_status(&root, &wireless, &tmp).battery, Some(93));
+        fs::write(tmp.join("battery.percent"), "junk").unwrap();
+        assert_eq!(read_status(&root, &wireless, &tmp).battery, Some(55));
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -403,7 +439,7 @@ mod tests {
         fs::create_dir_all(&console).unwrap();
         fs::write(console.join("capacity"), "97\n").unwrap();
         fs::write(console.join("status"), "Charging\n").unwrap();
-        let state = read_status(&root, &root.join("no-wireless"));
+        let state = read_status(&root, &root.join("no-wireless"), &root.join("no-tmp"));
         assert_eq!(state.battery, Some(97));
         assert!(state.charging);
         let _ = fs::remove_dir_all(&root);
