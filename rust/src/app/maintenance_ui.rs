@@ -208,10 +208,15 @@ impl Controller {
     }
     pub fn new(config: m::Config, update_config: u::Config) -> Result<Self, String> {
         let updater = u::Updater::new(update_config.clone())?;
-        let check_after = if update_config.feed.is_some() || update_config.beta_feed.is_some() {
+        let has_feed = update_config.feed.is_some() || update_config.beta_feed.is_some();
+        // BETTERPOD_RUST_AUTO_UPDATE_CHECK=0 keeps only the manual check.
+        let automatic = std::env::var("BETTERPOD_RUST_AUTO_UPDATE_CHECK").as_deref() != Ok("0");
+        let check_after = if !has_feed {
+            updater.command(u::Command::Check);
+            None
+        } else if automatic {
             Some(std::time::Instant::now() + std::time::Duration::from_secs(30))
         } else {
-            updater.command(u::Command::Check);
             None
         };
         Ok(Self {

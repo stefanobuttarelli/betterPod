@@ -90,6 +90,10 @@ All options use the `BETTERPOD_RUST_` prefix. They do not override the stable ap
 | `BETTERPOD_RUST_EXIT_AFTER_SECONDS` | Bounded local smoke/benchmark duration. |
 | `BETTERPOD_RUST_SCREENSHOT` | PNG output before a bounded run exits. |
 | `BETTERPOD_RUST_SWAP_AB=0` | Use SDL's face-button labels instead of Anbernic's mapping. |
+| `BETTERPOD_RUST_STICK_WHEEL=1` | Turn the sticks like an iPod click wheel: clockwise moves down, counter-clockwise up. Off by default (the sticks act as arrows). |
+| `BETTERPOD_RUST_WHEEL_STEP` | Degrees of stick rotation per wheel click, 5–90 (default 15). |
+| `BETTERPOD_RUST_MEDIA_KEYS=0` | Ignore headphone and Bluetooth media buttons. |
+| `BETTERPOD_RUST_AUTO_UPDATE_CHECK=0` | No automatic daily update check; Settings → Software Update still checks by hand. |
 | `BETTERPOD_RUST_INSTALLATION` | Ports root for the independent Rust updater. |
 | `BETTERPOD_RUST_UPDATE_FEED` | Override the default `rust-latest` manifest URL; an empty value disables this channel. |
 | `BETTERPOD_RUST_BETA_UPDATE_FEED` | Override the `rust-beta` manifest URL, read with Beta Versions on; an empty value disables this channel. |

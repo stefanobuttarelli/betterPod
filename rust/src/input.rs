@@ -8,6 +8,7 @@ use sdl2::{EventPump, GameControllerSubsystem, Sdl};
 use std::time::{Duration, Instant};
 #[cfg(target_os = "linux")]
 mod media;
+mod wheel;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -82,6 +83,9 @@ pub struct Input {
     subsystem: GameControllerSubsystem,
     held: Vec<Held>,
     swap_ab: bool,
+    /// Degrees per click when the sticks act as a click wheel; None: arrows.
+    wheel_step: Option<f32>,
+    wheels: [wheel::Wheel; 2],
     #[cfg(target_os = "linux")]
     media: media::MediaInput,
 }
@@ -96,6 +100,10 @@ impl Input {
             subsystem,
             held: Vec::with_capacity(24),
             swap_ab: std::env::var("BETTERPOD_RUST_SWAP_AB").map_or(true, |v| v != "0"),
+            wheel_step: (std::env::var("BETTERPOD_RUST_STICK_WHEEL").as_deref() == Ok("1")).then(
+                || wheel::step_from(std::env::var("BETTERPOD_RUST_WHEEL_STEP").ok().as_deref()),
+            ),
+            wheels: Default::default(),
             #[cfg(target_os = "linux")]
             media: media::MediaInput::new(),
         };
@@ -167,6 +175,19 @@ impl Input {
             } else {
                 self.release(source, now, out);
             }
+            return;
+        }
+        if let Some(step) = self.wheel_step {
+            let (stick, horizontal) = match axis {
+                Axis::LeftX => (0, true),
+                Axis::LeftY => (0, false),
+                Axis::RightX => (1, true),
+                Axis::RightY => (1, false),
+                _ => return,
+            };
+            let clicks = self.wheels[stick].axis(horizontal, value, step);
+            let action = if clicks > 0 { Action::Down } else { Action::Up };
+            out.extend(std::iter::repeat_n(action, clicks.unsigned_abs() as usize));
             return;
         }
         // Keep a held direction until the stick returns near its centre.

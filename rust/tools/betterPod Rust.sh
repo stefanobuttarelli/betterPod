@@ -36,6 +36,18 @@ mkdir -p "$GAMEDIR/conf"
 export BETTERPOD_RUST_DATA_DIR=${BETTERPOD_RUST_DATA_DIR:-$GAMEDIR/conf}
 export BETTERPOD_RUST_ASSETS_DIR=${BETTERPOD_RUST_ASSETS_DIR:-$GAMEDIR/assets}
 export BETTERPOD_RUST_FULLSCREEN=${BETTERPOD_RUST_FULLSCREEN:-1}
+# --- Options (remove a # to use one) -------------------------------------
+# A and B follow the Anbernic labels. If they are swapped:
+# export BETTERPOD_RUST_SWAP_AB=0
+# The stick works like the arrows. To turn it like a click wheel instead:
+# export BETTERPOD_RUST_STICK_WHEEL=1
+# export BETTERPOD_RUST_WHEEL_STEP=15   # degrees of rotation per click (5-90)
+# Ignore headphone and Bluetooth media buttons:
+# export BETTERPOD_RUST_MEDIA_KEYS=0
+# No automatic daily check for new versions (Software Update still checks):
+# export BETTERPOD_RUST_AUTO_UPDATE_CHECK=0
+# Disable vertical sync:
+# export BETTERPOD_RUST_VSYNC=0
 mkdir -p "$BETTERPOD_RUST_DATA_DIR"
 
 # Import only the library index. Settings, queue, scans and extracted artwork
