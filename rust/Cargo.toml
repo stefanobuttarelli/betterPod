@@ -54,6 +54,11 @@ cc = "1"
 [target.'cfg(target_os = "macos")'.dependencies]
 sdl2 = { version = "0.38", features = ["mixer", "use_mac_framework"] }
 
+# Debug builds and tests resize full-size covers through `image`; optimizing
+# that one dependency keeps them fast without slowing the app's own build.
+[profile.dev.package.image]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

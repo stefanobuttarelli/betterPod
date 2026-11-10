@@ -294,6 +294,12 @@ fn version(text: &str) -> Result<semver::Version, String> {
 fn newer(candidate: &str, current: &str) -> Result<bool, String> {
     Ok(version(candidate)?.cmp_precedence(&version(current)?) == std::cmp::Ordering::Greater)
 }
+/// One unit of the retry schedule: a second in the app. Tests keep the same
+/// schedule in milliseconds, so they exercise it without real waits.
+#[cfg(not(test))]
+const RETRY_UNIT: Duration = Duration::from_secs(1);
+#[cfg(test)]
+const RETRY_UNIT: Duration = Duration::from_millis(1);
 /// GitHub's release downloads sometimes answer 500/502/503/504 or drop
 /// the connection for a few seconds: a GET is tried four times, 2, 5 and
 /// 10 seconds apart, before the error is shown. 4xx answers are final.
@@ -330,9 +336,10 @@ fn get_with_retry(
         };
         eprintln!("Rust update: {error}; trying again in {wait} s");
         attempt += 1;
+        // Sliced so cancellation is noticed within a tenth of the unit.
         for _ in 0..wait * 10 {
             ctx.check()?;
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(RETRY_UNIT / 10);
         }
     }
 }

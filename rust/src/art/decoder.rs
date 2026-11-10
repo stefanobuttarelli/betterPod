@@ -404,7 +404,20 @@ mod tests {
                 DynamicImage::ImageRgb32F(base.to_rgb32f()),
                 DynamicImage::ImageRgba32F(base.to_rgba32f()),
             ];
-            for image in cases {
+            // Pixel conversion does not depend on size, nor sampling on the
+            // pixel type: the two large frames check one type per sample
+            // family (8-bit RGB and RGBA, 16-bit, float) instead of all ten.
+            let large = w * h > 512 * 513;
+            for image in cases.into_iter().filter(|image| {
+                !large
+                    || matches!(
+                        image,
+                        DynamicImage::ImageRgb8(_)
+                            | DynamicImage::ImageRgba8(_)
+                            | DynamicImage::ImageRgba16(_)
+                            | DynamicImage::ImageRgba32F(_)
+                    )
+            }) {
                 let expected = image
                     .resize(EDGE, EDGE, image::imageops::FilterType::Triangle)
                     .to_rgba8();
