@@ -24,8 +24,6 @@
 	<string>public.app-category.music</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connect to your betterPod on the same Wi-Fi network to browse and edit its music library.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>betterPod · MIT</string>
 	<key>CFBundleDocumentTypes</key>
@@ -34,7 +32,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Music</string>
 			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
+			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
