@@ -145,6 +145,7 @@ enum Kind {
     Settings,
     Playback,
     Games,
+    RecentSearches,
 }
 
 impl Kind {
@@ -153,6 +154,7 @@ impl Kind {
             Self::Settings => "settings.json",
             Self::Playback => "playback.json",
             Self::Games => "games.json",
+            Self::RecentSearches => "recent-searches.json",
         }
     }
 }
@@ -343,6 +345,24 @@ impl Store {
         }
         serde_json::from_slice::<serde_json::Value>(snapshot).map_err(|error| error.to_string())?;
         self.enqueue(Kind::Games, Payload::Bytes(snapshot.to_vec()))
+    }
+
+    pub fn load_recent_searches(&self, now: u64) -> crate::recent_searches::RecentSearches {
+        let path = self.root.join(Kind::RecentSearches.filename());
+        let small = fs::metadata(&path)
+            .is_ok_and(|m| m.len() <= crate::recent_searches::MAX_FILE_BYTES as u64);
+        small
+            .then(|| fs::read(&path).ok())
+            .flatten()
+            .map(|bytes| crate::recent_searches::RecentSearches::from_json(&bytes, now))
+            .unwrap_or_default()
+    }
+
+    pub fn save_recent_searches(
+        &self,
+        searches: &crate::recent_searches::RecentSearches,
+    ) -> Result<(), String> {
+        self.enqueue(Kind::RecentSearches, Payload::Bytes(searches.to_json()))
     }
 
     fn enqueue(&self, kind: Kind, payload: Payload) -> Result<(), String> {
@@ -911,6 +931,27 @@ mod tests {
         }
         let store = Store::new(root.clone()).unwrap();
         assert_eq!(store.load_games_snapshot().unwrap(), br#"{"score":2}"#);
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recent_searches_survive_a_restart_in_their_moved_file() {
+        use crate::recent_searches::{RecentSearches, SearchScreen};
+        let root = temporary("recent");
+        let now = 1_800_000_000;
+        let mut recent = RecentSearches::default();
+        recent.record(SearchScreen::Archive, "Bach", now);
+        {
+            let store = Store::new(root.clone()).unwrap();
+            assert_eq!(store.load_recent_searches(now), RecentSearches::default());
+            store.save_recent_searches(&recent).unwrap();
+            store.flush().unwrap();
+        }
+        // The file name is the one DATA_ITEMS moves with the database.
+        assert!(crate::maintenance::DATA_ITEMS.contains(&"recent-searches.json"));
+        let store = Store::new(root.clone()).unwrap();
+        assert_eq!(store.load_recent_searches(now), recent);
         drop(store);
         fs::remove_dir_all(root).unwrap();
     }

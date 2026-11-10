@@ -554,6 +554,35 @@ impl Extras {
         page.role = PageRole::Sheet;
         self.pages.push(page);
     }
+    /// Recent Searches, under the search field until a new search runs.
+    pub(super) fn recent_search_rows(&self, provider: Provider) -> Vec<Item> {
+        let Some(screen) = recent_screen(provider) else {
+            return Vec::new();
+        };
+        let now = unix_now();
+        self.recent_searches
+            .list(screen, now)
+            .into_iter()
+            .map(|search| {
+                let mut row = Item::new(
+                    &search.term,
+                    Choice::RecentSearch(provider, search.term.clone()),
+                );
+                row.detail = format!(
+                    "Recent search · {}",
+                    betterpod_rust::recent_searches::when(search.at, now)
+                );
+                row.options = vec![
+                    Item::new(
+                        "Remove from Recent Searches",
+                        Choice::RemoveRecentSearch(screen, search.term.clone()),
+                    ),
+                    Item::new("Clear Recent Searches", Choice::ClearRecentSearches(screen)),
+                ];
+                row
+            })
+            .collect()
+    }
     pub(super) fn search_rows(&self, provider: Provider, metadata: bool) -> Vec<Item> {
         let Some(state) = self
             .searches
@@ -566,6 +595,9 @@ impl Extras {
             }
             if let Some(kind) = self.youtube_search_kind_row(provider, metadata) {
                 rows.push(kind);
+            }
+            if !metadata {
+                rows.extend(self.recent_search_rows(provider));
             }
             return rows;
         };
@@ -593,6 +625,9 @@ impl Extras {
             rows.push(kind);
         }
         if state.query.trim().is_empty() {
+            if !metadata {
+                rows.extend(self.recent_search_rows(provider));
+            }
             return rows;
         }
         if provider == Provider::Archive
@@ -824,6 +859,7 @@ impl Extras {
                 "Your Podcasts"
             },
         )];
+        rows.extend(self.recent_search_rows(Provider::Podcast));
         if self.subscriptions.is_empty() {
             let mut row = fact("Find a podcast", "");
             row.detail = "Search above; the ones you download from are kept here".into();
@@ -2331,5 +2367,132 @@ mod youtube_search_tests {
         ));
         assert_eq!(rows[6].visual.value, "1:00");
         assert_eq!(rows[7].visual.value, "2:00");
+    }
+}
+
+#[cfg(test)]
+mod recent_search_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct Fixture {
+        extras: Extras,
+        root: PathBuf,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "betterpod-recent-ui-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(root.join("music")).unwrap();
+            std::fs::create_dir_all(root.join("data")).unwrap();
+            Self {
+                extras: Extras::new(root.join("music"), root.join("data")).unwrap(),
+                root,
+            }
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            self.extras.shutdown();
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+    fn titles(extras: &Extras) -> Vec<String> {
+        extras
+            .pages
+            .last()
+            .unwrap()
+            .rows
+            .iter()
+            .map(|r| r.title.clone())
+            .collect()
+    }
+    fn saved(extras: &mut Extras) -> usize {
+        let before = extras.effects.len();
+        extras
+            .effects
+            .retain(|effect| !matches!(effect, Effect::SaveRecentSearches(_)));
+        before - extras.effects.len()
+    }
+
+    #[test]
+    fn submitted_searches_list_under_the_field_and_can_be_removed() {
+        let mut fixture = Fixture::new();
+        let extras = &mut fixture.extras;
+        extras.submit_typing(Typing::Search(Provider::Archive, false), " Bach ".into());
+        extras.submit_typing(
+            Typing::Search(Provider::Archive, false),
+            "Grateful Dead".into(),
+        );
+        // Album Info's metadata searches are not kept.
+        extras.submit_typing(Typing::Search(Provider::Archive, true), "hidden".into());
+        assert_eq!(saved(extras), 2);
+        extras.cancel_browse_jobs();
+
+        // A fresh search page lists them newest first, under the field.
+        extras.searches.clear();
+        let rows = extras.search_rows(Provider::Archive, false);
+        let labels: Vec<_> = rows.iter().map(|r| r.title.as_str()).collect();
+        assert_eq!(labels, ["", "Grateful Dead", "Bach"]);
+        assert_eq!(rows[1].detail, "Recent search · Today");
+        let options: Vec<_> = rows[1].options.iter().map(|r| r.title.as_str()).collect();
+        assert_eq!(
+            options,
+            ["Remove from Recent Searches", "Clear Recent Searches"]
+        );
+        // Other screens keep their own lists.
+        assert!(!extras
+            .search_rows(Provider::YouTube, false)
+            .iter()
+            .any(|row| matches!(row.choice, Choice::RecentSearch(..))));
+
+        // Choosing one runs it again and moves it first.
+        extras.push("Internet Archive", rows);
+        extras.pages.last_mut().unwrap().role = PageRole::Search(Provider::Archive, false);
+        extras.choose(Choice::RecentSearch(Provider::Archive, "Bach".into()));
+        assert_eq!(saved(extras), 1);
+        assert_eq!(extras.searches[0].query, "Bach");
+        extras.cancel_browse_jobs();
+        extras.searches.clear();
+        let order: Vec<_> = extras
+            .recent_search_rows(Provider::Archive)
+            .into_iter()
+            .map(|r| r.title)
+            .collect();
+        assert_eq!(order, ["Bach", "Grateful Dead"]);
+
+        // Removing redraws the open page and saves.
+        let page = extras.search_rows(Provider::Archive, false);
+        extras.replace("Internet Archive", page);
+        extras.pages.last_mut().unwrap().role = PageRole::Search(Provider::Archive, false);
+        extras.choose(Choice::RemoveRecentSearch(
+            SearchScreen::Archive,
+            "bach".into(),
+        ));
+        assert_eq!(saved(extras), 1);
+        assert_eq!(titles(extras), ["", "Grateful Dead"]);
+        extras.choose(Choice::ClearRecentSearches(SearchScreen::Archive));
+        assert_eq!(saved(extras), 1);
+        assert_eq!(titles(extras), [""]);
+    }
+
+    #[test]
+    fn podcasts_list_recent_searches_before_your_podcasts() {
+        let mut fixture = Fixture::new();
+        let extras = &mut fixture.extras;
+        let mut recent = RecentSearches::default();
+        recent.record(SearchScreen::Podcasts, "history", unix_now());
+        extras.set_recent_searches(recent);
+        let rows = extras.podcast_home_rows();
+        assert_eq!(rows[1].title, "history");
+        assert!(matches!(
+            rows[1].choice,
+            Choice::RecentSearch(Provider::Podcast, ref term) if term == "history"
+        ));
+        assert_eq!(rows[2].title, "Find a podcast");
     }
 }

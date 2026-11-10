@@ -24,6 +24,7 @@ pub mod playlists;
 pub mod podcasts;
 pub mod preview_icons;
 pub mod puzzles;
+pub mod recent_searches;
 pub mod render;
 pub mod saver;
 pub mod share;

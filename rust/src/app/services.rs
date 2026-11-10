@@ -25,6 +25,7 @@ use betterpod_rust::online::{
 };
 use betterpod_rust::playlists::{self, Playlist, PlaylistClient};
 use betterpod_rust::podcasts::{Episode, Podcast};
+use betterpod_rust::recent_searches::{RecentSearches, SearchScreen};
 use betterpod_rust::share::{self, ShareClient, ShareInfo};
 use betterpod_rust::weather::{Place, Weather, WeatherCommand, WeatherEvent, WeatherSnapshot};
 use share_visual::{ShareAction, ShareVisual};
@@ -54,6 +55,8 @@ pub(crate) enum ExtraPage {
 }
 #[derive(Clone)]
 pub(super) enum Effect {
+    /// Recent Searches changed; the app's state writer saves them.
+    SaveRecentSearches(RecentSearches),
     VideoOpening {
         item: OnlineItem,
         queue: Vec<OnlineItem>,
@@ -115,6 +118,10 @@ pub(super) enum Effect {
 }
 #[derive(Clone)]
 enum Choice {
+    /// Run a search again from the list under the search field.
+    RecentSearch(Provider, String),
+    RemoveRecentSearch(SearchScreen, String),
+    ClearRecentSearches(SearchScreen),
     Video(VideoAction),
     Page(ExtraPage),
     NewPlaylist,
@@ -445,6 +452,7 @@ pub(super) struct Extras {
     preview_ready: bool,
     searches: Vec<SearchState>,
     subscriptions: Vec<Podcast>,
+    recent_searches: RecentSearches,
     active_feed: Option<(Podcast, Vec<Episode>)>,
     playlists: PlaylistClient,
     lists: Arc<Vec<Playlist>>,
@@ -531,6 +539,7 @@ impl Extras {
             preview_ready: false,
             searches: Vec::new(),
             subscriptions: Vec::new(),
+            recent_searches: RecentSearches::default(),
             active_feed: None,
             playlists: PlaylistClient::new(music.clone(), data.clone()),
             lists: Arc::new(Vec::new()),
@@ -1755,6 +1764,34 @@ impl Extras {
             _ => false,
         }
     }
+    pub(in crate::app) fn set_recent_searches(&mut self, searches: RecentSearches) {
+        self.recent_searches = searches;
+    }
+    fn remember_search(&mut self, provider: Provider, term: &str) {
+        let Some(screen) = recent_screen(provider) else {
+            return;
+        };
+        if self.recent_searches.record(screen, term, unix_now()) {
+            self.effects
+                .push(Effect::SaveRecentSearches(self.recent_searches.clone()));
+        }
+    }
+    /// After a removal: save, and redraw the search page that lists them.
+    fn recent_searches_changed(&mut self) {
+        self.effects
+            .push(Effect::SaveRecentSearches(self.recent_searches.clone()));
+        let rows = match self.pages.last().map(|page| page.role) {
+            Some(PageRole::Search(provider, false)) => self.search_rows(provider, false),
+            Some(PageRole::PodcastHome) => self.podcast_home_rows(),
+            _ => return,
+        };
+        if let Some(page) = self.pages.last_mut() {
+            page.rows = rows;
+            page.selected = page.selected.min(page.rows.len().saturating_sub(1));
+            page.visual_rows = None;
+        }
+        self.invalidate_visual_rows();
+    }
     fn search(&mut self, provider: Provider, query: String, page: u32, metadata: bool) {
         self.search_on_page(provider, query, page, metadata, None);
     }
@@ -2188,6 +2225,20 @@ impl Extras {
                 }
                 if let Some(first) = queue.first().cloned() {
                     self.resolve_media(first, queue, 0, video, 0.);
+                }
+            }
+            Choice::RecentSearch(provider, term) => {
+                self.remember_search(provider, &term);
+                self.search(provider, term, 1, false);
+            }
+            Choice::RemoveRecentSearch(screen, term) => {
+                if self.recent_searches.remove(screen, &term) {
+                    self.recent_searches_changed();
+                }
+            }
+            Choice::ClearRecentSearches(screen) => {
+                if self.recent_searches.clear(screen) {
+                    self.recent_searches_changed();
                 }
             }
             Choice::ClearSearch(provider) => {
@@ -2848,7 +2899,12 @@ impl Extras {
             Typing::NewPlaylist => {
                 self.playlist_command(playlists::Command::Create { name: query })
             }
-            Typing::Search(provider, metadata) => self.search(provider, query, 1, metadata),
+            Typing::Search(provider, metadata) => {
+                if !metadata {
+                    self.remember_search(provider, &query);
+                }
+                self.search(provider, query, 1, metadata)
+            }
             Typing::Weather => {
                 self.weather_query = query.clone();
                 self.weather_loading = true;
@@ -4275,3 +4331,20 @@ fn choice_art(choice: &Choice) -> Option<&str> {
 
 #[cfg(test)]
 mod followup_qa;
+
+/// The Recent Searches list a search screen keeps (Go's "ia", "youtube" and
+/// "podcasts"); metadata and cover searches keep none.
+fn recent_screen(provider: Provider) -> Option<SearchScreen> {
+    match provider {
+        Provider::Archive => Some(SearchScreen::Archive),
+        Provider::YouTube | Provider::YouTubePlaylists => Some(SearchScreen::YouTube),
+        Provider::Podcast => Some(SearchScreen::Podcasts),
+        _ => None,
+    }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}

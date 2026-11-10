@@ -761,6 +761,7 @@ fn execute(config: &mut Config, command: Command, ctx: &Context<'_>) -> Result<(
                     "playback.json",
                     "games.json",
                     "weather.json",
+                    "recent-searches.json",
                     "games",
                     "puzzles",
                 ],

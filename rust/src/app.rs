@@ -544,7 +544,14 @@ impl App {
             .load_games_snapshot()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
-        let extras = Extras::new(music.clone(), data.clone())?;
+        let mut extras = Extras::new(music.clone(), data.clone())?;
+        extras.set_recent_searches(
+            store.load_recent_searches(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |elapsed| elapsed.as_secs()),
+            ),
+        );
         let wifi_library =
             WifiLibrary::new(music.clone(), data.clone(), settings.sharing_name.clone());
         let audio = AudioEngine::new()?;
@@ -3391,6 +3398,11 @@ impl App {
                     self.visual_video_resolve_failed(&origin, error)
                 }
                 ExtraEffect::Notice(message) => self.notify(message),
+                ExtraEffect::SaveRecentSearches(searches) => {
+                    if let Err(error) = self.store.save_recent_searches(&searches) {
+                        eprintln!("Recent searches: {error}");
+                    }
+                }
                 ExtraEffect::MediaArtwork { origin, path } => {
                     if !self.visual_video_artwork(&origin, path.clone())
                         && origin == self.video_origin
