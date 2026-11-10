@@ -88,7 +88,7 @@ impl Keyboard {
         self.exiting = false;
         self.animation.snap(1.0);
     }
-    #[cfg(test)]
+    /// The panel's current height while it slides in or out.
     pub fn height(&mut self, now: f64) -> f32 {
         PANEL_HEIGHT * self.animation.value(now) as f32
     }

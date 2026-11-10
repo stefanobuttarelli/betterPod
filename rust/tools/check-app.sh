@@ -29,6 +29,7 @@ docker run --rm --network none -v "$ROOT:/repo:ro" -v "$MUSIC:/music:ro" -v "$RO
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::qa::playlist_full_page_draws_its_reserved_mini_player -- --ignored --exact --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::visual_player::regression_qa::playback_saver_cache_and_navigation_regressions -- --ignored --exact --nocapture --test-threads=1
   cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::album_read::tests::initial_album_info_input_retains_source_and_cancels_before_late_results -- --ignored --exact --nocapture --test-threads=1
+  cargo test --locked --manifest-path /w/rust/Cargo.toml --target-dir /target-appchecks --bin betterpod-rust app::album_read::tests::album_editor_keeps_the_typed_field_above_the_keyboard -- --ignored --exact --nocapture --test-threads=1
   # SDL dummy supports one output. A private null sink allows the retained,
   # paused music mixer plus the independent Listen/video output, without devices.
   export SDL_AUDIODRIVER=pulseaudio PULSE_SERVER=unix:/tmp/bp-qa-pulse PULSE_SINK=qa

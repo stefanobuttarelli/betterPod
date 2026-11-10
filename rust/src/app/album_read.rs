@@ -478,4 +478,82 @@ mod tests {
         assert_eq!(std::fs::read(&first).unwrap(), original_audio);
         app.shutdown(&r).unwrap();
     }
+
+    /// Selection blue rows between the header and the keyboard's top edge,
+    /// in a strip with no icons or text.
+    fn selection_rows_above_keyboard(path: &std::path::Path) -> usize {
+        let image = image::open(path).unwrap().to_rgb8();
+        (40..(480 - super::super::keyboard::PANEL_HEIGHT as u32))
+            .filter(|y| {
+                let [red, green, blue] = image.get_pixel(560, *y).0;
+                blue > 170 && red < 120 && green > 90
+            })
+            .count()
+    }
+
+    #[test]
+    #[ignore = "requires local SDL/GLES fixtures; run with the existing audio-qa image and no network"]
+    fn album_editor_keeps_the_typed_field_above_the_keyboard() {
+        let assets =
+            PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").expect("local assets"));
+        let out = PathBuf::from(
+            std::env::var_os("BETTERPOD_RUST_QA_OUTPUT").expect("local scratch output"),
+        )
+        .join(format!("album-keyboard-{}", std::process::id()));
+        let music = out.join("music");
+        wav(&music.join("Fixture Artist/Fixture Album/01 First.wav"));
+        wav(&music.join("Fixture Artist/Fixture Album/02 Second.wav"));
+        let sdl = sdl2::init().unwrap();
+        let video = sdl.video().unwrap();
+        let _audio = sdl.audio().unwrap();
+        video
+            .gl_attr()
+            .set_context_profile(sdl2::video::GLProfile::GLES);
+        video.gl_attr().set_context_version(2, 0);
+        let window = video
+            .window("Album editor keyboard check", 640, 480)
+            .opengl()
+            .build()
+            .unwrap();
+        let _context = window.gl_create_context().unwrap();
+        let mut r = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+        let mut app = App::new(music, out.join("data"), assets, None, &r).unwrap();
+        pump(&mut app, &r, |app| !app.scanning);
+        app.open(Screen::Albums);
+        app.handle(Action::Options);
+        select_sheet(&mut app, "Edit");
+        pump(&mut app, &r, |app| app.screen() == Screen::Extra);
+        let frames = |app: &mut App, r: &mut Renderer, count: usize| {
+            for _ in 0..count {
+                app.tick(1.0 / 60.0, r);
+                app.draw(r, app.visual_time);
+                r.finish();
+            }
+        };
+        frames(&mut app, &mut r, 30);
+        for field in ["Artist", "Genre"] {
+            let page = app.extras.visual_page().unwrap();
+            let target = page.rows.iter().position(|row| row.label == field).unwrap();
+            for _ in page.selected..target {
+                app.handle(Action::Down);
+            }
+            for _ in target..page.selected {
+                app.handle(Action::Up);
+            }
+            app.handle(Action::Select);
+            assert!(app.extras.is_typing(), "{field} opens the keyboard");
+            frames(&mut app, &mut r, 30);
+            let name = format!("keyboard-{}", field.to_lowercase());
+            capture(&mut app, &mut r, &out, &name);
+            assert!(
+                selection_rows_above_keyboard(&out.join(format!("{name}.png"))) > 30,
+                "{field} is drawn above the keyboard"
+            );
+            app.handle(Action::BackHeld);
+            frames(&mut app, &mut r, 30);
+            assert!(!app.extras.is_typing());
+        }
+        capture(&mut app, &mut r, &out, "keyboard-closed");
+        app.shutdown(&r).unwrap();
+    }
 }

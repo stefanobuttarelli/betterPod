@@ -285,6 +285,9 @@ struct Page {
     target: f32,
     visual_rows: Option<Arc<Vec<super::Row>>>,
     visual_status: String,
+    /// The keyboard state the visual rows were built with, so opening,
+    /// editing or closing it rebuilds the row being typed into.
+    visual_typing: Option<(Typing, String)>,
 }
 impl Page {
     fn new(title: impl Into<String>, rows: Vec<Item>) -> Self {
@@ -302,6 +305,7 @@ impl Page {
             playlist_path: None,
             visual_rows: None,
             visual_status: String::new(),
+            visual_typing: None,
         }
     }
 }
@@ -371,7 +375,7 @@ enum Purpose {
         generation: u64,
     },
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Typing {
     NewPlaylist,
     Combined,

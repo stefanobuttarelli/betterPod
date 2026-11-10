@@ -146,6 +146,8 @@ impl App {
             Some(Intent::SharingSettings) => vec![
                 {
                     let mut r = Row::new("Device Name", Intent::SharingName);
+                    r.visual.typing = matches!(self.keyboard_context, KeyboardContext::Sharing)
+                        && self.keyboard.as_ref().is_some_and(|k| !k.is_exiting());
                     r.visual.value = if matches!(self.keyboard_context, KeyboardContext::Sharing) {
                         self.keyboard
                             .as_ref()

@@ -161,6 +161,26 @@ pub(super) fn line_box(size: f32) -> (f32, f32) {
         (size * 0.96875).round() - if size == 28.0 { 1.0 } else { 0.0 },
     )
 }
+/// The list scroll that keeps the row being typed into (`typed`) above an
+/// on-screen keyboard. `visible` is the list height the keyboard leaves
+/// uncovered. It follows the keyboard as it slides, and is the resting
+/// scroll once the keyboard is gone.
+fn typed_row_scroll(resting: f32, tops: &[f32], typed: Option<usize>, visible: f32) -> f32 {
+    let Some(index) = typed else {
+        return resting;
+    };
+    let (Some(&top), Some(&end), Some(&total)) =
+        (tops.get(index), tops.get(index + 1), tops.last())
+    else {
+        return resting;
+    };
+    let visible = visible.max(1.0);
+    let mut scroll = resting;
+    if end > scroll + visible {
+        scroll = end - visible;
+    }
+    scroll.min(top).clamp(0.0, (total - visible).max(0.0))
+}
 pub(super) fn row_height(row: &Row) -> f32 {
     if row.visual.search_field {
         return 92.0;
@@ -283,6 +303,10 @@ pub(super) struct MenuVisual {
     ask_selected: usize,
     ask_until: f64,
     ask_reset: Option<f64>,
+    /// The bottom of the screen an on-screen keyboard covers this frame.
+    pub keyboard_inset: f32,
+    /// The last row typed into: page title, row count and index.
+    typed_row: Option<(String, usize, usize)>,
 }
 impl MenuVisual {
     pub fn new() -> Self {
@@ -333,6 +357,8 @@ impl MenuVisual {
             ask_selected: 0,
             ask_until: f64::NEG_INFINITY,
             ask_reset: None,
+            keyboard_inset: 0.0,
+            typed_row: None,
         }
     }
     pub fn tick(&mut self, now: f64) {
@@ -1413,7 +1439,33 @@ impl App {
             } else {
                 0.0
             };
-        let scroll = page.scroll.max(0.0).min((total - height).max(0.0));
+        let resting = page.scroll.max(0.0).min((total - height).max(0.0));
+        // The row stops being marked as soon as typing ends; it follows the
+        // keyboard down while the keyboard still covers the list.
+        let inset = self.visual_menu.keyboard_inset;
+        let marked = page.rows.iter().position(|row| row.visual.typing);
+        let typed = match marked {
+            Some(index) => {
+                self.visual_menu.typed_row = Some((page.title.clone(), page.rows.len(), index));
+                Some(index)
+            }
+            None if inset > 0.0 => self
+                .visual_menu
+                .typed_row
+                .as_ref()
+                .filter(|(title, count, _)| *title == page.title && *count == page.rows.len())
+                .map(|(_, _, index)| *index),
+            None => {
+                self.visual_menu.typed_row = None;
+                None
+            }
+        };
+        let scroll = typed_row_scroll(
+            resting,
+            tops,
+            typed,
+            bottom.min(480.0 - inset) - HEADER_HEIGHT,
+        );
         let first = tops.partition_point(|&top| top < scroll).saturating_sub(1);
         let selected_since = self.visual_menu.selection_since;
         let current = self.current_index();
@@ -1493,7 +1545,7 @@ impl App {
                 HEADER_HEIGHT,
                 SCROLLBAR_WIDTH,
                 height,
-                scroll,
+                scroll.min((total - height).max(0.0)),
                 total,
                 self.dark(),
                 ((self.visual_menu.scroll_until - self.visual_time) / 0.3).clamp(0., 1.) as f32,
@@ -3419,6 +3471,21 @@ fn erfc(x: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_typed_row_rises_above_the_keyboard_and_settles_back() {
+        let tops: Vec<f32> = (0..=12).map(|i| i as f32 * 76.0).collect();
+        // No row is being typed into: the list keeps its scroll.
+        assert_eq!(typed_row_scroll(40.0, &tops, None, 198.0), 40.0);
+        // Row 4 ends at 380; 198px stay visible above the keyboard.
+        assert_eq!(typed_row_scroll(0.0, &tops, Some(4), 198.0), 182.0);
+        // Halfway through sliding away, then at the resting scroll.
+        assert_eq!(typed_row_scroll(0.0, &tops, Some(4), 319.0), 61.0);
+        assert_eq!(typed_row_scroll(0.0, &tops, Some(4), 440.0), 0.0);
+        // A first row is already visible.
+        assert_eq!(typed_row_scroll(0.0, &tops, Some(0), 198.0), 0.0);
+        // The last row of a short list may scroll past the full-height limit.
+        assert_eq!(typed_row_scroll(0.0, &tops[..5], Some(3), 198.0), 106.0);
+    }
     fn page(screen: Screen, kind: ViewKind) -> Page {
         Page {
             screen,

@@ -3821,6 +3821,17 @@ impl App {
         }
         self.ensure_selection_viewport();
         self.visual_menu_tick(elapsed);
+        // Any list row being typed into rises above the keyboard with it.
+        let services_keyboard = if self.screen() == Screen::Extra {
+            self.extras.keyboard_inset(elapsed)
+        } else {
+            0.0
+        };
+        self.visual_menu.keyboard_inset = self
+            .keyboard
+            .as_mut()
+            .map_or(0.0, |keyboard| keyboard.height(elapsed))
+            .max(services_keyboard);
         let (bg, fg, muted) = self.colors();
         renderer.begin(if self.screen_off {
             [0.0, 0.0, 0.0, 1.0]

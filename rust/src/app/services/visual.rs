@@ -98,13 +98,20 @@ impl Extras {
     ) -> Option<super::super::Page> {
         let foreground_row = self.foreground_busy_row();
         let external_row = self.external_busy_row();
+        let typing = self
+            .keyboard
+            .as_ref()
+            .map(|(keyboard, typing)| (*typing, keyboard.with_caret()));
         let page = self.pages.get_mut(index)?;
         let status = if include_status && self.status_page.is_none_or(|owner| owner == page.key) {
             self.status.as_str()
         } else {
             ""
         };
-        if page.visual_rows.is_none() || page.visual_status != status {
+        if page.visual_rows.is_none()
+            || page.visual_status != status
+            || page.visual_typing != typing
+        {
             let mut rows = Vec::with_capacity(page.rows.len() + 1);
             for (item_index, item) in page.rows.iter().enumerate() {
                 let mut row = super::super::Row::new(&item.title, super::super::Intent::Noop);
@@ -217,6 +224,7 @@ impl Extras {
             }
             page.visual_rows = Some(Arc::new(rows));
             page.visual_status = status.into();
+            page.visual_typing = typing;
         }
         Some(super::super::Page {
             screen: super::super::Screen::Extra,
@@ -236,6 +244,19 @@ impl Extras {
     }
     pub(in crate::app) fn take_navigation(&mut self) -> Option<(super::super::Page, bool, f64)> {
         self.pending_navigation.take()
+    }
+    /// How much of the screen's bottom the keyboard covers now, including
+    /// while it slides in or out.
+    pub(in crate::app) fn keyboard_inset(&mut self, now: f64) -> f32 {
+        let open = self
+            .keyboard
+            .as_mut()
+            .map_or(0.0, |(keyboard, _)| keyboard.height(now));
+        let closing = self
+            .closing_keyboard
+            .as_mut()
+            .map_or(0.0, |keyboard| keyboard.height(now));
+        open.max(closing)
     }
     pub(in crate::app) fn draw_overlay(
         &mut self,
