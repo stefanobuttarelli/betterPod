@@ -8,6 +8,52 @@ the Go 1.1 source as the contract for menus, controls, persistence, layout and
 animation. The prior playable prototype is not a completion baseline. No console
 deployment, hardware benchmark, PR, push or release belonged to this local pass. The later SSH session and its fixes are recorded in [CONSOLE_QA.md](CONSOLE_QA.md).
 
+## Go feature audit, 2026-11-10
+
+Every feature of the Go app on `main` (v1.2-beta.1) was compared with the
+Rust port: the menus and actions of all 66 Go view builders, the file-header feature
+descriptions of the 80 `ij_*.go` files, the 406 interface strings they use,
+the launcher's options and the Go changelog since 1.0. Each feature is
+present in Rust unless the table says otherwise. Code removed as unreachable
+during the same day's cleanup was checked against Go first; none of it was
+the only route to a Go feature.
+
+| Area (Go source) | Rust status |
+| --- | --- |
+| Home, Music, Apps and Settings menus (`ij_library.go`, `ij_columns.go`) | Same rows and columns. Additions: Wi-Fi Library, Downloads, the Lossless search row. Settings → Effects removed by request. Y on Settings offers Quit betterPod (Go 1.2-beta.1). |
+| Artists, Albums, songs and their options; Up Next; Clear Now Playing; End of the Queue | Present: Play Next, Add to End of Queue, Add to Playlist…, Share, Edit; queue marks; Genius / Go to Music / Not Now. |
+| Genius (`ij_genius.go`) | Present: 50 songs, no podcast episodes, no artist twice in a row. |
+| Now Playing, Cover Flow, mini player, header ticker, Lossless badge | Present, including START's flip, the option rows, the 10-minute paused mini player and the ticker. |
+| Screensaver, Visualizer, colours and clock | Present: Start Now, Style, Dim, Start After…, effects with ◀ ▶, Classic/Album colours, L2/R2 brightness, Hold. |
+| Software Update (`ij_update.go`) | Present: check, install, Beta Versions, daily automatic check. **Restored:** `BETTERPOD_RUST_AUTO_UPDATE_CHECK=0`. |
+| Library, Browse Files, Missing Covers, Missing Info, Album Info | Present: counts and formats, Rescan, Select Several and Delete, per-album search across MusicBrainz, iTunes, Deezer and Wikipedia, Search All Automatically, tag saving for MP3, FLAC, Ogg and M4A. |
+| Add to Another Album, Separate Added Songs (`ij_albummerge.go`) | Present. **Fixed:** renaming a merged album in Album Info left it under its old name; the rename now carries the whole merge group, as `retargetAlbumMerges` does. |
+| Database and Move Music (`ij_datadir.go`, `ij_musicdir.go`) | Present: cards, Move, Copy, Use the Music Already There, Hide (it goes on). **Restored:** runs that restart the app or move music wait for downloads, and music or database changes wait for a scan, instead of cancelling them; downloads wait while music is moved; Move Music reports a chosen card that is not in. |
+| Playlists | Present. New Playlist… confirms with START on the keyboard instead of a separate Make Playlist row. |
+| Search, Internet Archive, Listen | Present: search hub, results, license, More results…, album and track downloads, Listen. |
+| Recent Searches (`ij_recent.go`) | **Restored:** the last week's searches under the Internet Archive, YouTube and Podcasts search fields, ten per screen, with Remove and Clear. Saved in `recent-searches.json` by the state writer. |
+| Podcasts | Present: search, feeds, Download the N Latest, delete, Your Podcasts, resumed downloads. Actions that would only show Go's "Nothing downloaded" or "Already downloaded" are not offered; a downloaded episode plays even before the scan adds it. |
+| YouTube tools, search and downloads; Videos and the player | Present: Get/Update/Remove Tools, Deno, chapters and playlists as albums, automatic square covers, Recently Watched, Downloaded, Watch from the Start. **Restored:** Video Page in a video result's options (Go 1.1-beta.4). The manual cover crop editor was removed by request. |
+| Share and Receive, Bluetooth, Weather | Present: codes and format checks, device pairing and switching, places, units, forecast refresh with A. |
+| Games and Puzzles | Present: Brick, Solitaire, 2048, Five Letters and its History, Guess the Song, the Puzzles collection, Show/Hide the Time. |
+| Hold, volume overlay, media and headset keys, status icons, theme | Present. The battery icon follows the real charge in 5% steps, by request. |
+| Launcher options | `SWAP_AB`, `MEDIA_KEYS` and `VSYNC` exist as `BETTERPOD_RUST_*`. **Restored:** the click-wheel stick mode (`BETTERPOD_RUST_STICK_WHEEL`, `BETTERPOD_RUST_WHEEL_STEP`). Not ported: `HOLD_BRIGHTNESS`, `HOLD_ADJUST`, `SOFT_VOLUME`, `BT_ICON`, `VOLUME_KEYS` (Rust follows the system volume instead of reading the keys) and `CLASSIC_UI`. |
+
+Known differences left for later:
+
+- HTTPS when the console's clock is behind. Go checks certificates at its
+  build date until network time arrives; ureq 3.5 has no hook for that, so
+  Rust needs its own connector to match it.
+- A few messages differ in wording: the Software Update column's
+  Checking…/Up to Date, the Cover saved toast, Couldn't get Deno.
+- The wheel moves one row per click; Go also accelerates long list scrolls.
+
+Evidence: the Go/Rust capture pass of 64 scenes (no scene differs more
+than in the 2026-11-09 report; the only state differences are the rows
+listed above), 437 ordinary tests (313 library, 118 application, 6 proxy)
+with 17 new tests for the restored features, the seven SDL/GLES route
+checks and the AArch64/glibc 2.28 release build.
+
 ## Acceptance
 
 - Preserve uninterrupted audio while menu, artwork, files and network work run

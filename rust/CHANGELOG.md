@@ -4,6 +4,11 @@ The separate Rust app for Knulli. A version here whose number is in `Cargo.toml`
 
 ## Unreleased
 
+- Recent Searches are back under the Internet Archive, YouTube and Podcasts search fields: the last week's searches, ten per screen. Choose one to run it again; Y removes it or clears the list.
+- Renaming a merged album in Album Info now keeps its added songs with it under the new name.
+- Move Music, database changes, updates and resets wait for a running download instead of cancelling it, and music or database changes wait for a library scan. Downloads wait while the music is being moved.
+- A video result's options include Video Page again. Move Music says when the chosen card is not in.
+- New launcher options: `BETTERPOD_RUST_STICK_WHEEL=1` turns the sticks like a click wheel (`BETTERPOD_RUST_WHEEL_STEP` sets degrees per click), and `BETTERPOD_RUST_AUTO_UPDATE_CHECK=0` turns off the daily update check.
 - The battery icon now follows the real charge in 5% steps. It used to show 85% and above as full and 50% as almost 60%. A one-point flicker no longer changes the icon, and a full battery on the charger shows the plug. The software update screen and the screensaver use the same levels.
 
 ## v0.2.12 (2026-11-09)
