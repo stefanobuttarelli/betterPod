@@ -3175,6 +3175,7 @@ impl App {
         if let Some(status) = self.status_watcher.poll() {
             self.visual_menu.status.battery = status.battery;
             self.visual_menu.status.charging = status.charging;
+            self.visual_menu.status.charged = status.charged;
             self.visual_menu.status.external_power = status.external_power;
             self.visual_menu.status.wifi = status.wifi;
         }
@@ -3675,7 +3676,7 @@ impl App {
             self.saver.set_dark(self.dark());
             let status = self.visual_menu.status;
             self.saver.set_status(saver::SaverStatus {
-                battery: status.battery.map(i32::from),
+                battery: status.battery,
                 charging: status.charging,
                 wifi: status.wifi,
                 bluetooth: status.bluetooth,

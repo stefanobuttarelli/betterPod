@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## Unreleased
+
+- The battery icon now follows the real charge in 5% steps. It used to show 85% and above as full and 50% as almost 60%. A one-point flicker no longer changes the icon, and a full battery on the charger shows the plug. The software update screen and the screensaver use the same levels.
+
 ## v0.2.12 (2026-11-09)
 
 - Share and Receive now follow the console's dark theme, including code entry, transfer progress, errors and completion. Preserve original artwork colors and existing controls and motion.

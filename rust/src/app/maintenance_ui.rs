@@ -22,6 +22,7 @@ fn project_rows(rows: &[Row]) -> std::sync::Arc<Vec<crate::app::Row>> {
 }
 use crate::app::{Intent, Page as VisualPage, Row as VisualRow, Screen, ViewKind};
 use crate::{input::Action, maintenance as m, render::Renderer, updater as u};
+use betterpod_rust::status::BatteryIcon;
 use betterpod_rust::visual_assets::VisualAssets;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1315,11 +1316,20 @@ fn run_inner(
     let mut failure: Option<String> = None;
     let mut clock = crate::timing::FrameClock::new(60.);
     // read every two seconds, as the app's status watcher does
-    let mut runner_battery = betterpod_rust::status::current_battery();
+    let mut gauge = betterpod_rust::status::BatteryGauge::default();
+    let read_battery = |gauge: &mut betterpod_rust::status::BatteryGauge| {
+        let status = betterpod_rust::status::current();
+        BatteryIcon::new(
+            gauge.update(status.battery),
+            status.charging,
+            status.charged,
+        )
+    };
+    let mut runner_battery = read_battery(&mut gauge);
     let mut battery_read = std::time::Instant::now();
     loop {
         if battery_read.elapsed() >= std::time::Duration::from_secs(2) {
-            runner_battery = betterpod_rust::status::current_battery();
+            runner_battery = read_battery(&mut gauge);
             battery_read = std::time::Instant::now();
         }
         for action in input.poll() {
@@ -1510,7 +1520,7 @@ fn draw_runner_header(
     title: &str,
     dark: bool,
     assets: &VisualAssets,
-    battery: Option<u8>,
+    battery: BatteryIcon,
 ) {
     let rgb = |a: u8, b: u8, c: u8| [a as f32 / 255., b as f32 / 255., c as f32 / 255., 1.];
     let (top, bottom, border, text) = if dark {
@@ -1539,23 +1549,7 @@ fn draw_runner_header(
         text,
         530.,
     );
-    if let Some(shell) = assets.get(if dark {
-        "battery_shell__dark"
-    } else {
-        "battery_shell"
-    }) {
-        r.image(shell, 576., 7., 52., 24., 1.);
-    }
-    // the console's level, as the header elsewhere (it was always full)
-    let pct = battery.unwrap_or(100).max(15);
-    if let Some(fill) = assets.get(if pct <= 20 {
-        "battery_fill_warn"
-    } else {
-        "battery_fill_ok"
-    }) {
-        let w = (44.0 * (pct as f32 / 85.0).min(1.0)).round();
-        r.image_uv(fill, [578., 9., w, 20.], [0., 0., w / 44., 1.], 1.);
-    }
+    super::visual_menu::draw_battery(r, assets, 576., dark, battery);
 }
 
 #[cfg(test)]

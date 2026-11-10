@@ -2,6 +2,7 @@
 //! The original Go geometry and timings are the specification. All artwork
 //! lookups are RAM-only; immutable sprites are uploaded before the UI starts.
 use super::*;
+use betterpod_rust::status::{BatteryBadge, BatteryIcon};
 
 const MINI_HEIGHT: f32 = 116.0;
 const HEADER_HEIGHT: f32 = 40.0;
@@ -58,6 +59,7 @@ pub(crate) struct RowVisual {
 pub(super) struct HeaderStatus {
     pub battery: Option<u8>,
     pub charging: bool,
+    pub charged: bool,
     pub external_power: bool,
     pub bluetooth: bool,
     pub headphones: bool,
@@ -69,11 +71,51 @@ impl Default for HeaderStatus {
         Self {
             battery: None,
             charging: false,
+            charged: false,
             external_power: false,
             bluetooth: false,
             headphones: false,
             wifi: -1,
         }
+    }
+}
+
+/// Draws the header battery with its 52×24 shell at `x`, 7 px from the top.
+pub(super) fn draw_battery(
+    r: &mut Renderer,
+    assets: &VisualAssets,
+    x: f32,
+    dark: bool,
+    icon: BatteryIcon,
+) {
+    let shell = if dark {
+        "battery_shell__dark"
+    } else {
+        "battery_shell"
+    };
+    if let Some(shell) = assets.get(shell) {
+        r.image_tinted(shell, [x, 7.0, 52.0, 24.0], [0.0, 0.0, 1.0, 1.0], WHITE);
+    }
+    let fill = if icon.low {
+        "battery_fill_warn"
+    } else {
+        "battery_fill_ok"
+    };
+    if let Some(fill) = assets.get(fill) {
+        let w = (44.0 * icon.fill).round();
+        r.image_uv(
+            fill,
+            [x + 2.0, 9.0, w, 20.0],
+            [0.0, 0.0, w / 44.0, 1.0],
+            1.0,
+        );
+    }
+    let badge = icon.badge.map(|badge| match badge {
+        BatteryBadge::Bolt => "battery_bolt",
+        BatteryBadge::Plug => "battery_plug",
+    });
+    if let Some(badge) = badge.and_then(|badge| assets.get(badge)) {
+        r.image(badge, x + 2.0, 9.0, 44.0, 20.0, 1.0);
     }
 }
 
@@ -1474,46 +1516,13 @@ impl App {
         r.rect(x, 38.0, width, 2.0, th.header_border);
         let status = self.visual_menu.status;
         let battery_x = x + width - 12.0 - 52.0;
-        if let Some(shell) = self.visual_assets.get(if self.dark() {
-            "battery_shell__dark"
-        } else {
-            "battery_shell"
-        }) {
-            let tint = WHITE;
-            r.image_tinted(
-                shell,
-                [battery_x, 7.0, 52.0, 24.0],
-                [0.0, 0.0, 1.0, 1.0],
-                tint,
-            );
-        }
-        // Go intentionally shows an unknown battery as full, and clamps its
-        // minimum visible fill to15% so the warning remains legible.
-        let pct = status.battery.unwrap_or(100).max(15);
-        let fill_name = if pct <= 20 && !status.charging {
-            "battery_fill_warn"
-        } else {
-            "battery_fill_ok"
-        };
-        if let Some(fill) = self.visual_assets.get(fill_name) {
-            let amount = (pct as f32 / 85.0).min(1.0);
-            let w = (44.0 * amount).round();
-            r.image_uv(
-                fill,
-                [battery_x + 2.0, 9.0, w, 20.0],
-                [0.0, 0.0, w / 44.0, 1.0],
-                1.0,
-            );
-        }
-        if status.charging {
-            if let Some(icon) = self.visual_assets.get(if pct >= 100 {
-                "battery_plug"
-            } else {
-                "battery_bolt"
-            }) {
-                r.image(icon, battery_x + 2.0, 9.0, 44.0, 20.0, 1.0);
-            }
-        }
+        draw_battery(
+            r,
+            &self.visual_assets,
+            battery_x,
+            self.dark(),
+            BatteryIcon::new(status.battery, status.charging, status.charged),
+        );
         let mut right = battery_x - 10.0;
         let icon_color = self
             .visual_assets

@@ -223,6 +223,7 @@ fn capture_static_scenes() -> Result<(), String> {
         app.visual_menu.status = visual_menu::HeaderStatus {
             battery: Some(model.battery),
             charging: false,
+            charged: false,
             external_power: false,
             bluetooth: false,
             headphones: false,

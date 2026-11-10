@@ -8,8 +8,12 @@ use std::{
 };
 #[derive(Clone, Copy, Debug)]
 pub struct Status {
+    /// The console battery's capacity, 0–100. `Watcher` delivers it already
+    /// passed through a `BatteryGauge`.
     pub battery: Option<u8>,
     pub charging: bool,
+    /// The battery reports Full, which the kernel does only on external power.
+    pub charged: bool,
     pub external_power: bool,
     pub wifi: i8,
 }
@@ -18,11 +22,85 @@ impl Default for Status {
         Self {
             battery: None,
             charging: false,
+            charged: false,
             external_power: false,
             wifi: -1,
         }
     }
 }
+
+/// The header battery shows the level in steps of this many percent.
+pub const BATTERY_STEP: u8 = 5;
+/// A known level never draws less than this, so the red fill stays visible.
+const BATTERY_MIN_FILL: u8 = 10;
+/// The fill turns red at or below this level while not charging.
+const BATTERY_LOW: u8 = 20;
+
+/// Rounds a capacity to the nearest `BATTERY_STEP`.
+fn battery_step(percent: u8) -> u8 {
+    let percent = percent.min(100);
+    (percent + BATTERY_STEP / 2) / BATTERY_STEP * BATTERY_STEP
+}
+
+/// Smooths the shown battery step. It holds while the reading stays within
+/// three points of it, so a level that flickers across a rounding boundary
+/// keeps one icon; a reading four or more points away moves it at once.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BatteryGauge {
+    shown: Option<u8>,
+}
+impl BatteryGauge {
+    pub fn update(&mut self, percent: Option<u8>) -> Option<u8> {
+        self.shown = percent.map(|percent| {
+            let percent = percent.min(100);
+            match self.shown {
+                Some(shown) if percent.abs_diff(shown) <= BATTERY_STEP / 2 + 1 => shown,
+                _ => battery_step(percent),
+            }
+        });
+        self.shown
+    }
+}
+
+/// The symbol drawn over the battery fill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BatteryBadge {
+    /// Charging.
+    Bolt,
+    /// On external power with a full battery.
+    Plug,
+}
+
+/// How the header battery is drawn for one status.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BatteryIcon {
+    /// Share of the fill image to draw, 0.0–1.0.
+    pub fill: f32,
+    /// Draw the red fill instead of the green one.
+    pub low: bool,
+    pub badge: Option<BatteryBadge>,
+}
+impl BatteryIcon {
+    /// An unknown level draws full, as the Go app does. A known level fills in
+    /// proportion to the real charge, in `BATTERY_STEP` steps.
+    pub fn new(level: Option<u8>, charging: bool, charged: bool) -> Self {
+        let step = level.map(battery_step);
+        let full = step.is_none_or(|step| step >= 100);
+        let badge = if charging && !full {
+            Some(BatteryBadge::Bolt)
+        } else if charging || charged {
+            Some(BatteryBadge::Plug)
+        } else {
+            None
+        };
+        Self {
+            fill: step.map_or(1.0, |step| f32::from(step.max(BATTERY_MIN_FILL)) / 100.0),
+            low: !charging && step.is_some_and(|step| step <= BATTERY_LOW),
+            badge,
+        }
+    }
+}
+
 pub struct Watcher {
     rx: mpsc::Receiver<Status>,
     stop: Arc<(Mutex<bool>, Condvar)>,
@@ -33,6 +111,7 @@ impl Watcher {
         let (tx, rx) = mpsc::sync_channel(1);
         let stop = Arc::new((Mutex::new(false), Condvar::new()));
         let signal = Arc::clone(&stop);
+        let mut gauge = BatteryGauge::default();
         let thread = thread::Builder::new()
             .name("header-status".into())
             .spawn(move || loop {
@@ -41,10 +120,9 @@ impl Watcher {
                         break;
                     }
                 }
-                let _ = tx.try_send(read_status(
-                    Path::new("/sys"),
-                    Path::new("/proc/net/wireless"),
-                ));
+                let mut status = current();
+                status.battery = gauge.update(status.battery);
+                let _ = tx.try_send(status);
                 let stop = signal.0.lock().unwrap_or_else(|e| e.into_inner());
                 let (stop, _) = signal
                     .1
@@ -80,10 +158,20 @@ impl Drop for Watcher {
 fn trim(path: impl AsRef<Path>) -> String {
     fs::read_to_string(path).unwrap_or_default().trim().into()
 }
-/// The console's battery level now (screens drawn outside the app's loop,
-/// such as the update runner).
-pub fn current_battery() -> Option<u8> {
-    read_status(Path::new("/sys"), Path::new("/proc/net/wireless")).battery
+/// The console's status now, unsmoothed. Screens drawn outside the app's
+/// loop, such as the update runner, read it directly.
+pub fn current() -> Status {
+    read_status(Path::new("/sys"), Path::new("/proc/net/wireless"))
+}
+fn read_battery(supply: &Path, state: &mut Status) {
+    state.battery = trim(supply.join("capacity"))
+        .parse::<u8>()
+        .ok()
+        .filter(|v| *v <= 100);
+    let status = trim(supply.join("status"));
+    state.charging = status == "Charging";
+    state.charged = status == "Full";
+    state.external_power |= state.charging || state.charged;
 }
 fn read_status(sys: &Path, wireless: &Path) -> Status {
     let mut state = Status::default();
@@ -99,9 +187,7 @@ fn read_status(sys: &Path, wireless: &Path) -> Status {
                     .is_ok_and(|v| v <= 100)
         });
     if let Some(p) = &named {
-        state.battery = trim(p.join("capacity")).parse::<u8>().ok();
-        state.charging = trim(p.join("status")) == "Charging";
-        state.external_power |= matches!(trim(p.join("status")).as_str(), "Charging" | "Full");
+        read_battery(p, &mut state);
     }
     if let Ok(entries) = fs::read_dir(&supply) {
         let mut entries: Vec<_> = entries.flatten().collect();
@@ -116,13 +202,7 @@ fn read_status(sys: &Path, wireless: &Path) -> Status {
                 continue;
             }
             if trim(p.join("type")) == "Battery" && state.battery.is_none() {
-                state.battery = trim(p.join("capacity"))
-                    .parse::<u8>()
-                    .ok()
-                    .filter(|v| *v <= 100);
-                state.charging = trim(p.join("status")) == "Charging";
-                state.external_power |=
-                    matches!(trim(p.join("status")).as_str(), "Charging" | "Full");
+                read_battery(&p, &mut state);
             } else {
                 state.external_power |= trim(p.join("online")) == "1";
             }
@@ -195,6 +275,61 @@ fn wifi_bars(dbm: f64) -> i8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn battery_levels_round_to_five_percent_steps() {
+        let steps: Vec<u8> = [0, 2, 3, 7, 8, 49, 82, 83, 97, 98, 100, 150]
+            .into_iter()
+            .map(battery_step)
+            .collect();
+        assert_eq!(steps, [0, 0, 5, 5, 10, 50, 80, 85, 95, 100, 100, 100]);
+    }
+    #[test]
+    fn battery_gauge_ignores_one_point_flicker_but_follows_real_changes() {
+        let mut gauge = BatteryGauge::default();
+        let shown: Vec<_> = [77, 78, 77, 78, 79, 77, 76, 40, 41]
+            .into_iter()
+            .map(|percent| gauge.update(Some(percent)))
+            .collect();
+        let expected = [75, 75, 75, 75, 80, 80, 75, 40, 40].map(Some);
+        assert_eq!(shown, expected);
+        assert_eq!(gauge.update(None), None);
+        assert_eq!(gauge.update(Some(63)), Some(65));
+    }
+    #[test]
+    fn battery_icon_fills_in_proportion_to_the_real_level() {
+        let icon = |level, charging, charged| BatteryIcon::new(level, charging, charged);
+        // The Go mapping (level / 85) showed 82% as 96% full.
+        assert_eq!(icon(Some(82), false, false).fill, 0.8);
+        assert_eq!(icon(Some(50), false, false).fill, 0.5);
+        assert_eq!(icon(Some(3), false, false).fill, 0.1);
+        assert_eq!(icon(None, false, false).fill, 1.0);
+        assert!(icon(Some(20), false, false).low);
+        assert!(!icon(Some(20), true, false).low);
+        assert!(!icon(Some(25), false, false).low);
+        assert!(!icon(None, false, false).low);
+    }
+    #[test]
+    fn battery_icon_shows_a_bolt_while_charging_and_a_plug_when_full() {
+        let badge = |level, charging, charged| BatteryIcon::new(level, charging, charged).badge;
+        assert_eq!(badge(Some(60), false, false), None);
+        assert_eq!(badge(Some(60), true, false), Some(BatteryBadge::Bolt));
+        assert_eq!(badge(Some(99), true, false), Some(BatteryBadge::Plug));
+        assert_eq!(badge(Some(100), false, true), Some(BatteryBadge::Plug));
+        assert_eq!(badge(None, true, false), Some(BatteryBadge::Plug));
+    }
+    #[test]
+    fn a_full_battery_on_external_power_is_charged_not_charging() {
+        let root = std::env::temp_dir().join(format!("bp-status-full-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let battery = root.join("class/power_supply/axp2202-battery");
+        fs::create_dir_all(&battery).unwrap();
+        fs::write(battery.join("capacity"), "100\n").unwrap();
+        fs::write(battery.join("status"), "Full\n").unwrap();
+        let state = read_status(&root, &root.join("no-wireless"));
+        assert_eq!(state.battery, Some(100));
+        assert!(state.charged && !state.charging && state.external_power);
+        let _ = fs::remove_dir_all(&root);
+    }
     #[test]
     fn system_battery_wins_over_peripheral_and_secondary_supplies() {
         let root = std::env::temp_dir().join(format!("bp-battery-{}", std::process::id()));

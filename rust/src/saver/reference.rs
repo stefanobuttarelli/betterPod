@@ -4,6 +4,7 @@ use crate::player_geometry as geometry;
 use crate::{
     library::Track,
     motion::{Anim, Ease},
+    status::BatteryIcon,
     visual_assets::VisualAssets,
 };
 use std::{
@@ -46,7 +47,7 @@ pub enum SaverAction {
 }
 #[derive(Clone, Copy)]
 pub struct SaverStatus {
-    pub battery: Option<i32>,
+    pub battery: Option<u8>,
     pub charging: bool,
     pub wifi: i8,
     pub bluetooth: bool,
@@ -1238,11 +1239,12 @@ impl Saver {
             8.,
             WHITE,
         );
-        let pct = self.status.battery.unwrap_or(100).max(8) as f32;
+        // The same level steps as the header; the saver bar has no plug glyph.
+        let fill = BatteryIcon::new(self.status.battery, self.status.charging, false).fill;
         r.rect(
             x0 as f32 + 4.,
             y0 as f32 + 4.,
-            ((bw - 13.) * (pct / 85.).min(1.) + 0.5).floor(),
+            ((bw - 13.) * fill + 0.5).floor(),
             bh - 8.,
             WHITE,
         );

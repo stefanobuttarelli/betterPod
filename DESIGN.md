@@ -63,6 +63,13 @@ the code; they are finite evidence, not permission to assume untested parity.
 - Header rows are noninteractive. Chevrons, checked values, thumbnails,
   speaker marks, separators and scrollbars keep their established meaning.
   Keep the entire selected item visible when rows or keyboards change.
+- The header battery keeps the source shell, fills and badges. In Rust its
+  fill follows the real charge in 5% steps, not Go's `level / 85`, which
+  showed 85% and above as full. A known level draws at least 10% so the red
+  fill stays visible; the fill is red at 20% or less unless charging. A
+  bolt marks charging and a plug marks external power with a full battery.
+  An unknown level draws full, as in Go. The update and saver screens use
+  the same steps.
 
 ## Navigation and search
 
