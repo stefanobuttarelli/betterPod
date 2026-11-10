@@ -1364,7 +1364,9 @@ pub(super) fn progress(
             ));
         }
     } else if let Some(t) = assets.get("gloss_blue") {
-        let w = (width * fraction).min(t.width as f32);
+        // Whole pixels, as Go draws it: a bar that grows by a fraction of a
+        // pixel every frame looks the same but forces a full redraw.
+        let w = (width * fraction).round().min(t.width as f32);
         if w > 0. {
             parts.push((t, x, w, [0., 0., w / t.width as f32, 1.]));
         }

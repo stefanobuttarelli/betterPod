@@ -1108,3 +1108,94 @@ fn playlist_full_page_draws_its_reserved_mini_player() {
     );
     app.shutdown(&r).unwrap();
 }
+
+/// Opt-in measurement: how many frames repeat the one already on screen, and
+/// what building a frame costs, on screens people leave open while music
+/// plays. Prints a table; asserts only that the screens draw.
+#[test]
+#[ignore = "requires SDL/OpenGL, Xvfb and the audio fixture; measurement only"]
+fn frame_repeats_and_build_cost_by_screen() {
+    let music =
+        PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_MUSIC").expect("QA music fixture"));
+    let assets = PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").expect("QA assets"));
+    let out = PathBuf::from(std::env::var_os("BETTERPOD_RUST_QA_OUTPUT").expect("QA output"));
+    let data = out.join(format!(
+        "frame-cost-data-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&data).unwrap();
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let _audio = sdl.audio().unwrap();
+    video
+        .gl_attr()
+        .set_context_profile(sdl2::video::GLProfile::GLES);
+    video.gl_attr().set_context_version(2, 0);
+    let window = video
+        .window("Rust frame cost", 640, 480)
+        .opengl()
+        .build()
+        .unwrap();
+    let _context = window.gl_create_context().unwrap();
+    let mut r = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+    let mut app = App::new(music, data, assets, None, &r).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while app.scanning && Instant::now() < deadline {
+        app.tick(1.0 / 60.0, &r);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        app.library.tracks.len() >= 4,
+        "nonempty audio fixture required"
+    );
+    let mut measure = |app: &mut App, name: &str| {
+        // Let transitions finish first, as a person who stays on the screen.
+        settle(app, &mut r, &window);
+        r.forget_shown();
+        let (mut repeats, mut costs) = (0, Vec::new());
+        for _ in 0..180 {
+            app.tick(1.0 / 60.0, &r);
+            let started = Instant::now();
+            app.draw(&mut r, app.visual_time);
+            costs.push(started.elapsed().as_secs_f64() * 1e6);
+            if r.repeats_shown_frame() {
+                repeats += 1;
+            } else {
+                if std::env::var_os("BETTERPOD_RUST_QA_FRAME_DIFF").is_some() {
+                    eprintln!("  {name}: {:?}", r.first_difference());
+                }
+                r.finish();
+                window.gl_swap_window();
+                r.mark_shown();
+            }
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        costs.sort_by(f64::total_cmp);
+        let mean = costs.iter().sum::<f64>() / costs.len() as f64;
+        eprintln!(
+            "FRAME {name:<22} repeats {repeats:>3}/180  build mean {mean:>6.0} us  p95 {:>6.0} us",
+            costs[costs.len() * 95 / 100]
+        );
+    };
+    measure(&mut app, "home");
+    select(&mut app, "Settings");
+    measure(&mut app, "settings");
+    app.handle(Action::Back);
+    select(&mut app, "Music");
+    measure(&mut app, "music menu");
+    select(&mut app, "Cover Flow");
+    measure(&mut app, "cover flow");
+    app.handle(Action::Select);
+    app.handle(Action::Select);
+    assert_eq!(app.screen(), Screen::NowPlaying);
+    measure(&mut app, "now playing");
+    app.handle(Action::PlayPause);
+    measure(&mut app, "now playing paused");
+    app.handle(Action::BackHeld);
+    measure(&mut app, "home, music paused");
+    app.handle(Action::PlayPause);
+    measure(&mut app, "home, music playing");
+}

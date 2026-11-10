@@ -186,6 +186,13 @@ fn run() -> Result<(), String> {
         None
     };
     let mut frame_count = 0u64;
+    // Frames identical to the one on screen are not presented again; after
+    // half a second without a change the loop checks every 25 ms (Go's idle
+    // poll) instead of every display refresh. Any change presents at once.
+    let mut repeated_frames = 0u64;
+    let frame_period = Duration::from_secs_f64(1.0 / target);
+    const IDLE_AFTER: Duration = Duration::from_millis(500);
+    const IDLE_POLL: Duration = Duration::from_millis(25);
     let mut black_shown = false;
     let mut pending_transfer: Option<(PathBuf, std::sync::Arc<library::Library>, bool)> = None;
     let mut remote_qa = remote_qa::RemoteQa::from_env()?;
@@ -253,6 +260,7 @@ fn run() -> Result<(), String> {
                     renderer.begin(render::BLACK);
                     renderer.finish();
                     window.gl_swap_window();
+                    renderer.forget_shown();
                     black_shown = true;
                 }
                 if let Some(qa) = remote_qa.as_mut() {
@@ -266,6 +274,17 @@ fn run() -> Result<(), String> {
             }
             black_shown = false;
             app.draw(&mut renderer, elapsed);
+            if remote_qa.is_none() && app.running && renderer.repeats_shown_frame() {
+                repeated_frames += 1;
+                let now = Instant::now();
+                std::thread::sleep(if now.duration_since(last_present) >= IDLE_AFTER {
+                    IDLE_POLL
+                } else {
+                    frame_period.saturating_sub(now.duration_since(frame))
+                });
+                clock.reset();
+                continue;
+            }
             renderer.finish();
             if let Some(qa) = remote_qa.as_mut() {
                 qa.after_frame(&mut app, &renderer);
@@ -277,6 +296,7 @@ fn run() -> Result<(), String> {
             }
             let present = Instant::now();
             window.gl_swap_window();
+            renderer.mark_shown();
             let completed = Instant::now();
             frame_count += 1;
             if let Some(metrics) = &mut metrics {
@@ -298,6 +318,13 @@ fn run() -> Result<(), String> {
                 clock.wait(completed);
             }
         }
+        if frame_count + repeated_frames > 0 {
+            eprintln!(
+                "Frames: {frame_count} presented, {repeated_frames} unchanged and not presented"
+            );
+        }
+        // Another loop draws next (maintenance, a new App): present its first frame.
+        renderer.forget_shown();
         let maintenance_dark = app.dark();
         let maintenance_library = app.maintenance_library();
         // Preserve opt-in measurements even if a peripheral stalls in shutdown.

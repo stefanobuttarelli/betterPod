@@ -281,3 +281,58 @@ fn multilingual_fallback_keeps_both_weights_without_expanding_whole_fonts() {
     }
     assert_eq!(r.diagnostics()["gl_errors"], serde_json::json!([]));
 }
+
+#[test]
+#[ignore = "requires SDL/OpenGL and original fonts; run with Xvfb"]
+fn only_a_frame_that_changes_the_screen_is_presented_again() {
+    let assets = std::path::PathBuf::from(std::env::var_os("BETTERPOD_RUST_ASSETS_DIR").unwrap());
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    video
+        .gl_attr()
+        .set_context_profile(sdl2::video::GLProfile::GLES);
+    video.gl_attr().set_context_version(2, 0);
+    let window = video
+        .window("Repeated frames", 640, 480)
+        .opengl()
+        .hidden()
+        .build()
+        .unwrap();
+    let _context = window.gl_create_context().unwrap();
+    let mut r = Renderer::new(&video, &assets.join("ui_font.ttf"), 640, 480).unwrap();
+    let texture = r.upload(2, 2, &[255; 16]).unwrap();
+    let draw = |r: &mut Renderer, x: f32, text: &str| {
+        r.begin(WHITE);
+        r.rect(x, 10., 100., 20., BLACK);
+        r.image(texture, 200., 10., 64., 64., 1.);
+        r.text(text, 10., 100., 20, BLACK, 300.);
+    };
+    let present = |r: &mut Renderer| {
+        r.finish();
+        r.mark_shown();
+    };
+    draw(&mut r, 10., "Same");
+    assert!(!r.repeats_shown_frame(), "nothing is on screen yet");
+    present(&mut r);
+    draw(&mut r, 10., "Same");
+    assert!(r.repeats_shown_frame());
+    // A quarter-pixel move is a different frame.
+    draw(&mut r, 10.25, "Same");
+    assert!(!r.repeats_shown_frame());
+    present(&mut r);
+    // New pixels in a texture already on screen.
+    r.update_texture(texture, &[0; 16]).unwrap();
+    draw(&mut r, 10.25, "Same");
+    assert!(!r.repeats_shown_frame());
+    present(&mut r);
+    // A glyph the atlas has not seen yet.
+    draw(&mut r, 10.25, "Samé");
+    assert!(!r.repeats_shown_frame());
+    present(&mut r);
+    draw(&mut r, 10.25, "Samé");
+    assert!(r.repeats_shown_frame());
+    // Something else reached the screen.
+    r.forget_shown();
+    assert!(!r.repeats_shown_frame());
+    let _ = window;
+}

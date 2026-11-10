@@ -1,7 +1,7 @@
 //! GPU composition. Rust prepares small vertex batches; the GPU rasterizes
 //! gradients, text and perspective covers. No full-frame CPU pixel buffer.
 use glow::HasContext;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::Path;
 mod fallback;
@@ -62,12 +62,20 @@ impl Clip {
         }
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct Batch {
     texture: glow::NativeTexture,
     start: i32,
     count: i32,
     clip: Clip,
+}
+
+/// A presented frame: everything the screen's pixels are made from.
+struct ShownFrame {
+    bg: Color,
+    vertices: Vec<f32>,
+    batches: Vec<Batch>,
+    revision: u64,
 }
 
 pub struct Renderer {
@@ -80,6 +88,12 @@ pub struct Renderer {
     vertices: Vec<f32>,
     batches: Vec<Batch>,
     retired: RefCell<Vec<Texture>>,
+    /// Grows whenever a texture's pixels or sampling change, so a frame with
+    /// the same geometry can still be told apart.
+    revision: Cell<u64>,
+    bg: Color,
+    /// What the last presented frame put on screen.
+    shown: Option<ShownFrame>,
     clip: Clip,
     position: u32,
     uv: u32,
@@ -266,6 +280,9 @@ impl Renderer {
             vertices: Vec::with_capacity(65536),
             batches: Vec::with_capacity(512),
             retired: RefCell::new(Vec::new()),
+            revision: Cell::new(0),
+            bg: [0.0; 4],
+            shown: None,
             clip: Clip::full(),
             position,
             uv,
@@ -293,6 +310,7 @@ impl Renderer {
     }
 
     pub fn upload(&self, width: u32, height: u32, pixels: &[u8]) -> Result<Texture, String> {
+        self.touch();
         upload(&self.gl, width, height, pixels)
     }
     /// Static album art only. Mipmaps prevent shimmer inside a shrinking or
@@ -344,6 +362,7 @@ impl Renderer {
         Ok(texture)
     }
     pub fn set_texture_nearest(&self, texture: Texture) {
+        self.touch();
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
             self.gl.tex_parameter_i32(
@@ -359,6 +378,7 @@ impl Renderer {
         }
     }
     pub fn delete_texture(&self, texture: Texture) {
+        self.touch();
         // Images are batched on the CPU until finish(). Cache eviction during
         // composition must not delete a texture referenced by an earlier image.
         if self.batches.iter().any(|batch| batch.texture == texture.id) {
@@ -373,6 +393,7 @@ impl Renderer {
         if pixels.len() != texture.width as usize * texture.height as usize * 4 {
             return Err("Invalid texture update size".into());
         }
+        self.touch();
         unsafe {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(texture.id));
             self.gl.tex_sub_image_2d(
@@ -389,7 +410,80 @@ impl Renderer {
         }
         Ok(())
     }
+    fn touch(&self) {
+        self.revision.set(self.revision.get().wrapping_add(1));
+    }
+    /// Whether the frame just built would show exactly what the last presented
+    /// frame shows: the same background, geometry, batches and texture
+    /// contents. Presenting it again can then be skipped; nothing on screen
+    /// would change.
+    pub fn repeats_shown_frame(&self) -> bool {
+        self.atlas.dirty.is_none()
+            && self.shown.as_ref().is_some_and(|shown| {
+                shown.revision == self.revision.get()
+                    && shown.bg == self.bg
+                    && shown.batches == self.batches
+                    && shown.vertices.len() == self.vertices.len()
+                    && shown
+                        .vertices
+                        .iter()
+                        .zip(&self.vertices)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+            })
+    }
+    /// Diagnostics for tests: where the frame first differs from the one on
+    /// screen (batch, its vertex count, the first different float).
+    #[doc(hidden)]
+    pub fn first_difference(&self) -> Option<String> {
+        let shown = self.shown.as_ref()?;
+        if shown.batches.len() != self.batches.len() {
+            return Some(format!(
+                "batches {} -> {}",
+                shown.batches.len(),
+                self.batches.len()
+            ));
+        }
+        let float = shown
+            .vertices
+            .iter()
+            .zip(&self.vertices)
+            .position(|(a, b)| a.to_bits() != b.to_bits())?;
+        let vertex = float / 9;
+        let batch = self
+            .batches
+            .iter()
+            .position(|b| (b.start..b.start + b.count).contains(&(vertex as i32)))
+            .unwrap_or(usize::MAX);
+        Some(format!(
+            "batch {batch} (of {}), vertex {vertex}, float {} : {} -> {}",
+            self.batches.len(),
+            float % 9,
+            shown.vertices[float],
+            self.vertices[float]
+        ))
+    }
+    /// Records the frame just presented (after `finish` and the swap).
+    pub fn mark_shown(&mut self) {
+        let shown = self.shown.get_or_insert_with(|| ShownFrame {
+            bg: [0.0; 4],
+            vertices: Vec::new(),
+            batches: Vec::new(),
+            revision: 0,
+        });
+        shown.bg = self.bg;
+        shown.vertices.clear();
+        shown.vertices.extend_from_slice(&self.vertices);
+        shown.batches.clear();
+        shown.batches.extend_from_slice(&self.batches);
+        shown.revision = self.revision.get();
+    }
+    /// Something else reached the screen (the black screen-off frame, another
+    /// loop): the next frame is always presented.
+    pub fn forget_shown(&mut self) {
+        self.shown = None;
+    }
     pub fn begin(&mut self, bg: Color) {
+        self.bg = bg;
         self.vertices.clear();
         self.batches.clear();
         for texture in self.retired.get_mut().drain(..) {
