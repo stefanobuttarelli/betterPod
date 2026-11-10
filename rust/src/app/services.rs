@@ -1262,6 +1262,7 @@ impl Extras {
                 "Search MusicBrainz",
                 Choice::MetadataSearch(Provider::MusicBrainz),
             ),
+            Item::new("Search Discogs", Choice::MetadataSearch(Provider::Discogs)),
             Item::new("Search iTunes", Choice::MetadataSearch(Provider::Itunes)),
             Item::new("Search Deezer", Choice::MetadataSearch(Provider::Deezer)),
             Item::new(
@@ -3711,13 +3712,10 @@ impl Extras {
                                             (
                                                 !best && cover,
                                                 cover && best && !exact,
-                                                match item.provider {
-                                                    Provider::MusicBrainz => 0,
-                                                    Provider::Itunes => 1,
-                                                    Provider::Deezer => 2,
-                                                    Provider::Wikipedia => 3,
-                                                    _ => 4,
-                                                },
+                                                visual::combined_providers(cover)
+                                                    .iter()
+                                                    .position(|p| *p == item.provider)
+                                                    .unwrap_or(usize::MAX),
                                             )
                                         });
                                         if state.pending == 0

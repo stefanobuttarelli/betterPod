@@ -1,4 +1,7 @@
 //! Public album-information providers and atomic tag edits. Selected fields only.
+mod discogs;
+mod wikipedia;
+mod wikitext;
 use crate::online::{base, encode, number, text, Context, OnlineItem, Provider};
 use lofty::{
     file::TaggedFileExt,
@@ -62,7 +65,36 @@ pub fn search(
     provider: Provider,
     query: &str,
 ) -> Result<(Vec<OnlineItem>, usize), String> {
-    let value=match provider{Provider::MusicBrainz=>{mb_wait(context)?;context.get_json(&format!("{}/ws/2/release/?fmt=json&limit=10&dismax=true&query={}",base("BETTERPOD_RUST_MB_BASE","https://musicbrainz.org"),encode(query)))?},Provider::Itunes=>context.get_json(&format!("{}/search?entity=album&limit=12&term={}",base("BETTERPOD_RUST_ITUNES_BASE","https://itunes.apple.com"),encode(query)))?,Provider::Deezer=>context.get_json(&format!("{}/search/album?limit=12&q={}",base("BETTERPOD_RUST_DEEZER_BASE","https://api.deezer.com"),encode(query)))?,Provider::Wikipedia=>context.get_json(&format!("{}/w/api.php?action=query&format=json&generator=search&gsrnamespace=0&gsrlimit=12&gsrsearch={}&prop=pageimages%7Cpageterms&piprop=original&wbptterms=description",base("BETTERPOD_RUST_WIKI_BASE","https://en.wikipedia.org"),encode(query)))?,_=>return Err("Unsupported metadata provider".into())};
+    let items = match provider {
+        Provider::Discogs => Some(discogs::search(context, query)?),
+        Provider::Wikipedia => Some(wikipedia::search(context, query)?),
+        _ => None,
+    };
+    if let Some(items) = items {
+        let total = items.len();
+        return Ok((items, total));
+    }
+    let value = match provider {
+        Provider::MusicBrainz => {
+            mb_wait(context)?;
+            context.get_json(&format!(
+                "{}/ws/2/release/?fmt=json&limit=10&dismax=true&query={}",
+                base("BETTERPOD_RUST_MB_BASE", "https://musicbrainz.org"),
+                encode(query)
+            ))?
+        }
+        Provider::Itunes => context.get_json(&format!(
+            "{}/search?entity=album&limit=12&term={}",
+            base("BETTERPOD_RUST_ITUNES_BASE", "https://itunes.apple.com"),
+            encode(query)
+        ))?,
+        Provider::Deezer => context.get_json(&format!(
+            "{}/search/album?limit=12&q={}",
+            base("BETTERPOD_RUST_DEEZER_BASE", "https://api.deezer.com"),
+            encode(query)
+        ))?,
+        _ => return Err("Unsupported metadata provider".into()),
+    };
     let rows: Vec<&Value> = match provider {
         Provider::MusicBrainz => value["releases"]
             .as_array()
@@ -75,10 +107,6 @@ pub fn search(
         Provider::Deezer => value["data"]
             .as_array()
             .map(|a| a.iter().collect())
-            .unwrap_or_default(),
-        Provider::Wikipedia => value["query"]["pages"]
-            .as_object()
-            .map(|o| o.values().collect())
             .unwrap_or_default(),
         _ => vec![],
     };
@@ -120,18 +148,6 @@ pub fn search(
                 item.url = text(row, "link");
                 item.count = number(row, "nb_tracks") as usize;
             }
-            Provider::Wikipedia => {
-                item.id = text(row, "title");
-                item.title = item.id.clone();
-                item.artist = row["terms"]["description"]
-                    .as_array()
-                    .and_then(|a| a.first())
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .into();
-                item.cover = text(&row["original"], "source");
-                item.url = format!("https://en.wikipedia.org/wiki/{}", encode(&item.id));
-            }
             _ => {}
         }
         if !item.id.is_empty() {
@@ -142,6 +158,12 @@ pub fn search(
     Ok((items, total))
 }
 pub fn details(context: &Context, mut item: OnlineItem) -> Result<OnlineItem, String> {
+    match item.provider {
+        Provider::Discogs => return discogs::details(context, item),
+        // The search already read each article's fields and tracks.
+        Provider::Wikipedia => return Ok(item),
+        _ => {}
+    }
     let mut songs = Vec::new();
     let value = match item.provider {
         Provider::MusicBrainz => {
@@ -197,38 +219,6 @@ pub fn details(context: &Context, mut item: OnlineItem) -> Result<OnlineItem, St
             }
             value
         }
-        Provider::Wikipedia => {
-            let value=context.get_json(&format!("{}/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=main&titles={}",base("BETTERPOD_RUST_WIKI_BASE","https://en.wikipedia.org"),encode(&item.id)))?;
-            let source = value["query"]["pages"]
-                .as_object()
-                .and_then(|o| o.values().next())
-                .and_then(|p| p["revisions"].as_array())
-                .and_then(|a| a.first())
-                .map(|r| text(&r["slots"]["main"], "*"))
-                .unwrap_or_default();
-            let fields = wiki_fields(&source);
-            if let Some(artist) = fields
-                .get("artist")
-                .or_else(|| fields.get("composer"))
-                .or_else(|| fields.get("developer"))
-            {
-                item.artist = artist.clone();
-            }
-            if let Some(date) = fields
-                .get("released")
-                .or_else(|| fields.get("release_date"))
-            {
-                if let Some(year) = date
-                    .split(|c: char| !c.is_ascii_digit())
-                    .find(|s| s.len() == 4)
-                {
-                    item.year = year.into();
-                }
-            }
-            let mut raw = value;
-            raw["genre"] = json!(fields.get("genre").cloned().unwrap_or_default());
-            raw
-        }
         _ => return Ok(item),
     };
     item.count = songs.len().max(item.count);
@@ -263,33 +253,6 @@ fn normalized_genre(raw: &Value) -> String {
         })
         .unwrap_or_default()
 }
-fn wiki_fields(source: &str) -> std::collections::HashMap<String, String> {
-    let mut fields = std::collections::HashMap::new();
-    for line in source.lines() {
-        let Some(line) = line.trim().strip_prefix('|') else {
-            continue;
-        };
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let value = value
-            .replace("[[", "")
-            .replace("]]", "")
-            .replace("{{", "")
-            .replace("}}", "")
-            .replace("<br>", ", ")
-            .replace("<br />", ", ");
-        let value = value
-            .split('|')
-            .next_back()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        fields.entry(key.trim().to_lowercase()).or_insert(value);
-    }
-    fields
-}
-
 pub fn write_tags(path: &Path, edit: &TagEdit) -> Result<(), String> {
     write_tags_impl(path, edit, None, false)
 }
@@ -1128,6 +1091,44 @@ fn normalize_title(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Rapadopa exists only on Discogs and the Italian Wikipedia.
+    #[test]
+    #[ignore = "live network: Discogs and Wikipedia"]
+    fn live_rapadopa_on_discogs_and_wikipedia() {
+        let context = Context::standalone();
+        let (found, _) = search(&context, Provider::Discogs, "Rapadopa DJ Gruff").unwrap();
+        let first = found.first().expect("a Discogs result");
+        assert_eq!(
+            (first.title.as_str(), first.artist.as_str()),
+            ("Rapadopa", "DJ Gruff")
+        );
+        assert!(first.raw["_source"].as_str().unwrap().contains("CD"));
+        let album = details(&context, first.clone()).unwrap();
+        let tracks = album.raw["tracks"].as_array().unwrap();
+        assert_eq!((album.year.as_str(), tracks.len()), ("1993", 25));
+        assert_eq!(tracks[0]["title"], "La Rapadopa");
+        assert_eq!(tracks[0]["seconds"], 293.0);
+        assert_eq!(album.raw["genre"], "Hip Hop");
+
+        let link = "https://www.discogs.com/it/release/2621910-DJ-Gruff-Rapadopa?srsltid=x";
+        let (linked, _) = search(&context, Provider::Discogs, link).unwrap();
+        assert_eq!((linked.len(), linked[0].count), (1, 25));
+
+        let (found, _) = search(&context, Provider::Wikipedia, "Rapadopa DJ Gruff").unwrap();
+        let article = found
+            .iter()
+            .find(|item| item.title == "Rapadopa")
+            .expect("the Italian article");
+        assert_eq!(article.raw["_source"], "Wikipedia (it)");
+        assert_eq!(
+            (article.artist.as_str(), article.year.as_str()),
+            ("DJ Gruff", "1993")
+        );
+        assert_eq!(article.count, 26);
+        let (found, _) = search(&context, Provider::Wikipedia, "OK Computer Radiohead").unwrap();
+        assert_eq!(found[0].raw["_source"], "Wikipedia");
+        assert_eq!(found[0].count, 12);
+    }
     #[test]
     #[ignore = "Requires local BETTERPOD_METADATA_FIXTURES; no network or user files"]
     fn album_preview_reads_all_fields_and_changes_nothing_until_save() {

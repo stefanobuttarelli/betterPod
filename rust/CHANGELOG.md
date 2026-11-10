@@ -4,6 +4,7 @@ The separate Rust app for Knulli. A version here whose number is in `Cargo.toml`
 
 ## Unreleased
 
+- Album Info finds albums on Discogs and on the Italian Wikipedia, such as DJ Gruff's Rapadopa. Find Info Online now searches MusicBrainz, Discogs, iTunes, Deezer and Wikipedia, and the editor has Search Discogs. Discogs prefers the CD edition, gives one result per album with its songs, lengths and genre, and also opens a pasted Discogs link. Wikipedia searches the English and Italian articles of albums only and reads the songs of the first edition from the article.
 - Uses less CPU on screens that are not moving: a frame identical to the one on screen is no longer redrawn. On the console, Now Playing with an AAC song playing went from about 22% to 9% of one core, and paused from 22% to 9%. Anything that moves still runs at 60 fps.
 - Covers are kept on disk at display size, so they reappear quickly after a restart or after leaving the memory cache. A changed cover is read again from its file.
 - Recent Searches are back under the Internet Archive, YouTube and Podcasts search fields: the last week's searches, ten per screen. Choose one to run it again; Y removes it or clears the list.

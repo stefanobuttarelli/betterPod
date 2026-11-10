@@ -28,6 +28,7 @@ pub enum Provider {
     Itunes,
     Deezer,
     Wikipedia,
+    Discogs,
 }
 impl Provider {
     pub fn name(self) -> &'static str {
@@ -39,6 +40,7 @@ impl Provider {
             Self::Itunes => "iTunes",
             Self::Deezer => "Deezer",
             Self::Wikipedia => "Wikipedia",
+            Self::Discogs => "Discogs",
         }
     }
 }

@@ -1257,7 +1257,7 @@ impl Extras {
             return;
         }
         state.generation = generation;
-        state.pending = 4;
+        state.pending = combined_providers(state.cover).len();
         state.hits.clear();
         state.errors.clear();
         let prepare = if state.cover && state.cover_context.is_none() {
@@ -1298,12 +1298,7 @@ impl Extras {
         let context = state.cover_context.clone();
         let cover = state.cover;
         self.refresh_combined();
-        for provider in [
-            Provider::MusicBrainz,
-            Provider::Itunes,
-            Provider::Deezer,
-            Provider::Wikipedia,
-        ] {
+        for &provider in combined_providers(cover) {
             let task = if cover {
                 let Some(album) = context.clone() else {
                     continue;
@@ -1337,7 +1332,12 @@ impl Extras {
         let mut search = Item::new(&state.query, Choice::CombinedSearch);
         search.visual.search_field = true;
         search.visual.no_arrow = true;
-        search.visual.placeholder = "Search MusicBrainz, iTunes, Deezer…".into();
+        search.visual.placeholder = if state.cover {
+            "Search MusicBrainz, iTunes, Deezer…"
+        } else {
+            "Search MusicBrainz, Discogs…"
+        }
+        .into();
         if state.pending == 0 {
             search.visual.value = format!(
                 "{} {}",
@@ -1352,7 +1352,7 @@ impl Extras {
         let mut rows = vec![search];
         if state.pending > 0 {
             let mut loading = fact("Searching…", "");
-            loading.detail = "MusicBrainz, iTunes, Deezer, Wikipedia".into();
+            loading.detail = combined_sources(state.cover);
             rows.push(loading);
         } else if state.hits.is_empty() {
             let mut row = Item::new(
@@ -1390,7 +1390,14 @@ impl Extras {
             if !state.cover && item.count > 0 {
                 sub.push(format!("{} songs", item.count));
             }
-            sub.push(item.provider.name().into());
+            // A finer source name when there is one: "Wikipedia (it)", "Discogs · CD".
+            sub.push(
+                item.raw["_source"]
+                    .as_str()
+                    .filter(|source| !source.is_empty())
+                    .unwrap_or(item.provider.name())
+                    .into(),
+            );
             if state.cover {
                 row.visual.icon = "default_album_artwork".into();
                 let failed = self
@@ -1466,7 +1473,8 @@ impl Extras {
             rows.push(fact(&edit.status, ""));
         }
         let mut find = Item::new("Find Info Online", Choice::FindInfo);
-        find.detail = "MusicBrainz, iTunes, Deezer, Wikipedia".into();
+        // The full list does not fit beside the icon; Searching… shows it.
+        find.detail = "MusicBrainz, Discogs, iTunes, Deezer…".into();
         find.visual.icon = "search_icon".into();
         rows.push(find);
         for field in [
@@ -1717,6 +1725,34 @@ impl Extras {
         self.pages.last_mut().unwrap().role = PageRole::Combined;
         self.run_combined(None);
     }
+}
+/// The sources of Find Info Online, in result order. Discogs answers few
+/// requests a minute and its search rows have no covers, so cover searches
+/// leave it out.
+pub(super) fn combined_providers(cover: bool) -> &'static [Provider] {
+    if cover {
+        &[
+            Provider::MusicBrainz,
+            Provider::Itunes,
+            Provider::Deezer,
+            Provider::Wikipedia,
+        ]
+    } else {
+        &[
+            Provider::MusicBrainz,
+            Provider::Discogs,
+            Provider::Itunes,
+            Provider::Deezer,
+            Provider::Wikipedia,
+        ]
+    }
+}
+fn combined_sources(cover: bool) -> String {
+    combined_providers(cover)
+        .iter()
+        .map(|provider| provider.name())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 pub(super) fn can_write_tags_ui(path: &std::path::Path) -> bool {
     path.extension()
