@@ -1,7 +1,8 @@
 # betterPod Share for the Mac: built on a Mac runner for each change to it;
 # a new version (mac/VERSION) gets its GitHub release, tagged mac-v<version>,
 # with the zip and mac/NOTES.md. It is never marked "Latest" (that stays on
-# the consoles' newest release).
+# the consoles' newest release). A beta (1.1-beta.1) is a prerelease, which
+# only betas offer as an update; run this workflow on its branch to publish it.
 name: Mac app
 on:
   push:
@@ -42,7 +43,8 @@ jobs:
           if gh release view "mac-v$V" >/dev/null 2>&1; then
             echo "mac-v$V is already published; the build is available as a workflow artifact."
           else
+            case "$V" in *-*) PRE=--prerelease ;; *) PRE= ;; esac
             gh release create "mac-v$V" "mac/build/betterPod-Share-mac-v$V.zip" \
               --target "$GITHUB_SHA" --title "betterPod Share for Mac $V" \
-              --notes-file mac/NOTES.md --latest=false
+              --notes-file mac/NOTES.md --latest=false $PRE
           fi

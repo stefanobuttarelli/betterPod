@@ -4,12 +4,14 @@ import Foundation
 import ImageIO
 
 enum AlbumLookupProvider: String, CaseIterable, Sendable {
-    case musicBrainz, itunes, deezer
+    case musicBrainz, itunes, deezer, discogs, wikipedia
     var name: String {
         switch self {
         case .musicBrainz: return "MusicBrainz"
         case .itunes: return "iTunes"
         case .deezer: return "Deezer"
+        case .discogs: return "Discogs"
+        case .wikipedia: return "Wikipedia"
         }
     }
 }
@@ -87,13 +89,16 @@ struct AlbumLookupRelease: Identifiable, Sendable {
     let artist: String
     let year: Int?
     let country: String?
-    let trackCount: Int?
+    var trackCount: Int?
     let sourceURL: URL
     var provider: AlbumLookupProvider = .musicBrainz
     var providerID: String? = nil
     var coverURL: URL? = nil
     var matchScore: Int? = nil
     var matchSummary: String? = nil
+    /// A finer source name than the provider's, such as a Wikipedia language.
+    var sourceLabel: String? = nil
+    var sourceName: String { sourceLabel ?? provider.name }
 }
 
 struct AlbumLookupDetails: Sendable {
@@ -176,6 +181,8 @@ actor AlbumLookupService {
     private let session: URLSession
     private let userAgent: String
     private var metadataCache: [String: LookupPacket] = [:]
+    // Wikipedia searches already return each article; keep them for details(for:).
+    private var wikipediaCache: [String: WikipediaAlbum] = [:]
     init(session: URLSession? = nil) {
         if let session { self.session = session } else {
             let configuration = URLSessionConfiguration.ephemeral
@@ -199,6 +206,9 @@ actor AlbumLookupService {
     }
 
     func search(query input: AlbumLookupQuery) async throws -> AlbumLookupSearchResult {
+        if let link = DiscogsAlbums.link(in: input.album + " " + input.artist) {
+            return try await linkedDiscogsRelease(link, query: input)
+        }
         let query = input.inferred
         guard !query.searchTerm.isEmpty else { throw AlbumLookupError.query("Enter an album or artist, or open tracks with recognizable names.") }
         guard query.artist.count <= 256, query.album.count <= 256, query.folderName.count <= 1024 else {
@@ -206,6 +216,7 @@ actor AlbumLookupService {
         }
         try Task.checkCancellation()
         metadataCache = [:]
+        wikipediaCache = [:]
         var releases: [AlbumLookupRelease] = []
         var warnings: [String] = []
         await withTaskGroup(of: ProviderSearch.self) { group in
@@ -238,7 +249,9 @@ actor AlbumLookupService {
                 group.addTask {
                     do {
                         let packet = try await self.metadata(for: release)
-                        return (release.id, AlbumLookupMatching.rank(release, query: query, tracks: packet.details.tracks), nil)
+                        var checked = AlbumLookupMatching.rank(release, query: query, tracks: packet.details.tracks)
+                        if checked.trackCount == nil && !packet.details.tracks.isEmpty { checked.trackCount = packet.details.tracks.count }
+                        return (release.id, checked, nil)
                     } catch is CancellationError { return (release.id, nil, nil) }
                     catch {
                         var unchecked = release
@@ -262,6 +275,22 @@ actor AlbumLookupService {
         return AlbumLookupSearchResult(releases: Array(releases.prefix(30)), warnings: Array(Set(warnings)).sorted())
     }
 
+    /// A pasted Discogs link names the edition directly; it is compared with
+    /// the selected tracks but not searched for.
+    private func linkedDiscogsRelease(_ link: String, query: AlbumLookupQuery) async throws -> AlbumLookupSearchResult {
+        metadataCache = [:]
+        wikipediaCache = [:]
+        let source = URL(string: "https://www.discogs.com/" + link.replacingOccurrences(of: ":", with: "/"))!
+        let stub = AlbumLookupRelease(id: "discogs:" + link, title: "", artist: "", year: nil, country: nil, trackCount: nil,
+                                      sourceURL: source, provider: .discogs, providerID: link)
+        let packet = try await metadata(for: stub)
+        let release = AlbumLookupRelease(id: stub.id, title: packet.details.title, artist: packet.details.artist, year: packet.details.year,
+                                         country: nil, trackCount: packet.details.tracks.count, sourceURL: source, provider: .discogs,
+                                         providerID: link, coverURL: packet.coverURL, sourceLabel: "Discogs link")
+        let local = AlbumLookupQuery(artist: release.artist, album: release.title, folderName: query.folderName, tracks: query.tracks)
+        return AlbumLookupSearchResult(releases: [AlbumLookupMatching.rank(release, query: local, tracks: packet.details.tracks)], warnings: [])
+    }
+
     private func searchSafely(_ provider: AlbumLookupProvider, query: AlbumLookupQuery) async -> ProviderSearch {
         var rows: [AlbumLookupRelease] = []
         var variants = [query]
@@ -279,7 +308,8 @@ actor AlbumLookupService {
             variants.append(AlbumLookupQuery(artist: broad.artist, album: keyword, tracks: query.tracks))
         }
         do {
-            for variant in variants {
+            // Discogs allows few requests a minute: the tags and the folder are enough.
+            for variant in provider == .discogs ? Array(variants.prefix(2)) : variants {
                 rows += try await providerSearch(provider, query: variant)
             }
             return ProviderSearch(releases: rows, warning: nil)
@@ -314,6 +344,34 @@ actor AlbumLookupService {
             let path = query.album.isEmpty ? "/search" : "/search/album"
             let url = try Self.url(host: "api.deezer.com", path: path, items: [URLQueryItem(name: "q", value: query.searchTerm), URLQueryItem(name: "limit", value: "12")])
             return try Self.parseDeezerSearch(await fetch(url, service: "Deezer", limit: 4 << 20))
+        case .discogs:
+            guard !query.album.isEmpty else { return [] }
+            for compactDisc in [true, false] {
+                let url = try Self.url(host: "api.discogs.com", path: "/database/search",
+                                       items: DiscogsAlbums.searchItems(album: query.album, artist: query.artist, compactDiscOnly: compactDisc))
+                let found = try DiscogsAlbums.parseSearch(await fetch(url, service: "Discogs", limit: 4 << 20))
+                if !found.isEmpty { return found }
+            }
+            return []
+        case .wikipedia:
+            guard !query.album.isEmpty else { return [] }
+            var rows: [AlbumLookupRelease] = []
+            var failure: Error?
+            for edition in WikipediaEdition.all {
+                do {
+                    let url = try Self.url(host: "\(edition.code).wikipedia.org", path: "/w/api.php",
+                                           items: WikipediaAlbums.searchItems(album: query.album, artist: query.artist, edition: edition))
+                    let albums = try WikipediaAlbums.parse(await fetch(url, service: "Wikipedia", limit: 8 << 20), edition: edition)
+                    for album in albums {
+                        if wikipediaCache.count >= 60 { wikipediaCache = [:] }
+                        wikipediaCache[album.release.id] = album
+                    }
+                    rows += albums.map(\.release)
+                } catch is CancellationError { throw CancellationError() }
+                catch { failure = failure ?? error }
+            }
+            if rows.isEmpty, let failure { throw failure }
+            return rows
         }
     }
 
@@ -354,7 +412,7 @@ actor AlbumLookupService {
 
     private func metadata(for release: AlbumLookupRelease) async throws -> LookupPacket {
         if let cached = metadataCache[release.id] { return cached }
-        let id = release.providerID ?? release.id.split(separator: ":").last.map(String.init) ?? release.id
+        let id = release.providerID ?? release.id.split(separator: ":", maxSplits: 1).last.map(String.init) ?? release.id
         let packet: LookupPacket
         switch release.provider {
         case .musicBrainz:
@@ -383,6 +441,25 @@ actor AlbumLookupService {
             }
             object["tracks"] = ["data": tracks]
             packet = try Self.parseDeezerDetails(object, release: release)
+        case .discogs:
+            guard let path = DiscogsAlbums.detailsPath(id) else { throw AlbumLookupError.invalidResponse("Discogs") }
+            let url = try Self.url(host: "api.discogs.com", path: path, items: [])
+            let parsed = try DiscogsAlbums.parseDetails(await fetch(url, service: "Discogs", limit: 4 << 20))
+            guard !parsed.details.tracks.isEmpty else { throw AlbumLookupError.incompleteTracks }
+            packet = LookupPacket(details: parsed.details, coverURL: parsed.coverURL ?? release.coverURL)
+        case .wikipedia:
+            if let album = wikipediaCache[release.id] {
+                packet = LookupPacket(details: album.details, coverURL: album.coverURL)
+                break
+            }
+            let parts = id.split(separator: ":")
+            guard parts.count == 2, let edition = WikipediaEdition.all.first(where: { $0.code == parts[0] }),
+                  let pageID = Int(parts[1]), pageID > 0 else { throw AlbumLookupError.invalidResponse("Wikipedia") }
+            let url = try Self.url(host: "\(edition.code).wikipedia.org", path: "/w/api.php", items: WikipediaAlbums.pageItems(pageID: pageID))
+            guard let album = try WikipediaAlbums.parse(await fetch(url, service: "Wikipedia", limit: 8 << 20), edition: edition).first else {
+                throw AlbumLookupError.status("Wikipedia", 404)
+            }
+            packet = LookupPacket(details: album.details, coverURL: album.coverURL)
         }
         if metadataCache.count >= 12 { metadataCache = [:] }
         metadataCache[release.id] = packet
@@ -400,7 +477,7 @@ actor AlbumLookupService {
         let query = AlbumLookupQuery(artist: details.artist, album: details.title, tracks: details.tracks.map {
             AlbumLookupLocalTrack(fileName: "", title: $0.title, disc: $0.disc, track: $0.track, duration: $0.duration)
         })
-        for provider in [AlbumLookupProvider.itunes, .deezer] where provider != excluding {
+        for provider in [AlbumLookupProvider.itunes, .deezer, .discogs] where provider != excluding {
             try Task.checkCancellation()
             do {
                 let rows = try await providerSearch(provider, query: query)
@@ -422,6 +499,7 @@ actor AlbumLookupService {
     private func fetch(_ url: URL, service: String, limit: Int, musicBrainz: Bool = false, image: Bool = false) async throws -> Data {
         if musicBrainz { try await MusicBrainzRequestGate.shared.wait() }
         if url.host == "itunes.apple.com" { try await ItunesRequestBudget.shared.reserve() }
+        if url.host == "api.discogs.com" { try await DiscogsRequestBudget.shared.reserve() }
         try Task.checkCancellation()
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
@@ -465,7 +543,7 @@ actor AlbumLookupService {
 
     private static func allowedArtworkURL(_ url: URL) -> Bool {
         guard url.scheme == "https", let host = url.host?.lowercased() else { return false }
-        return ["coverartarchive.org", "archive.org", "mzstatic.com", "dzcdn.net"].contains { host == $0 || host.hasSuffix("." + $0) }
+        return ["coverartarchive.org", "archive.org", "mzstatic.com", "dzcdn.net", "discogs.com", "wikimedia.org"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
 
     private static func object(_ data: Data, service: String) throws -> [String: Any] {

@@ -1,11 +1,13 @@
 import SwiftUI
 
+/// Find Album: searches every source for one album, previews the best match
+/// and applies its cover, album details and track names to the draft. A
+/// selection of several albums is handled one album at a time.
 struct AlbumLookupView: View {
     @ObservedObject var model: LibraryModel
     let targetIDs: Set<String>
-    var artworkOnly: Bool? = nil
-    var onApply: (() -> Void)? = nil
-    @Environment(\.dismiss) private var dismiss
+    var step = 1
+    var steps = 1
     @State private var artist = ""
     @State private var album = ""
     @State private var releases: [AlbumLookupRelease] = []
@@ -41,11 +43,7 @@ struct AlbumLookupView: View {
         details != nil && !searching && !loadingDetails && !model.busy && !model.remoteNeedsReload && targets.contains(where: { $0.original.writable }) &&
         (includeMetadata || (includeArtwork && details?.cover != nil))
     }
-    private var isArtworkOnly: Bool { artworkOnly ?? model.lookupArtworkOnly }
-    private var applyTitle: String {
-        if includeMetadata && includeArtwork && details?.cover != nil { return "Apply Metadata and Artwork" }
-        return includeMetadata ? "Apply Metadata" : "Apply Artwork"
-    }
+    private var hasNext: Bool { step < steps }
     private var query: AlbumLookupQuery {
         AlbumLookupQuery(artist: artist, album: album, folderName: folderName,
                          tracks: targets.map { AlbumLookupLocalTrack(fileName: $0.original.fileName, title: $0[.title], disc: Int($0[.disc]) ?? 0, track: Int($0[.track]) ?? 0) })
@@ -64,48 +62,58 @@ struct AlbumLookupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            searchHeader
-            Divider()
-            HSplitView {
-                candidates.frame(minWidth: 235, idealWidth: 270, maxWidth: 320)
-                preview.frame(minWidth: 470, maxWidth: .infinity, maxHeight: .infinity)
+            PodSheetHeader(title: "Find Album",
+                           subtitle: (steps > 1 ? "Album \(step) of \(steps) · " : "") + "\(targets.count) \(targets.count == 1 ? "track" : "tracks")" + (folderName.isEmpty ? "" : " · \(folderName)")) {
+                if searching || loadingDetails {
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel(searching ? "Searching" : "Loading the album")
+                }
+            }
+            searchBar
+            HStack(spacing: 0) {
+                candidates.frame(width: 290)
+                Pod.hairline.frame(width: 1)
+                preview.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
             }
             if let error {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                PodBanner(text: error, isError: true)
             }
             if !warnings.isEmpty {
-                DisclosureGroup("Service Availability") {
+                DisclosureGroup("Some sources did not answer") {
                     ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in
-                        Text(warning).font(.caption).foregroundStyle(.secondary)
+                        Text(warning).font(.caption).foregroundStyle(Pod.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .font(.caption).padding(.horizontal, 18).padding(.vertical, 10)
+                .font(.caption).padding(.horizontal, 16).padding(.vertical, 7)
+                .background(Pod.strip)
             }
-            Divider()
-            HStack(spacing: 12) {
-                Text("\(targets.count) Selected Tracks · \(model.isRemote ? "betterPod Changes Only When You Save" : "Files Change Only When You Save")")
-                    .font(.caption).foregroundStyle(.secondary)
+            PodSheetFooter {
+                Text(model.isRemote ? "betterPod changes only when you save." : "Your files change only when you save.")
+                    .font(.caption).foregroundStyle(Pod.secondaryText)
                 Spacer()
-                Button("Cancel") { close() }.keyboardShortcut(.cancelAction)
-                Button(applyTitle) {
+                Button("Cancel") { request?.cancel(); model.showingLookup = false }
+                    .keyboardShortcut(.cancelAction)
+                if steps > 1 {
+                    Button(hasNext ? "Skip Album" : "Skip") { request?.cancel(); model.nextLookup() }
+                }
+                Button(hasNext ? "Apply and Next" : "Apply") {
                     guard let details else { return }
                     model.apply(details, to: targetIDs, includeTracks: includeTracks && canMapTracks,
                                 includeArtwork: includeArtwork, includeMetadata: includeMetadata)
-                    onApply?()
-                    dismiss()
+                    request?.cancel()
+                    model.nextLookup()
                 }
-                .buttonStyle(AppleProminentButtonStyle())
+                .buttonStyle(PodButtonStyle(kind: .primary))
                 .disabled(!canApply)
                 .keyboardShortcut(.defaultAction)
-            }.padding(18)
+            }
+            .buttonStyle(PodButtonStyle())
         }
-        .frame(minWidth: 850, idealWidth: 960, minHeight: 580, idealHeight: 700)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 880, idealWidth: 980, minHeight: 600, idealHeight: 720)
+        .background(Pod.panel)
         .onAppear {
-            includeMetadata = !isArtworkOnly
             artist = majority(targets.map { $0.effectiveAlbumArtist.isEmpty ? $0[.artist] : $0.effectiveAlbumArtist })
             album = majority(targets.map(\.effectiveAlbum))
             let inferred = query.inferred
@@ -126,174 +134,176 @@ struct AlbumLookupView: View {
         .onDisappear { request?.cancel() }
     }
 
-    private var searchHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(isArtworkOnly ? "Find Cover Artwork" : "Find Album Details").font(.title2.weight(.semibold))
-                    Text("Matching folder, track names and numbering across MusicBrainz, iTunes and Deezer.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if searching || loadingDetails {
-                    ProgressView().controlSize(.small)
-                        .accessibilityLabel(searching ? "Identifying Album" : "Loading Album Preview")
-                }
-            }
-            HStack(spacing: 10) {
+    private var searchBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
                 TextField("Artist", text: $artist).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search Artist").onSubmit { search() }
-                TextField("Album", text: $album).textFieldStyle(.roundedBorder)
+                TextField("Album, or a Discogs link", text: $album).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search Album").onSubmit { search() }
-                Button(searching ? "Search Again" : "Search") { search() }
-                    .buttonStyle(AppleToolbarButtonStyle())
+                Button { search() } label: { Label("Search", systemImage: "magnifyingglass") }
+                    .buttonStyle(PodButtonStyle())
                     .disabled(artist.trimmingCharacters(in: .whitespaces).isEmpty && album.trimmingCharacters(in: .whitespaces).isEmpty && targets.isEmpty)
             }
-            HStack(spacing: 6) {
-                Image(systemName: "folder").foregroundStyle(.secondary)
-                Text(folderName.isEmpty ? "Using Track Names and Numbers" : folderName)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                Spacer()
-                if searching { Text("Comparing Album Editions…").font(.caption).foregroundStyle(.secondary) }
-            }
-        }.padding(20)
+            Text("Searches MusicBrainz, Discogs, iTunes, Deezer and Wikipedia with the folder, tags and track names. Paste a Discogs link to use that exact edition.")
+                .font(.caption).foregroundStyle(Pod.secondaryText)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(Pod.strip)
+        .overlay(alignment: .bottom) { Pod.hairline.frame(height: 1) }
     }
 
     private var candidates: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Matches").font(.headline)
+                PodSectionTitle("Matches")
                 Spacer()
                 Picker("Source", selection: $provider) {
-                    Text("All Services").tag(Optional<AlbumLookupProvider>.none)
+                    Text("All Sources").tag(Optional<AlbumLookupProvider>.none)
                     ForEach(AlbumLookupProvider.allCases, id: \.self) { source in
                         Text(source.name).tag(Optional(source))
                     }
-                }.labelsHidden().fixedSize()
-            }.padding(14)
+                }
+                .labelsHidden().fixedSize().controlSize(.small)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .overlay(alignment: .bottom) { Pod.hairline.frame(height: 1) }
             if visibleReleases.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: searching ? "sparkle.magnifyingglass" : "magnifyingglass").font(.title2).foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.title2).foregroundStyle(Pod.secondaryText)
                     Text(searching ? "Finding Your Album…" : (searched ? "No Matching Albums" : "Ready to Search"))
                         .font(.headline)
-                    Text(searching ? "Checking available services and comparing track lists." : "Try editing the album or artist, or choose another service.")
-                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Text(searching ? "Comparing editions and track lists." : "Edit the album or artist, paste a Discogs link, or choose another source.")
+                        .font(.callout).foregroundStyle(Pod.secondaryText).multilineTextAlignment(.center)
+                }
+                .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(visibleReleases, selection: $selectedID) { release in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(release.title).fontWeight(.medium).lineLimit(2)
-                            Spacer(minLength: 2)
-                            if release.id == releases.first?.id {
-                                Image(systemName: "star.fill").font(.caption).accessibilityLabel("Best Match")
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(visibleReleases) { release in
+                                MatchRow(release: release, best: release.id == releases.first?.id, selected: release.id == selectedID)
+                                    .id(release.id)
+                                    .onTapGesture { selectedID = release.id }
                             }
                         }
-                        Text(release.artist).font(.callout).foregroundStyle(.secondary).lineLimit(1)
-                        Text([release.provider.name, release.year.map(String.init), release.trackCount.map { "\($0) Tracks" }]
-                            .compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
-                        if let score = release.matchScore {
-                            Text(release.id == releases.first?.id ? "Best Match · \(score)/100" : "Match · \(score)/100")
-                                .font(.caption).fontWeight(.medium)
+                    }
+                    .focusable()
+                    .onMoveCommand { direction in
+                        guard let index = visibleReleases.firstIndex(where: { $0.id == selectedID }) else {
+                            selectedID = visibleReleases.first?.id
+                            return
                         }
-                    }.padding(.vertical, 5).tag(release.id)
-                }.listStyle(.inset)
+                        let next = direction == .up ? index - 1 : (direction == .down ? index + 1 : index)
+                        guard visibleReleases.indices.contains(next) else { return }
+                        selectedID = visibleReleases[next].id
+                        proxy.scrollTo(visibleReleases[next].id)
+                    }
+                    .accessibilityLabel("Matches")
+                }
             }
         }
+        .background(Color(nsColor: .textBackgroundColor))
     }
 
     @ViewBuilder private var preview: some View {
         if let details, let chosen {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .top, spacing: 18) {
-                        LibraryCover(data: details.cover).frame(width: 140, height: 140)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(details.title).font(.title3.weight(.semibold))
-                            Text(details.artist).foregroundStyle(.secondary)
-                            Text([details.year.map(String.init), "\(details.tracks.count) Tracks"].compactMap { $0 }.joined(separator: " · "))
-                                .font(.callout).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .top, spacing: 16) {
+                        LibraryCover(data: details.cover, cornerRadius: 4)
+                            .frame(width: 150, height: 150)
+                            .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(details.title).font(.system(size: 17, weight: .bold))
+                            Text(details.artist).font(.callout).foregroundStyle(Pod.secondaryText)
+                            Text([details.year.map(String.init), details.genre, "\(details.tracks.count) tracks"].compactMap { $0 }.joined(separator: " · "))
+                                .font(.callout).foregroundStyle(Pod.secondaryText)
                             Link("View on \(chosen.provider.name)", destination: chosen.sourceURL).font(.caption)
-                            if let summary = chosen.matchSummary { Text(summary).font(.caption).foregroundStyle(.secondary) }
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        Toggle("Update Album Metadata", isOn: $includeMetadata)
-                        Toggle("Update Track Titles, Artists and Numbering", isOn: $includeTracks)
-                            .disabled(!includeMetadata || !canMapTracks)
-                        Toggle("Replace Cover Artwork", isOn: $includeArtwork).disabled(details.cover == nil)
-                    }.toggleStyle(.checkbox)
-                    if let warning = details.coverWarning { Text(warning).font(.caption).foregroundStyle(.secondary) }
-                    if let source = details.coverSource, details.cover != nil {
-                        Text("Artwork from \(source)").font(.caption).foregroundStyle(.secondary)
-                    }
-                    if details.cover == nil {
-                        Text("No cover is available for this result. Your current artwork will be kept.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if includeMetadata {
-                        Divider()
-                        Text("Album Changes").font(.headline)
-                        albumChange("Album", current: majority(targets.map(\.effectiveAlbum)), proposed: details.title)
-                        albumChange("Album Artist", current: majority(targets.map(\.effectiveAlbumArtist)), proposed: details.artist)
-                        if let year = details.year { albumChange("Year", current: majority(targets.map { $0[.year] }), proposed: String(year)) }
-                        if let genre = details.genre { albumChange("Genre", current: majority(targets.map { $0[.genre] }), proposed: genre) }
-                    }
-                    if includeMetadata && includeTracks {
-                        Divider()
-                        Text("Track Pairings").font(.headline)
-                        if canMapTracks {
-                            Text("Filename numbering is used when complete, then existing disc and track numbers. Check the pairings before applying.")
-                                .font(.caption).foregroundStyle(.secondary)
-                            ForEach(Array(targets.enumerated()), id: \.element.id) { index, local in
-                                trackPair(local, proposed: sourceTracks[index])
+                            if let summary = chosen.matchSummary { Text(summary).font(.caption).foregroundStyle(Pod.secondaryText) }
+                            if let source = details.coverSource, details.cover != nil {
+                                Text("Cover from \(source)").font(.caption).foregroundStyle(Pod.secondaryText)
                             }
-                        } else {
-                            Label("This result has \(sourceTracks.count) tracks; you selected \(targets.count). Track fields will be kept. Album metadata and artwork can still be applied.", systemImage: "info.circle")
-                                .font(.callout).foregroundStyle(.secondary)
                         }
                     }
-                }.padding(22)
+                    PodCard(title: "Apply") {
+                        Toggle("Cover", isOn: $includeArtwork).disabled(details.cover == nil)
+                        Toggle("Album details: album, album artist, year and genre", isOn: $includeMetadata)
+                        Toggle("Track names and numbers", isOn: $includeTracks)
+                            .disabled(!includeMetadata || !canMapTracks)
+                        if details.cover == nil {
+                            Text(details.coverWarning ?? "No cover is available for this result. Your current cover will be kept.")
+                                .font(.caption).foregroundStyle(Pod.secondaryText)
+                        }
+                        if !canMapTracks {
+                            Label("This edition has \(sourceTracks.count) tracks and you selected \(targets.count). Track names stay as they are.", systemImage: "info.circle")
+                                .font(.caption).foregroundStyle(Pod.secondaryText)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    if includeMetadata {
+                        PodCard(title: "Album") {
+                            albumChange("Album", current: majority(targets.map(\.effectiveAlbum)), proposed: details.title)
+                            albumChange("Album artist", current: majority(targets.map(\.effectiveAlbumArtist)), proposed: details.artist)
+                            if let year = details.year { albumChange("Year", current: majority(targets.map { $0[.year] }), proposed: String(year)) }
+                            if let genre = details.genre { albumChange("Genre", current: majority(targets.map { $0[.genre] }), proposed: genre) }
+                        }
+                    }
+                    if includeMetadata && includeTracks && canMapTracks {
+                        PodCard(title: "Tracks") {
+                            VStack(spacing: 0) {
+                                ForEach(Array(targets.enumerated()), id: \.element.id) { index, local in
+                                    trackPair(local, proposed: sourceTracks[index], striped: index % 2 == 1)
+                                }
+                            }
+                            .padding(.horizontal, -14).padding(.bottom, -14)
+                        }
+                    }
+                }
+                .padding(18)
             }
         } else {
-            VStack(spacing: 14) {
-                Image(systemName: loadingDetails ? "opticaldisc" : "square.stack").font(.system(size: 40)).foregroundStyle(.tertiary)
-                Text(loadingDetails ? "Loading Album Preview…" : (searching ? "Identifying Your Album…" : "Choose an Album to Preview"))
+            VStack(spacing: 12) {
+                Image(systemName: "opticaldisc").font(.system(size: 40, weight: .light)).foregroundStyle(Pod.secondaryText.opacity(0.7))
+                Text(loadingDetails ? "Loading the Album…" : (searching ? "Identifying Your Album…" : "Choose a Match"))
                     .font(.headline)
-                Text("The best match is selected automatically. You can compare other editions before applying any changes.")
-                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 330)
-            }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text("The best match is chosen for you. Compare other editions before applying.")
+                    .font(.callout).foregroundStyle(Pod.secondaryText).multilineTextAlignment(.center).frame(maxWidth: 320)
+            }
+            .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func albumChange(_ label: String, current: String, proposed: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label).font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                if !proposed.isEmpty && current != proposed { Label("Will Change", systemImage: "pencil").font(.caption).foregroundStyle(.secondary) }
+        let changes = !proposed.isEmpty && current != proposed
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label).font(.caption).foregroundStyle(Pod.secondaryText).frame(width: 86, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(proposed.isEmpty ? "Keep current value" : proposed).font(.callout.weight(changes ? .semibold : .regular))
+                if changes {
+                    Text(current.isEmpty ? "Empty or several values" : current).font(.caption).foregroundStyle(Pod.secondaryText).strikethrough()
+                }
             }
-            if !proposed.isEmpty && current != proposed {
-                Text(current.isEmpty ? "Empty or Multiple Values" : current).font(.caption).foregroundStyle(.secondary).strikethrough()
-            }
-            Text(proposed.isEmpty ? "Keep Current Value" : proposed).font(.callout)
+            Spacer()
+            if changes { Image(systemName: "pencil.circle.fill").foregroundStyle(Pod.edited).accessibilityLabel("Will change") }
         }
     }
-    private func trackPair(_ local: LibraryDraft, proposed: AlbumLookupTrack) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(local.original.fileName).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(proposed.disc).\(proposed.track)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                Text(proposed.title).font(.callout.weight(.medium))
-                if local[.title] != proposed.title { Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary) }
+
+    private func trackPair(_ local: LibraryDraft, proposed: AlbumLookupTrack, striped: Bool) -> some View {
+        let changes = local[.title] != proposed.title
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("\(proposed.disc).\(proposed.track)").font(.caption.monospacedDigit()).foregroundStyle(Pod.secondaryText).frame(width: 34, alignment: .trailing)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(proposed.title).font(.callout.weight(changes ? .semibold : .regular))
+                Text(local.original.fileName).font(.caption).foregroundStyle(Pod.secondaryText).lineLimit(1).truncationMode(.middle)
             }
-            if local[.title] != proposed.title && !local[.title].isEmpty {
-                Text("Previously: \(local[.title])").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Divider().padding(.top, 4)
+            Spacer()
+            if changes { Image(systemName: "pencil.circle.fill").foregroundStyle(Pod.edited).help(local[.title].isEmpty ? "New title" : "Previously: \(local[.title])") }
         }
+        .padding(.horizontal, 14).padding(.vertical, 6)
+        .background(striped ? Pod.strip.opacity(0.6) : Color.clear)
     }
+
     private func majority(_ values: [String]) -> String {
         let values = values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let counts = Dictionary(grouping: values, by: { $0 }).mapValues(\.count)
@@ -302,7 +312,7 @@ struct AlbumLookupView: View {
             return $0.localizedStandardCompare($1) == .orderedAscending
         }.first ?? ""
     }
-    private func close() { request?.cancel(); dismiss() }
+
     private func search() {
         request?.cancel()
         let id = UUID()
@@ -335,6 +345,7 @@ struct AlbumLookupView: View {
             }
         }
     }
+
     private func load(_ release: AlbumLookupRelease) {
         request?.cancel()
         let id = UUID()
@@ -359,5 +370,45 @@ struct AlbumLookupView: View {
                 self.error = error.localizedDescription
             }
         }
+    }
+}
+
+/// A search result; the selected one wears the console's blue cursor.
+private struct MatchRow: View {
+    let release: AlbumLookupRelease
+    let best: Bool
+    let selected: Bool
+    @Environment(\.controlActiveState) private var activeState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(release.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                Spacer(minLength: 4)
+                if let score = release.matchScore {
+                    Text("\(score)")
+                        .font(.system(size: 10.5, weight: .bold).monospacedDigit())
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Capsule().fill(selected ? Color.white.opacity(0.25) : (best ? Pod.saved.opacity(0.18) : Pod.strip)))
+                        .help(best ? "Best match, \(score) out of 100" : "Match, \(score) out of 100")
+                }
+            }
+            Text(release.artist).font(.callout).lineLimit(1)
+                .foregroundStyle(selected ? Color.white.opacity(0.9) : Pod.secondaryText)
+            Text([release.sourceName, release.year.map(String.init), release.trackCount.map { "\($0) tracks" }]
+                .compactMap { $0 }.joined(separator: " · "))
+                .font(.caption).lineLimit(1)
+                .foregroundStyle(selected ? Color.white.opacity(0.85) : Pod.secondaryText)
+        }
+        .foregroundStyle(selected ? Color.white : Color.primary)
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if selected { PodSelection(active: activeState != .inactive) }
+        }
+        .overlay(alignment: .bottom) { if !selected { Pod.hairline.opacity(0.5).frame(height: 1) } }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }

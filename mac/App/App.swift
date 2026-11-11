@@ -34,9 +34,9 @@ struct BetterPodShareApp: App {
         }
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unified)
+        // The window draws its own glossy header; the title bar only keeps its buttons.
+        .windowStyle(.hiddenTitleBar)
         .commands {
-            SidebarCommands()
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updater.check(byHand: true) }
             }
@@ -55,17 +55,9 @@ struct BetterPodShareApp: App {
                     .disabled(activeLibrary?.canSave != true)
             }
             CommandMenu("Library") {
-                Button("Magic") { activeLibrary?.beginMagic() }
-                    .keyboardShortcut("m", modifiers: [.command, .shift])
-                    .disabled(activeLibrary?.canRunMagic != true)
-                Button("Select Albums…") { activeLibrary?.showingAlbumSelection = true }
-                    .disabled(activeLibrary?.busy != false || activeLibrary?.tracks.isEmpty != false)
-                Divider()
-                Button("Find Album Details…") { showLookup(artworkOnly: false) }
-                    .keyboardShortcut("i", modifiers: [.command, .shift])
-                    .disabled(!canLookup)
-                Button("Find Cover…") { showLookup(artworkOnly: true) }
-                    .disabled(!canLookup)
+                Button("Find Album…") { activeLibrary?.beginLookup() }
+                    .keyboardShortcut("f")
+                    .disabled(activeLibrary?.canLookup != true)
                 Button("Choose Cover Image…") { activeLibrary?.chooseArtwork() }
                     .disabled(!canEditSelection)
                 Button("Merge into Album…") { activeLibrary?.beginMerge() }
@@ -95,20 +87,9 @@ struct BetterPodShareApp: App {
         }
     }
 
-    private var canLookup: Bool {
-        guard let editor = activeLibrary else { return false }
-        let hasTargets = editor.editableCount > 0 || (editor.selection.isEmpty && editor.visibleTracks.contains { $0.original.writable })
-        return hasTargets && !editor.busy && !editor.remoteNeedsReload
-    }
-
     private var canEditSelection: Bool {
         guard let editor = activeLibrary else { return false }
         return editor.editableCount > 0 && !editor.busy && !editor.remoteNeedsReload
-    }
-
-    private func showLookup(artworkOnly: Bool) {
-        guard canLookup, let editor = activeLibrary else { return }
-        editor.beginLookup(artworkOnly: artworkOnly)
     }
 }
 
@@ -164,7 +145,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    // Files dropped on the Dock icon while the app runs arrive as an "open
+    // documents" event. Left to SwiftUI, it can close the window, and the app
+    // then quits; handled here, the files go to the current section. The
+    // handler starts after launch: files that launch the app still go
+    // through SwiftUI, which then opens the window.
+    private func handleOpenDocuments() {
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(openDocuments(_:withReply:)),
+                                                     forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEOpenDocuments))
+    }
+
+    @objc private func openDocuments(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let list = event.paramDescriptor(forKeyword: keyDirectObject) else { return }
+        let items = list.numberOfItems > 0 ? (1...list.numberOfItems).compactMap { list.atIndex($0) } : [list]
+        let urls = items.compactMap(\.fileURLValue)
+        if !urls.isEmpty { application(NSApplication.shared, open: urls) }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        handleOpenDocuments()
         Task { @MainActor in
             consumePending()
         }

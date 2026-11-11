@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// betterPod over Wi-Fi: the connection form, then the player's library in
+/// the same editor as the Mac's. Refresh and Disconnect sit in the header.
 struct DeviceLibraryView: View {
     @ObservedObject var model: DeviceModel
     @ObservedObject var library: LibraryModel
@@ -11,58 +13,40 @@ struct DeviceLibraryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let error = model.error {
+                PodBanner(text: error, isError: true) { model.error = nil }
+            }
             if model.connected {
-                HStack(spacing: 14) {
-                    Label(library.location, systemImage: "wifi").font(.headline)
-                    Text(model.progress.isEmpty ? "Connected over your local network" : model.progress)
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Refresh") { model.refresh() }.disabled(model.busy)
-                    Button("Disconnect") { model.disconnect() }.disabled(library.busy)
-                }.padding(.horizontal, 20).padding(.vertical, 12)
-                Divider()
                 if library.remoteSession?.supportsAlbumJoining != true {
-                    Label("Update betterPod Rust to use Magic and merge albums over Wi-Fi. Manual metadata and artwork editing are still available.", systemImage: "info.circle")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                    PodBanner(text: "Update betterPod Rust to merge albums over Wi-Fi. Tags and covers can still be edited.")
                 }
                 if library.remoteNeedsReload {
-                    HStack {
-                        Label("The library needs to be reloaded before saving. Refresh, or disconnect and connect again.", systemImage: "exclamationmark.triangle")
-                            .font(.callout)
-                        Spacer()
-                    }.padding(12).background(Color.orange.opacity(0.1))
+                    PodBanner(text: "Reload the library before saving: choose Refresh, or disconnect and connect again.", isError: true)
                 }
                 LibraryView(model: library)
             } else {
                 connectionForm
             }
-            if let error = model.error {
-                HStack(alignment: .top) {
-                    Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-                    Spacer()
-                    Button { model.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-                        .accessibilityLabel("Dismiss connection error")
-                }.padding(16).background(Color.red.opacity(0.05))
-            }
         }
     }
 
     private var connectionForm: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 22) {
             Spacer()
-            Image(systemName: "wifi").font(.system(size: 48, weight: .light)).foregroundStyle(Color.accentColor)
-            VStack(spacing: 8) {
-                Text("Your betterPod library, on your Mac.").font(.title2.weight(.semibold))
-                Text("On betterPod Rust, open Music → Wi-Fi Library and start a connection.\nKeep both devices on the same Wi-Fi network, then enter its eight-digit code.")
-                    .foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Image(systemName: "wifi").font(.system(size: 46, weight: .light)).foregroundStyle(Pod.accent)
+            VStack(spacing: 6) {
+                Text("Your betterPod library, on your Mac").font(.system(size: 19, weight: .bold))
+                Text("On betterPod Rust, open Music → Wi-Fi Library and start a connection.\nKeep both on the same Wi-Fi network, then enter its eight-digit code.")
+                    .font(.callout).foregroundStyle(Pod.secondaryText).multilineTextAlignment(.center)
             }
-            VStack(alignment: .leading, spacing: 16) {
+            PodCard {
                 HStack {
-                    Text("Nearby betterPods").font(.headline)
+                    PodSectionTitle("Nearby betterPods")
                     Spacer()
                     if model.discovering { ProgressView().controlSize(.small) }
-                    Button("Find betterPod") { model.discover() }.disabled(model.discovering || model.connecting)
+                    Button("Find betterPod") { model.discover() }
+                        .buttonStyle(PodButtonStyle(compact: true))
+                        .disabled(model.discovering || model.connecting)
                 }
                 if !model.devices.isEmpty {
                     Picker("Device", selection: $model.selectedDevice) {
@@ -71,29 +55,30 @@ struct DeviceLibraryView: View {
                     .disabled(model.connecting)
                 } else {
                     Text(model.discovering ? "Looking on your local network…" : "Start the connection on betterPod, then choose Find betterPod.")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(Pod.secondaryText)
                 }
                 HStack {
                     TextField("0000 0000", text: $model.code)
-                        .textFieldStyle(.roundedBorder).font(.system(size: 25, design: .monospaced))
-                        .frame(width: 210).accessibilityLabel("Eight-digit connection code")
+                        .textFieldStyle(.roundedBorder).font(.system(size: 24, weight: .semibold, design: .rounded).monospacedDigit())
+                        .frame(width: 200).accessibilityLabel("Eight-digit connection code")
                         .onSubmit { model.connect() }
                         .disabled(model.connecting)
                     Spacer()
                     if model.connecting {
-                        Button("Cancel") { model.disconnect(askToDiscard: false) }
+                        Button("Cancel") { model.disconnect(askToDiscard: false) }.buttonStyle(PodButtonStyle())
                     } else {
-                        Button("Connect") { model.connect() }.buttonStyle(.borderedProminent)
+                        Button("Connect") { model.connect() }
+                            .buttonStyle(PodButtonStyle(kind: .primary))
                             .disabled(!model.validCode)
                     }
                 }
-                DisclosureGroup("Enter a local address manually", isExpanded: $model.useManualAddress) {
+                DisclosureGroup("Enter a local address", isExpanded: $model.useManualAddress) {
                     HStack {
                         TextField("IP address", text: $model.manualHost).textFieldStyle(.roundedBorder)
                         TextField("Port", text: $model.manualPort).textFieldStyle(.roundedBorder).frame(width: 80)
                     }.padding(.top, 8).disabled(model.connecting)
                     Text("Use the address and port shown on betterPod if your network blocks discovery.")
-                        .font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                        .font(.caption).foregroundStyle(Pod.secondaryText).padding(.top, 4)
                 }
                 .font(.callout)
                 .onChange(of: model.useManualAddress) { expanded in
@@ -102,19 +87,17 @@ struct DeviceLibraryView: View {
                 if model.connecting {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text(model.progress).font(.callout).foregroundStyle(.secondary)
+                        Text(model.progress).font(.callout).foregroundStyle(Pod.secondaryText)
                     }
                 }
             }
-            .padding(22)
-            .frame(width: 510)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            Text("Review changes before saving them to betterPod.\nThe connection stays inside your local network.")
-                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            .frame(width: 500)
+            Text("Changes are saved to betterPod only when you choose Save Changes.\nThe connection stays inside your local network.")
+                .font(.caption).foregroundStyle(Pod.secondaryText).multilineTextAlignment(.center)
             Spacer()
         }
         .padding(30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Pod.panel)
     }
 }

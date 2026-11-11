@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 
 struct LocalAlbum: Identifiable {
     let id: String
@@ -24,11 +25,12 @@ final class LibraryModel: ObservableObject {
     @Published var remoteNeedsReload = false
     @Published var artworkLoading = false
     @Published var showingLookup = false
-    @Published var lookupArtworkOnly = false
+    /// Find Album works on one album at a time; a selection spanning several
+    /// albums becomes this queue of track sets, one per album.
+    @Published private(set) var lookupGroups: [Set<String>] = []
+    @Published private(set) var lookupIndex = 0
     @Published var lookupFolderName = ""
     @Published var showingMerge = false
-    @Published var showingMagic = false
-    @Published var showingAlbumSelection = false
     @Published var changesOnly = false {
         didSet { if changesOnly { reconcileVisibleSelection() } }
     }
@@ -74,8 +76,8 @@ final class LibraryModel: ObservableObject {
         return sources.count == 1 ? albums.filter { !sources.contains($0.id) } : albums
     }
     var canMergeSelection: Bool { canEdit && canJoinAlbums && editableCount > 0 && !mergeTargets.isEmpty }
-    var canRunMagic: Bool {
-        canEdit && canJoinAlbums && visibleTaskTracks.contains { $0.original.writable }
+    var canLookup: Bool {
+        canEdit && visibleTaskTracks.contains { $0.original.writable }
     }
     static var defaultSortOrder: [KeyPathComparator<LibraryDraft>] {
         [KeyPathComparator(\LibraryDraft.sortArtist, comparator: String.StandardComparator.localizedStandard),
@@ -141,7 +143,7 @@ final class LibraryModel: ObservableObject {
             return "tags:\(album)\u{0}artist:\(performer)"
         }
         // Compilations without an album artist remain folder-scoped until
-        // Merge or Magic supplies a common album identity.
+        // Merge or Find Album supplies a common album identity.
         return "tags:\(album)\u{0}folder:\(track.albumFolderPath)"
     }
     private func artistContextKey(_ track: LibraryDraft) -> String {
@@ -220,8 +222,6 @@ final class LibraryModel: ObservableObject {
                 invalidateRemovalUndo()
                 showingLookup = false
                 showingMerge = false
-                showingMagic = false
-                showingAlbumSelection = false
                 changesOnly = false
                 albumFilter = ""
                 selection = Set(records.map(\.id))
@@ -233,29 +233,7 @@ final class LibraryModel: ObservableObject {
     }
 
     func selectVisible() { selection = Set(filteredTracks.map(\.id)) }
-    func selectAlbums(_ ids: Set<String>) {
-        guard !busy else { return }
-        changesOnly = false
-        var selectedTracks = Set<String>()
-        var selectedAlbums = Set<String>()
-        for track in tracks {
-            let album = albumKey(track)
-            if ids.contains(album) {
-                selectedTracks.insert(track.id)
-                selectedAlbums.insert(album)
-            }
-        }
-        selection = selectedTracks
-        albumFilter = selectedAlbums.count == 1 ? selectedAlbums.first! : ""
-    }
     func filterChanged() { selectVisible() }
-    func selectMagicTargets(_ ids: Set<String>) {
-        guard canEdit else { return }
-        changesOnly = false
-        albumFilter = ""
-        selection = ids.intersection(Set(tracks.map(\.id)))
-        requestArtwork()
-    }
     private func selectTaskTargets() {
         selection.formIntersection(Set(filteredTracks.map(\.id)))
         if selection.isEmpty { selectVisible() }
@@ -264,35 +242,53 @@ final class LibraryModel: ObservableObject {
         guard changesOnly else { return }
         selection.formIntersection(Set(filteredTracks.map(\.id)))
     }
-    func beginLookup(artworkOnly: Bool = false) {
+    func beginLookup() {
         guard canEdit else { return }
         selectTaskTargets()
-        guard editableCount > 0 else { return }
-        lookupArtworkOnly = artworkOnly
-        showingAlbumSelection = false
+        let groups = albumGroups(selection)
+        guard !groups.isEmpty else { return }
+        lookupGroups = groups
+        lookupIndex = 0
         showingMerge = false
-        showingMagic = false
         showingLookup = true
+    }
+
+    /// The album being looked up, or nil when the queue is finished.
+    var currentLookupGroup: Set<String>? {
+        showingLookup && lookupGroups.indices.contains(lookupIndex) ? lookupGroups[lookupIndex] : nil
+    }
+
+    /// Moves to the next album of the queue, or closes Find Album after the last.
+    func nextLookup() {
+        if lookupIndex + 1 < lookupGroups.count { lookupIndex += 1 }
+        else { showingLookup = false }
+    }
+
+    /// Selected tracks grouped by album, in the table's order. Albums without
+    /// an editable track are left out.
+    func albumGroups(_ ids: Set<String>) -> [Set<String>] {
+        var order: [String] = []
+        var groups: [String: Set<String>] = [:]
+        var editable = Set<String>()
+        let visible = visibleTracks
+        let visibleIDs = Set(visible.map(\.id))
+        for track in visible + tracks.filter({ !visibleIDs.contains($0.id) }) where ids.contains(track.id) {
+            let key = albumKey(track)
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].insert(track.id)
+            if track.original.writable { editable.insert(key) }
+        }
+        return order.filter(editable.contains).compactMap { groups[$0] }
     }
     func beginMerge() {
         guard canEdit else { return }
         selectTaskTargets()
         guard canMergeSelection else { return }
         error = nil
-        showingAlbumSelection = false
         showingLookup = false
-        showingMagic = false
         showingMerge = true
     }
-    func beginMagic() {
-        guard canRunMagic else { return }
-        showingAlbumSelection = false
-        selectTaskTargets()
-        showingLookup = false
-        showingMerge = false
-        showingMagic = true
-    }
-    func mergeSelection(into albumID: String, dismissPresentedEditors: Bool = true) {
+    func mergeSelection(into albumID: String) {
         guard canMergeSelection else { return }
         let destination = tracks.filter { albumKey($0) == albumID }
         guard let target = destination.first(where: { !Self.displayText($0.effectiveAlbumArtist).isEmpty }) ?? destination.first else { return }
@@ -334,10 +330,7 @@ final class LibraryModel: ObservableObject {
             if isRemote { tracks[index].joinAlbum() }
             if tracks[index][.album] != beforeAlbum || tracks[index][.albumArtist] != beforeArtist || tracks[index].albumGroupingChangeState != beforeGrouping { changed += 1 }
         }
-        if dismissPresentedEditors {
-            showingMerge = false
-            showingMagic = false
-        }
+        showingMerge = false
         if !albumFilter.isEmpty, let destination = tracks.first(where: { $0.id == target.id }) { albumFilter = albumKey(destination) }
         reconcileVisibleSelection()
         error = nil
@@ -347,7 +340,6 @@ final class LibraryModel: ObservableObject {
     /// Removes the loaded rows only. Their audio files are never deleted.
     func clearLibrary(undoManager: UndoManager? = nil) {
         guard canClearLibrary else { return }
-        showingAlbumSelection = false
         registerRemovalUndo(snapshot(), name: "Clear Library", manager: undoManager)
         tracks = []
         selection = []
@@ -357,7 +349,6 @@ final class LibraryModel: ObservableObject {
         changesOnly = false
         showingLookup = false
         showingMerge = false
-        showingMagic = false
         error = nil
         message = "Library cleared. Your files remain on disk."
     }
@@ -371,7 +362,6 @@ final class LibraryModel: ObservableObject {
         selection = []
         showingLookup = false
         showingMerge = false
-        showingMagic = false
         if tracks.isEmpty {
             albumFilter = ""
             location = ""
@@ -422,7 +412,6 @@ final class LibraryModel: ObservableObject {
         if !albumFilter.isEmpty && !albums.contains(where: { $0.id == albumFilter }) { albumFilter = "" }
         showingLookup = false
         showingMerge = false
-        showingMagic = false
         error = nil
         message = nil
     }
@@ -477,7 +466,14 @@ final class LibraryModel: ObservableObject {
         panel.allowedContentTypes = [.jpeg, .png]
         panel.message = "Choose a cover for the selected tracks."
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        useArtwork(at: url)
+    }
+    /// A JPEG or PNG file, chosen or dropped on the cover, for the selected tracks.
+    func useArtwork(at url: URL) {
+        guard canEdit else { return }
         do {
+            let type = try url.resourceValues(forKeys: [.contentTypeKey]).contentType
+            guard type?.conforms(to: .jpeg) == true || type?.conforms(to: .png) == true else { throw LibraryError("Use a JPEG or PNG image for the cover.") }
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= 8 * 1024 * 1024 else { throw LibraryError("Choose a JPEG or PNG smaller than 8 MB.") }
             let data = try Data(contentsOf: url)
@@ -646,32 +642,6 @@ final class LibraryModel: ObservableObject {
         error = nil
     }
 
-    func applyMagicResult(_ details: AlbumLookupDetails, to ids: Set<String>, matches: [String: AlbumLookupTrack]) {
-        guard canEdit, canJoinAlbums else { return }
-        for index in tracks.indices where ids.contains(tracks[index].id) && matches[tracks[index].id] != nil && tracks[index].original.writable {
-            if !details.title.isEmpty { tracks[index][.album] = details.title }
-            if !details.artist.isEmpty { tracks[index][.albumArtist] = details.artist }
-            if isRemote && (!details.title.isEmpty || !details.artist.isEmpty) { tracks[index].joinAlbum() }
-            if let year = details.year, year > 0 { tracks[index][.year] = String(year) }
-            if let genre = details.genre, !genre.isEmpty { tracks[index][.genre] = genre }
-            if let match = matches[tracks[index].id] {
-                if !match.title.isEmpty { tracks[index][.title] = match.title }
-                if !match.artist.isEmpty { tracks[index][.artist] = match.artist }
-                if match.disc > 0 { tracks[index][.disc] = String(match.disc) }
-                if match.track > 0 { tracks[index][.track] = String(match.track) }
-                if match.trackTotal > 0 { tracks[index][.trackTotal] = String(match.trackTotal) }
-            }
-            if let cover = details.cover {
-                tracks[index].artwork = .replace(cover)
-                if !tracks[index].artworkIsModified { tracks[index].artwork = .keep }
-            }
-        }
-        followEditedAlbumFilter()
-        reconcileVisibleSelection()
-        message = "Matched metadata and artwork applied to the draft. Review the highlighted changes, then save."
-        error = nil
-    }
-
     func showRemote(_ session: LanSession, records: [LibraryRecord]) {
         remoteSource = true
         remoteSession = session
@@ -690,7 +660,6 @@ final class LibraryModel: ObservableObject {
         lookupFolderName = Self.folderName(for: records)
         showingLookup = false
         showingMerge = false
-        showingMagic = false
         changesOnly = false
         albumFilter = ""
         selection = []

@@ -6,13 +6,25 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-let ink = Color(red: 40 / 255, green: 44 / 255, blue: 52 / 255)
-let subInk = Color(red: 110 / 255, green: 118 / 255, blue: 130 / 255)
-let bodyInk = Color(red: 70 / 255, green: 76 / 255, blue: 88 / 255)
-let shareBlue = Color(red: 28 / 255, green: 112 / 255, blue: 218 / 255)
+// The console's Share colors (src/ij_share_draw.go), with a night studio
+// for the Mac's dark appearance.
+let ink = Pod.color(Pod.rgb(40, 44, 52), Pod.rgb(236, 238, 241))
+let subInk = Pod.color(Pod.rgb(110, 118, 130), Pod.rgb(150, 157, 167))
+let bodyInk = Pod.color(Pod.rgb(70, 76, 88), Pod.rgb(200, 205, 212))
+let shareBlue = Pod.color(Pod.rgb(28, 112, 218), Pod.rgb(80, 160, 255))
 let laserBlue = Color(red: 40 / 255, green: 150 / 255, blue: 255 / 255)
-let shareGreen = Color(red: 40 / 255, green: 150 / 255, blue: 70 / 255)
-let shareRed = Color(red: 200 / 255, green: 60 / 255, blue: 50 / 255)
+let shareGreen = Pod.color(Pod.rgb(40, 150, 70), Pod.rgb(80, 200, 110))
+let shareRed = Pod.color(Pod.rgb(200, 60, 50), Pod.rgb(255, 115, 100))
+private let studioTop = Pod.color(Pod.rgb(251, 251, 251), Pod.rgb(54, 57, 63))
+private let studioHorizon = Pod.color(Pod.rgb(230, 232, 237), Pod.rgb(31, 33, 37))
+private let floorNear = Pod.color(Pod.rgb(237, 240, 242), Pod.rgb(42, 45, 50))
+private let floorFar = Pod.color(Pod.rgb(255, 255, 255), Pod.rgb(17, 18, 21))
+private let tileTop = Pod.color(Pod.rgb(255, 255, 255), Pod.rgb(82, 86, 94))
+private let tileBottom = Pod.color(Pod.rgb(232, 235, 240), Pod.rgb(50, 53, 59))
+private let tileBorder = Pod.color(Pod.rgb(194, 199, 207), Pod.rgb(20, 22, 25))
+private let tileLine = Pod.color(Pod.rgb(0, 0, 0, 0.07), Pod.rgb(0, 0, 0, 0.3))
+private let groove = Pod.color(Pod.rgb(219, 222, 227), Pod.rgb(58, 61, 67))
+private let sentVeil = Pod.color(Pod.rgb(255, 255, 255, 0.62), Pod.rgb(31, 33, 37, 0.62))
 
 // the console's coordinates (its 640 × 480 screen, in points here)
 let pedTop: CGFloat = 292  // the pedestal's top (its disc's centre)
@@ -43,7 +55,6 @@ struct ContentView: View {
             ZStack {
                 Studio(horizon: (geometry.size.height - 480) / 2 + 330 + geometry.safeAreaInsets.top)
                     .ignoresSafeArea()
-                    .appleBackgroundExtension()
                 ZStack(alignment: .topLeading) {
                     Stage(model: model)
                     Panel(model: model)
@@ -68,14 +79,8 @@ struct ContentView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if updater.state != .idle {
                 UpdateStrip(updater: updater, sharing: model.shareGoing || updatesBlocked)
-                    .frame(maxWidth: 560)
-                    .padding(.top, 8)
-                    .padding(.horizontal, 16)
             }
         }
-        // The Share artwork is an intentionally light studio. Other workspaces
-        // and the native sidebar follow the Mac's selected appearance.
-        .environment(\.colorScheme, .light)
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             loadURLs(providers) { model.open($0) }
             return true
@@ -102,17 +107,17 @@ func loadURLs(_ providers: [NSItemProvider], done: @escaping ([URL]) -> Void) {
     group.notify(queue: .main) { done(urls) }
 }
 
-/// The studio: a light backdrop and a pale floor.
+/// The studio: a backdrop and a glossy floor, light by day, graphite in dark mode.
 struct Studio: View {
     var horizon: CGFloat = 330
 
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                LinearGradient(colors: [Color(white: 0.985), Color(red: 0.9, green: 0.91, blue: 0.93)],
+                LinearGradient(colors: [studioTop, studioHorizon],
                                startPoint: .top, endPoint: .bottom)
                     .frame(height: min(geometry.size.height, max(0, horizon)))
-                LinearGradient(colors: [Color(red: 0.93, green: 0.94, blue: 0.95), Color.white],
+                LinearGradient(colors: [floorNear, floorFar],
                                startPoint: .top, endPoint: .bottom)
                     .frame(maxHeight: .infinity)
             }
@@ -218,7 +223,7 @@ struct Stage: View {
                 coverImage
                 if model.stage == .sharing && phase == "done" {
                     // sent: its ghost, pale
-                    Rectangle().fill(Color.white.opacity(0.62))
+                    Rectangle().fill(sentVeil)
                 }
             }
             .frame(width: coverSide, height: coverSide)
@@ -308,7 +313,7 @@ struct Panel: View {
                 Text(e).font(.system(size: 13, weight: .medium)).foregroundColor(shareRed)
             }
             Button("Choose…") { model.choose() }
-                .controlSize(.large)
+                .buttonStyle(PodButtonStyle(kind: .primary, large: true))
                 .disabled(model.stage == .reading)
                 .padding(.top, 6)
         }
@@ -340,9 +345,9 @@ struct Panel: View {
             }
             notes.padding(.top, 4)
             HStack(spacing: 10) {
-                Button("Clear") { model.clear() }.controlSize(.large)
+                Button("Clear") { model.clear() }.buttonStyle(PodButtonStyle(large: true))
                 Button("Share") { model.share() }
-                    .controlSize(.large)
+                    .buttonStyle(PodButtonStyle(kind: .primary, large: true))
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 10)
@@ -403,15 +408,15 @@ struct Panel: View {
             HStack(spacing: 10) {
                 switch phase {
                 case "done":
-                    Button("Share Again") { model.again() }.controlSize(.large)
-                    Button("Share More") { model.clear() }.controlSize(.large).keyboardShortcut(.defaultAction)
+                    Button("Share Again") { model.again() }.buttonStyle(PodButtonStyle(large: true))
+                    Button("Share More") { model.clear() }.buttonStyle(PodButtonStyle(kind: .primary, large: true)).keyboardShortcut(.defaultAction)
                 case "failed":
-                    Button("Back") { model.back() }.controlSize(.large)
+                    Button("Back") { model.back() }.buttonStyle(PodButtonStyle(large: true))
                     if s?.unplayable == nil {
-                        Button("Try Again") { model.again() }.controlSize(.large).keyboardShortcut(.defaultAction)
+                        Button("Try Again") { model.again() }.buttonStyle(PodButtonStyle(kind: .primary, large: true)).keyboardShortcut(.defaultAction)
                     }
                 default:
-                    Button("Cancel") { model.back() }.controlSize(.large).keyboardShortcut(.cancelAction)
+                    Button("Cancel") { model.back() }.buttonStyle(PodButtonStyle(large: true)).keyboardShortcut(.cancelAction)
                 }
             }
             .padding(.top, 14)
@@ -453,11 +458,11 @@ struct DigitTile: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 5)
-                .fill(LinearGradient(colors: [Color.white, Color(red: 0.91, green: 0.92, blue: 0.94)],
+                .fill(LinearGradient(colors: [tileTop, tileBottom],
                                      startPoint: .top, endPoint: .bottom))
             RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(Color(red: 0.76, green: 0.78, blue: 0.81), lineWidth: 1)
-            Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
+                .strokeBorder(tileBorder, lineWidth: 1)
+            Rectangle().fill(tileLine).frame(height: 1)
             Text(digit).font(.system(size: 32, weight: .semibold, design: .rounded)).foregroundColor(ink)
         }
         .frame(width: 30, height: 46)
@@ -471,7 +476,7 @@ struct ProgressBar: View {
     var body: some View {
         GeometryReader { g in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color(red: 0.86, green: 0.87, blue: 0.89))
+                Capsule().fill(groove)
                 Capsule().strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
                 Capsule()
                     .fill(LinearGradient(colors: [Color(red: 0.45, green: 0.72, blue: 1), shareBlue],
@@ -549,9 +554,12 @@ struct UpdateStrip: View {
         }
         .font(.callout)
         .multilineTextAlignment(.leading)
+        .buttonStyle(PodButtonStyle(compact: true))
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
-        .appleGlass(cornerRadius: 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Pod.strip)
+        .overlay(alignment: .bottom) { Pod.hairline.frame(height: 1) }
     }
 }
 

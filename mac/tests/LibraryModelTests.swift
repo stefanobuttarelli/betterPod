@@ -191,8 +191,9 @@ struct LibraryModelTests {
               "A cover-only lookup must never replace metadata")
         model.revertSelection()
         model.selection = []
-        model.beginLookup(artworkOnly: true)
-        check(model.showingLookup && model.lookupArtworkOnly && model.selection.count == 3, "Lookup without a selection must target visible tracks and keep its artwork-only intent")
+        model.beginLookup()
+        check(model.showingLookup && model.selection.count == 3 && model.lookupGroups.reduce(0, { $0 + $1.count }) == 3 && model.currentLookupGroup != nil,
+              "Find Album without a selection must target the visible tracks")
         model.showingLookup = false
 
         let sorting = LibraryModel()
@@ -275,26 +276,24 @@ struct LibraryModelTests {
         check(untagged.albums.first(where: { $0.title == "Identified Album" })?.count == 2 && untagged.selectedTracks[0][.album] == "Identified Album",
               "An unnamed source can merge into a known target using pending album tags")
 
-        let albumSelection = LibraryModel()
+        let albumQueue = LibraryModel()
         let albumOneA = record("/select/a1.mp3", album: "Album One")
         let albumOneB = record("/select/a2.mp3", writable: false, album: "Album One")
         let albumTwo = record("/select/b.mp3", album: "Album Two")
-        let albumThree = record("/select/c.mp3", album: "Album Three")
-        albumSelection.tracks = [albumOneA, albumOneB, albumTwo, albumThree].map(LibraryDraft.init)
-        let albumOneID = albumSelection.albums.first(where: { $0.title == "Album One" })!.id
-        let albumTwoID = albumSelection.albums.first(where: { $0.title == "Album Two" })!.id
-        albumSelection.selectAlbums([albumOneID, albumTwoID])
-        check(albumSelection.selection == [albumOneA.id, albumOneB.id, albumTwo.id] && albumSelection.albumFilter.isEmpty,
-              "Selecting two albums must select every track in just those albums, including read-only rows")
-        albumSelection.selectAlbums([albumTwoID])
-        check(albumSelection.selection == [albumTwo.id] && albumSelection.albumFilter == albumTwoID && albumSelection.visibleTracks.count == 1,
-              "A single album selection must filter and select that complete album")
-        albumSelection.busy = true
-        albumSelection.selectAlbums([albumOneID])
-        check(albumSelection.selection == [albumTwo.id] && albumSelection.albumFilter == albumTwoID, "Album selection must not change during an active operation")
-        albumSelection.busy = false
-        albumSelection.selectAlbums(["missing album"])
-        check(albumSelection.selection.isEmpty && albumSelection.albumFilter.isEmpty && !albumSelection.hasChanges, "Stale album IDs must not create an invalid filter or edits")
+        let albumThree = record("/select/c.mp3", writable: false, album: "Album Three")
+        albumQueue.tracks = [albumTwo, albumOneA, albumThree, albumOneB].map(LibraryDraft.init)
+        albumQueue.selection = Set(albumQueue.tracks.map(\.id))
+        albumQueue.beginLookup()
+        check(albumQueue.lookupGroups == [[albumOneA.id, albumOneB.id], [albumTwo.id]] && albumQueue.currentLookupGroup == [albumOneA.id, albumOneB.id],
+              "Find Album takes one album at a time in table order and leaves out albums without an editable track")
+        albumQueue.nextLookup()
+        check(albumQueue.showingLookup && albumQueue.currentLookupGroup == [albumTwo.id], "Apply or Skip moves to the next album")
+        albumQueue.nextLookup()
+        check(!albumQueue.showingLookup && albumQueue.currentLookupGroup == nil, "Find Album closes after the last album")
+        albumQueue.busy = true
+        albumQueue.beginLookup()
+        check(!albumQueue.showingLookup, "Find Album cannot start during an active operation")
+        albumQueue.busy = false
 
         let changesScope = LibraryModel()
         let changedA = record("/changes/one/a.mp3", album: "One")
@@ -312,21 +311,20 @@ struct LibraryModelTests {
         changesScope.filterChanged()
         check(changesScope.selection == [changedA.id], "Changing albums under Changes must select only visible changed tracks")
         changesScope.selection = []
-        changesScope.beginMagic()
-        check(changesScope.showingMagic && changesScope.selection == [changedA.id] && changesScope.dirtyCount == 2 && changesScope.canSave,
-              "Magic without a selection must target only the visible changed album, while Save retains all dirty drafts")
-        changesScope.showingMagic = false
+        changesScope.beginLookup()
+        check(changesScope.showingLookup && changesScope.selection == [changedA.id] && changesScope.dirtyCount == 2 && changesScope.canSave,
+              "Find Album without a selection must target only the visible changed album, while Save retains all dirty drafts")
+        changesScope.showingLookup = false
         changesScope.selection = [cleanA.id]
         changesScope.beginLookup()
         check(changesScope.showingLookup && changesScope.selection == [changedA.id],
               "Lookup must clamp hidden selections and fall back to the actual visible changed rows")
         changesScope.showingLookup = false
-        changesScope.selectAlbums([changesAlbum])
-        check(!changesScope.changesOnly && changesScope.selection == [changedA.id, cleanA.id],
-              "An explicit album selection must reveal and select its complete album")
+        changesScope.changesOnly = false
+        changesScope.selection = [changedA.id, cleanA.id]
         changesScope.changesOnly = true
         changesScope.revertSelection()
-        check(changesScope.visibleTracks.isEmpty && changesScope.selection.isEmpty && !changesScope.canRunMagic,
+        check(changesScope.visibleTracks.isEmpty && changesScope.selection.isEmpty && !changesScope.canLookup,
               "Reverting the final change must remove its row and selection from Changes, preventing hidden inspector targets")
         changesScope.beginLookup()
         check(!changesScope.showingLookup && changesScope.selection.isEmpty, "Lookup must remain closed when the filtered album has no changed rows")
@@ -394,38 +392,37 @@ struct LibraryModelTests {
         check(!readOnlyDestination.hasChanges && readOnlyDestination.showingMerge && readOnlyDestination.error?.contains("read-only") == true,
               "A merge requiring changes to a read-only destination must fail atomically and remain reviewable")
 
-        let magic = LibraryModel()
+        let found = LibraryModel()
         let partialThree = record("/partial/03.mp3", title: "Old Three", track: 3, album: "Old Album")
         let partialEight = record("/split-partial/08.mp3", title: "Old Eight", track: 8, album: "Old Album")
         let untouchedPartial = record("/partial/outside.mp3", title: "Untouched")
-        magic.tracks = [partialThree, partialEight, untouchedPartial, readonly].map(LibraryDraft.init)
+        found.tracks = [partialThree, partialEight, untouchedPartial, readonly].map(LibraryDraft.init)
         let fullTrackList = (1...10).map { AlbumLookupTrack(title: "Source \($0)", artist: "Singer \($0)", disc: 1, track: $0, trackTotal: 10, duration: nil) }
-        let magicDetails = AlbumLookupDetails(title: "Matched Album", artist: "Album Artist", year: 2024, genre: "Rock", tracks: fullTrackList, cover: coverData, coverWarning: nil)
-        magic.applyMagicResult(magicDetails, to: [partialThree.id, partialEight.id, readonly.id],
-                               matches: [partialThree.id: fullTrackList[2], partialEight.id: fullTrackList[7], untouchedPartial.id: fullTrackList[0]])
-        check(magic.tracks[0][.title] == "Source 3" && magic.tracks[1][.title] == "Source 8" && magic.tracks[0][.track] == "3" && magic.tracks[1][.track] == "8" && magic.tracks[1][.trackTotal] == "10",
-              "Partial Magic matches must use explicit nonsequential paths, never zip two selected files onto the first two source tracks")
-        check(magic.tracks[2][.title] == "Untouched" && magic.tracks[2][.album] == "Album" && magic.tracks[3][.title] == "Read only",
-              "Magic must ignore out-of-selection matches and read-only selected tracks")
-        check(magic.tracks[0].artworkChangeState == .modified && magic.tracks[1][.albumArtist] == "Album Artist" && magic.tracks[1][.artist] == "Singer 8",
-              "Magic must keep common album metadata separate from individual performers and mark the new cover")
-        check(magic.albums.first(where: { $0.title == "Matched Album" })?.count == 2,
-              "Magic must join matching tracks from different physical folders into their common identified album")
-        let blockedMagic = AlbumLookupDetails(title: "Must Not Apply", artist: "", year: nil, genre: nil, tracks: [], cover: nil, coverWarning: nil)
-        magic.busy = true
-        magic.applyMagicResult(blockedMagic, to: [partialThree.id], matches: [:])
-        check(magic.tracks[0][.album] == "Matched Album" && !magic.canRunMagic, "Magic cannot apply or start while another model operation is active")
-        magic.busy = false
-        magic.remoteNeedsReload = true
-        magic.applyMagicResult(blockedMagic, to: [partialThree.id], matches: [:])
-        check(magic.tracks[0][.album] == "Matched Album" && !magic.canRunMagic, "Magic must respect a source that requires reload")
-        magic.remoteNeedsReload = false
-        magic.selection = []
-        check(magic.canRunMagic, "Magic can use visible editable tracks when no rows are selected")
-        magic.beginMagic()
-        check(magic.showingMagic && magic.selection.count == 4, "Magic must select visible tracks and open its shared sheet")
-        magic.clearLibrary()
-        check(!magic.showingMagic && !magic.showingMerge && !magic.showingLookup, "Clearing the library must close any library task sheet")
+        let matchedDetails = AlbumLookupDetails(title: "Matched Album", artist: "Album Artist", year: 2024, genre: "Rock", tracks: fullTrackList, cover: coverData, coverWarning: nil)
+        found.apply(matchedDetails, to: [partialThree.id, partialEight.id, readonly.id], includeTracks: true, includeArtwork: true)
+        check(found.tracks[0][.title] == "Old Three" && found.tracks[1][.title] == "Old Eight" && found.tracks[0][.track] == "3",
+              "A partial selection keeps its track names and numbers: only a complete track list is paired")
+        check(found.tracks[2][.title] == "Untouched" && found.tracks[2][.album] == "Album" && found.tracks[3][.title] == "Read only",
+              "Find Album must ignore unselected and read-only tracks")
+        check(found.tracks[0].artworkChangeState == .modified && found.tracks[1][.albumArtist] == "Album Artist" && found.tracks[1][.artist] == "Artist",
+              "Find Album keeps album details separate from individual performers and marks the new cover")
+        check(found.albums.first(where: { $0.title == "Matched Album" })?.count == 2,
+              "Find Album joins tracks from different folders into their identified album")
+        let blocked = AlbumLookupDetails(title: "Must Not Apply", artist: "", year: nil, genre: nil, tracks: [], cover: nil, coverWarning: nil)
+        found.busy = true
+        found.apply(blocked, to: [partialThree.id], includeTracks: false, includeArtwork: false)
+        check(found.tracks[0][.album] == "Matched Album" && !found.canLookup, "Find Album cannot apply or start while another model operation is active")
+        found.busy = false
+        found.remoteNeedsReload = true
+        found.apply(blocked, to: [partialThree.id], includeTracks: false, includeArtwork: false)
+        check(found.tracks[0][.album] == "Matched Album" && !found.canLookup, "Find Album must respect a source that requires reload")
+        found.remoteNeedsReload = false
+        found.selection = []
+        check(found.canLookup, "Find Album can use visible editable tracks when no rows are selected")
+        found.beginLookup()
+        check(found.showingLookup && found.selection.count == 4 && !found.lookupGroups.isEmpty, "Find Album must select visible tracks and open its sheet")
+        found.clearLibrary()
+        check(!found.showingMerge && !found.showingLookup, "Clearing the library must close any library task sheet")
 
         // Exercise the actual Swift/C/Go JSON bridge, including large file
         // timestamps, sparse writes and a stale second save.
@@ -512,16 +509,14 @@ struct LibraryModelTests {
         remoteRecord.displayAlbumID = "first-player-album"
         remote.showRemote(joinSession, records: [remoteRecord, distinctRecord])
         check(remote.albums.count == 2, "Explicit private player groups must stay distinct until a grouping action")
-        remote.selectAlbums(Set(remote.albums.map(\.id)))
-        check(remote.selection == [remoteRecord.id, distinctRecord.id] && remote.albumFilter.isEmpty && !remote.hasChanges,
-              "Read-only album selection can safely use the same rules for a device library")
         remote.selection = [remoteRecord.id, distinctRecord.id]
-        check(remote.canMergeSelection && remote.canRunMagic, "A capable connected player must support the shared merge and Magic tools")
+        check(remote.canMergeSelection && remote.canLookup, "A capable connected player must support the shared merge and Find Album tools")
         remote.beginMerge()
         check(remote.showingMerge, "Remote Merge must open the same review sheet")
-        remote.beginMagic()
-        check(remote.showingMagic && !remote.showingMerge && !remote.hasChanges, "Opening remote Magic must not write or mutate draft metadata")
-        remote.showingMagic = false
+        remote.beginLookup()
+        check(remote.showingLookup && !remote.showingMerge && !remote.hasChanges && remote.lookupGroups.count == 2,
+              "Opening remote Find Album must not mutate drafts, and keeps private player albums apart")
+        remote.showingLookup = false
         remote.set(.album, to: "Shared Draft Album")
         remote.set(.albumArtist, to: "Shared Album Artist")
         check(remote.albums.count == 1, "Explicit remote album edits may preview their current common tags")
@@ -561,11 +556,10 @@ struct LibraryModelTests {
         remoteRules.showRemote(joinSession, records: [privateTarget, privateSource])
         remoteRules.selection = [privateSource.id]
         remoteRules.albumFilter = remoteRules.albums.first(where: { $0.id == "group:source-private" })!.id
-        remoteRules.showingMagic = true
-        remoteRules.mergeSelection(into: "group:target-private", dismissPresentedEditors: false)
-        check(remoteRules.albums.count == 1 && remoteRules.visibleTracks.count == 2 && remoteRules.showingMagic &&
+        remoteRules.mergeSelection(into: "group:target-private")
+        check(remoteRules.albums.count == 1 && remoteRules.visibleTracks.count == 2 &&
               remoteRules.tracks.allSatisfy { $0.joinsAlbum && $0.dirty && $0.changedFields.isEmpty },
-              "Remote Merge must assign both private destination and incoming tracks to the common album even when tags are already identical, while keeping inline Magic open")
+              "Remote Merge must assign both private destination and incoming tracks to the common album even when tags are already identical")
         let remoteMergeObjects = try remoteRules.tracks.map { try $0.saveObject() }
         check(remoteMergeObjects.allSatisfy { $0["joinAlbum"] as? Bool == true && ($0["fields"] as? [String: Any])?.count == 2 && $0["cover"] == nil },
               "Remote grouping must use the existing sparse tag protocol plus explicit joins without touching unknown covers")
@@ -588,34 +582,27 @@ struct LibraryModelTests {
         let unmatchedTrack = record("/device/unmatched.mp3", title: "Unmatched", album: "Old Album")
         remotePartial.showRemote(joinSession, records: [remoteThree, remoteEight, playingTrack, unmatchedTrack])
         remotePartial.selection = []
-        remotePartial.beginMagic()
-        check(remotePartial.showingMagic && remotePartial.selection.count == 4, "Remote Magic must use the same explicit visible scope")
-        remotePartial.applyMagicResult(magicDetails, to: Set(remotePartial.tracks.map(\.id)),
-                                       matches: [remoteThree.id: fullTrackList[2], remoteEight.id: fullTrackList[7], playingTrack.id: fullTrackList[0], "missing": fullTrackList[0]])
-        check(remotePartial.tracks[0][.title] == "Source 3" && remotePartial.tracks[1][.title] == "Source 8" && remotePartial.tracks[0].joinsAlbum && remotePartial.tracks[1].joinsAlbum &&
-              remotePartial.tracks[2][.title] == "Playing" && !remotePartial.tracks[2].dirty && remotePartial.tracks[3][.title] == "Unmatched" && !remotePartial.tracks[3].dirty,
-              "Remote Magic must map partial paths exactly, skip protected or unmatched tracks, and stage joins only for matched writable rows")
+        remotePartial.beginLookup()
+        check(remotePartial.showingLookup && remotePartial.selection.count == 4 && remotePartial.lookupGroups.count == 3,
+              "Remote Find Album uses the same visible scope, one player album at a time")
+        remotePartial.showingLookup = false
+        remotePartial.apply(matchedDetails, to: [remoteThree.id, remoteEight.id, playingTrack.id], includeTracks: false, includeArtwork: true)
+        check(remotePartial.tracks[0][.title] == "Old Three" && remotePartial.tracks[0].joinsAlbum && remotePartial.tracks[1].joinsAlbum &&
+              !remotePartial.tracks[2].dirty && !remotePartial.tracks[3].dirty,
+              "Remote Find Album stages joins only for selected writable rows and skips the protected playing track")
         check(remotePartial.albums.first(where: { $0.title == "Matched Album" })?.count == 2 && remotePartial.tracks[0].artworkChangeState == .modified,
-              "Remote Magic must preview a common album and preserve independent cover change tracking")
-        remotePartial.changesOnly = true
-        remotePartial.albumFilter = "stale-filter"
-        remotePartial.selectMagicTargets([remoteThree.id, "missing"])
-        check(!remotePartial.changesOnly && remotePartial.albumFilter.isEmpty && remotePartial.selection == [remoteThree.id],
-              "Manual Magic review must reset filters and select only still-loaded IDs")
-        remotePartial.busy = true
-        remotePartial.selectMagicTargets([remoteEight.id])
-        check(remotePartial.selection == [remoteThree.id], "Magic review selection cannot change during an active operation")
-        remotePartial.busy = false
+              "Remote Find Album previews a common album and tracks the cover change separately")
 
         let legacyRemote = LibraryModel()
         legacyRemote.showRemote(LanSession(id: 0, name: "Older Rust"), records: [privateTarget, privateSource])
         legacyRemote.selection = [privateSource.id]
-        check(!legacyRemote.canJoinAlbums && !legacyRemote.canRunMagic && !legacyRemote.canMergeSelection && legacyRemote.canEdit,
-              "Older consoles must keep ordinary editing while hiding unsupported grouping tools")
-        legacyRemote.beginMagic()
+        check(!legacyRemote.canJoinAlbums && legacyRemote.canLookup && !legacyRemote.canMergeSelection && legacyRemote.canEdit,
+              "Older consoles must keep ordinary editing and Find Album while hiding unsupported grouping tools")
         legacyRemote.mergeSelection(into: "group:target-private")
-        legacyRemote.applyMagicResult(magicDetails, to: [privateSource.id], matches: [privateSource.id: fullTrackList[2]])
-        check(!legacyRemote.hasChanges && !legacyRemote.showingMagic, "Unsupported console builds must never receive join requests")
+        check(!legacyRemote.hasChanges, "Unsupported console builds must never receive join requests")
+        legacyRemote.apply(matchedDetails, to: [privateSource.id], includeTracks: false, includeArtwork: false)
+        check(legacyRemote.hasChanges && !legacyRemote.tracks.contains(where: \.joinsAlbum), "Find Album edits tags on older consoles without join requests")
+        legacyRemote.revertSelection()
         legacyRemote.set(.title, to: "Compatible metadata edit")
         check(legacyRemote.hasChanges && !legacyRemote.tracks[1].joinsAlbum, "Plain metadata edits must remain compatible with older consoles")
 
@@ -629,9 +616,8 @@ struct LibraryModelTests {
         remote.set(.title, to: "Must not apply")
         remote.setArtwork(.remove)
         remote.beginLookup()
-        remote.beginMagic()
-        remote.applyMagicResult(magicDetails, to: [remoteRecord.id], matches: [remoteRecord.id: fullTrackList[0]])
-        check(!remote.canEdit && !remote.canSave && !remote.canRunMagic && remote.tracks[0][.title] == "Unsaved remote draft" && remote.tracks[0].artwork == .keep,
+        remote.apply(matchedDetails, to: [remoteRecord.id], includeTracks: true, includeArtwork: true)
+        check(!remote.canEdit && !remote.canSave && !remote.canLookup && !remote.showingLookup && remote.tracks[0][.title] == "Unsaved remote draft" && remote.tracks[0].artwork == .keep,
               "A missing remote session must block every edit path even if the reload flag has not yet updated")
         remote.remoteNeedsReload = true
         remote.open([directory])
