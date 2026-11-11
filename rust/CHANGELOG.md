@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.15 (2026-11-11)
+
+- YouTube downloads take the best audio YouTube serves: Opus (format 251, about 130 kbps at 48 kHz) instead of AAC (about 128 kbps at 44.1 kHz). Opus keeps the full frequency range and sounds better at the same bitrate. The stream is copied into an .opus file, never re-encoded; a video without Opus still gives AAC. Opus songs play through the console's ffmpeg at about 3% of one core, and Album Info can edit their tags. YouTube has no 320 kbps audio: its 256 kbps formats need a YouTube Music Premium account.
+
 ## v0.2.14 (2026-11-10)
 
 - The battery icon now matches Knulli's own percentage. Knulli's BatteryPlus estimates the level from the battery voltage and writes it to `/tmp/battery.percent`; the app read the power chip's own figure instead, which can be far lower (55% while Knulli showed 93%). The app reads BatteryPlus first and the chip only without it.

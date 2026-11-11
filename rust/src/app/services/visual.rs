@@ -1781,7 +1781,7 @@ pub(super) fn can_write_tags_ui(path: &std::path::Path) -> bool {
         .is_some_and(|extension| {
             matches!(
                 extension.to_ascii_lowercase().as_str(),
-                "mp3" | "flac" | "ogg" | "oga" | "m4a"
+                "mp3" | "flac" | "ogg" | "oga" | "opus" | "m4a" | "m4b"
             )
         })
 }

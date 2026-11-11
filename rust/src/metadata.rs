@@ -1091,6 +1091,50 @@ fn normalize_title(title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A real YouTube download (format 251, Opus copied into Ogg) takes the
+    /// tags and cover a download writes. The edited copy is left beside the
+    /// fixture, so an independent decoder can compare its audio.
+    #[test]
+    #[ignore = "requires BETTERPOD_OPUS_FIXTURE, a real .opus download"]
+    fn real_opus_download_takes_tags_and_cover() {
+        use lofty::file::AudioFile;
+        let input = PathBuf::from(std::env::var_os("BETTERPOD_OPUS_FIXTURE").expect("opus file"));
+        let output = input.with_file_name("edited.opus");
+        let cover = input.with_file_name("cover.png");
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(64, 64)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        fs::write(&cover, png.into_inner()).unwrap();
+        fs::copy(&input, &output).unwrap();
+        write_tags(
+            &output,
+            &TagEdit {
+                title: Some("Never Gonna Give You Up".into()),
+                artist: Some("Rick Astley".into()),
+                album: Some("Whenever You Need Somebody".into()),
+                track: Some(1),
+                track_total: Some(10),
+                cover: Some(cover),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let before = lofty::read_from_path(&input).unwrap();
+        let after = lofty::read_from_path(&output).unwrap();
+        let tag = after.primary_tag().unwrap();
+        assert_eq!(tag.title().as_deref(), Some("Never Gonna Give You Up"));
+        assert_eq!(tag.artist().as_deref(), Some("Rick Astley"));
+        assert_eq!(tag.album().as_deref(), Some("Whenever You Need Somebody"));
+        assert_eq!((tag.track(), tag.track_total()), (Some(1), Some(10)));
+        assert_eq!(tag.pictures().len(), 1);
+        let (a, b) = (
+            before.properties().duration().as_secs_f64(),
+            after.properties().duration().as_secs_f64(),
+        );
+        assert!((a - b).abs() < 0.01, "duration {a} became {b}");
+        assert_eq!(after.properties().sample_rate(), Some(48000));
+    }
     /// Rapadopa exists only on Discogs and the Italian Wikipedia.
     #[test]
     #[ignore = "live network: Discogs and Wikipedia"]

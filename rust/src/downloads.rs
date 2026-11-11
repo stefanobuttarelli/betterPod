@@ -1081,9 +1081,14 @@ fn youtube_download_single(
             "mp4",
         ]);
     } else {
+        // The best audio YouTube serves without a Premium account: Opus
+        // (format 251, about 130 kbps at 48 kHz), then AAC (140, about
+        // 128 kbps at 44.1 kHz). It is copied, never re-encoded: Opus moves
+        // from WebM into an .opus file, which the player decodes through
+        // ffmpeg and tags like Ogg.
         command.args([
             "-f",
-            "ba[ext=m4a]/ba",
+            "ba[acodec=opus]/ba[ext=m4a]/ba",
             "--extract-audio",
             "--audio-format",
             "best",
