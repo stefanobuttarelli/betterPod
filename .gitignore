@@ -11,3 +11,4 @@ port/betterpod/*.log
 port/log.txt
 .DS_Store
 .claude/
+/mac/build/

@@ -59,7 +59,7 @@ final class Updater: ObservableObject {
         if byHand { state = .checking }
         Task {
             do {
-                if let f = try await Self.newest(), Self.newer(f.version, than: Self.current) {
+                if let f = try await Self.newest(includingBetas: Self.isBeta(Self.current)), Self.newer(f.version, than: Self.current) {
                     found = f
                     state = .available(f.version)
                 } else if byHand {
@@ -117,7 +117,9 @@ final class Updater: ObservableObject {
 
     /// The newest release of the Mac app (tagged mac-v…) and its zip. The
     /// consoles' releases come in between, newest first: a few pages at most.
-    nonisolated static func newest() async throws -> Found? {
+    /// Betas are GitHub prereleases: only a beta looks at them, so a beta
+    /// moves on to the next beta or the final version.
+    nonisolated static func newest(includingBetas: Bool) async throws -> Found? {
         for page in 1...5 {
             var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(updateRepo)/releases?per_page=100&page=\(page)")!)
             req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -125,7 +127,7 @@ final class Updater: ObservableObject {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
             let releases = try JSONDecoder().decode([Release].self, from: data)
-            if let r = releases.first(where: { $0.tag_name.hasPrefix("mac-v") && !$0.draft && !$0.prerelease }) {
+            if let r = releases.first(where: { $0.tag_name.hasPrefix("mac-v") && !$0.draft && (includingBetas || !$0.prerelease) }) {
                 let v = String(r.tag_name.dropFirst("mac-v".count))
                 guard let a = r.assets.first(where: { $0.name == "betterPod-Share-mac-v\(v).zip" }),
                       let d = a.digest, d.hasPrefix("sha256:") else { return nil }
@@ -137,16 +139,34 @@ final class Updater: ObservableObject {
         return nil
     }
 
-    /// a is a newer version than b (1.0.2 > 1.0.1 > 1.0).
+    /// a is a newer version than b (1.1 > 1.1-beta.2 > 1.1-beta.1 > 1.0.5),
+    /// as the consoles' src/version.go: a beta comes before its final release.
     nonisolated static func newer(_ a: String, than b: String) -> Bool {
-        let x = a.split(separator: ".").map { Int($0) ?? 0 }
-        let y = b.split(separator: ".").map { Int($0) ?? 0 }
-        for i in 0..<max(x.count, y.count) {
-            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
-            if p != q { return p > q }
+        func parts(_ version: String) -> (numbers: [Int], beta: [Int]?) {
+            let pieces = version.split(separator: "-", maxSplits: 1)
+            let numbers = (pieces.first ?? "").split(separator: ".").map { Int($0) ?? 0 }
+            let beta = pieces.count > 1 ? pieces[1].split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) } : nil
+            return (numbers, beta)
         }
-        return false
+        func compare(_ x: [Int], _ y: [Int]) -> Int {
+            for i in 0..<max(x.count, y.count) {
+                let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+                if p != q { return p > q ? 1 : -1 }
+            }
+            return 0
+        }
+        let x = parts(a), y = parts(b)
+        let release = compare(x.numbers, y.numbers)
+        if release != 0 { return release > 0 }
+        switch (x.beta, y.beta) {
+        case (nil, nil): return false
+        case (nil, _): return true
+        case (_, nil): return false
+        case let (p?, q?): return compare(p, q) > 0
+        }
     }
+
+    nonisolated static func isBeta(_ version: String) -> Bool { version.contains("-") }
 
     // ---- the update ----
 

@@ -6,13 +6,25 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-let ink = Color(red: 40 / 255, green: 44 / 255, blue: 52 / 255)
-let subInk = Color(red: 110 / 255, green: 118 / 255, blue: 130 / 255)
-let bodyInk = Color(red: 70 / 255, green: 76 / 255, blue: 88 / 255)
-let shareBlue = Color(red: 28 / 255, green: 112 / 255, blue: 218 / 255)
+// The console's Share colors (src/ij_share_draw.go), with a night studio
+// for the Mac's dark appearance.
+let ink = Pod.color(Pod.rgb(40, 44, 52), Pod.rgb(236, 238, 241))
+let subInk = Pod.color(Pod.rgb(110, 118, 130), Pod.rgb(150, 157, 167))
+let bodyInk = Pod.color(Pod.rgb(70, 76, 88), Pod.rgb(200, 205, 212))
+let shareBlue = Pod.color(Pod.rgb(28, 112, 218), Pod.rgb(80, 160, 255))
 let laserBlue = Color(red: 40 / 255, green: 150 / 255, blue: 255 / 255)
-let shareGreen = Color(red: 40 / 255, green: 150 / 255, blue: 70 / 255)
-let shareRed = Color(red: 200 / 255, green: 60 / 255, blue: 50 / 255)
+let shareGreen = Pod.color(Pod.rgb(40, 150, 70), Pod.rgb(80, 200, 110))
+let shareRed = Pod.color(Pod.rgb(200, 60, 50), Pod.rgb(255, 115, 100))
+private let studioTop = Pod.color(Pod.rgb(251, 251, 251), Pod.rgb(54, 57, 63))
+private let studioHorizon = Pod.color(Pod.rgb(230, 232, 237), Pod.rgb(31, 33, 37))
+private let floorNear = Pod.color(Pod.rgb(237, 240, 242), Pod.rgb(42, 45, 50))
+private let floorFar = Pod.color(Pod.rgb(255, 255, 255), Pod.rgb(17, 18, 21))
+private let tileTop = Pod.color(Pod.rgb(255, 255, 255), Pod.rgb(82, 86, 94))
+private let tileBottom = Pod.color(Pod.rgb(232, 235, 240), Pod.rgb(50, 53, 59))
+private let tileBorder = Pod.color(Pod.rgb(194, 199, 207), Pod.rgb(20, 22, 25))
+private let tileLine = Pod.color(Pod.rgb(0, 0, 0, 0.07), Pod.rgb(0, 0, 0, 0.3))
+private let groove = Pod.color(Pod.rgb(219, 222, 227), Pod.rgb(58, 61, 67))
+private let sentVeil = Pod.color(Pod.rgb(255, 255, 255, 0.62), Pod.rgb(31, 33, 37, 0.62))
 
 // the console's coordinates (its 640 × 480 screen, in points here)
 let pedTop: CGFloat = 292  // the pedestal's top (its disc's centre)
@@ -35,32 +47,40 @@ func resourceImage(_ name: String, scale: CGFloat = 1) -> NSImage? {
 struct ContentView: View {
     @ObservedObject var model: Model
     @ObservedObject var updater: Updater
+    var updatesBlocked = false
     @State private var targeted = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Studio()
-            Stage(model: model)
-            Panel(model: model)
-                .frame(width: 300)
-                .position(x: textCX, y: 210)
-            if model.stage != .sharing {
-                NameField(model: model)
-                    .position(x: 320, y: 452)
-            }
-            if updater.state != .idle {
-                UpdateStrip(updater: updater, sharing: model.shareGoing)
-                    .frame(maxWidth: 560)
-                    .position(x: 320, y: 30)
-            }
-            if targeted {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(shareBlue.opacity(0.7), style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
-                    .padding(8)
-                    .allowsHitTesting(false)
+        GeometryReader { geometry in
+            ZStack {
+                Studio(horizon: (geometry.size.height - 480) / 2 + 330 + geometry.safeAreaInsets.top)
+                    .ignoresSafeArea()
+                ZStack(alignment: .topLeading) {
+                    Stage(model: model)
+                    Panel(model: model)
+                        .frame(width: 300)
+                        .position(x: textCX, y: 210)
+                    if model.stage != .sharing {
+                        NameField(model: model)
+                            .position(x: 320, y: 452)
+                    }
+                }
+                .frame(width: 640, height: 480)
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                if targeted {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(shareBlue.opacity(0.7), style: StrokeStyle(lineWidth: 3, dash: [10, 6]))
+                        .padding(8)
+                        .allowsHitTesting(false)
+                }
             }
         }
-        .frame(width: 640, height: 480)
+        .frame(minWidth: 640, minHeight: 480)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if updater.state != .idle {
+                UpdateStrip(updater: updater, sharing: model.shareGoing || updatesBlocked)
+            }
+        }
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             loadURLs(providers) { model.open($0) }
             return true
@@ -87,16 +107,22 @@ func loadURLs(_ providers: [NSItemProvider], done: @escaping ([URL]) -> Void) {
     group.notify(queue: .main) { done(urls) }
 }
 
-/// The studio: a light backdrop and a pale floor.
+/// The studio: a backdrop and a glossy floor, light by day, graphite in dark mode.
 struct Studio: View {
+    var horizon: CGFloat = 330
+
     var body: some View {
-        VStack(spacing: 0) {
-            LinearGradient(colors: [Color(white: 0.985), Color(red: 0.9, green: 0.91, blue: 0.93)],
-                           startPoint: .top, endPoint: .bottom)
-                .frame(height: 330)
-            LinearGradient(colors: [Color(red: 0.93, green: 0.94, blue: 0.95), Color.white],
-                           startPoint: .top, endPoint: .bottom)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                LinearGradient(colors: [studioTop, studioHorizon],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: min(geometry.size.height, max(0, horizon)))
+                LinearGradient(colors: [floorNear, floorFar],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(maxHeight: .infinity)
+            }
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -104,16 +130,17 @@ struct Studio: View {
 struct Stage: View {
     @ObservedObject var model: Model
     @State private var start = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animating)) { tl in
-            let t = tl.date.timeIntervalSince(start)
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !animating)) { tl in
+            let t = reduceMotion ? 0 : tl.date.timeIntervalSince(start)
             ZStack(alignment: .topLeading) {
                 if let beam = resourceImage("share_beam_blue", scale: 3) {
                     Image(nsImage: beam)
                         .opacity(beamLevel(t))
                         .position(x: pedCX, y: pedTop - 226 + 120)
-                    if sending {
+                    if sending && !reduceMotion {
                         // sending: brighter bands rise through the light
                         Image(nsImage: beam)
                             .mask(Canvas { ctx, size in
@@ -135,7 +162,7 @@ struct Stage: View {
                         .position(x: pedCX, y: pedTop - 24 + 75)
                 }
                 cover(t)
-                if sending, let img = model.cover {
+                if sending && !reduceMotion, let img = model.cover {
                     Rising(image: img, cut: model.progress * coverSide, t: t)
                         .allowsHitTesting(false)
                 }
@@ -155,6 +182,7 @@ struct Stage: View {
     }
 
     func beamLevel(_ t: Double) -> Double {
+        if reduceMotion { return sending ? 1 : 0.8 }
         switch model.stage {
         case .empty, .reading:
             return 0.55 + 0.45 * (0.5 + 0.5 * sin(t / 5 * 2 * .pi))
@@ -195,7 +223,7 @@ struct Stage: View {
                 coverImage
                 if model.stage == .sharing && phase == "done" {
                     // sent: its ghost, pale
-                    Rectangle().fill(Color.white.opacity(0.62))
+                    Rectangle().fill(sentVeil)
                 }
             }
             .frame(width: coverSide, height: coverSide)
@@ -211,7 +239,7 @@ struct Stage: View {
             .opacity(phase == "failed" ? 0.5 : 1)
             .position(x: pedCX, y: y0 + coverSide / 2)
             // (the progress comes in steps: the cut and the laser glide)
-            .animation(moving ? .linear(duration: 0.6) : nil, value: p)
+            .animation(moving && !reduceMotion ? .linear(duration: 0.6) : nil, value: p)
             if model.stage == .sharing && phase != "done" && phase != "failed" {
                 // waiting: a slow sweep up and down; sending: it goes down
                 // with the progress, slowly, never back up
@@ -219,7 +247,7 @@ struct Stage: View {
                 Laser()
                     .frame(width: coverSide + 36, height: 14)
                     .position(x: x0 + coverSide / 2, y: y0 + (moving ? p : sweep) * coverSide)
-                    .animation(moving ? .linear(duration: 0.6) : nil, value: p)
+                    .animation(moving && !reduceMotion ? .linear(duration: 0.6) : nil, value: p)
             }
         }
     }
@@ -285,7 +313,7 @@ struct Panel: View {
                 Text(e).font(.system(size: 13, weight: .medium)).foregroundColor(shareRed)
             }
             Button("Choose…") { model.choose() }
-                .controlSize(.large)
+                .buttonStyle(PodButtonStyle(kind: .primary, large: true))
                 .disabled(model.stage == .reading)
                 .padding(.top, 6)
         }
@@ -317,9 +345,9 @@ struct Panel: View {
             }
             notes.padding(.top, 4)
             HStack(spacing: 10) {
-                Button("Clear") { model.clear() }.controlSize(.large)
+                Button("Clear") { model.clear() }.buttonStyle(PodButtonStyle(large: true))
                 Button("Share") { model.share() }
-                    .controlSize(.large)
+                    .buttonStyle(PodButtonStyle(kind: .primary, large: true))
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 10)
@@ -380,15 +408,15 @@ struct Panel: View {
             HStack(spacing: 10) {
                 switch phase {
                 case "done":
-                    Button("Share Again") { model.again() }.controlSize(.large)
-                    Button("Share More") { model.clear() }.controlSize(.large).keyboardShortcut(.defaultAction)
+                    Button("Share Again") { model.again() }.buttonStyle(PodButtonStyle(large: true))
+                    Button("Share More") { model.clear() }.buttonStyle(PodButtonStyle(kind: .primary, large: true)).keyboardShortcut(.defaultAction)
                 case "failed":
-                    Button("Back") { model.back() }.controlSize(.large)
+                    Button("Back") { model.back() }.buttonStyle(PodButtonStyle(large: true))
                     if s?.unplayable == nil {
-                        Button("Try Again") { model.again() }.controlSize(.large).keyboardShortcut(.defaultAction)
+                        Button("Try Again") { model.again() }.buttonStyle(PodButtonStyle(kind: .primary, large: true)).keyboardShortcut(.defaultAction)
                     }
                 default:
-                    Button("Cancel") { model.back() }.controlSize(.large).keyboardShortcut(.cancelAction)
+                    Button("Cancel") { model.back() }.buttonStyle(PodButtonStyle(large: true)).keyboardShortcut(.cancelAction)
                 }
             }
             .padding(.top, 14)
@@ -402,14 +430,16 @@ struct Digits: View {
     let code: String
     let flipping: Bool
     @State private var start = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: !flipping)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion || !flipping)) { tl in
             let el = tl.date.timeIntervalSince(start)
             HStack(spacing: 3) {
                 ForEach(0..<8, id: \.self) { i in
                     let ch: String = {
                         let chars = Array(code)
+                        if reduceMotion { return i < chars.count ? String(chars[i]) : "–" }
                         if flipping && el < 0.3 + Double(i) * 0.09 || i >= chars.count {
                             return String(Int(el * 16 + Double(i * 3)) % 10)
                         }
@@ -428,11 +458,11 @@ struct DigitTile: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 5)
-                .fill(LinearGradient(colors: [Color.white, Color(red: 0.91, green: 0.92, blue: 0.94)],
+                .fill(LinearGradient(colors: [tileTop, tileBottom],
                                      startPoint: .top, endPoint: .bottom))
             RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(Color(red: 0.76, green: 0.78, blue: 0.81), lineWidth: 1)
-            Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
+                .strokeBorder(tileBorder, lineWidth: 1)
+            Rectangle().fill(tileLine).frame(height: 1)
             Text(digit).font(.system(size: 32, weight: .semibold, design: .rounded)).foregroundColor(ink)
         }
         .frame(width: 30, height: 46)
@@ -446,7 +476,7 @@ struct ProgressBar: View {
     var body: some View {
         GeometryReader { g in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color(red: 0.86, green: 0.87, blue: 0.89))
+                Capsule().fill(groove)
                 Capsule().strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
                 Capsule()
                     .fill(LinearGradient(colors: [Color(red: 0.45, green: 0.72, blue: 1), shareBlue],
@@ -503,34 +533,33 @@ struct UpdateStrip: View {
                 EmptyView()
             case .checking:
                 ProgressView().controlSize(.small)
-                Text("Checking for updates…").foregroundColor(bodyInk)
+                Text("Checking for updates…").foregroundStyle(.primary)
             case .upToDate:
-                Text("betterPod Share \(Updater.current) is the newest version.").foregroundColor(bodyInk)
+                Text("betterPod Share \(Updater.current) is the newest version.").foregroundStyle(.primary)
             case .available(let v):
-                Text(sharing ? "betterPod Share \(v) is out: update after this share."
-                     : "betterPod Share \(v) is out.").foregroundColor(bodyInk)
+                Text(sharing ? "betterPod Share \(v) is out: finish sharing or save library changes to update."
+                     : "betterPod Share \(v) is out.").foregroundStyle(.primary)
                 Button("Update") { updater.install() }
                     .disabled(sharing)
             case .updating(let v):
                 ProgressView().controlSize(.small)
-                Text("Updating to \(v)…").foregroundColor(bodyInk)
+                Text("Updating to \(v)…").foregroundStyle(.primary)
             case .failed(let e):
-                Text(e).foregroundColor(shareRed).fixedSize(horizontal: false, vertical: true)
+                Text(e).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 if let page = updater.page {
                     Button("Download") { NSWorkspace.shared.open(page) }
                 }
                 Button("OK") { updater.dismiss() }
             }
         }
-        .font(.system(size: 12, weight: .medium))
+        .font(.callout)
         .multilineTextAlignment(.leading)
+        .buttonStyle(PodButtonStyle(compact: true))
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.94))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.black.opacity(0.1), lineWidth: 1))
-                .shadow(color: .black.opacity(0.1), radius: 5, y: 2)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Pod.strip)
+        .overlay(alignment: .bottom) { Pod.hairline.frame(height: 1) }
     }
 }
 
@@ -558,6 +587,7 @@ struct Marquee: View {
     let width: CGFloat
     @State private var textW: CGFloat = 0
     @State private var start = Date()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct WidthKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -566,11 +596,11 @@ struct Marquee: View {
 
     var body: some View {
         let over = textW > width
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !over)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !over)) { tl in
             let loop = textW + 40
             let cycle = loop / 32 + 1.5
             let t = tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: cycle)
-            let off = over && t > 1.5 ? min((t - 1.5) * 32, loop) : 0
+            let off = !reduceMotion && over && t > 1.5 ? min((t - 1.5) * 32, loop) : 0
             HStack(spacing: 40) {
                 Text(text).font(font).foregroundColor(color).fixedSize()
                 if over {
@@ -591,6 +621,7 @@ struct Marquee: View {
                 start = Date()
             }
         }
+        .help(text)
     }
 }
 
