@@ -176,23 +176,35 @@ impl PlaylistStore {
         })
     }
 
-    pub fn append(&self, path: &Path, tracks: &[PathBuf]) -> Result<(), String> {
+    /// Adds the songs not yet in the playlist, once each, as the Go app does.
+    /// Returns the playlist's name and how many songs were added.
+    pub fn append(&self, path: &Path, tracks: &[PathBuf]) -> Result<(String, usize), String> {
         let _operation = self.operation.lock().map_err(|error| error.to_string())?;
         let filename = self.private_filename(path)?;
         let current = self.read_private(&filename)?;
         let mut playlist = self.parse(&self.directory.join(&filename), &current, false)?;
-        if playlist.tracks.len().saturating_add(tracks.len()) > MAX_TRACKS {
+        // Validate the entire append before changing anything on disk.
+        let mut have: std::collections::HashSet<PathBuf> =
+            playlist.tracks.iter().cloned().collect();
+        let mut append = Vec::new();
+        for path in tracks {
+            let track = self.music_track(path)?;
+            if have.insert(track.clone()) {
+                append.push(track);
+            }
+        }
+        if append.is_empty() {
+            return Ok((playlist.name, 0));
+        }
+        if playlist.tracks.len().saturating_add(append.len()) > MAX_TRACKS {
             return Err(format!(
                 "A playlist may contain at most {MAX_TRACKS} tracks"
             ));
         }
-        // Validate the entire append before changing anything on disk.
-        let append = tracks
-            .iter()
-            .map(|path| self.music_track(path))
-            .collect::<Result<Vec<_>, _>>()?;
+        let added = append.len();
         playlist.tracks.extend(append);
-        self.write_private(&filename, &playlist.tracks)
+        self.write_private(&filename, &playlist.tracks)?;
+        Ok((playlist.name, added))
     }
 
     pub fn remove_track(&self, path: &Path, index: usize) -> Result<(), String> {
@@ -585,18 +597,23 @@ mod tests {
     fn private_unicode_playlist_roundtrips_and_mutations_preserve_music() {
         let (root, store, song) = fixture("unicode");
         let playlist = store.create("Caffè e musica").unwrap();
-        store
-            .append(&playlist.path, &[song.clone(), song.clone()])
-            .unwrap();
+        // a song goes in once, however often it is added
+        assert_eq!(
+            store
+                .append(&playlist.path, &[song.clone(), song.clone()])
+                .unwrap(),
+            ("Caffè e musica".to_string(), 1)
+        );
+        assert_eq!(
+            store.append(&playlist.path, std::slice::from_ref(&song)).unwrap(),
+            ("Caffè e musica".to_string(), 0)
+        );
         let loaded = store.load(&playlist.path).unwrap();
         assert_eq!(loaded.name, "Caffè e musica");
         assert!(!loaded.read_only);
-        assert_eq!(loaded.tracks, vec![song.clone(), song.clone()]);
+        assert_eq!(loaded.tracks, vec![song.clone()]);
         store.remove_track(&playlist.path, 0).unwrap();
-        assert_eq!(
-            store.load(&playlist.path).unwrap().tracks,
-            vec![song.clone()]
-        );
+        assert!(store.load(&playlist.path).unwrap().tracks.is_empty());
         assert!(store.create("Caffè e musica").is_err());
         assert!(store.remove_track(&playlist.path, 9).is_err());
         assert_eq!(fs::read(&song).unwrap(), b"music stays read-only");
@@ -732,6 +749,8 @@ pub enum Command {
 pub enum Event {
     Listed(Vec<Playlist>),
     Saved,
+    /// Songs added to a playlist; 0 when all of them were already in it.
+    Appended { name: String, added: usize },
     Created(Playlist),
     Error(String),
 }
@@ -766,7 +785,9 @@ impl PlaylistClient {
                         Command::List => store.list().map(Event::Listed),
                         Command::Create { name } => store.create(&name).map(Event::Created),
                         Command::Append { path, tracks } => {
-                            store.append(&path, &tracks).map(|_| Event::Saved)
+                            store
+                                .append(&path, &tracks)
+                                .map(|(name, added)| Event::Appended { name, added })
                         }
                         Command::Remove { path, index } => {
                             store.remove_track(&path, index).map(|_| Event::Saved)

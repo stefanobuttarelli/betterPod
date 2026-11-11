@@ -3387,6 +3387,15 @@ impl Extras {
                     self.playlist_command(playlists::Command::List);
                     self.effects.push(Effect::Notice("Playlist saved".into()));
                 }
+                // the Go app's messages
+                playlists::Event::Appended { name, added } => {
+                    self.playlist_command(playlists::Command::List);
+                    self.effects.push(Effect::Notice(match added {
+                        0 => format!("Already in {name}"),
+                        1 => format!("Added to {name}"),
+                        n => format!("{n} songs added to {name}"),
+                    }));
+                }
                 playlists::Event::Error(error) => self.effects.push(Effect::Notice(error)),
             }
         }

@@ -2,6 +2,10 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.17 (2026-11-11)
+
+- A song goes into a playlist only once, as in betterPod. Add to Playlist leaves out the songs already in it and says so: "Added to …", "N songs added to …", or "Already in …" when there is nothing new. Adding an album keeps each song once.
+
 ## v0.2.16 (2026-11-11)
 
 - A whole album uploaded as one YouTube video can be split into its songs, even without chapters. On the video's page, Download as Album · Find Track List searches MusicBrainz, Discogs, iTunes, Deezer and Wikipedia for the album; the chosen release shows its songs and lengths, then Download and Split. The app measures the pauses in the audio and cuts each song on the pause that best fits the listed lengths, so lengths a few seconds off, or an upload with extra silence between songs, still cut in the silence. On Basley Click's The Album, two different track lists, one with lengths up to 16 seconds off, gave the same cuts: 11 of 13 on a clear pause, a quarter of a second before the music, and the two songs that follow without a pause at a dip in loudness, within 1.5 seconds. The audio is copied, not re-encoded, and each song gets its title, number, album, artist, year, genre and cover. Finding the pauses in a 57-minute album takes about 45 seconds on the console, and the cutting 5 seconds.
