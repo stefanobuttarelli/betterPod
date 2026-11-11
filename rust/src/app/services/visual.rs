@@ -1242,6 +1242,7 @@ impl Extras {
             hits: Vec::new(),
             pending: 0,
             errors: Vec::new(),
+            split_video: None,
         });
         self.push(album, Vec::new());
         self.pages.last_mut().unwrap().role = PageRole::Combined;
@@ -1741,6 +1742,7 @@ impl Extras {
             hits: Vec::new(),
             pending: 0,
             errors: Vec::new(),
+            split_video: None,
         });
         self.push("Find Info Online", Vec::new());
         self.pages.last_mut().unwrap().role = PageRole::Combined;
@@ -1767,6 +1769,21 @@ pub(super) fn combined_providers(cover: bool) -> &'static [Provider] {
             Provider::Wikipedia,
         ]
     }
+}
+/// How many searched words appear in a result's artist and title.
+pub(super) fn matched_words(query: &str, item: &OnlineItem) -> usize {
+    let words = |text: &str| {
+        text.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|word| word.chars().count() >= 2)
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let found = words(&format!("{} {}", item.artist, item.title));
+    words(query)
+        .iter()
+        .filter(|word| found.contains(word))
+        .count()
 }
 fn combined_sources(cover: bool) -> String {
     combined_providers(cover)
@@ -2321,7 +2338,7 @@ mod youtube_search_tests {
             Provider::YouTubePlaylists,
         );
         let rows = extras.details_rows(&item, false);
-        assert!(rows.iter().any(|row| matches!(&row.choice, Choice::Download(DownloadRequest::YouTube { url, video:false, split_chapters:false }) if *url == item.url) && row.title == "Download as Album · 2 songs"));
+        assert!(rows.iter().any(|row| matches!(&row.choice, Choice::Download(DownloadRequest::YouTube { url, video:false, split_chapters:false, .. }) if *url == item.url) && row.title == "Download as Album · 2 songs"));
         assert!(!rows
             .iter()
             .any(|row| matches!(&row.choice, Choice::Media(url, _, _) if *url == item.url)));
@@ -2423,6 +2440,7 @@ mod youtube_search_tests {
             rows[4].choice,
             Choice::Download(DownloadRequest::YouTube {
                 split_chapters: true,
+                track_list: None,
                 video: false,
                 ..
             })

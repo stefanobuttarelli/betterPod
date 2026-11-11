@@ -1,6 +1,6 @@
 [package]
 name = "betterpod-rust"
-version = "0.2.15"
+version = "0.2.16"
 edition = "2021"
 # Matches RUST_VERSION in tools/Dockerfile, which builds the console package.
 rust-version = "1.98"

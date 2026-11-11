@@ -84,6 +84,7 @@ impl Extras {
                     url: playlist.url.clone(),
                     video: false,
                     split_chapters: false,
+                    track_list: None,
                 });
                 let mut state =
                     DownloadState::from_task(&task).ok_or("Missing download fixture state")?;

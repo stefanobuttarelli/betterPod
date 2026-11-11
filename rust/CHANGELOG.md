@@ -2,6 +2,11 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.16 (2026-11-11)
+
+- A whole album uploaded as one YouTube video can be split into its songs, even without chapters. On the video's page, Download as Album · Find Track List searches MusicBrainz, Discogs, iTunes, Deezer and Wikipedia for the album; the chosen release shows its songs and lengths, then Download and Split. The app measures the pauses in the audio and cuts each song on the pause that best fits the listed lengths, so lengths a few seconds off, or an upload with extra silence between songs, still cut in the silence. On Basley Click's The Album, two different track lists, one with lengths up to 16 seconds off, gave the same cuts: 11 of 13 on a clear pause, a quarter of a second before the music, and the two songs that follow without a pause at a dip in loudness, within 1.5 seconds. The audio is copied, not re-encoded, and each song gets its title, number, album, artist, year, genre and cover. Finding the pauses in a 57-minute album takes about 45 seconds on the console, and the cutting 5 seconds.
+- Find Info Online lists first the results whose artist and title contain every searched word, whatever their source. Searching "Basley Click" now shows the album from MusicBrainz, Discogs and Wikipedia at the top, before other MusicBrainz matches for "Click".
+
 ## v0.2.15 (2026-11-11)
 
 - YouTube downloads take the best audio YouTube serves: Opus (format 251, about 130 kbps at 48 kHz) instead of AAC (about 128 kbps at 44.1 kHz). Opus keeps the full frequency range and sounds better at the same bitrate. The stream is copied into an .opus file, never re-encoded; a video without Opus still gives AAC. Opus songs play through the console's ffmpeg at about 3% of one core, and Album Info can edit their tags. YouTube has no 320 kbps audio: its 256 kbps formats need a YouTube Music Premium account.

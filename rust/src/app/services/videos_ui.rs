@@ -310,6 +310,7 @@ impl Extras {
                             url: item.url.clone(),
                             video: true,
                             split_chapters: false,
+                            track_list: None,
                         }),
                     ));
                 }
@@ -319,6 +320,7 @@ impl Extras {
                         url: item.url.clone(),
                         video: false,
                         split_chapters: false,
+                        track_list: None,
                     }),
                 ));
                 let count = item.raw["chapters"].as_array().map_or(0, Vec::len);
@@ -329,6 +331,7 @@ impl Extras {
                             url: item.url.clone(),
                             video: false,
                             split_chapters: true,
+                            track_list: None,
                         }),
                     ));
                 }

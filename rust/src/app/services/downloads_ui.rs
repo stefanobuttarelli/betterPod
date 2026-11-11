@@ -77,6 +77,23 @@ impl DownloadState {
                 url,
                 video,
                 split_chapters,
+                track_list: Some(list),
+            } => (
+                format!("youtube:{url}:{video}:{split_chapters}:{}", list.id),
+                if list.album.is_empty() {
+                    "YouTube download".into()
+                } else {
+                    list.album.clone()
+                },
+                "Album".into(),
+                None,
+                None,
+            ),
+            DownloadRequest::YouTube {
+                url,
+                video,
+                split_chapters,
+                track_list: None,
             } => (
                 format!("youtube:{url}:{video}:{split_chapters}"),
                 "YouTube download".into(),
@@ -976,6 +993,7 @@ mod tests {
             url: "https://example.invalid/video".into(),
             video: false,
             split_chapters: true,
+            track_list: None,
         });
         let mut state = DownloadState::from_task(&task).unwrap();
         state.title = "A full album".into();
@@ -1061,6 +1079,7 @@ mod tests {
                 url: "https://www.youtube.com/playlist?list=PLfixture".into(),
                 video: false,
                 split_chapters: false,
+                track_list: None,
             });
             let mut state = DownloadState::from_task(&task).unwrap();
             state.status = "Downloading song 2 of 3".into();
@@ -1089,6 +1108,7 @@ mod tests {
             url: "https://www.youtube.com/watch?v=abcdefghijk".into(),
             video: true,
             split_chapters: false,
+            track_list: None,
         });
         extras
             .download_states
@@ -1345,6 +1365,7 @@ mod tests {
             url: video.url.clone(),
             video: false,
             split_chapters: false,
+            track_list: None,
         };
         extras.start_download(request.clone());
         let second = *extras.download_states.keys().next_back().unwrap();
@@ -1374,6 +1395,7 @@ mod tests {
             url: video.url,
             video: false,
             split_chapters: true,
+            track_list: None,
         });
         let third = *extras.download_states.keys().next_back().unwrap();
         assert_ne!(second, third, "Album and single-song requests are distinct");
@@ -1409,6 +1431,7 @@ mod tests {
             url: format!("https://example.invalid/{title}"),
             video: false,
             split_chapters: false,
+            track_list: None,
         }))
         .unwrap();
         state.title = title.into();

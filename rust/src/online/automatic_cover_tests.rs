@@ -62,6 +62,7 @@ fi
                 url: "https://www.youtube.com/watch?v=first000001".into(),
                 video: false,
                 split_chapters: false,
+                track_list: None,
             },
             url,
         }
@@ -290,6 +291,7 @@ fn archive_then_youtube_downloads_are_fifo_after_success_failure_or_cancel() {
                 url: "https://www.youtube.com/watch?v=first000001".into(),
                 video: false,
                 split_chapters: false,
+                track_list: None,
             }))
             .unwrap();
         let cancelled = services

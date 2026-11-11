@@ -102,6 +102,7 @@ fi
             false,
             false,
             None,
+            None,
         )
     }
     fn files(&self) -> Vec<PathBuf> {
@@ -160,6 +161,7 @@ fn playlist_download_publishes_ordered_tracks_in_one_album_without_overwriting()
         "https://www.youtube.com/playlist?list=PLfixture",
         false,
         false,
+        None,
         Some(&cover),
     )
     .unwrap();
@@ -233,6 +235,7 @@ fn cancelling_a_playlist_preserves_completed_tracks_and_cleans_the_current_stage
             "https://www.youtube.com/playlist?list=PLfixture",
             false,
             false,
+            None,
             None,
         )
     });
@@ -390,6 +393,7 @@ fn playlist_video_download_is_refused_before_any_media_is_written() {
         true,
         false,
         None,
+        None,
     )
     .unwrap_err();
     assert!(error.contains("individual video"));
@@ -431,6 +435,7 @@ fn full_album_details_then_download_resolves_once_and_keeps_only_slim_ui_metadat
         false,
         false,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(files.len(), 1);
@@ -463,6 +468,7 @@ fn stale_cached_urls_retry_the_original_video_once_without_changing_audio() {
         url,
         false,
         false,
+        None,
         None,
     )
     .unwrap();
@@ -584,6 +590,7 @@ esac
             false,
             true,
             None,
+            None,
         )
     });
     let until = Instant::now() + Duration::from_secs(5);
@@ -604,6 +611,7 @@ esac
         "https://www.youtube.com/watch?v=first000001",
         false,
         true,
+        None,
         None,
     )
     .unwrap();
@@ -645,6 +653,7 @@ esac
             "https://www.youtube.com/watch?v=first000001",
             false,
             true,
+            None,
             None
         )
         .unwrap(),
@@ -723,4 +732,134 @@ fn watch_reuses_detail_formats_and_refreshes_rejected_urls() {
             usize::from(stale)
         );
     }
+}
+
+#[test]
+fn track_list_split_cuts_at_the_pauses_tags_every_song_and_resumes() {
+    let fixture = Fixture::new();
+    // 1 s of silence, then songs of 30, 40 and 20 s with 1.5 s pauses.
+    let mut pcm = Vec::new();
+    let mut add = |seconds: f64, loud: bool| {
+        for k in 0..(seconds * 8000.0) as usize {
+            let value: i16 = if loud {
+                if k % 40 < 20 {
+                    6000
+                } else {
+                    -6000
+                }
+            } else {
+                0
+            };
+            pcm.extend(value.to_le_bytes());
+        }
+    };
+    add(1.0, false);
+    add(30.0, true);
+    add(1.5, false);
+    add(40.0, true);
+    add(1.5, false);
+    add(20.0, true);
+    add(1.0, false);
+    fs::write(fixture.root.join("tools/analysis.s16"), pcm).unwrap();
+    let ffmpeg = fixture.root.join("tools/ffmpeg");
+    fs::write(
+        &ffmpeg,
+        r#"#!/bin/sh
+base=${0%/*}
+printf '%s\n' "$*" >> "$base/ffmpeg-invocations"
+case " $* " in *" s16le "*) exec /bin/cat "$base/analysis.s16" ;; esac
+input=
+times=
+output=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -i) shift; input=$1 ;;
+    -segment_times) shift; times=$1 ;;
+  esac
+  output=$1
+  shift
+done
+n=0
+for t in 0 $(printf '%s' "$times" | /usr/bin/tr ',' ' '); do
+  /bin/cp "$input" "$(printf "$output" "$n")"
+  n=$((n + 1))
+done
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(ffmpeg, fs::Permissions::from_mode(0o700)).unwrap();
+    let track = |title: &str, number: u32, seconds: f64| album_split::SplitTrack {
+        title: title.into(),
+        artist: if number == 2 {
+            "Guest".into()
+        } else {
+            String::new()
+        },
+        seconds,
+        disc: 1,
+        number,
+    };
+    let list = album_split::SplitAlbum {
+        id: "Discogs:1".into(),
+        source: "Discogs".into(),
+        album: "The Album".into(),
+        artist: "Band".into(),
+        year: Some(2001),
+        genre: "Hip Hop".into(),
+        cover: String::new(),
+        tracks: vec![
+            track("One", 1, 31.0),
+            track("Two", 2, 39.0),
+            track("Three", 3, 21.0),
+        ],
+    };
+    let run = || {
+        youtube_download(
+            &Context::standalone(),
+            &fixture.root,
+            "https://www.youtube.com/watch?v=first000001",
+            false,
+            false,
+            Some(&list),
+            None,
+        )
+    };
+    let files = run().unwrap();
+    let names = files
+        .iter()
+        .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["01 One.m4a", "02 Two.m4a", "03 Three.m4a"]);
+    assert!(files
+        .iter()
+        .all(|f| f.parent().unwrap().ends_with("YouTube/Band/The Album")));
+    let calls = fs::read_to_string(fixture.root.join("tools/ffmpeg-invocations")).unwrap();
+    assert!(
+        calls.contains("-segment_times 0.750,32.250,73.750"),
+        "{calls}"
+    );
+    for (index, file) in files.iter().enumerate() {
+        let tags = metadata::read_tag_fields(file).unwrap();
+        assert_eq!(
+            tags.title.as_deref(),
+            Some(list.tracks[index].title.as_str())
+        );
+        let artist = if index == 1 { "Guest" } else { "Band" };
+        assert_eq!(tags.artist.as_deref(), Some(artist));
+        assert_eq!(tags.album.as_deref(), Some("The Album"));
+        assert_eq!(tags.album_artist.as_deref(), Some("Band"));
+        assert_eq!(tags.genre.as_deref(), Some("Hip Hop"));
+        assert_eq!(tags.year, Some(2001));
+        assert_eq!(tags.track, Some(index as u32 + 1));
+        assert_eq!(tags.track_total, Some(3));
+        assert_eq!(payload(file), fixture.audio);
+    }
+    let media = fs::read_to_string(fixture.root.join("tools/media-invocations")).unwrap();
+    assert_eq!(run().unwrap(), files);
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("tools/media-invocations")).unwrap(),
+        media,
+        "A complete split album must return before fetching its source again"
+    );
+    assert_eq!(fixture.files().len(), 3);
 }

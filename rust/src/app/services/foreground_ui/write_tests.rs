@@ -61,6 +61,7 @@ fn grouped_lookup_finishes_members_individually_and_back_cancels_only_remaining_
         hits: Vec::new(),
         pending: 3,
         errors: Vec::new(),
+        split_video: None,
     });
     let purpose = Purpose::Combined { generation };
     let context_purpose = Purpose::CoverContext { generation };

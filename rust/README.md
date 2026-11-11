@@ -139,6 +139,17 @@ its own numbered file in a common album folder, with the album artist and
 track total. Cancelling keeps tracks that have already finished. Playlists
 are bounded to 500 videos. **Videos → Search YouTube** remains a video search.
 
+A whole album in one video can be split into its songs. On the video's page,
+**Download as Album · Find Track List** opens Find Info Online with the album
+name from the video title. Choose the release: its page lists the songs with
+their lengths and **Download and Split**. The download measures the pauses in
+the audio and cuts each song on the pause that best fits the listed lengths,
+counted from the previous cut, so a list off by a few seconds still cuts in the
+silence. Songs that run into each other are cut at a dip in loudness or at the
+listed length. The audio is copied without re-encoding, and each song gets the
+release's title, number, album, artist, year, genre and cover. A release whose
+length doesn't fit the video is not offered. The cuts are written to the log.
+
 Opening a result shows a small loader on the selected row immediately. While
 that foreground request runs, navigation waits; B cancels it and returns
 control to the same selection. Audio and system controls remain available.

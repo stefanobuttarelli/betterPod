@@ -111,6 +111,7 @@ fn failed_find_info_keeps_page_query_and_retry_in_place() {
         hits: Vec::new(),
         pending: 4,
         errors: Vec::new(),
+        split_video: None,
     });
     let mut invalid = OnlineItem::new(Provider::Archive);
     invalid.id = "/invalid".into(); // Real worker failure without network access.

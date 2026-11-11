@@ -152,6 +152,68 @@ fn run(
     Ok(out.text())
 }
 
+/// Runs a tool whose output is too large to keep, such as decoded audio, and
+/// hands each piece of it to `sink` as it arrives.
+pub(super) fn stream_output(
+    context: &Context,
+    command: &mut Command,
+    timeout: Duration,
+    mut sink: impl FnMut(&[u8]) -> Result<(), String>,
+) -> Result<(), String> {
+    context.check()?;
+    command
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = command
+        .spawn()
+        .map_err(|error| format!("Start {:?}: {error}", command.get_program()))?;
+    let mut group = ProcessGroup {
+        child,
+        stopped: false,
+    };
+    let mut stdout = group.child.stdout.take().ok_or("Missing command output")?;
+    let mut stderr = group.child.stderr.take().ok_or("Missing command errors")?;
+    nonblocking(&stdout)?;
+    nonblocking(&stderr)?;
+    let mut err = Capture::new(MIB as usize);
+    let started = Instant::now();
+    let mut buffer = vec![0u8; 64 * 1024];
+    let mut out_done = false;
+    let status = loop {
+        context.check()?;
+        if started.elapsed() >= timeout {
+            return Err("Command timed out".into());
+        }
+        // Bounded work per poll, like Capture::drain.
+        for _ in 0..16 {
+            if out_done {
+                break;
+            }
+            match stdout.read(&mut buffer) {
+                Ok(0) => out_done = true,
+                Ok(n) => sink(&buffer[..n])?,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        let err_done = err.drain(&mut stderr, None)?;
+        if out_done {
+            if let Some(status) = group.child.try_wait().map_err(|e| e.to_string())? {
+                break status;
+            }
+        }
+        wait_output(&stdout, !out_done, &stderr, !err_done)?;
+    };
+    group.stop();
+    if !status.success() {
+        return Err(command_error(&err.text(), false));
+    }
+    Ok(())
+}
+
 #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
 fn protect_resolver(command: &mut Command) {
     #[cfg(target_os = "linux")]

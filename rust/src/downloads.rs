@@ -21,11 +21,13 @@ use std::{
     sync::{LazyLock, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+pub mod album_split;
 mod archive;
 mod process;
 mod youtube_info;
 mod youtube_plugin;
 mod youtube_receipts;
+mod youtube_split;
 pub use archive::status as archive_status;
 pub use process::run_command;
 #[derive(Clone, Debug)]
@@ -38,6 +40,8 @@ pub enum DownloadRequest {
         url: String,
         video: bool,
         split_chapters: bool,
+        /// Cut one long video into these songs, at the pauses between them.
+        track_list: Option<std::sync::Arc<album_split::SplitAlbum>>,
     },
     Episodes {
         podcast: Podcast,
@@ -69,7 +73,16 @@ pub fn run_with_cover(
             url,
             video,
             split_chapters,
-        } => youtube_download(context, data, &url, video, split_chapters, Some(&target)),
+            track_list,
+        } => youtube_download(
+            context,
+            data,
+            &url,
+            video,
+            split_chapters,
+            track_list.as_deref(),
+            Some(&target),
+        ),
         _ => Err("Square cover selection is only available for YouTube audio".into()),
     }
 }
@@ -676,7 +689,16 @@ pub fn run(
             url,
             video,
             split_chapters,
-        } => youtube_download(context, data, &url, video, split_chapters, None),
+            track_list,
+        } => youtube_download(
+            context,
+            data,
+            &url,
+            video,
+            split_chapters,
+            track_list.as_deref(),
+            None,
+        ),
     }
 }
 pub fn downloaded(data: &Path) -> Vec<PathBuf> {
@@ -834,9 +856,13 @@ fn youtube_download(
     url: &str,
     video: bool,
     split: bool,
+    track_list: Option<&album_split::SplitAlbum>,
     cover: Option<&Path>,
 ) -> Result<Vec<PathBuf>, String> {
     validate_http(url)?;
+    if let Some(track_list) = track_list {
+        return youtube_split::youtube_track_list(context, data, url, track_list, cover);
+    }
     if crate::online::youtube_playlist_url(url) {
         if video {
             return Err("Open the playlist and choose an individual video to download".into());
@@ -1047,92 +1073,8 @@ fn youtube_download_single(
     }
     let staging = youtube_stage(context, data)?;
     let stage = &staging.0;
-    let info_path = stage.join("info.json");
-    crate::storage::atomic_write_with(&info_path, |file| {
-        serde_json::to_writer(file, &info).map_err(std::io::Error::other)
-    })
-    .map_err(|e| e.to_string())?;
+    let (source, _tools) = youtube_fetch(context, data, url, &info, video, stage)?;
     let info = crate::online::youtube_ui_projection(info);
-    let _tools = tools_guard(context)?;
-    let mut command = yt_command(data);
-    command
-        .args([
-            "--no-playlist",
-            "--newline",
-            "--progress",
-            "--progress-template",
-            "download:BP_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s",
-            "--retries",
-            "3",
-            "--fragment-retries",
-            "3",
-            "--socket-timeout",
-            "15",
-            "--extractor-args",
-            "youtube:skip=hls",
-            "-o",
-        ])
-        .arg(stage.join("source.%(ext)s"));
-    if video {
-        command.args([
-            "-f",
-            "bv*[height<=360][vcodec^=avc]+ba[ext=m4a]/b[height<=360]/b",
-            "--merge-output-format",
-            "mp4",
-        ]);
-    } else {
-        // The best audio YouTube serves without a Premium account: Opus
-        // (format 251, about 130 kbps at 48 kHz), then AAC (140, about
-        // 128 kbps at 44.1 kHz). It is copied, never re-encoded: Opus moves
-        // from WebM into an .opus file, which the player decodes through
-        // ffmpeg and tags like Ogg.
-        command.args([
-            "-f",
-            "ba[acodec=opus]/ba[ext=m4a]/ba",
-            "--extract-audio",
-            "--audio-format",
-            "best",
-        ]);
-    }
-    command.arg("--load-info-json").arg(&info_path);
-    if let Err(error) = process::run_ytdlp(context, &mut command, Duration::from_secs(7200)) {
-        context.check()?;
-        if !youtube_info::stale_error(&error) {
-            return Err(error);
-        }
-        youtube_info::invalidate(data, url)?;
-        eprintln!("[YouTube] cached media URLs expired; retrying the original video once");
-        let args = command
-            .get_args()
-            .map(|v| v.to_os_string())
-            .collect::<Vec<_>>();
-        let mut retry = yt_command(data);
-        let mut skip = false;
-        for arg in args {
-            if skip {
-                skip = false;
-                continue;
-            }
-            if arg == "--load-info-json" {
-                skip = true;
-                continue;
-            }
-            retry.arg(arg);
-        }
-        retry.arg(url);
-        process::run_ytdlp(context, &mut retry, Duration::from_secs(7200))?;
-    }
-    let source = fs::read_dir(stage)
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .find(|p| {
-            p.is_file()
-                && p.extension()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|e| matches!(e, "m4a" | "mp4" | "opus" | "webm" | "mkv"))
-        })
-        .ok_or("YouTube produced no media file")?;
     let mut out = Vec::new();
     if !chapters.is_empty() {
         for (index, start, end, title, key) in &chapters {
@@ -1226,6 +1168,104 @@ fn youtube_download_single(
         }
     }
     Ok(out)
+}
+
+/// Downloads the video or its best audio into the staging folder. The tools
+/// stay locked while the caller cuts and tags with them.
+fn youtube_fetch(
+    context: &Context,
+    data: &Path,
+    url: &str,
+    info: &Value,
+    video: bool,
+    stage: &Path,
+) -> Result<(PathBuf, std::sync::MutexGuard<'static, ()>), String> {
+    let info_path = stage.join("info.json");
+    crate::storage::atomic_write_with(&info_path, |file| {
+        serde_json::to_writer(file, info).map_err(std::io::Error::other)
+    })
+    .map_err(|e| e.to_string())?;
+    let _tools = tools_guard(context)?;
+    let mut command = yt_command(data);
+    command
+        .args([
+            "--no-playlist",
+            "--newline",
+            "--progress",
+            "--progress-template",
+            "download:BP_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s",
+            "--retries",
+            "3",
+            "--fragment-retries",
+            "3",
+            "--socket-timeout",
+            "15",
+            "--extractor-args",
+            "youtube:skip=hls",
+            "-o",
+        ])
+        .arg(stage.join("source.%(ext)s"));
+    if video {
+        command.args([
+            "-f",
+            "bv*[height<=360][vcodec^=avc]+ba[ext=m4a]/b[height<=360]/b",
+            "--merge-output-format",
+            "mp4",
+        ]);
+    } else {
+        // The best audio YouTube serves without a Premium account: Opus
+        // (format 251, about 130 kbps at 48 kHz), then AAC (140, about
+        // 128 kbps at 44.1 kHz). It is copied, never re-encoded: Opus moves
+        // from WebM into an .opus file, which the player decodes through
+        // ffmpeg and tags like Ogg.
+        command.args([
+            "-f",
+            "ba[acodec=opus]/ba[ext=m4a]/ba",
+            "--extract-audio",
+            "--audio-format",
+            "best",
+        ]);
+    }
+    command.arg("--load-info-json").arg(&info_path);
+    if let Err(error) = process::run_ytdlp(context, &mut command, Duration::from_secs(7200)) {
+        context.check()?;
+        if !youtube_info::stale_error(&error) {
+            return Err(error);
+        }
+        youtube_info::invalidate(data, url)?;
+        eprintln!("[YouTube] cached media URLs expired; retrying the original video once");
+        let args = command
+            .get_args()
+            .map(|v| v.to_os_string())
+            .collect::<Vec<_>>();
+        let mut retry = yt_command(data);
+        let mut skip = false;
+        for arg in args {
+            if skip {
+                skip = false;
+                continue;
+            }
+            if arg == "--load-info-json" {
+                skip = true;
+                continue;
+            }
+            retry.arg(arg);
+        }
+        retry.arg(url);
+        process::run_ytdlp(context, &mut retry, Duration::from_secs(7200))?;
+    }
+    let source = fs::read_dir(stage)
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|e| matches!(e, "m4a" | "mp4" | "opus" | "webm" | "mkv"))
+        })
+        .ok_or("YouTube produced no media file")?;
+    Ok((source, _tools))
 }
 
 #[cfg(test)]

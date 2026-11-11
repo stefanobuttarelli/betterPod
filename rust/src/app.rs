@@ -1925,6 +1925,7 @@ impl App {
                         url,
                         video: false,
                         split_chapters: true,
+                        track_list: None,
                     });
                 self.open(Screen::Extra);
             }
@@ -1937,6 +1938,7 @@ impl App {
                             url: origin,
                             video,
                             split_chapters: false,
+                            track_list: None,
                         });
                 } else {
                     self.extras

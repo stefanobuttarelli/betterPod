@@ -6,6 +6,7 @@ use external_foreground::{ExternalKind, ExternalPending};
 mod listen_ui;
 mod metadata_edit;
 mod share_visual;
+mod track_list_ui;
 mod videos_ui;
 mod visual;
 #[cfg(test)]
@@ -170,6 +171,8 @@ enum Choice {
     SaveTagBatch,
     UndoTags,
     FindInfo,
+    /// Find the release a full-album video holds, to split it into songs.
+    FindTrackList(OnlineItem),
     EditSongs,
     EditSong(usize),
     ChooseEditedCover,
@@ -421,6 +424,8 @@ struct CombinedState {
     hits: Vec<OnlineItem>,
     pending: usize,
     errors: Vec<String>,
+    /// The full-album video a chosen release will split into songs.
+    split_video: Option<OnlineItem>,
 }
 struct SearchState {
     provider: Provider,
@@ -861,6 +866,21 @@ impl Extras {
                         cover,
                         crop: betterpod_rust::downloads::SquareCrop::Center,
                     },
+                    Purpose::Download,
+                );
+                return;
+            }
+            // A split album takes the release's cover, else the video's.
+            let release_cover = match &request {
+                DownloadRequest::YouTube {
+                    track_list: Some(list),
+                    ..
+                } if !list.cover.is_empty() => Some(list.cover.clone()),
+                _ => None,
+            };
+            if let Some(url) = release_cover {
+                self.task(
+                    Task::DownloadWithAutomaticCover { request, url },
                     Purpose::Download,
                 );
                 return;
@@ -2449,6 +2469,7 @@ impl Extras {
                 self.refresh_editor_page();
             }
             Choice::FindInfo => self.open_info_search(),
+            Choice::FindTrackList(video) => self.open_track_list_search(video),
             Choice::EditSongs => {
                 if let Some(edit) = self.album_edit.as_mut() {
                     edit.scope = None;
@@ -3102,6 +3123,7 @@ impl Extras {
                     url: item.url.clone(),
                     video: false,
                     split_chapters: false,
+                    track_list: None,
                 }),
             );
             download.detail = identity;
@@ -3134,10 +3156,21 @@ impl Extras {
                     url: item.url.clone(),
                     video: false,
                     split_chapters: true,
+                    track_list: None,
                 }),
             );
             download.detail = format!("A track per chapter · {identity}");
             rows.push(download);
+        }
+        // A whole album in one video: cut it at the pauses between songs,
+        // using a track list from Find Info Online.
+        if item.seconds == 0.0 || item.seconds >= 8.0 * 60.0 {
+            let mut split = Item::new(
+                "Download as Album · Find Track List",
+                Choice::FindTrackList(item.clone()),
+            );
+            split.detail = "Split at the pauses between songs".into();
+            rows.push(split);
         }
         let mut one = Item::new(
             "Download as One Song",
@@ -3145,6 +3178,7 @@ impl Extras {
                 url: item.url.clone(),
                 video: false,
                 split_chapters: false,
+                track_list: None,
             }),
         );
         one.detail = if item.seconds > 0.0 {
@@ -3708,6 +3742,7 @@ impl Extras {
                                             }
                                         }
                                         let cover = state.cover;
+                                        let query = state.query.clone();
                                         state.hits.sort_by_key(|item| {
                                             let best =
                                                 item.raw["_cover_best"].as_bool().unwrap_or(false);
@@ -3716,6 +3751,13 @@ impl Extras {
                                             (
                                                 !best && cover,
                                                 cover && best && !exact,
+                                                // Information results naming every searched
+                                                // word come first, whatever their source.
+                                                std::cmp::Reverse(if cover {
+                                                    0
+                                                } else {
+                                                    visual::matched_words(&query, item)
+                                                }),
                                                 visual::combined_providers(cover)
                                                     .iter()
                                                     .position(|p| *p == item.provider)
@@ -3823,6 +3865,18 @@ impl Extras {
                                 } else {
                                     &item.title
                                 };
+                                if let Some(video) = self.track_list_video().filter(|_| metadata) {
+                                    let rows = Self::track_list_rows(&video, &item);
+                                    self.push(
+                                        if item.title.is_empty() {
+                                            "Track List"
+                                        } else {
+                                            &item.title
+                                        },
+                                        rows,
+                                    );
+                                    continue;
+                                }
                                 if metadata && self.album_edit.is_some() && !self.cover_search {
                                     self.choose(Choice::ApplyMetadata(item));
                                     continue;
