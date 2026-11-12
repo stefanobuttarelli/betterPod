@@ -2,6 +2,12 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.19 (2026-11-12)
+
+- Delete Album works as in betterPod: one question ("Delete … for good?"), then the songs leave the card in the background while the music keeps playing. The app no longer shuts down into the maintenance screen. If a song of that album is playing, the music stops; its songs leave the queue. The album's folder goes too when only pictures, lists or lyrics are left in it.
+- Album and song lists keep their covers while scrolling. List rows use their own small covers (96 px, also saved on disk), up to 400 of them, apart from the large covers of Cover Flow and Now Playing; the rows around the visible ones load ahead. Before, the large-cover cache held 40 and each scroll reloaded them.
+- On a song change, Now Playing's time row starts at 0:00 with the new song's length at once, instead of showing the previous song's time while the new one loads.
+
 ## v0.2.18 (2026-11-12)
 
 - Pairs with car stereos. A car usually shows a six-digit code and waits for both sides to confirm it; the console had nobody to answer, so only speakers and headphones paired. The app now pairs through its own Bluetooth agent: the code shows on screen, A pairs, B refuses. Old devices that ask for a PIN open the keyboard. While the Bluetooth page is open, the app answers pairings started from the car too.

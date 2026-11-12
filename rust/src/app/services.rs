@@ -193,6 +193,8 @@ enum Choice {
     BtVisible,
     /// The answer to a pairing question (the code matches, or pair).
     BtAnswer(bool),
+    /// Delete Album, confirmed: the songs go in the background.
+    ConfirmDeleteAlbum,
     Cancel,
     Tools,
     RemoveTools,
@@ -351,6 +353,7 @@ enum Purpose {
     Tags,
     Merge,
     Separate,
+    DeleteAlbum(String),
     CoverReset,
     Tools,
     Subscriptions,
@@ -773,6 +776,13 @@ impl Extras {
     }
     pub(super) fn set_youtube(&mut self, enabled: bool) {
         self.youtube = enabled;
+    }
+    fn deleting_album_name(&self) -> String {
+        self.album_edit
+            .as_ref()
+            .map(|edit| edit.common(Field::Album).0)
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| "this album".into())
     }
     pub(super) fn curation_task(&mut self, task: Task) {
         if matches!(&task, Task::MergeAlbums { .. }) {
@@ -2537,9 +2547,30 @@ impl Extras {
                 },
                 Purpose::CoverReset,
             ),
-            Choice::DeleteEditedAlbum => self
-                .effects
-                .push(Effect::DeleteAlbum(self.edit_paths.clone())),
+            Choice::DeleteEditedAlbum => {
+                // as in the Go app: one question, then the songs go while
+                // the music keeps playing
+                let n = self.edit_paths.len();
+                let name = self.deleting_album_name();
+                self.push_confirmation(
+                    format!(
+                        "Delete {name} ({n} {}) for good?",
+                        if n == 1 { "song" } else { "songs" }
+                    ),
+                    "",
+                    "Delete Album",
+                    Choice::ConfirmDeleteAlbum,
+                );
+            }
+            Choice::ConfirmDeleteAlbum => {
+                let paths = self.edit_paths.clone();
+                if paths.is_empty() {
+                    return;
+                }
+                let name = self.deleting_album_name();
+                self.effects.push(Effect::DeleteAlbum(paths.clone()));
+                self.task(Task::DeleteAlbum { paths }, Purpose::DeleteAlbum(name));
+            }
             Choice::SaveTags => {
                 if let Some(edit) = &self.album_edit {
                     let changes = edit.changes();
@@ -3826,6 +3857,12 @@ impl Extras {
                                     self.effects.push(Effect::Rescan);
                                     self.effects
                                         .push(Effect::Notice("Using the album's own cover".into()));
+                                    continue;
+                                }
+                                if let Some(Purpose::DeleteAlbum(name)) = &purpose {
+                                    self.effects.push(Effect::Rescan);
+                                    self.effects.push(Effect::Exit);
+                                    self.effects.push(Effect::Notice(format!("Deleted {name}")));
                                     continue;
                                 }
                                 if matches!(purpose, Some(Purpose::Separate)) {

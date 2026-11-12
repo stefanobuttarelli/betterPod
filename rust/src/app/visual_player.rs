@@ -1111,6 +1111,19 @@ fn draw_np_body(
     let Some(track) = pv.current.as_ref() else {
         return;
     };
+    // While the next song loads, the player still reports the previous
+    // one: its time row starts at 0:00 with its own length at once.
+    let loading;
+    let (snapshot, seek) = if snapshot.path.as_ref() != Some(&track.path) {
+        loading = AudioSnapshot {
+            position: 0.,
+            duration: track.duration,
+            ..snapshot.clone()
+        };
+        (&loading, None)
+    } else {
+        (snapshot, seek)
+    };
     let theme = PlayerTheme::new(dark);
     r.push_transform(0., 0., 1., 1., alpha as f32);
     if pv.change_value < 1. {

@@ -121,6 +121,9 @@ pub enum Task {
     Unmerge {
         paths: Vec<PathBuf>,
     },
+    DeleteAlbum {
+        paths: Vec<PathBuf>,
+    },
     DeleteEpisodes {
         podcast: Podcast,
         episodes: Vec<Episode>,
@@ -755,6 +758,13 @@ fn execute(
             )?))
         }
         Task::CacheArtwork { url } => Ok(Output::Files(vec![cache_artwork(data, context, &url)?])),
+        Task::DeleteAlbum { paths } => {
+            let deleted = curation::delete_album(music, &paths, context)?;
+            Ok(Output::CurationApplied {
+                matched: deleted,
+                total: paths.len(),
+            })
+        }
         Task::Unmerge { paths } => {
             curation::unmerge(data, music, &paths, context)?;
             Ok(Output::CurationApplied {

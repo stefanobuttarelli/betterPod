@@ -1513,6 +1513,15 @@ impl App {
                 self.audio_snapshot.playing,
             );
         }
+        // The covers around the visible rows load ahead of scrolling: the
+        // rows below first, then the ones above.
+        let ahead = (first..page.rows.len().min(first + 40))
+            .chain((first.saturating_sub(15)..first).rev())
+            .filter_map(|i| {
+                let row = &page.rows[i];
+                row.visual.icon.is_empty().then_some(row.cover.as_deref()).flatten()
+            });
+        self.art.prefetch_thumbs(ahead);
         if page.rows.is_empty() {
             let message = if self.scanning {
                 "Reading your music..."
@@ -2575,7 +2584,7 @@ fn draw_row(
         text_left = 40.0;
     } else if row.visual.thumbnail || !row.visual.icon.is_empty() || row.cover.is_some() {
         let texture = if row.visual.icon.is_empty() {
-            Some(art.get(row.cover.as_deref()))
+            Some(art.thumb(row.cover.as_deref()))
         } else {
             assets.get(&row.visual.icon)
         };

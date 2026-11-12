@@ -1039,3 +1039,121 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+/// Delete Album, as in the Go app: the album's songs leave the card while
+/// the app keeps running. Only regular files inside the music folder go;
+/// the album's folder goes too when nothing but pictures, lists, lyrics or
+/// cue sheets is left in it, and its artist's folder when left empty.
+pub fn delete_album(
+    music: Option<&Path>,
+    paths: &[PathBuf],
+    context: &Context,
+) -> Result<usize, String> {
+    let music = fs::canonicalize(music.ok_or("No music folder")?).map_err(|e| e.to_string())?;
+    let mut checked = Vec::new();
+    for path in paths {
+        let meta = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if !meta.is_file() || meta.file_type().is_symlink() {
+            return Err("Only music files are deleted, never links or folders".into());
+        }
+        let path = fs::canonicalize(path).map_err(|e| e.to_string())?;
+        if !path.starts_with(&music) {
+            return Err("A song is outside the music folder".into());
+        }
+        if !checked.contains(&path) {
+            checked.push(path);
+        }
+    }
+    let mut folders = Vec::new();
+    for path in &checked {
+        context.check()?;
+        fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if let Some(parent) = path.parent() {
+            if !folders.iter().any(|f: &PathBuf| f == parent) {
+                folders.push(parent.to_path_buf());
+            }
+        }
+    }
+    for folder in folders {
+        let _ = crate::storage::sync_directory(&folder);
+        remove_album_folder_if_done(&music, &folder);
+    }
+    Ok(checked.len())
+}
+
+fn remove_album_folder_if_done(music: &Path, folder: &Path) {
+    if folder == music || !folder.starts_with(music) {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if entry.file_type().map_or(true, |t| t.is_dir()) {
+            return;
+        }
+        let extra = [
+            ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".m3u", ".m3u8", ".lrc", ".cue",
+            ".txt", ".nfo", ".log", ".json",
+        ]
+        .iter()
+        .any(|ext| name.ends_with(ext));
+        if !extra && !name.starts_with('.') {
+            return; // something else: the folder stays
+        }
+    }
+    if fs::remove_dir_all(folder).is_err() {
+        return;
+    }
+    if let Some(up) = folder.parent() {
+        if up != music
+            && up.starts_with(music)
+            && fs::read_dir(up).is_ok_and(|mut left| left.next().is_none())
+        {
+            let _ = fs::remove_dir(up);
+        }
+    }
+}
+
+#[cfg(test)]
+mod delete_album_tests {
+    use super::*;
+
+    #[test]
+    fn songs_go_and_a_folder_left_with_only_pictures_goes_too() {
+        let root = std::env::temp_dir().join(format!("bp-delete-album-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let music = root.join("music");
+        let album = music.join("Artist/Album");
+        let other = music.join("Other/Kept");
+        fs::create_dir_all(&album).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        for name in ["01.flac", "02.flac"] {
+            fs::write(album.join(name), b"audio").unwrap();
+        }
+        fs::write(album.join("cover.jpg"), b"jpg").unwrap();
+        fs::write(other.join("01.flac"), b"audio").unwrap();
+        fs::write(other.join("notes.pdf"), b"pdf").unwrap();
+        let outside = root.join("outside.flac");
+        fs::write(&outside, b"audio").unwrap();
+        let context = Context::standalone();
+        // nothing outside the music folder, and nothing deleted on refusal
+        assert!(delete_album(Some(&music), &[album.join("01.flac"), outside.clone()], &context).is_err());
+        assert!(album.join("01.flac").exists() && outside.exists());
+        let deleted = delete_album(
+            Some(&music),
+            &[album.join("01.flac"), album.join("02.flac"), album.join("01.flac")],
+            &context,
+        )
+        .unwrap();
+        assert_eq!(deleted, 2);
+        assert!(!album.exists(), "only a cover was left: the folder goes");
+        assert!(!music.join("Artist").exists(), "the empty artist folder goes");
+        // a folder with something else in it stays
+        delete_album(Some(&music), &[other.join("01.flac")], &context).unwrap();
+        assert!(other.join("notes.pdf").exists());
+        assert!(music.exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+}

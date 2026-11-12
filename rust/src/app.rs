@@ -3489,8 +3489,21 @@ impl App {
                     self.save_settings();
                 }
                 ExtraEffect::Rescan => self.rescan(),
+                // The files go in the background (services); here only the
+                // music: it stops if one of the album's songs plays, as in
+                // the Go app, and the album leaves the songs to come.
                 ExtraEffect::DeleteAlbum(paths) => {
-                    self.execute(Intent::Maintenance(MaintenanceMode::DeleteAlbum(paths)))
+                    let gone: std::collections::HashSet<_> = paths.into_iter().collect();
+                    if self.now_track.as_ref().is_some_and(|t| gone.contains(&t.path)) {
+                        self.execute(Intent::ClearNowPlaying);
+                    } else {
+                        let first = self.detached_next.unwrap_or(self.queue_index + 1);
+                        for index in (first..self.queue.len()).rev() {
+                            if gone.contains(&self.queue[index]) {
+                                self.remove_queued(index);
+                            }
+                        }
+                    }
                 }
                 ExtraEffect::MergeAlbum(paths) => {
                     self.curation

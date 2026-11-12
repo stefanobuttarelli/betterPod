@@ -51,6 +51,46 @@ fn decode_cached(dir: &Path, path: &Path) -> Result<image::RgbaImage, String> {
     Ok(image)
 }
 
+/// The size of a cover in list rows (drawn at 96 x 96).
+pub const THUMB: u32 = 96;
+/// How many list thumbnails stay on the GPU: about 11 MB at 96 px, enough
+/// for a whole album list, so scrolling back never loads them again.
+const THUMBS_KEPT: usize = 400;
+
+fn shrink(image: image::RgbaImage) -> image::RgbaImage {
+    let (w, h) = image.dimensions();
+    if w <= THUMB && h <= THUMB {
+        return image;
+    }
+    let scale = THUMB as f32 / w.max(h) as f32;
+    image::imageops::resize(
+        &image,
+        ((w as f32 * scale).round() as u32).max(1),
+        ((h as f32 * scale).round() as u32).max(1),
+        image::imageops::FilterType::Triangle,
+    )
+}
+
+/// A list thumbnail: its own small copy on disk, else made from the cover
+/// at display size (which is cached too).
+fn decode_thumb_cached(dir: &Path, path: &Path) -> Result<image::RgbaImage, String> {
+    let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let name = format!("{}-t{THUMB}", scaled_name(path, meta.len(), meta.modified().ok()));
+    for extension in ["jpg", "png"] {
+        let copy = dir.join(format!("{name}.{extension}"));
+        if copy.is_file() {
+            if let Ok(image) = decoder::decode(&copy) {
+                return Ok(image);
+            }
+        }
+    }
+    let image = shrink(decode_cached(dir, path)?);
+    if let Err(error) = store_scaled(dir, &name, &image) {
+        eprintln!("Artwork cache {}: {error}", path.display());
+    }
+    Ok(image)
+}
+
 /// JPEG for opaque covers (as Go); PNG keeps a transparent cover's alpha.
 /// Written beside the target and renamed, so readers see whole files only.
 fn store_scaled(dir: &Path, name: &str, image: &image::RgbaImage) -> Result<(), String> {
@@ -97,6 +137,8 @@ fn prune_scaled(dir: &Path, keep: &HashSet<String>) {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         let stem = name.split('.').next().unwrap_or_default();
+        // a list thumbnail goes with its cover
+        let stem = stem.strip_suffix(&format!("-t{THUMB}")).unwrap_or(stem);
         let hex = stem.len() == 32 && stem.bytes().all(|b| b.is_ascii_hexdigit());
         let stale = entry
             .metadata()
@@ -141,6 +183,12 @@ impl Decoders {
         match scaled {
             Some(dir) => Self::with_decoder(move |path| decode_cached(&dir, path)),
             None => Self::with_decoder(decode),
+        }
+    }
+    fn thumbs(scaled: Option<PathBuf>) -> Result<Self, String> {
+        match scaled {
+            Some(dir) => Self::with_decoder(move |path| decode_thumb_cached(&dir, path)),
+            None => Self::with_decoder(|path| decode(path).map(shrink)),
         }
     }
     fn with_decoder<F>(decode: F) -> Result<Self, String>
@@ -245,8 +293,17 @@ impl Drop for Decoders {
         self.shutdown();
     }
 }
+/// Small covers for list rows, apart from the full ones (Cover Flow, Now
+/// Playing), so a long list neither evicts those nor reloads on scrolling.
+struct Thumbs {
+    decoders: Decoders,
+    pending: HashSet<PathBuf>,
+    failed: HashSet<PathBuf>,
+    textures: HashMap<PathBuf, (Texture, Instant)>,
+}
 pub struct Artwork {
     decoders: Decoders,
+    thumbs: Thumbs,
     generation: u64,
     pending: HashSet<PathBuf>,
     failed: HashSet<PathBuf>,
@@ -267,10 +324,17 @@ impl Artwork {
     ) -> Result<Self, String> {
         let image = raster_default_artwork(512)?;
         let decoders = Decoders::new(scaled.clone())?;
+        let thumbs = Thumbs {
+            decoders: Decoders::thumbs(scaled.clone())?,
+            pending: HashSet::new(),
+            failed: HashSet::new(),
+            textures: HashMap::new(),
+        };
         let placeholder =
             renderer.upload_artwork(image.width(), image.height(), image.as_raw(), &[])?;
         Ok(Self {
             decoders,
+            thumbs,
             generation: 0,
             pending: HashSet::new(),
             failed: HashSet::new(),
@@ -315,8 +379,91 @@ impl Artwork {
         }
         self.placeholder
     }
+    /// A list row's cover: the small copy, or the full one when it is
+    /// already loaded; asks for the small one otherwise.
+    pub fn thumb(&mut self, path: Option<&Path>) -> Texture {
+        let Some(path) = path else {
+            return self.placeholder;
+        };
+        if let Some((texture, used)) = self.thumbs.textures.get_mut(path) {
+            *used = Instant::now();
+            return *texture;
+        }
+        self.request_thumb(path);
+        if let Some((texture, _)) = self.textures.get(path) {
+            return *texture;
+        }
+        self.placeholder
+    }
+    fn request_thumb(&mut self, path: &Path) -> bool {
+        if self.thumbs.textures.contains_key(path)
+            || self.thumbs.pending.contains(path)
+            || self.thumbs.failed.contains(path)
+        {
+            return true;
+        }
+        let Some(tx) = &self.thumbs.decoders.tx else {
+            return false;
+        };
+        if tx.try_send((self.generation, path.to_path_buf())).is_ok() {
+            self.thumbs.pending.insert(path.to_path_buf());
+            true
+        } else {
+            false // queue full: asked again on a later frame
+        }
+    }
+    /// Loads the covers of the rows around the visible ones ahead of
+    /// scrolling, nearest first, while the decode queue has room.
+    pub fn prefetch_thumbs<'a>(&mut self, paths: impl Iterator<Item = &'a Path>) {
+        for path in paths {
+            if !self.request_thumb(path) {
+                break;
+            }
+        }
+    }
     pub fn poll(&mut self, renderer: &Renderer) -> bool {
         let mut changed = false;
+        // Small uploads: a few per frame keep a long list filling quickly.
+        for _ in 0..6 {
+            let Ok(result) = self.thumbs.decoders.rx.try_recv() else {
+                break;
+            };
+            if result.generation != self.generation {
+                continue;
+            }
+            self.thumbs.pending.remove(&result.path);
+            match result.result.and_then(|p| {
+                renderer.upload_artwork(p.width(), p.height(), p.as_raw(), &result.mipmaps)
+            }) {
+                Ok(texture) => {
+                    if let Some((old, _)) = self
+                        .thumbs
+                        .textures
+                        .insert(result.path, (texture, Instant::now()))
+                    {
+                        renderer.delete_texture(old);
+                    }
+                    changed = true;
+                }
+                Err(e) => {
+                    eprintln!("Artwork {}: {e}", result.path.display());
+                    self.thumbs.failed.insert(result.path);
+                }
+            }
+        }
+        while self.thumbs.textures.len() > THUMBS_KEPT {
+            if let Some(old) = self
+                .thumbs
+                .textures
+                .iter()
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(p, _)| p.clone())
+            {
+                if let Some((texture, _)) = self.thumbs.textures.remove(&old) {
+                    renderer.delete_texture(texture);
+                }
+            }
+        }
         // At most two uploads per frame; decoding/SD never happens here.
         for _ in 0..2 {
             let Ok(result) = self.decoders.rx.try_recv() else {
@@ -363,6 +510,11 @@ impl Artwork {
     }
     pub fn invalidate(&mut self, renderer: &Renderer) {
         self.generation = self.generation.wrapping_add(1);
+        self.thumbs.pending.clear();
+        self.thumbs.failed.clear();
+        for (_, (texture, _)) in self.thumbs.textures.drain() {
+            renderer.delete_texture(texture);
+        }
         self.pending.clear();
         self.failed.clear();
         self.palettes.clear();
@@ -381,7 +533,12 @@ impl Artwork {
         if !changed.is_empty() {
             self.generation = self.generation.wrapping_add(1);
             self.pending.clear();
+            self.thumbs.pending.clear();
             for path in changed {
+                self.thumbs.failed.remove(&path);
+                if let Some((texture, _)) = self.thumbs.textures.remove(&path) {
+                    renderer.delete_texture(texture);
+                }
                 self.failed.remove(&path);
                 self.palettes.remove(&path);
                 if let Some((texture, _)) = self.textures.remove(&path) {
@@ -406,10 +563,16 @@ impl Artwork {
     }
     pub fn close(&mut self, renderer: &Renderer) {
         self.decoders.shutdown();
+        self.thumbs.decoders.shutdown();
         if self.closed {
             return;
         }
         self.closed = true;
+        self.thumbs.pending.clear();
+        self.thumbs.failed.clear();
+        for (_, (texture, _)) in self.thumbs.textures.drain() {
+            renderer.delete_texture(texture);
+        }
         self.pending.clear();
         self.failed.clear();
         self.palettes.clear();
