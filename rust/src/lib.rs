@@ -2,6 +2,7 @@
 pub mod art;
 pub mod audio;
 pub mod bluetooth;
+pub mod bt_media;
 pub mod cover_match;
 pub mod curation;
 pub mod downloads;

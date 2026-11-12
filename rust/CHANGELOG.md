@@ -2,6 +2,14 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.18 (2026-11-12)
+
+- Pairs with car stereos. A car usually shows a six-digit code and waits for both sides to confirm it; the console had nobody to answer, so only speakers and headphones paired. The app now pairs through its own Bluetooth agent: the code shows on screen, A pairs, B refuses. Old devices that ask for a PIN open the keyboard. While the Bluetooth page is open, the app answers pairings started from the car too.
+- Bluetooth → Make Visible: the console stays visible for three minutes, so a car can find it and start the pairing from its own screen.
+- The car shows the title, artist, album, track number, length and position, and its buttons play, pause and skip. The app registers as a player with BlueZ.
+- Covers: the app publishes each song's cover file, but Knulli's Bluetooth stack (BlueZ) cannot send covers to a car yet. The support is still under review in BlueZ; covers will appear once Knulli ships it.
+- The log names the pairing error and the profiles a device offers (audio, remote control, hands-free), to tell why a car refuses the console.
+
 ## v0.2.17 (2026-11-11)
 
 - A song goes into a playlist only once, as in betterPod. Add to Playlist leaves out the songs already in it and says so: "Added to …", "N songs added to …", or "Already in …" when there is nothing new. Adding an album keeps each song once.

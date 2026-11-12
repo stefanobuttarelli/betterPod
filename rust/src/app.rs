@@ -429,6 +429,13 @@ pub struct App {
     queued_marks: HashMap<PathBuf, String>,
     detached_next: Option<usize>,
     now_track: Option<Track>,
+    /// What the car was last told is playing, and when (bt_media).
+    bt_published: Option<(
+        betterpod_rust::bt_media::NowPlaying,
+        Instant,
+        Option<std::path::PathBuf>,
+        bool,
+    )>,
     restored_position: f64,
     restored: bool,
     restore: Option<Playback>,
@@ -594,6 +601,7 @@ impl App {
             queued_marks: HashMap::new(),
             detached_next: None,
             now_track: None,
+            bt_published: None,
             restored_position: 0.0,
             restored: false,
             restore,
@@ -3173,7 +3181,69 @@ impl App {
         }
     }
 
+    /// Tells a car (or other Bluetooth receiver) what is playing. Sent only
+    /// when the song, its state or its position (a seek) changes; the car
+    /// counts the seconds itself.
+    fn publish_bluetooth_now(&mut self) {
+        use betterpod_rust::bt_media::{self, NowPlaying};
+        let snapshot = &self.audio_snapshot;
+        let track = self
+            .now_track
+            .as_ref()
+            .filter(|track| snapshot.path.as_ref() == Some(&track.path));
+        // Cheap test first: this runs every frame and allocates nothing.
+        if let Some((old, at, path, known)) = &self.bt_published {
+            let expected = old.position
+                + if old.playing {
+                    at.elapsed().as_secs_f64()
+                } else {
+                    0.0
+                };
+            if *path == snapshot.path
+                && *known == track.is_some()
+                && old.playing == snapshot.playing
+                && (old.duration - snapshot.duration).abs() <= 0.5
+                && (expected - snapshot.position).abs() <= 2.0
+            {
+                return;
+            }
+        }
+        let same_song = self
+            .bt_published
+            .as_ref()
+            .is_some_and(|(_, _, path, _)| *path == snapshot.path);
+        let cover = if same_song {
+            self.bt_published
+                .as_ref()
+                .and_then(|(old, _, _, _)| old.cover.clone())
+        } else {
+            snapshot.path.as_deref().and_then(bt_media::cover_beside)
+        };
+        let now = NowPlaying {
+            title: track.map(|t| t.title.clone()).unwrap_or_else(|| {
+                snapshot
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.file_stem())
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            }),
+            artist: track.map(|t| t.artist.clone()).unwrap_or_default(),
+            album: track.map(|t| t.album.clone()).unwrap_or_default(),
+            track: track.map_or(0, |t| t.track),
+            duration: snapshot.duration,
+            position: snapshot.position,
+            playing: snapshot.playing,
+            stopped: snapshot.path.is_none(),
+            cover,
+        };
+        let known = track.is_some();
+        let path = snapshot.path.clone();
+        bt_media::publish(now.clone());
+        self.bt_published = Some((now, Instant::now(), path, known));
+    }
     pub fn tick(&mut self, dt: f32, renderer: &Renderer) {
+        self.publish_bluetooth_now();
         self.visual_time += dt as f64;
         self.visual_video_tick(self.visual_time);
         if self.visual_menu_outgoing_page().is_none() {

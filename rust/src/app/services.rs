@@ -189,6 +189,10 @@ enum Choice {
     BtConnect(String),
     BtDisconnect(String),
     BtForget(String),
+    /// Visible for three minutes, so a car can start the pairing.
+    BtVisible,
+    /// The answer to a pairing question (the code matches, or pair).
+    BtAnswer(bool),
     Cancel,
     Tools,
     RemoveTools,
@@ -386,6 +390,8 @@ enum Typing {
     Tag(Field),
     Weather,
     SharingName,
+    /// The PIN or passkey another device shows; true for digits only.
+    BtCode(bool),
 }
 
 enum PendingShare {
@@ -506,6 +512,11 @@ pub(super) struct Extras {
     bt_last_header: std::time::Instant,
     bt_last_devices: std::time::Instant,
     bt_scanning_until: Option<f64>,
+    bt_visible_until: Option<f64>,
+    /// The pairing question on screen (its sheet's title), until answered.
+    bt_prompt: Option<String>,
+    /// Our agent is BlueZ's default while the Bluetooth page is open.
+    bt_agent_default: bool,
     bt_scan_second: i64,
     forecast: Option<usize>,
     forecast_depth: usize,
@@ -569,6 +580,9 @@ impl Extras {
             bt_last_header: std::time::Instant::now(),
             bt_last_devices: std::time::Instant::now(),
             bt_scanning_until: None,
+            bt_visible_until: None,
+            bt_prompt: None,
+            bt_agent_default: false,
             bt_scan_second: -1,
             forecast: None,
             forecast_depth: 0,
@@ -820,6 +834,9 @@ impl Extras {
                     }
                 }
                 Typing::Tag(_) => self.refresh_editor_page(),
+                Typing::BtCode(_) => {
+                    betterpod_rust::bt_media::answer(betterpod_rust::bt_media::Answer::No)
+                }
                 _ => {}
             }
         }
@@ -2617,6 +2634,20 @@ impl Extras {
             Choice::BtPower(on) => {
                 self.start_external_bluetooth(BtRequest::Power(on));
             }
+            Choice::BtVisible => {
+                self.bluetooth.request(BtRequest::Visible);
+                self.bt_visible_until = Some(self.visual_time + 180.0);
+                self.bt_scan_second = -1;
+                self.replace("Bluetooth", self.bluetooth_rows());
+            }
+            Choice::BtAnswer(yes) => {
+                self.bt_prompt = None;
+                betterpod_rust::bt_media::answer(if yes {
+                    betterpod_rust::bt_media::Answer::Yes
+                } else {
+                    betterpod_rust::bt_media::Answer::No
+                });
+            }
             Choice::BtScan => {
                 self.bluetooth.request(BtRequest::Scan);
                 self.bt_scanning_until = Some(self.visual_time + 12.0);
@@ -2934,6 +2965,9 @@ impl Extras {
     }
     fn submit_typing(&mut self, typing: Typing, query: String) {
         match typing {
+            Typing::BtCode(_) => betterpod_rust::bt_media::answer(
+                betterpod_rust::bt_media::Answer::Text(query.trim().to_string()),
+            ),
             Typing::Combined => self.run_combined(Some(query)),
             Typing::NewPlaylist => {
                 self.playlist_command(playlists::Command::Create { name: query })
@@ -3261,7 +3295,7 @@ impl Extras {
             rows.push(row);
         }
         let mut find = Item::new("Find New Devices", Choice::BtScan);
-        find.detail = "Put the headphones in pairing mode first".into();
+        find.detail = "Put the device in pairing mode first".into();
         if let Some(until) = self.bt_scanning_until {
             let left = (until - self.visual_time).ceil().max(0.0);
             find.title = "Searching…".into();
@@ -3270,6 +3304,21 @@ impl Extras {
             find.visual.progress = (1.0 - left / 12.0).max(0.001) as f32;
         }
         rows.push(find);
+        let mut visible = Item::new("Make Visible", Choice::BtVisible);
+        visible.detail = "For a car: pair from its screen".into();
+        if let Some(until) = self.bt_visible_until {
+            let left = (until - self.visual_time).ceil().max(0.0) as i64;
+            if left > 0 {
+                visible.title = "Visible".into();
+                visible.detail = format!(
+                    "{}:{:02} left · pair from the car's screen",
+                    left / 60,
+                    left % 60
+                );
+                visible.visual.no_arrow = true;
+            }
+        }
+        rows.push(visible);
         for device in self.bt_state.devices.iter().filter(|device| !device.paired) {
             let mut row = Item::new(&device.name, Choice::BtDevice(device.address.clone()));
             row.detail = "New · press [A] to pair and connect".into();
@@ -3278,6 +3327,81 @@ impl Extras {
             rows.push(row);
         }
         rows
+    }
+    /// Pairing questions from BlueZ (a car's code), and our agent as the
+    /// default one while the Bluetooth page is open.
+    fn bluetooth_pairing_tick(&mut self) {
+        use betterpod_rust::bt_media::{self, Answer, Prompt};
+        let open = self.pages.iter().any(|page| page.title == "Bluetooth");
+        if open != self.bt_agent_default {
+            self.bt_agent_default = open;
+            bt_media::set_default_agent(open);
+        }
+        // A question closed with B or Cancel is a no.
+        if let Some(title) = &self.bt_prompt {
+            if !self.pages.iter().any(|page| &page.title == title) {
+                self.bt_prompt = None;
+                bt_media::answer(Answer::No);
+            }
+        }
+        while let Some(prompt) = bt_media::poll_prompt() {
+            // Only asked on the Bluetooth page; elsewhere a question is a no.
+            if !open && !matches!(prompt, Prompt::Cancelled) {
+                bt_media::answer(Answer::No);
+                continue;
+            }
+            match prompt {
+                Prompt::Confirm { device, passkey } => {
+                    // the code first, so a long name never hides it
+                    self.push_confirmation(
+                        format!("Code {passkey:06} · Same on “{device}”?"),
+                        "",
+                        "Pair",
+                        Choice::BtAnswer(true),
+                    );
+                    self.bt_prompt = self.pages.last().map(|page| page.title.clone());
+                }
+                Prompt::Authorize { device } => {
+                    self.push_confirmation(
+                        format!("Pair with “{device}”?"),
+                        "",
+                        "Pair",
+                        Choice::BtAnswer(true),
+                    );
+                    self.bt_prompt = self.pages.last().map(|page| page.title.clone());
+                }
+                Prompt::Enter { device, digits_only } => {
+                    self.effects.push(Effect::Notice(format!(
+                        "Type the code “{device}” shows"
+                    )));
+                    self.keyboard =
+                        Some((Keyboard::new(String::new()), Typing::BtCode(digits_only)));
+                }
+                Prompt::Show { device, code } => {
+                    let mut page = Page::new(
+                        format!("Type {code} on “{device}”"),
+                        vec![Item::new("OK", Choice::Dismiss)],
+                    );
+                    page.role = PageRole::Sheet;
+                    self.pages.push(page);
+                }
+                Prompt::Cancelled => {
+                    if let Some(title) = self.bt_prompt.take() {
+                        if self.pages.last().is_some_and(|page| page.title == title) {
+                            self.pages.pop();
+                        }
+                    }
+                    if matches!(self.keyboard, Some((_, Typing::BtCode(_)))) {
+                        if let Some((mut keyboard, _)) = self.keyboard.take() {
+                            keyboard.hide(self.visual_time);
+                            self.closing_keyboard = Some(keyboard);
+                        }
+                    }
+                    self.effects
+                        .push(Effect::Notice("Pairing cancelled".into()));
+                }
+            }
+        }
     }
     pub(super) fn tick(&mut self, _dt: f32) -> Vec<Effect> {
         self.poll_inline_listen();
@@ -3293,7 +3417,15 @@ impl Extras {
             self.bluetooth.request(BtRequest::Refresh);
         }
 
-        if self.bt_scanning_until.is_some()
+        if self
+            .bt_visible_until
+            .is_some_and(|until| until <= self.visual_time)
+        {
+            self.bt_visible_until = None;
+            self.bt_scan_second = -1;
+        }
+        self.bluetooth_pairing_tick();
+        if (self.bt_scanning_until.is_some() || self.bt_visible_until.is_some())
             && self
                 .pages
                 .last()

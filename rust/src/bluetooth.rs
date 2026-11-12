@@ -30,6 +30,9 @@ pub enum Request {
     Refresh,
     Power(bool),
     Scan,
+    /// Visible to other devices for three minutes, so a car can find the
+    /// console and start the pairing from its own screen.
+    Visible,
     Connect(String),
     Disconnect(String),
     Forget(String),
@@ -142,10 +145,28 @@ fn execute(request: Request, context: &Context) -> Result<(), String> {
             Duration::from_secs(16),
         )
         .map(|_| ()),
+        Request::Visible => {
+            for args in [
+                &["pairable", "on"][..],
+                &["discoverable-timeout", "180"],
+                &["discoverable", "on"],
+            ] {
+                command_owned(context, args, Duration::from_secs(5))?;
+            }
+            Ok(())
+        }
         Request::Connect(address) => {
-            connect_commands(&address, context, |args, timeout| {
-                command_owned(context, args, timeout)
-            })?;
+            connect_commands_with(
+                &address,
+                context,
+                |args, timeout| command_owned(context, args, timeout),
+                |address| {
+                    // Our agent shows and confirms the code a car asks for.
+                    crate::bt_media::pair(address, Duration::from_secs(60), || {
+                        context.check().is_err()
+                    })
+                },
+            )?;
             let executable =
                 std::env::var("BETTERPOD_RUST_PACTL").unwrap_or_else(|_| "pactl".into());
             let started = Instant::now();
@@ -173,20 +194,46 @@ fn execute(request: Request, context: &Context) -> Result<(), String> {
         }
     }
 }
+#[cfg(test)]
 fn connect_commands(
     address: &str,
     context: &Context,
+    run: impl FnMut(&[&str], Duration) -> Result<String, String>,
+) -> Result<(), String> {
+    connect_commands_with(address, context, run, |_| None)
+}
+/// `pair` pairs through D-Bus with the app's agent; `None` (no system bus)
+/// falls back to bluetoothctl, which cannot answer a code.
+fn connect_commands_with(
+    address: &str,
+    context: &Context,
     mut run: impl FnMut(&[&str], Duration) -> Result<String, String>,
+    pair: impl Fn(&str) -> Option<Result<(), String>>,
 ) -> Result<(), String> {
     context.check()?;
     validate(address)?;
     let info = run(&["info", address], Duration::from_secs(5)).unwrap_or_default();
     context.check()?;
+    // What the device offers (audio, remote control, hands-free): the log
+    // shows why a car accepts or drops the console.
+    let profiles: Vec<&str> = info
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("UUID:"))
+        .map(|uuid| uuid.trim().split("  ").next().unwrap_or("").trim())
+        .collect();
+    if !profiles.is_empty() {
+        eprintln!("Bluetooth {address} offers: {}", profiles.join(", "));
+    }
     if !info.contains("Paired: yes") {
-        run(
-            &["--timeout", "20", "pair", address],
-            Duration::from_secs(24),
-        )?;
+        match pair(address) {
+            Some(result) => result?,
+            None => {
+                run(
+                    &["--timeout", "20", "pair", address],
+                    Duration::from_secs(24),
+                )?;
+            }
+        }
         context.check()?;
     }
     run(&["trust", address], Duration::from_secs(5))?;

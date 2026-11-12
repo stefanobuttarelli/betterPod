@@ -291,6 +291,7 @@ impl Input {
         }
         #[cfg(target_os = "linux")]
         self.media.drain(&mut out);
+        crate::bt_media::drain_actions(&mut out);
         repeat_held(&mut self.held, now, &mut out);
         out
     }

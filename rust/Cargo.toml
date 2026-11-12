@@ -1,6 +1,6 @@
 [package]
 name = "betterpod-rust"
-version = "0.2.17"
+version = "0.2.18"
 edition = "2021"
 # Matches RUST_VERSION in tools/Dockerfile, which builds the console package.
 rust-version = "1.98"
@@ -39,6 +39,8 @@ spake2 = "=0.4.0"
 chacha20poly1305 = "=0.10.1"
 hkdf = "=0.12.4"
 rand = "=0.8.8"
+zbus = "5"
+async-channel = "2"
 
 [lints.clippy]
 # Drawing helpers keep the Go reference's positional geometry arguments.
