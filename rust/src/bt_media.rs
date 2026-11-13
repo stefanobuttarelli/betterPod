@@ -8,6 +8,8 @@
 //!   agent only while the Bluetooth page is open, so a car can also start
 //!   the pairing. BlueZ restores the previous default agent when ours steps
 //!   down.
+//! - the console's class: a phone's, which many cars require before they
+//!   pair (`bt_class`).
 //! - a media player registered with BlueZ (org.bluez.Media1.RegisterPlayer),
 //!   so the car shows the title, artist, album, length and position and its
 //!   buttons control the app. The cover's file goes out as `mpris:artUrl`;
@@ -104,6 +106,7 @@ fn service() -> Option<&'static Service> {
                 actions: action_tx,
                 pending: pending.clone(),
                 shared: connection.clone(),
+                phone_class: crate::bt_class::enabled(),
             };
             thread::Builder::new()
                 .name("bt-media".into())
@@ -239,12 +242,21 @@ fn device_path(address: &str) -> String {
 }
 
 /// Plain words for BlueZ's pairing errors; the full one goes to the log.
+///
+/// "Rejected" is the other device refusing the console before any code
+/// (Pairing Not Allowed, security or address refused): a car not in its
+/// add-a-phone screen, or one that wants a phone. "Canceled" is the other
+/// device dropping the link or out of room. A code refused with B, or on
+/// the car's screen, is "AuthenticationFailed".
 fn pairing_error(error: &str) -> String {
     if error.contains("AlreadyExists") {
         return "Already paired".into();
     }
-    if error.contains("AuthenticationRejected") || error.contains("AuthenticationCanceled") {
-        return "Pairing was refused on one of the two screens".into();
+    if error.contains("AuthenticationRejected") {
+        return "The device refused to pair. Open its pairing screen and try again".into();
+    }
+    if error.contains("AuthenticationCanceled") {
+        return "The device stopped the pairing. Try again".into();
     }
     if error.contains("AuthenticationFailed") {
         return "Pairing failed: the codes did not match or the device refused. Try again".into();
@@ -564,6 +576,8 @@ struct Worker {
     actions: mpsc::SyncSender<Action>,
     pending: Arc<Mutex<Option<async_channel::Sender<Answer>>>>,
     shared: Arc<Mutex<Option<Connection>>>,
+    /// Shows the console to cars as a phone (`bt_class`).
+    phone_class: bool,
 }
 
 /// BlueZ's answer when something is registered already: fine.
@@ -678,6 +692,28 @@ impl Worker {
         })
     }
 
+    /// Cars pair only with phones: the console says it is one (see
+    /// `bt_class`). Logs each change, and each new error once.
+    fn present_as_phone(logged: &mut Option<String>) {
+        use crate::bt_class::{ensure_phone, Outcome};
+        match ensure_phone(0) {
+            Ok(Outcome::Changed { from, to }) => {
+                eprintln!(
+                    "Bluetooth: the console now shows itself as a phone to cars \
+                     (class 0x{from:06x} -> 0x{to:06x})"
+                );
+                *logged = None;
+            }
+            Ok(Outcome::Unchanged) => *logged = None,
+            Err(error) => {
+                if logged.as_ref() != Some(&error) {
+                    eprintln!("Bluetooth: cannot set the phone class ({error})");
+                    *logged = Some(error);
+                }
+            }
+        }
+    }
+
     fn run(self) {
         let mut now = NowPlaying {
             stopped: true,
@@ -687,6 +723,8 @@ impl Worker {
         let mut connection: Option<Connection> = None;
         let mut next_check = Instant::now();
         let mut logged: Option<String> = None;
+        let phone_class = self.phone_class;
+        let mut class_logged: Option<String> = None;
         loop {
             let wait = next_check.saturating_duration_since(Instant::now());
             let command = match self.rx.recv_timeout(wait) {
@@ -752,6 +790,9 @@ impl Worker {
                             }
                         }
                     }
+                    if phone_class {
+                        Self::present_as_phone(&mut class_logged);
+                    }
                     next_check = Instant::now() + Duration::from_secs(10);
                 }
             }
@@ -809,7 +850,8 @@ mod tests {
     fn pairing_errors_read_plainly() {
         assert!(pairing_error("org.bluez.Error.AuthenticationFailed: x").contains("codes"));
         assert!(pairing_error("org.bluez.Error.AuthenticationTimeout").contains("No answer"));
-        assert!(pairing_error("org.bluez.Error.AuthenticationRejected").contains("refused"));
+        assert!(pairing_error("org.bluez.Error.AuthenticationRejected").contains("device refused"));
+        assert!(pairing_error("org.bluez.Error.AuthenticationCanceled").contains("stopped"));
         assert_eq!(device_path("AA:BB:CC:DD:EE:FF"), "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF");
     }
 
@@ -917,6 +959,7 @@ mod tests {
             actions: action_tx,
             pending: pending.clone(),
             shared: shared.clone(),
+            phone_class: false,
         };
         thread::spawn(move || worker.run());
         let wait = |what: &str| {

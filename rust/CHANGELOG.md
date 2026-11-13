@@ -2,6 +2,13 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.20 (2026-11-13)
+
+- Pairs with cars that accept only phones. A Hyundai Tucson 2025 refused every pairing, and the console said "Pairing was refused on one of the two screens" although nobody had refused. Knulli presents the console as a "miscellaneous" Bluetooth device, and many car stereos refuse anything whose Bluetooth class is not a phone's. While the app runs, the console now presents itself as a smartphone. Only the class changes: its audio and hands-free profiles stay as they were. bluetoothd sets its own class again when it restarts, so the app checks every 10 seconds. `BETTERPOD_RUST_BT_PHONE=0` keeps Knulli's class.
+- A device that refuses the console now reads "The device refused to pair. Open its pairing screen and try again", and one that drops the pairing "The device stopped the pairing. Try again". A code refused on either screen keeps its own message.
+- Right after pairing, a car connects its own hands-free and audio links while the console connects too, and the console's attempt could fail although the car was connecting. The console now waits three seconds, tries once more, and counts the car's own connection as connected. A refused connection reads plainly instead of BlueZ's code.
+- Before each pairing, the log records the console's Bluetooth class and whether it offers the hands-free gateway, next to what the device offers.
+
 ## v0.2.19 (2026-11-12)
 
 - Delete Album works as in betterPod: one question ("Delete … for good?"), then the songs leave the card in the background while the music keeps playing. The app no longer shuts down into the maintenance screen. If a song of that album is playing, the music stops; its songs leave the queue. The album's folder goes too when only pictures, lists or lyrics are left in it.

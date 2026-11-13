@@ -166,6 +166,7 @@ fn execute(request: Request, context: &Context) -> Result<(), String> {
                         context.check().is_err()
                     })
                 },
+                |duration| context.sleep(duration),
             )?;
             let executable =
                 std::env::var("BETTERPOD_RUST_PACTL").unwrap_or_else(|_| "pactl".into());
@@ -200,15 +201,59 @@ fn connect_commands(
     context: &Context,
     run: impl FnMut(&[&str], Duration) -> Result<String, String>,
 ) -> Result<(), String> {
-    connect_commands_with(address, context, run, |_| None)
+    connect_commands_with(address, context, run, |_| None, |_| Ok(()))
+}
+/// The profile names in bluetoothctl's `info` or `show`.
+fn profile_names(listing: &str) -> Vec<&str> {
+    listing
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("UUID:"))
+        .map(|uuid| uuid.rsplit_once(" (").map_or(uuid, |(name, _)| name).trim())
+        .collect()
+}
+/// What the console shows a car before pairing: its class (a phone's, see
+/// `bt_class`) and its own profiles. Strict cars also want the hands-free
+/// audio gateway, which PipeWire provides.
+fn log_console(show: &str) {
+    let class = show
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Class:"))
+        .map_or("unknown", str::trim);
+    let profiles = profile_names(show);
+    let gateway = profiles
+        .iter()
+        .any(|p| p.contains("Handsfree Audio Gateway"));
+    eprintln!(
+        "Bluetooth console: class {class}, hands-free gateway {}, offers: {}",
+        if gateway { "yes" } else { "no" },
+        profiles.join(", ")
+    );
+}
+/// Plain words for a failed `bluetoothctl connect`; the full one is logged.
+fn connect_error(error: &str) -> String {
+    if error.contains("connection-refused") || error.contains("Connection refused") {
+        return "The device refused the connection. Try again".into();
+    }
+    if error.contains("page-timeout") || error.contains("Host is down") {
+        return "No answer from the device. Turn it on and try again".into();
+    }
+    if error.contains("InProgress") || error.contains("busy") {
+        return "The device is still connecting. Try again".into();
+    }
+    if error.contains("profile-unavailable") {
+        return "The device offers no audio the console can play to".into();
+    }
+    error.to_owned()
 }
 /// `pair` pairs through D-Bus with the app's agent; `None` (no system bus)
-/// falls back to bluetoothctl, which cannot answer a code.
+/// falls back to bluetoothctl, which cannot answer a code. `wait` sleeps
+/// unless cancelled.
 fn connect_commands_with(
     address: &str,
     context: &Context,
     mut run: impl FnMut(&[&str], Duration) -> Result<String, String>,
     pair: impl Fn(&str) -> Option<Result<(), String>>,
+    wait: impl Fn(Duration) -> Result<(), String>,
 ) -> Result<(), String> {
     context.check()?;
     validate(address)?;
@@ -216,15 +261,13 @@ fn connect_commands_with(
     context.check()?;
     // What the device offers (audio, remote control, hands-free): the log
     // shows why a car accepts or drops the console.
-    let profiles: Vec<&str> = info
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("UUID:"))
-        .map(|uuid| uuid.trim().split("  ").next().unwrap_or("").trim())
-        .collect();
+    let profiles = profile_names(&info);
     if !profiles.is_empty() {
         eprintln!("Bluetooth {address} offers: {}", profiles.join(", "));
     }
     if !info.contains("Paired: yes") {
+        log_console(&run(&["show"], Duration::from_secs(5)).unwrap_or_default());
+        context.check()?;
         match pair(address) {
             Some(result) => result?,
             None => {
@@ -238,8 +281,30 @@ fn connect_commands_with(
     }
     run(&["trust", address], Duration::from_secs(5))?;
     context.check()?;
-    run(&["connect", address], Duration::from_secs(18))?;
-    context.check()
+    let first = match run(&["connect", address], Duration::from_secs(18)) {
+        Err(error) if !error.contains("AlreadyConnected") => error,
+        _ => return context.check(),
+    };
+    eprintln!("Bluetooth connect {address}: {first}");
+    context.check()?;
+    // Right after pairing a car connects its own profiles (hands-free,
+    // then audio), and ours fails meanwhile: "in progress", "busy" or
+    // refused. Let the car finish, then connect what is left.
+    wait(Duration::from_secs(3))?;
+    let second = match run(&["connect", address], Duration::from_secs(18)) {
+        Ok(_) => return context.check(),
+        Err(error) if error.contains("AlreadyConnected") => return context.check(),
+        Err(error) => error,
+    };
+    context.check()?;
+    let info = run(&["info", address], Duration::from_secs(5)).unwrap_or_default();
+    context.check()?;
+    if info.contains("Connected: yes") {
+        eprintln!("Bluetooth {address}: connected by the device ({second})");
+        return Ok(());
+    }
+    eprintln!("Bluetooth connect {address}: {second}");
+    Err(connect_error(&first))
 }
 fn refresh(context: &Context) -> Result<State, String> {
     let controller = command_owned(context, &["show"], Duration::from_secs(5))?;
@@ -446,10 +511,107 @@ mod tests {
             Ok(String::new())
         });
         assert_eq!(result, Err("Cancelled".into()));
-        assert_eq!(calls.len(), 2);
-        assert!(!calls
-            .iter()
-            .any(|call| call.starts_with("trust") || call.starts_with("connect")));
+        assert_eq!(
+            calls,
+            [
+                "info 58:18:62:28:8E:DA",
+                "show",
+                "--timeout 20 pair 58:18:62:28:8E:DA"
+            ]
+        );
+    }
+    /// bluetoothctl's answers for a car: `connects` lists what each
+    /// `connect` returns; `info` is the device's state after them.
+    fn car_connect(
+        connects: &[Result<&str, &str>],
+        connected_after: bool,
+    ) -> (Result<(), String>, Vec<String>) {
+        let context = Context::standalone();
+        let mut calls = Vec::new();
+        let mut connects = connects.iter();
+        let mut infos = 0;
+        let result = connect_commands_with(
+            "58:18:62:28:8E:DA",
+            &context,
+            |args, _| {
+                calls.push(args.join(" "));
+                match args[0] {
+                    "info" => {
+                        infos += 1;
+                        Ok(if infos == 1 {
+                            "Paired: no\n\tUUID: Handsfree  (0000111e-0000-1000-8000-00805f9b34fb)\n".into()
+                        } else if connected_after {
+                            "Paired: yes\nConnected: yes\n".into()
+                        } else {
+                            "Paired: yes\nConnected: no\n".into()
+                        })
+                    }
+                    "connect" => connects
+                        .next()
+                        .expect("no more connect attempts")
+                        .map(String::from)
+                        .map_err(String::from),
+                    _ => Ok(String::new()),
+                }
+            },
+            |_| Some(Ok(())),
+            |_| Ok(()),
+        );
+        (result, calls)
+    }
+    #[test]
+    fn a_car_that_connects_itself_after_pairing_is_connected() {
+        let busy = "Failed to connect: org.bluez.Error.InProgress br-connection-busy";
+        // our second attempt finds the car's profiles already up
+        let (result, calls) = car_connect(
+            &[
+                Err(busy),
+                Err("Failed to connect: org.bluez.Error.AlreadyConnected"),
+            ],
+            false,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(calls.iter().filter(|c| c.starts_with("connect")).count(), 2);
+        // or still fails, while the car holds the link
+        let (result, _) = car_connect(&[Err(busy), Err(busy)], true);
+        assert_eq!(result, Ok(()));
+        // or simply works the second time
+        let (result, calls) = car_connect(&[Err(busy), Ok("Connection successful")], false);
+        assert_eq!(result, Ok(()));
+        assert_eq!(calls.last().unwrap(), "connect 58:18:62:28:8E:DA");
+        // the first attempt working needs no second one
+        let (result, calls) = car_connect(&[Ok("Connection successful")], false);
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            calls,
+            [
+                "info 58:18:62:28:8E:DA",
+                "show",
+                "trust 58:18:62:28:8E:DA",
+                "connect 58:18:62:28:8E:DA"
+            ]
+        );
+    }
+    #[test]
+    fn a_refused_connection_reads_plainly() {
+        let refused = "Failed to connect: org.bluez.Error.Failed br-connection-refused";
+        let (result, _) = car_connect(&[Err(refused), Err(refused)], false);
+        assert_eq!(
+            result,
+            Err("The device refused the connection. Try again".into())
+        );
+        assert!(connect_error(
+            "Failed to connect: org.bluez.Error.Failed br-connection-page-timeout"
+        )
+        .contains("No answer"));
+        assert_eq!(
+            connect_error("Failed to connect: something new"),
+            "Failed to connect: something new"
+        );
+        assert_eq!(
+            profile_names("Controller X\n\tClass: 0x006c020c\n\tUUID: Handsfree Audio Gateway (0000111f-0000-1000-8000-00805f9b34fb)\n\tUUID: Audio Source              (0000110a-0000-1000-8000-00805f9b34fb)\n"),
+            ["Handsfree Audio Gateway", "Audio Source"]
+        );
     }
     #[test]
     fn cancelled_owned_command_never_launches_a_physical_program() {
