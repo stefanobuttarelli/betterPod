@@ -1,0 +1,68 @@
+[package]
+name = "betterpod-rust"
+version = "0.2.21"
+edition = "2021"
+# Matches RUST_VERSION in tools/Dockerfile, which builds the console package.
+rust-version = "1.98"
+publish = false
+
+[dependencies]
+ttf-parser = "0.25.1"
+tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
+flate2 = "1"
+sdl2 = { version = "0.38", features = ["mixer"] }
+glow = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+semver = "1"
+lofty = "0.25"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+jpeg-decoder = { version = "=0.3.2", default-features = false }
+fontdue = "0.9"
+libc = "0.2"
+ureq = { version = "3", features = ["json"] }
+quick-xml = { version = "0.38", features = ["escape-html"] }
+sha2 = "0.10"
+base64 = "0.22"
+urlencoding = "2"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+magic-wormhole = "0.8.1"
+async-std = "1"
+futures-lite = "2"
+symphonia = { version = "0.5", features = ["all"] }
+encoding_rs = "0.8"
+regex = "=1.13.1"
+unicode-normalization = "=0.1.25"
+unicode-general-category = "=1.1.0"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+spake2 = "=0.4.0"
+chacha20poly1305 = "=0.10.1"
+hkdf = "=0.12.4"
+rand = "=0.8.8"
+zbus = "5"
+async-channel = "2"
+
+[lints.clippy]
+# Drawing helpers keep the Go reference's positional geometry arguments.
+too_many_arguments = "allow"
+# Pixel, band and grid loops mirror the Go reference's index arithmetic.
+needless_range_loop = "allow"
+# Worker messages cross a channel once per event; boxing them buys nothing.
+large_enum_variant = "allow"
+
+[build-dependencies]
+cc = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+sdl2 = { version = "0.38", features = ["mixer", "use_mac_framework"] }
+
+# Debug builds and tests resize full-size covers through `image`; optimizing
+# that one dependency keeps them fast without slowing the app's own build.
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

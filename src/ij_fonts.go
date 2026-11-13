@@ -197,7 +197,17 @@ func (f *fbFace) GlyphBounds(r rune) (fixed.Rectangle26_6, fixed.Int26_6, bool) 
 func (f *fbFace) GlyphAdvance(r rune) (fixed.Int26_6, bool) { return f.pick(r).GlyphAdvance(r) }
 func (f *fbFace) Kern(r0, r1 rune) fixed.Int26_6 {
 	if f.inPrimary(r0) && f.inPrimary(r1) {
-		return f.pri.Kern(r0, r1)
+		// The pinned opentype.Face.Kern scales with UnitsPerEm instead of
+		// the face size. Ask sfnt directly so spacing scales with the text.
+		x0, e0 := f.priFont.GlyphIndex(&f.buf, r0)
+		x1, e1 := f.priFont.GlyphIndex(&f.buf, r1)
+		if e0 == nil && e1 == nil {
+			k, err := f.priFont.Kern(&f.buf, x0, x1, fixed.Int26_6(math.Round(f.size*DPR*64)), font.HintingNone)
+			if err == nil {
+				return k
+			}
+		}
+		return 0
 	}
 	return 0
 }
