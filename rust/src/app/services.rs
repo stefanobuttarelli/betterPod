@@ -516,8 +516,8 @@ pub(super) struct Extras {
     bt_last_devices: std::time::Instant,
     bt_scanning_until: Option<f64>,
     bt_visible_until: Option<f64>,
-    /// The pairing question on screen (its sheet's title), until answered.
-    bt_prompt: Option<String>,
+    /// The pairing question on screen (its sheet's identity), until answered.
+    bt_prompt: Option<u64>,
     /// Our agent is BlueZ's default while the Bluetooth page is open.
     bt_agent_default: bool,
     bt_scan_second: i64,
@@ -3369,8 +3369,8 @@ impl Extras {
             bt_media::set_default_agent(open);
         }
         // A question closed with B or Cancel is a no.
-        if let Some(title) = &self.bt_prompt {
-            if !self.pages.iter().any(|page| &page.title == title) {
+        if let Some(key) = self.bt_prompt {
+            if !self.pages.iter().any(|page| page.key == key) {
                 self.bt_prompt = None;
                 bt_media::answer(Answer::No);
             }
@@ -3390,7 +3390,7 @@ impl Extras {
                         "Pair",
                         Choice::BtAnswer(true),
                     );
-                    self.bt_prompt = self.pages.last().map(|page| page.title.clone());
+                    self.bt_prompt = self.pages.last().map(|page| page.key);
                 }
                 Prompt::Authorize { device } => {
                     self.push_confirmation(
@@ -3399,7 +3399,7 @@ impl Extras {
                         "Pair",
                         Choice::BtAnswer(true),
                     );
-                    self.bt_prompt = self.pages.last().map(|page| page.title.clone());
+                    self.bt_prompt = self.pages.last().map(|page| page.key);
                 }
                 Prompt::Enter { device, digits_only } => {
                     self.effects.push(Effect::Notice(format!(
@@ -3414,20 +3414,11 @@ impl Extras {
                         vec![Item::new("OK", Choice::Dismiss)],
                     );
                     page.role = PageRole::Sheet;
+                    self.bt_prompt = Some(page.key);
                     self.pages.push(page);
                 }
                 Prompt::Cancelled => {
-                    if let Some(title) = self.bt_prompt.take() {
-                        if self.pages.last().is_some_and(|page| page.title == title) {
-                            self.pages.pop();
-                        }
-                    }
-                    if matches!(self.keyboard, Some((_, Typing::BtCode(_)))) {
-                        if let Some((mut keyboard, _)) = self.keyboard.take() {
-                            keyboard.hide(self.visual_time);
-                            self.closing_keyboard = Some(keyboard);
-                        }
-                    }
+                    self.close_bluetooth_prompt();
                     self.effects
                         .push(Effect::Notice("Pairing cancelled".into()));
                 }

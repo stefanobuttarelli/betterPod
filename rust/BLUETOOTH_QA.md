@@ -80,3 +80,77 @@ Installed binary SHA-256: `a69e1d86ca33c5160051729175d94c264b48cb011b031d4a95b12
 Local untracked artifacts: `build/rust/bluetooth-qa-2026-11-06/`, including `original-device/`, `original-results.tar.gz`, supervisor/unit/cross-build logs and the menu negative control. Font comparison/profile artifacts are under `build/rust/`.
 
 Tests retain the existing pairing, codec and audio buffers. Actual physical headset buttons and long-term endurance need their own observations. These finite samples do not guarantee permanent 60 fps or uninterrupted Bluetooth in every radio environment.
+
+## Tucson pairing follow-up — 2026-11-13
+
+The user reported `AuthenticationCanceled` before any code appeared on a
+Hyundai Tucson, with pairing initiated from the console. Inspection of the
+installed 0.2.20 on Knulli (firmware date 20260511) found a concrete startup
+failure: zbus looked for `/var/run/dbus/system_bus_socket`, but this firmware
+has only `/run/dbus/system_bus_socket`. The app logged `no system bus`, so its
+interactive agent, media player and phone-class setup never became active.
+The adapter still reported class `0x006c0000`. Its advertised services already
+included Audio Source and Handsfree Audio Gateway (`0x111f`); this observation
+does not support adding a new telephone profile as the first fix.
+
+The 0.2.21 build selects the existing `/run` system socket and
+respects explicit system-bus addresses. It rechecks the socket on retries and
+registers the interactive agent before each outgoing pairing. A separate input
+bug blocked A and PIN editing while Connect waited; the existing confirmation
+sheet and keyboard now receive those inputs while the underlying list stays
+locked. The two input regressions were reproduced before the fix.
+
+Validation: 474 ordinary tests passed (340 library, 128 app, 6 proxy); 34
+existing opt-in tests remained ignored. The private D-Bus test actually ran,
+covering registration, confirmation, rejection and local cancellation. The
+Docker image now includes its required daemon. A local concurrent link ran
+out of build-container memory; the final full suite passed with one Cargo
+build job. AArch64/glibc 2.28 validation and package integrity checks passed.
+
+A three-second headless probe of the corrected media worker on the actual
+console connected to `/run/dbus/system_bus_socket` and registered the
+KeyboardDisplay agent and media player. The probe did not pair, open audio,
+change the device class or access the music library, and was removed afterward.
+Five native-size Go/Rust component comparisons were inspected. All five Rust
+captures were pixel-identical before and after this input change. Existing
+differences include Make Visible, shorter row copy, the playing-track header
+over the confirmation, and the lack of a dedicated visible typed-PIN field;
+Go has no car-pairing flow, so its generic sheet and keyboard are the references.
+
+Local evidence is under `build/rust/bluetooth-0.2.21/` and
+`build/rust/bluetooth-visual-2026-11-13/`. This confirms the system-bus fix and
+the application input regressions, not successful Tucson pairing or audible
+car playback. Those require another on-car test.
+
+### User confirmation and cover-art investigation
+
+After the SSH installation, the user confirmed that the Tucson connection
+works. The retained app log records a confirmation requested for Tucson, a yes
+answer on the console and successful pairing after 16.5 seconds. Cover art is
+still absent.
+
+Read-only inspection confirmed BlueZ 5.82 on the console. The Tucson's cached
+AVRCP Controller SDP record advertises version 1.6 and SupportedFeatures
+`0x03c1`, including GetImageProperties (`0x0080`), GetImage (`0x0100`) and
+GetLinkedThumbnail (`0x0200`). The car advertises the required receiving
+capabilities; this is not evidence of a completed image transfer.
+
+Stock BlueZ 5.82's local-player metadata parser ignores `mpris:artUrl` and its
+AVRCP Target does not advertise a Cover Art responder. It cannot send the app's
+images merely by adding that metadata property. The proposed upstream v4
+implementation dated 2026-10-09 changes both bluetoothd and obexd and was
+closed without being merged on 2026-10-24. It also expects a standard
+session-bus MPRIS player, whereas betterPod registers its player directly on
+the system bus. An experimental integration therefore requires coordinated
+system-service and application work. No firmware/service replacement was
+performed during this investigation.
+
+The app also needs to publish its already-resolved artwork (including embedded
+covers), valid escaped file URIs and refreshed cover metadata before such a
+responder can consume it. Those changes alone cannot make the installed BlueZ
+send covers.
+
+Sources: [BlueZ 5.82 metadata parser](https://github.com/bluez/bluez/blob/5.82/profiles/audio/media.c),
+[AVRCP implementation and feature bits](https://github.com/bluez/bluez/blob/5.82/profiles/audio/avrcp.c),
+[upstream cover-art proposal and review](https://lore-kernel.gnuweeb.org/linux-bluetooth/20260803195620.255866-1-jan.brummer%40tabos.org/T/).
+Local evidence: `build/rust/bluetooth-covers-2026-11-13/`.

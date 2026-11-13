@@ -2,6 +2,16 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.21 (2026-11-13)
+
+- Find Knulli's system bus at `/run/dbus/system_bus_socket`. On the tested console, the previous version looked only under `/var/run/dbus`, so its pairing agent, car media controls and phone-class setup never started. Explicit `DBUS_SYSTEM_BUS_ADDRESS` settings remain respected.
+- Bluetooth pairing confirmations now accept input while Connect is waiting. The pending connection blocked A on the code confirmation sheet and input on the PIN keyboard, so the request could remain unanswered. The device list stays locked while pairing; cancelling returns to the same row.
+- Register the app's interactive Bluetooth agent before starting each pairing, including just after startup or a BlueZ restart. Keep requests to receive pairings across a temporary system-bus failure.
+- Pairing diagnostics record the requested confirmation, the console's answer, elapsed time and local cancellation, without logging PINs or passkeys. `AuthenticationCanceled` now describes cancellation or a lost connection without assuming which device caused it.
+- Keep the three previous nonempty console logs across app launches so a failed pairing can be investigated after reopening the app.
+
+The user confirmed that the Bluetooth connection works on the Hyundai Tucson after installing this build. Cover art remains unavailable with Knulli's BlueZ 5.82, which lacks the image-sending service. Bluetooth profiles, audio codecs and system configuration are unchanged.
+
 ## v0.2.20 (2026-11-13)
 
 - Pairs with cars that accept only phones. A Hyundai Tucson 2025 refused every pairing, and the console said "Pairing was refused on one of the two screens" although nobody had refused. Knulli presents the console as a "miscellaneous" Bluetooth device, and many car stereos refuse anything whose Bluetooth class is not a phone's. While the app runs, the console now presents itself as a smartphone. Only the class changes: its audio and hands-free profiles stay as they were. bluetoothd sets its own class again when it restarts, so the app checks every 10 seconds. `BETTERPOD_RUST_BT_PHONE=0` keeps Knulli's class.

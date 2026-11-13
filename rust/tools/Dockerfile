@@ -24,3 +24,8 @@ RUN if ! command -v aarch64-linux-gnu-gcc >/dev/null; then apt-get update && apt
  && dpkg-deb -x /tmp/libc6-dev.deb /opt/knulli-glibc228 \
  && python3 -c 'from pathlib import Path; import os; root=Path("/opt/knulli-glibc228"); links=[p for p in root.rglob("*") if p.is_symlink() and os.readlink(p).startswith("/")]; [(lambda p,t:(p.unlink(),p.symlink_to(os.path.relpath(root / t.lstrip("/"),p.parent))))(p,os.readlink(p)) for p in links]' \
  && rm /tmp/libc6.deb /tmp/libc6-dev.deb
+
+# Pairing tests use a private bus and must execute the real D-Bus exchange.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends dbus-daemon \
+ && rm -rf /var/lib/apt/lists/*

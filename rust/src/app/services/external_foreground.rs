@@ -78,14 +78,73 @@ impl Extras {
         let Some(pending) = self.external_pending.take() else {
             return;
         };
+        if matches!(pending.kind, ExternalKind::Bluetooth)
+            && self.bluetooth_prompt_owned_by(pending.owner)
+        {
+            self.close_bluetooth_prompt();
+            betterpod_rust::bt_media::answer(betterpod_rust::bt_media::Answer::No);
+        }
         pending.handle.cancel();
         self.clear_prepared_foreground_row(Some((pending.owner, pending.row)));
         self.weather_loading = false;
         self.forecast_loading = false;
         self.pending_weather = None;
     }
+    /// A pairing question belongs to the pending device row even when its
+    /// sheet is above that row. Other sheets and keyboards stay locked.
+    fn bluetooth_prompt_owned_by(&self, owner: u64) -> bool {
+        let Some(page) = self.pages.last() else {
+            return false;
+        };
+        if page.key == owner && matches!(self.keyboard, Some((_, Typing::BtCode(_)))) {
+            return true;
+        }
+        self.bt_prompt == Some(page.key)
+            && page.role == PageRole::Sheet
+            && self
+                .pages
+                .iter()
+                .rev()
+                .nth(1)
+                .is_some_and(|source| source.key == owner)
+    }
+    pub(super) fn close_bluetooth_prompt(&mut self) {
+        if let Some(key) = self.bt_prompt.take() {
+            if self.pages.last().is_some_and(|page| page.key == key) {
+                self.pages.pop();
+            }
+        }
+        if matches!(self.keyboard, Some((_, Typing::BtCode(_)))) {
+            if let Some((mut keyboard, _)) = self.keyboard.take() {
+                keyboard.hide(self.visual_time);
+                self.closing_keyboard = Some(keyboard);
+            }
+        }
+    }
     pub(super) fn handle_external_foreground(&mut self, action: Action) -> bool {
-        if self.external_pending.is_none() {
+        let Some(pending) = self.external_pending.as_ref() else {
+            return false;
+        };
+        if matches!(pending.kind, ExternalKind::Bluetooth)
+            && pending.generation == self.generation
+            && self.bluetooth_prompt_owned_by(pending.owner)
+        {
+            // The operation cannot finish without the user's answer. Keep
+            // normal sheet selection and PIN editing available, including
+            // the keyboard's B/backspace and hold-B/close controls.
+            let typing = matches!(self.keyboard, Some((_, Typing::BtCode(_))));
+            let cancel_row = self.pages.last().is_some_and(|page| {
+                page.rows.get(page.selected).is_some_and(|row| matches!(row.choice, Choice::Dismiss))
+                    && page.rows.iter().any(|row| {
+                        matches!(&row.choice, Choice::ConfirmAction(choice) if matches!(**choice, Choice::BtAnswer(_)))
+                    })
+            });
+            if action == Action::BackHeld
+                || (!typing && (action == Action::Back || action == Action::Select && cancel_row))
+            {
+                self.cancel_external_foreground();
+                return true;
+            }
             return false;
         }
         match action {
@@ -112,10 +171,11 @@ impl Extras {
                 && !pending.handle.is_cancelled()
                 && pending.generation == self.generation
                 && matches!(pending.kind, ExternalKind::Bluetooth) != weather
-                && self
+                && (self
                     .pages
                     .last()
                     .is_some_and(|page| page.key == pending.owner)
+                    || !weather && self.bluetooth_prompt_owned_by(pending.owner))
         })
     }
     fn refresh_weather_source(&mut self) {
@@ -261,6 +321,7 @@ impl Extras {
             return;
         }
         if owned {
+            self.close_bluetooth_prompt();
             self.finish_external();
         } else if self.external_pending.is_some() || self.foreground.is_some() {
             return;
@@ -342,6 +403,15 @@ mod tests {
                 error: None,
             });
             handle
+        }
+        fn confirm_pairing(&mut self) {
+            self.extras.push_confirmation(
+                "Code 123456 · Same on “Car”?",
+                "",
+                "Pair",
+                Choice::BtAnswer(true),
+            );
+            self.extras.bt_prompt = self.extras.pages.last().map(|page| page.key);
         }
     }
     impl Drop for Fixture {
@@ -467,6 +537,152 @@ mod tests {
         ));
         assert_eq!(fixture.extras.pages.last().unwrap().key, current);
         assert!(fixture.extras.bt_error.is_empty());
+    }
+    #[test]
+    fn bluetooth_pairing_confirmation_accepts_a_while_connect_is_pending() {
+        let mut fixture = Fixture::new("Bluetooth");
+        let handle = fixture.claim(ExternalKind::Bluetooth);
+        let owner = fixture.extras.pages.last().unwrap().key;
+        fixture.confirm_pairing();
+        fixture.extras.handle(Action::Select);
+        assert_eq!(fixture.extras.pages.last().unwrap().key, owner);
+        assert!(
+            fixture.extras.bt_prompt.is_none(),
+            "A must reach the pairing answer"
+        );
+        assert!(!handle.is_cancelled(), "Confirming must keep Connect alive");
+        assert!(fixture.extras.external_pending.is_some());
+        fixture.extras.handle(Action::Down);
+        assert_eq!(fixture.extras.pages.last().unwrap().selected, 0);
+    }
+    #[test]
+    fn bluetooth_pairing_keyboard_accepts_input_while_connect_is_pending() {
+        let mut fixture = Fixture::new("Bluetooth");
+        let handle = fixture.claim(ExternalKind::Bluetooth);
+        fixture.extras.keyboard = Some((Keyboard::new("123"), Typing::BtCode(true)));
+        fixture.extras.handle(Action::Back);
+        assert_eq!(fixture.extras.keyboard.as_ref().unwrap().0.query, "12");
+        assert!(
+            !handle.is_cancelled(),
+            "B keeps its keyboard backspace meaning"
+        );
+        fixture.extras.handle(Action::Select);
+        assert_ne!(fixture.extras.keyboard.as_ref().unwrap().0.query, "12");
+        fixture.extras.handle(Action::Start);
+        assert!(fixture.extras.keyboard.is_none(), "START submits the code");
+        assert!(fixture.extras.external_pending.is_some());
+        assert!(!handle.is_cancelled());
+    }
+    #[test]
+    fn bluetooth_pairing_back_and_cancel_return_to_the_owned_row() {
+        for actions in [vec![Action::Back], vec![Action::Down, Action::Select]] {
+            let mut fixture = Fixture::new("Bluetooth");
+            let handle = fixture.claim(ExternalKind::Bluetooth);
+            let owner = fixture.extras.pages.last().unwrap().key;
+            fixture.confirm_pairing();
+            for action in actions {
+                fixture.extras.handle(action);
+            }
+            assert!(handle.is_cancelled());
+            assert!(fixture.extras.external_pending.is_none());
+            assert!(fixture.extras.bt_prompt.is_none());
+            assert_eq!(fixture.extras.pages.last().unwrap().key, owner);
+            assert_eq!(fixture.extras.pages.last().unwrap().selected, 0);
+            assert!(!fixture.extras.pages.last().unwrap().rows[0].visual.busy);
+        }
+        let mut fixture = Fixture::new("Bluetooth");
+        let handle = fixture.claim(ExternalKind::Bluetooth);
+        fixture.extras.keyboard = Some((Keyboard::new("123"), Typing::BtCode(true)));
+        fixture.extras.handle(Action::BackHeld);
+        assert!(handle.is_cancelled());
+        assert!(fixture.extras.keyboard.is_none());
+        assert!(fixture.extras.external_pending.is_none());
+    }
+    #[test]
+    fn bluetooth_pairing_failure_closes_its_prompt_and_keeps_a_retry_path() {
+        for keyboard in [false, true] {
+            let mut fixture = Fixture::new("Bluetooth");
+            let handle = fixture.claim(ExternalKind::Bluetooth);
+            let owner = fixture.extras.pages.last().unwrap().key;
+            if keyboard {
+                fixture.extras.keyboard = Some((Keyboard::new("123"), Typing::BtCode(true)));
+            } else {
+                fixture.confirm_pairing();
+            }
+            fixture.extras.external_bluetooth_reply(WorkerReply::owned(
+                &handle,
+                Err("Pairing interrupted".into()),
+                true,
+            ));
+            assert!(fixture.extras.external_pending.is_none());
+            assert!(fixture.extras.bt_prompt.is_none() && fixture.extras.keyboard.is_none());
+            assert_eq!(fixture.extras.pages.last().unwrap().key, owner);
+            assert_eq!(fixture.extras.bt_error, "Pairing interrupted");
+            assert!(fixture.extras.effects.iter().any(
+                |effect| matches!(effect, Effect::Notice(error) if error == "Pairing interrupted")
+            ));
+            assert!(fixture
+                .extras
+                .pages
+                .last()
+                .unwrap()
+                .rows
+                .iter()
+                .all(|row| !row.visual.busy));
+        }
+    }
+    #[test]
+    fn bluetooth_pairing_old_reply_cannot_close_a_new_question() {
+        let mut fixture = Fixture::new("Bluetooth");
+        let old = fixture.claim(ExternalKind::Bluetooth);
+        fixture.confirm_pairing();
+        fixture.extras.handle(Action::Back);
+        let current = fixture.claim(ExternalKind::Bluetooth);
+        fixture.confirm_pairing();
+        let question = fixture.extras.bt_prompt;
+        fixture.extras.external_bluetooth_reply(WorkerReply::owned(
+            &old,
+            Err("Old pairing failed".into()),
+            true,
+        ));
+        assert_eq!(fixture.extras.bt_prompt, question);
+        assert_eq!(fixture.extras.pages.last().map(|page| page.key), question);
+        assert!(!current.is_cancelled());
+        assert!(fixture.extras.bt_error.is_empty());
+        assert_eq!(
+            fixture.extras.external_pending.as_ref().unwrap().handle.id,
+            current.id
+        );
+    }
+    #[test]
+    fn bluetooth_pairing_does_not_unlock_unrelated_sheets_or_keyboards() {
+        let mut fixture = Fixture::new("Bluetooth");
+        let handle = fixture.claim(ExternalKind::Bluetooth);
+        fixture.extras.keyboard = Some((Keyboard::new("Search"), Typing::Combined));
+        fixture.extras.handle(Action::Select);
+        assert_eq!(fixture.extras.keyboard.as_ref().unwrap().0.query, "Search");
+        fixture.extras.keyboard = None;
+        fixture.confirm_pairing();
+        let pairing_question = fixture.extras.bt_prompt;
+        fixture.extras.push_confirmation(
+            "Code 123456 · Same on “Car”?",
+            "",
+            "Unrelated action",
+            Choice::Nothing,
+        );
+        let unrelated = fixture.extras.pages.last().unwrap().key;
+        fixture.extras.handle(Action::Select);
+        assert_eq!(fixture.extras.pages.last().unwrap().key, unrelated);
+        assert_eq!(fixture.extras.bt_prompt, pairing_question);
+        assert!(!handle.is_cancelled());
+
+        let mut weather = Fixture::new("Weather");
+        let handle = weather.claim(ExternalKind::WeatherSearch);
+        weather.confirm_pairing();
+        let question = weather.extras.bt_prompt;
+        weather.extras.handle(Action::Select);
+        assert_eq!(weather.extras.pages.last().map(|page| page.key), question);
+        assert!(!handle.is_cancelled());
     }
     #[test]
     fn weather_add_forecast_failure_waits_for_committed_city_without_stale_navigation() {

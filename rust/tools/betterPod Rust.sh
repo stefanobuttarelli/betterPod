@@ -92,6 +92,21 @@ old_bright=""
 frontend_state="$BETTERPOD_RUST_DATA_DIR/.frontend-audio.json"
 app_log="$GAMEDIR/betterpod-rust.log"
 app_pid=""
+rotate_app_log() {
+  local log=$1 previous next
+  [ -s "$log" ] || return 0
+  # Keep three nonempty sessions. On any failed rename, leave the current
+  # log in place so this launch can append without losing its diagnostics.
+  for previous in 2 1; do
+    next=$((previous + 1))
+    if [ -f "$log.$previous" ]; then
+      [ ! -d "$log.$next" ] || return 1
+      mv -f -- "$log.$previous" "$log.$next" || return 1
+    fi
+  done
+  [ ! -d "$log.1" ] || return 1
+  mv -f -- "$log" "$log.1"
+}
 cleanup() {
   trap - EXIT INT TERM HUP
   # A frozen frontend audio client can hold up the app's SDL shutdown.
@@ -117,7 +132,10 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
 es_pids=$(pidof emulationstation 2>/dev/null || true)
-: > "$app_log"
+if ! rotate_app_log "$app_log"; then
+  printf '\nLog rotation failed; preserving this log and appending the new session.\n' >> "$app_log"
+fi
+printf '\n--- betterPod Rust session %s ---\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" >> "$app_log"
 # pidof supplies numeric IDs. The Rust helper validates process start times,
 # parks their verified audio streams, then freezes the matching frontends.
 "$GAMEDIR/betterpod-rust" --frontend-audio prepare "$frontend_state" "$$" $es_pids >> "$app_log" 2>&1 || exit 1

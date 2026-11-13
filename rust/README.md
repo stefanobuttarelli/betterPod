@@ -310,6 +310,12 @@ and pending hardware checks are recorded in [BLUETOOTH_QA.md](BLUETOOTH_QA.md).
 
 ## SSH diagnostics
 
+The console log is `betterpod-rust/betterpod-rust.log`. Each launch keeps the
+three previous nonempty logs as `.log.1` (newest), `.log.2` and `.log.3`, and
+starts a dated session. If rotation fails, it appends to the current log
+without truncating it. For pairing failures, copy the current log and these
+backups before further test runs so the failed attempt remains available.
+
 Start the installed app through EmulationStation, including after tests. Its
 native launch releases the display and configures the physical controller.
 Running `bash "betterPod Rust.sh"` directly from SSH while EmulationStation
