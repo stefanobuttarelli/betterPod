@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Meet betterPod. An iPod-style music player for Anbernic handhelds running Knulli. Your music, back in your hands.">
+  <title>betterPod — Your music. Back in your hands.</title>
+  <link rel="icon" href="assets/betterpod.png" type="image/png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <nav class="nav wrap" aria-label="Main navigation">
+      <a class="wordmark" href="#top" aria-label="betterPod home"><img src="assets/betterpod.png" width="28" height="28" alt="">betterPod</a>
+      <div class="nav-links"><a href="#experience">Experience</a><a href="#features">Features</a><a href="#compatibility">Compatibility</a></div>
+      <a class="button button-small" href="#download">Get betterPod</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy wrap">
+        <p class="eyebrow">A new soundtrack for your handheld</p>
+        <h1 id="hero-title">Your music.<br><span>Back in your hands.</span></h1>
+        <p class="hero-description">An iPod-style music player for your Anbernic.<br>Made for your music. Built for Knulli.</p>
+        <div class="actions"><a class="button" href="#download">Get betterPod</a><a class="text-link" href="#experience">Take a closer look <span aria-hidden="true">↓</span></a></div>
+      </div>
+      <div class="hero-stage" aria-label="betterPod on Anbernic RG35XX Plus and RG35XX Pro">
+        <figure class="hero-console hero-plus">
+          <div class="device device-plus">
+            <img class="device-body" src="assets/rg35xx-plus.jpg" width="1500" height="1390" alt="" fetchpriority="high">
+            <img class="device-screen" src="assets/nowplaying.png" width="640" height="480" alt="The current betterPod Now Playing screen on RG35XX Plus, with Radiohead artwork and the five-bar lossless mark" fetchpriority="high">
+          </div>
+          <figcaption>RG35XX Plus</figcaption>
+        </figure>
+        <figure class="hero-console hero-pro">
+          <div class="device device-pro">
+            <img class="device-body" src="assets/rg35xx-pro.jpg" width="1500" height="1500" alt="" fetchpriority="high">
+            <img class="device-screen" src="assets/coverflow.png" width="640" height="480" alt="Design preview of Cover Flow on a black RG35XX Pro; betterPod hardware testing is pending" fetchpriority="high">
+          </div>
+          <figcaption>RG35XX Pro <span class="preview-note">Design preview</span></figcaption>
+        </figure>
+        <span class="stage-note">Same handheld.<br>A whole new side.</span>
+      </div>
+      <p class="hero-footnote">Free & open source <span aria-hidden="true">·</span> For compatible Anbernic handhelds running Knulli</p>
+    </section>
+
+    <section class="experience section-pad" id="experience" aria-labelledby="experience-title">
+      <div class="wrap">
+        <div class="section-heading">
+          <div><p class="eyebrow">Hello again, old friend</p><h2 id="experience-title">Some things<br>just feel right.</h2></div>
+          <p>Flip through your albums. Find that one song.<br class="desktop-break"> Press play with a real button.<br class="desktop-break"> A familiar feeling, on the handheld you already love.</p>
+        </div>
+        <fieldset class="screen-gallery">
+          <legend class="sr-only">Choose a betterPod screen to preview</legend>
+          <input class="gallery-radio" type="radio" name="screen" id="screen-flow" checked>
+          <input class="gallery-radio" type="radio" name="screen" id="screen-home">
+          <input class="gallery-radio" type="radio" name="screen" id="screen-playing">
+          <div class="gallery-stage">
+            <div class="gallery-context"><span class="context-line"></span><span>Your collection,<br>front and centre.</span></div>
+            <div class="screen-frame">
+              <img class="gallery-image gallery-flow" src="assets/coverflow.png" width="640" height="480" alt="Cover Flow: browse album covers with a reflective shelf and flip a cover to choose a track" loading="lazy">
+              <img class="gallery-image gallery-home" src="assets/home.png" width="640" height="480" alt="The betterPod main menu with its blue selection bar, album preview and mini-player" loading="lazy">
+              <img class="gallery-image gallery-playing" src="assets/nowplaying.png" width="640" height="480" alt="Now Playing with album artwork, artist, song title and playback progress" loading="lazy">
+            </div>
+            <div class="gallery-side-note"><span class="keycap">A</span><span>Pick a favourite.<br>Let it play.</span></div>
+          </div>
+          <div class="gallery-tabs"><label for="screen-flow">Cover Flow</label><label for="screen-home">The main menu</label><label for="screen-playing">Now Playing</label></div>
+        </fieldset>
+        <p class="screen-note">Captured from the current Rust app. Real albums. A familiar feeling.</p>
+      </div>
+    </section>
+
+    <section class="discover section-pad" id="features" aria-labelledby="discover-title">
+      <div class="wrap">
+        <div class="section-heading"><div><p class="eyebrow">Your next discovery is already out there</p><h2 id="discover-title">Find it online.<br>Make it your library.</h2></div><p>Albums, live recordings and the next great podcast. Find them on your handheld. Keep them for the road.</p></div>
+        <article class="youtube-feature">
+          <div class="youtube-copy"><p class="eyebrow">YouTube, built in</p><h3>One video.<br>A whole album.</h3><p>Save one song. Turn a playlist into an album. Or split a full-album video into individually tagged tracks.</p><p class="youtube-detail">No chapters? Choose a matching track list. betterPod finds the pauses and separates the songs.</p><span class="feature-note">Optional integration · for videos you own or may download</span></div>
+          <div class="album-split" aria-label="Album splitting illustration: Radiohead’s In Rainbows becomes a numbered track list">
+            <div class="split-source"><img src="assets/in-rainbows.jpg" width="600" height="600" loading="lazy" alt="Radiohead, In Rainbows album cover"><span>One full-album video</span></div>
+            <span class="split-arrow" aria-hidden="true">→</span>
+            <div class="split-result"><span class="split-result-label">Ready for your library</span><strong>In Rainbows</strong><span class="split-artist">Radiohead</span><ol><li><span>01</span>15 Step</li><li><span>02</span>Bodysnatchers</li><li><span>03</span>Nude</li></ol><p>Individual tracks. Titles, numbers and artwork included.</p></div>
+          </div>
+        </article>
+        <div class="discovery-grid">
+          <article class="discovery-card archive-feature"><p class="eyebrow">Internet Archive</p><h3>Discover a recording.<br>Keep the whole album.</h3><p>Search the archive and listen first. Download one track or a complete album, in lossless formats when available.</p><div class="archive-formats" aria-label="Available formats depend on the recording"><span>FLAC</span><span>ALAC</span><span>WAV</span><span>AIFF</span><span>MP3</span></div><p class="card-detail">See the recording’s licence before downloading.</p></article>
+          <article class="discovery-card podcast-feature"><p class="eyebrow">Podcasts</p><h3>One for the road.<br>And the ride home.</h3><p>Find a show, download episodes and listen offline. Your favourites stay together in Your Podcasts.</p><div class="podcast-visual" aria-hidden="true"><svg viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><rect x="29" y="12" width="22" height="38" rx="11"/><path d="M20 36v5a20 20 0 0 0 40 0v-5M40 61v11M29 72h22"/></svg><span>Search.<br>Download.<br>Listen anywhere.</span></div></article>
+          <article class="discovery-card metadata-feature"><p class="eyebrow">A collection, organised</p><h3>The right names.<br>The missing artwork.</h3><p>Find album details online and fill in artists, titles and track numbers. Review the match, then save.</p><div class="cover-trio" aria-hidden="true"><img src="assets/kind-of-blue.jpg" width="600" height="600" loading="lazy" alt=""><img src="assets/rumours.jpg" width="600" height="600" loading="lazy" alt=""><img src="assets/random-access-memories.jpg" width="600" height="600" loading="lazy" alt=""></div><p class="card-detail">Search for all missing covers automatically.</p></article>
+        </div>
+        <p class="discovery-footnote">Downloads join one queue and continue while you browse. Finished tracks appear in your library automatically.</p>
+      </div>
+    </section>
+
+    <section class="features section-pad" id="listening" aria-labelledby="features-title">
+      <div class="wrap">
+        <div class="section-heading"><div><p class="eyebrow">More to love</p><h2 id="features-title">Old-school soul.<br>New favourite features.</h2></div><p>Everything starts with your music.<br class="desktop-break"> Then there’s all the good stuff around it.</p></div>
+        <div class="bento">
+          <article class="feature-card audio-card">
+            <div class="card-copy"><p class="eyebrow">Your collection, in full</p><h3>Your lossless library.<br>Every detail intact.</h3><p>Lossless FLAC and ALAC. Native sample rates.<br>The files you love, sounding like themselves.</p></div>
+            <div class="audio-visual"><img src="assets/nowplaying.png" width="640" height="480" loading="lazy" alt="The current Rust Now Playing screen, showing 15 Step by Radiohead and the five-bar lossless mark"></div>
+            <p class="format-list">FLAC <span>·</span> ALAC <span>·</span> AAC <span>·</span> WAV <span>·</span> AIFF <span>·</span> MP3 <span>·</span> OGG</p>
+          </article>
+          <article class="feature-card dark-card">
+            <div class="card-copy"><p class="eyebrow">After hours</p><h3>Set the mood<br>with dark mode.</h3><p>Light, dark or automatic.<br>Make yourself at home.</p></div>
+            <img class="dark-screen" src="assets/albums-dark.png" width="640" height="480" loading="lazy" alt="The album library in dark mode, with blue selection and colourful album artwork">
+          </article>
+          <article class="feature-card games-card">
+            <div class="card-copy"><p class="eyebrow">A little play time</p><h3>A few familiar<br>ways to play.</h3><p>Solitaire, Brick, puzzles and more.<br>Some habits are worth keeping.</p></div>
+            <img class="games-screen" src="assets/solitaire.png" width="640" height="480" loading="lazy" alt="Classic Solitaire in betterPod, with green felt, playing cards and a hand cursor">
+          </article>
+          <article class="feature-card everyday-card">
+            <div class="card-copy"><p class="eyebrow">The everyday essentials</p><h3>Small touches.<br>A better listen.</h3></div>
+            <ul class="essentials-list">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg><div><h4>Headphones, your way</h4><p>Connect wired or Bluetooth headphones.</p></div></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M9 17h6M8 8l8 5M16 8l-8 5"/></svg><div><h4>Screen off. Music on.</h4><p>Keep listening with the display turned off.</p></div></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h12M4 18h8"/></svg><div><h4>Your next song is up to you</h4><p>Playlists, queue controls, shuffle and repeat.</p></div></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg><div><h4>Better over time</h4><p>Get software updates directly over Wi-Fi.</p></div></li>
+            </ul>
+          </article>
+        </div>
+        <details class="more-features">
+          <summary>And a few more things you’ll love <span aria-hidden="true">+</span></summary>
+          <div class="more-features-grid"><p><strong>A library that feels like yours.</strong> Browse albums, artists and playlists, with your collection stored on your card.</p><p><strong>A little colour while you listen.</strong> Music visualizers, a mosaic of album covers and a familiar clock screensaver.</p><p><strong>Something to watch, too.</strong> Play videos from YouTube or save them to watch offline.</p></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="sharing section-pad" id="sharing" aria-labelledby="sharing-title">
+      <div class="wrap">
+        <div class="section-heading"><div><p class="eyebrow">From one betterPod to another</p><h2 id="sharing-title">You have to<br>hear this.</h2></div><p>Give a friend an eight-digit code.<br class="desktop-break"> Watch the artwork travel from your console to theirs. A song or a whole album, shared directly.</p></div>
+        <div class="transfer-demo" id="transfer-demo" data-state="ready">
+          <div class="transfer-controls"><button class="button transfer-play" id="transfer-play" type="button" hidden>Play transfer</button><p id="transfer-status" role="status">Native app animation · demo transfer</p></div>
+          <div class="transfer-consoles">
+            <figure class="transfer-console"><div class="device device-plus"><img class="device-body" src="assets/rg35xx-plus.jpg" width="1500" height="1390" alt="" loading="lazy"><video class="device-screen transfer-video" width="640" height="480" preload="none" muted playsinline poster="assets/share-sender-ready.png" aria-label="Native betterPod animation sending In Rainbows to another console"><source src="assets/share-send.mp4" type="video/mp4"></video><img class="device-screen transfer-still" src="assets/share-sender-ready.png" data-ready="assets/share-sender-ready.png" data-complete="assets/share-sender-complete.png" width="640" height="480" alt="Sender screen on RG35XX Plus, with In Rainbows by Radiohead and its sharing code" loading="lazy"></div><figcaption><span>Your betterPod</span><strong>Send a favourite</strong></figcaption></figure>
+            <div class="transfer-between"><span class="transfer-direction" aria-hidden="true">→</span><p>One album.<br>Two music lovers.</p></div>
+            <figure class="transfer-console"><div class="device device-pro"><img class="device-body" src="assets/rg35xx-pro.jpg" width="1500" height="1500" alt="" loading="lazy"><video class="device-screen transfer-video" width="640" height="480" preload="none" muted playsinline poster="assets/share-receiver-ready.png" aria-label="Native betterPod animation receiving In Rainbows, reconstructing its artwork line by line"><source src="assets/share-receive.mp4" type="video/mp4"></video><img class="device-screen transfer-still" src="assets/share-receiver-ready.png" data-ready="assets/share-receiver-ready.png" data-complete="assets/share-receiver-complete.png" width="640" height="480" alt="Receive screen on RG35XX Pro, ready to accept the same eight-digit code" loading="lazy"></div><figcaption><span>Their betterPod</span><strong>A new favourite, received</strong></figcaption></figure>
+          </div>
+          <noscript><p class="transfer-noscript">These are real app screens. Enable JavaScript to play the sharing demonstration.</p></noscript>
+        </div>
+        <div class="mac-share-note"><div><img src="assets/betterpod.png" width="40" height="40" alt=""><p><strong>Your Mac can share, too.</strong><span>Drop in songs or albums. Send them with the same eight-digit code.</span></p></div><a class="text-link" href="https://betterpod.xyz/mac/">Share for Mac <span aria-hidden="true">↗</span></a></div>
+      </div>
+    </section>
+
+    <section class="compatibility section-pad" id="compatibility" aria-labelledby="compatibility-title">
+      <div class="wrap">
+        <div class="section-heading"><div><p class="eyebrow">Meet your music player</p><h2 id="compatibility-title">A familiar face.<br>A different kind of play.</h2></div><p>Made for Anbernic H700 handhelds<br class="desktop-break"> running Knulli. Starting with these two.</p></div>
+        <div class="console-lineup">
+          <article class="console-model"><div class="model-visual"><div class="device device-plus"><img class="device-body" src="assets/rg35xx-plus.jpg" width="1500" height="1390" alt="" loading="lazy"><img class="device-screen" src="assets/home.png" width="640" height="480" alt="Anbernic RG35XX Plus displaying the betterPod menu" loading="lazy"></div></div><h3>Anbernic RG35XX Plus</h3><p>The classic shape. All your favourites.</p><span class="model-note">Verified on Knulli</span></article>
+          <article class="console-model"><div class="model-visual"><div class="device device-pro"><img class="device-body" src="assets/rg35xx-pro.jpg" width="1500" height="1500" alt="" loading="lazy"><img class="device-screen" src="assets/nowplaying-dark.png" width="640" height="480" alt="Design preview of betterPod Now Playing on Anbernic RG35XX Pro" loading="lazy"></div></div><h3>Anbernic RG35XX Pro</h3><p>A little more handheld. The same feeling.</p><span class="model-note">Knulli available · betterPod testing pending</span></article>
+        </div>
+        <p class="compatibility-note">Knulli is required. Stock firmware is not supported.<br><a href="https://knulli.org/play/devices/">Check your device and firmware <span aria-hidden="true">↗</span></a></p>
+      </div>
+    </section>
+
+    <section class="download section-pad" id="download" aria-labelledby="download-title">
+      <div class="wrap download-inner">
+        <img class="download-icon" src="assets/betterpod.png" width="64" height="64" alt="">
+        <p class="eyebrow">Ready when you are</p><h2 id="download-title">Give your handheld<br>a second soundtrack.</h2>
+        <p>Free, open source, and made for the music you already own.</p>
+        <a class="button" href="https://github.com/stefanobuttarelli/betterPod/releases/tag/rust-latest">Get betterPod <span aria-hidden="true">↓</span></a>
+        <p class="download-requirement">Rust preview · For Anbernic H700 handhelds running Knulli</p>
+        <ol class="install-steps"><li><span>1</span><div><h3>Download</h3><p>Get the latest Knulli package and unzip it.</p></div></li><li><span>2</span><div><h3>Copy</h3><p>Add betterPod to Ports, and your songs to Music.</p></div></li><li><span>3</span><div><h3>Press play</h3><p>Open betterPod from Ports. Meet your music again.</p></div></li></ol>
+        <a class="text-link" href="https://github.com/stefanobuttarelli/betterPod/blob/codex/rust-player-mac-library/rust/README.md#install-and-update">Read the installation guide <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="wrap"><div class="footer-top"><a class="wordmark" href="#top"><img src="assets/betterpod.png" width="24" height="24" alt="">betterPod</a><p>Made for the love of music.</p><div><a href="https://github.com/stefanobuttarelli/betterPod">GitHub ↗</a><a href="https://betterpod.xyz/mac/">Share for Mac ↗</a></div></div><p class="legal">An independent project. Not affiliated with Apple, Anbernic or Knulli. iPod is a trademark of Apple Inc.<br>Device photography: Anbernic. App screens: current betterPod Rust with a demonstration library. Album artwork belongs to its respective owners.</p></div></footer>
+  <script src="script.js" defer></script>
+</body>
+</html>
