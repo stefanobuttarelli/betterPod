@@ -2,6 +2,12 @@
 
 The separate Rust app for Knulli. A version here whose number is in `Cargo.toml` and has no release yet is published by `.github/workflows/rust.yml`, with its section as the notes.
 
+## v0.2.22 (2026-11-16)
+
+- An album's song list shows each song's length at the right.
+- Delete Song in a song's options (Y): after one question, the file leaves the card in the background, as Delete Album does. The music stops only if that song is playing.
+- L1 and R1 change the song everywhere, also in Solitaire, the other games and the puzzles. In number puzzles Y now chooses the digit and holding A marks it in pencil; Undo is in the START menu.
+
 ## v0.2.21 (2026-11-13)
 
 - Find Knulli's system bus at `/run/dbus/system_bus_socket`. On the tested console, the previous version looked only under `/var/run/dbus`, so its pairing agent, car media controls and phone-class setup never started. Explicit `DBUS_SYSTEM_BUS_ADDRESS` settings remain respected.

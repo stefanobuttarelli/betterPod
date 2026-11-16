@@ -1151,18 +1151,18 @@ impl PuzzleGame {
             );
         }
         let hint = if PUZZLES[self.index].numeric {
-            "[R] digit · [A] place · [Y] pencil · [L] undo · [START] menu"
+            "[Y] digit · [A] place · hold [A] pencil · [START] undo, menu"
         } else {
             match self.index {
-                0 => "[A] open · [Y] flag · [L] undo · [START] menu",
-                2 => "[A] turn · [Y] turn back · [L] undo · [START] menu",
-                3 => "[A] flood with this colour · [L] undo · [START] menu",
-                4 => "[A] select, [A] again remove · [L] undo · [START] menu",
-                5 => "[DPAD] slide · [L] undo · [START] menu",
-                6 => "[A] bulb · [Y] mark · [L] undo · [START] menu",
-                7 => "[A] cycle · [Y] cycle back · [L] undo · [START] menu",
-                10 => "[A] fill · [Y] empty · [L] undo · [START] menu",
-                _ => "[A] tent · [Y] grass · [L] undo · [START] menu",
+                0 => "[A] open · [Y] flag · [START] undo, menu",
+                2 => "[A] turn · [Y] turn back · [START] undo, menu",
+                3 => "[A] flood with this colour · [START] undo, menu",
+                4 => "[A] select, [A] again remove · [START] undo, menu",
+                5 => "[DPAD] slide · [START] undo, menu",
+                6 => "[A] bulb · [Y] mark · [START] undo, menu",
+                7 => "[A] cycle · [Y] cycle back · [START] undo, menu",
+                10 => "[A] fill · [Y] empty · [START] undo, menu",
+                _ => "[A] tent · [Y] grass · [START] undo, menu",
             }
         };
         r.gradient(
@@ -1231,19 +1231,14 @@ fn input_key(numeric: bool, digit: &mut i32, action: Action) -> Option<i32> {
                 SELECT
             }
         }
-        Action::Options => {
-            if numeric {
-                SELECT
-            } else {
-                SELECT2
-            }
-        }
-        Action::Previous => 'u' as i32,
-        Action::Next if numeric => {
+        // L1/R1 change the song, as everywhere: number puzzles choose the
+        // digit with Y and mark it in pencil with A held; undo is in START.
+        Action::Options if numeric => {
             *digit = (*digit + 1) % 10;
             return None;
         }
-        Action::Next => 'r' as i32,
+        Action::Options => SELECT2,
+        Action::SelectHeld if numeric => SELECT,
         _ => return None,
     })
 }
@@ -1449,23 +1444,23 @@ mod tests {
         }
     }
     #[test]
-    fn numeric_digit_clear_pencil_and_global_keys_follow_go_frontend() {
+    fn numeric_digit_pencil_and_shoulders_leave_the_song_buttons_free() {
         let mut digit = 9;
-        assert_eq!(input_key(true, &mut digit, Action::Next), None);
+        assert_eq!(input_key(true, &mut digit, Action::Options), None);
         assert_eq!(digit, 0);
         assert_eq!(input_key(true, &mut digit, Action::Select), Some(SELECT2));
-        assert_eq!(input_key(true, &mut digit, Action::Options), Some(SELECT));
-        assert_eq!(input_key(true, &mut digit, Action::Next), None);
+        assert_eq!(input_key(true, &mut digit, Action::SelectHeld), Some(SELECT));
+        assert_eq!(input_key(true, &mut digit, Action::Options), None);
         assert_eq!(digit, 1);
         assert_eq!(
             input_key(true, &mut digit, Action::Select),
             Some('1' as i32)
         );
-        assert_eq!(input_key(false, &mut digit, Action::Next), Some('r' as i32));
-        assert_eq!(
-            input_key(false, &mut digit, Action::Previous),
-            Some('u' as i32)
-        );
+        // L1/R1 change the song: never a puzzle key
+        for numeric in [true, false] {
+            assert_eq!(input_key(numeric, &mut digit, Action::Next), None);
+            assert_eq!(input_key(numeric, &mut digit, Action::Previous), None);
+        }
         assert_eq!(input_key(false, &mut digit, Action::Options), Some(SELECT2));
         assert_eq!(input_key(false, &mut digit, Action::PlayPause), None);
         assert_eq!(input_key(false, &mut digit, Action::Back), None);

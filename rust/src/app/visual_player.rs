@@ -352,6 +352,7 @@ impl App {
             Row::new("Add to End of Queue", Intent::AddLater(index)),
             Row::new("Add to Playlist…", Intent::AddToPlaylist(index)),
             Row::new("Share", Intent::ShareTrack(index)),
+            Row::new("Delete Song", Intent::DeleteSong(index)),
         ];
         rows[0].visual.queue_mark = "queue_next".into();
         rows[1].visual.queue_mark = "queue_last".into();

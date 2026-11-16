@@ -354,6 +354,7 @@ enum Purpose {
     Merge,
     Separate,
     DeleteAlbum(String),
+    DeleteSong(String),
     CoverReset,
     Tools,
     Subscriptions,
@@ -776,6 +777,10 @@ impl Extras {
     }
     pub(super) fn set_youtube(&mut self, enabled: bool) {
         self.youtube = enabled;
+    }
+    /// Delete Song (a song's options): the file goes in the background.
+    pub(super) fn delete_songs(&mut self, paths: Vec<PathBuf>, title: String) {
+        self.task(Task::DeleteAlbum { paths }, Purpose::DeleteSong(title));
     }
     fn deleting_album_name(&self) -> String {
         self.album_edit
@@ -3848,6 +3853,11 @@ impl Extras {
                                     self.effects.push(Effect::Rescan);
                                     self.effects
                                         .push(Effect::Notice("Using the album's own cover".into()));
+                                    continue;
+                                }
+                                if let Some(Purpose::DeleteSong(title)) = &purpose {
+                                    self.effects.push(Effect::Rescan);
+                                    self.effects.push(Effect::Notice(format!("Deleted “{title}”")));
                                     continue;
                                 }
                                 if let Some(Purpose::DeleteAlbum(name)) = &purpose {

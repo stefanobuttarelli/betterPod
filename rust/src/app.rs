@@ -138,6 +138,9 @@ pub(crate) enum Intent {
     CloseOptions,
     Extra(ExtraPage),
     AddToPlaylist(usize),
+    /// The song's options: Delete Song asks once more.
+    DeleteSong(usize),
+    ConfirmDeleteSong(usize),
     AlbumInfo(usize),
     Puzzle(usize),
     DownloadMedia(bool),
@@ -280,6 +283,19 @@ struct ScannedLibrary {
     album_tracks: Vec<Arc<Vec<Row>>>,
     artist_albums: Vec<Arc<Vec<Row>>>,
 }
+/// A song's length for lists: "3:07", "1:02:45"; empty when unknown.
+fn song_length(seconds: f64) -> String {
+    if !(seconds > 0.0) {
+        return String::new();
+    }
+    let total = seconds.round() as u64;
+    let (h, m, s) = (total / 3600, total / 60 % 60, total % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
 impl ScannedLibrary {
     fn new(library: Library) -> Self {
         let cover_signatures = betterpod_rust::art::cover_signatures(
@@ -340,6 +356,8 @@ impl ScannedLibrary {
                 for &i in &a.track_indices {
                     let mut row = Row::new(&library.tracks[i].title, Intent::Song(i));
                     row.arrow = false;
+                    // each song's length, at the right
+                    row.visual.value = song_length(library.tracks[i].duration);
                     rows.push(row);
                 }
                 Arc::new(rows)
@@ -1963,6 +1981,33 @@ impl App {
                 self.extras.open(page);
                 self.open(Screen::Extra);
             }
+            Intent::DeleteSong(i) => {
+                if let Some(track) = self.library.tracks.get(i) {
+                    self.options = Some(Page {
+                        kind: ViewKind::Full,
+                        mini: false,
+                        screen: self.screen(),
+                        title: format!("Delete “{}” for good?", track.title),
+                        rows: Arc::new(vec![
+                            Row::new("Delete Song", Intent::ConfirmDeleteSong(i)),
+                            Row::new("Cancel", Intent::CloseOptions),
+                        ]),
+                        selected: 0,
+                        scroll: 0.0,
+                        target_scroll: 0.0,
+                        enter: 0.0,
+                    });
+                }
+            }
+            Intent::ConfirmDeleteSong(i) => {
+                self.options = None;
+                if let Some(track) = self.library.tracks.get(i) {
+                    let paths = vec![track.path.clone()];
+                    let title = track.title.clone();
+                    self.leave_deleted(&paths);
+                    self.extras.delete_songs(paths, title);
+                }
+            }
             Intent::AddToPlaylist(i) => {
                 if let Some(track) = self.library.tracks.get(i) {
                     self.extras.add_to_playlist(vec![track.path.clone()]);
@@ -2255,7 +2300,9 @@ impl App {
                 return;
             }
         }
-        if matches!(action, Action::Start | Action::Next | Action::Previous) {
+        // L1/R1 change the song everywhere, games and puzzles included:
+        // only START belongs to the game here.
+        if action == Action::Start {
             if self.screen() == Screen::Game {
                 if action == Action::Start
                     && self.game.as_ref().is_some_and(|g| g.title() != "Solitaire")
@@ -2968,6 +3015,21 @@ impl App {
         self.play_current(0.0);
         self.open(Screen::NowPlaying);
     }
+    /// Songs about to be deleted: the music stops if one of them plays (as
+    /// in the Go app), and they leave the songs to come.
+    fn leave_deleted(&mut self, paths: &[PathBuf]) {
+        let gone: std::collections::HashSet<&PathBuf> = paths.iter().collect();
+        if self.now_track.as_ref().is_some_and(|t| gone.contains(&t.path)) {
+            self.execute(Intent::ClearNowPlaying);
+            return;
+        }
+        let first = self.detached_next.unwrap_or(self.queue_index + 1);
+        for index in (first..self.queue.len()).rev() {
+            if gone.contains(&self.queue[index]) {
+                self.remove_queued(index);
+            }
+        }
+    }
     fn show_album_options(&mut self, album: usize) {
         let Some(a) = self.library.albums.get(album) else {
             return;
@@ -3492,19 +3554,7 @@ impl App {
                 // The files go in the background (services); here only the
                 // music: it stops if one of the album's songs plays, as in
                 // the Go app, and the album leaves the songs to come.
-                ExtraEffect::DeleteAlbum(paths) => {
-                    let gone: std::collections::HashSet<_> = paths.into_iter().collect();
-                    if self.now_track.as_ref().is_some_and(|t| gone.contains(&t.path)) {
-                        self.execute(Intent::ClearNowPlaying);
-                    } else {
-                        let first = self.detached_next.unwrap_or(self.queue_index + 1);
-                        for index in (first..self.queue.len()).rev() {
-                            if gone.contains(&self.queue[index]) {
-                                self.remove_queued(index);
-                            }
-                        }
-                    }
-                }
+                ExtraEffect::DeleteAlbum(paths) => self.leave_deleted(&paths),
                 ExtraEffect::MergeAlbum(paths) => {
                     self.curation
                         .open(CurationMode::Merge { paths }, Arc::clone(&self.library));
